@@ -129,19 +129,31 @@ export function buildDRE(
   for (const t of transactions) {
     if (t.date < range.start || t.date > range.end) continue;
     if (t.status === 'AUTO_CLASSIFIED') awaitingApproval++;
-    if (t.status !== 'RECONCILED' || !t.accountId) continue;
+    if (t.status !== 'RECONCILED') continue;
 
-    const acc = byId.get(t.accountId);
-    const key = acc ? resolveDREGroup(acc) : null;
-    if (!acc || !key) continue; // conta removida ou patrimonial: não transita pela DRE
-    reconciledCount++;
+    // Lançamento desdobrado: cada split entra na sua conta; senão, a conta única.
+    const postings =
+      t.isSplit && t.splits && t.splits.length > 0
+        ? t.splits.map((sp) => ({ accountId: sp.accountId, amount: sp.amount }))
+        : t.accountId
+          ? [{ accountId: t.accountId, amount: t.amount }]
+          : [];
 
-    const bucket = buckets.get(key) ?? new Map<string, DREAccountLine>();
-    const line = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
-    line.value += CREDIT_NATURE.has(key) ? t.amount : -t.amount;
-    line.count += 1;
-    bucket.set(acc.id, line);
-    buckets.set(key, bucket);
+    let counted = false;
+    for (const posting of postings) {
+      const acc = byId.get(posting.accountId);
+      const key = acc ? resolveDREGroup(acc) : null;
+      if (!acc || !key) continue; // conta removida ou patrimonial: não transita pela DRE
+      counted = true;
+
+      const bucket = buckets.get(key) ?? new Map<string, DREAccountLine>();
+      const line = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
+      line.value += CREDIT_NATURE.has(key) ? posting.amount : -posting.amount;
+      line.count += 1;
+      bucket.set(acc.id, line);
+      buckets.set(key, bucket);
+    }
+    if (counted) reconciledCount++;
   }
 
   const section = (key: DRESectionKey): DRESection => {

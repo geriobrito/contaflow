@@ -8,6 +8,7 @@ import {
   query,
   where,
   writeBatch,
+  deleteField,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import {
@@ -16,6 +17,7 @@ import {
   BankTransaction,
   ClassificationRule,
   ImportBatch,
+  TransactionSplit,
 } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 
@@ -378,23 +380,51 @@ export async function updateTransactionClassification(
         accountName,
         status,
         reconciledAt: now,
+        // Classificar em conta única desfaz um rateio anterior.
+        isSplit: false,
+        splits: deleteField(),
       });
     } catch (e) {
       console.error('Erro ao atualizar transação no Firestore:', e);
     }
   }
   const current = await getTransactions();
-  const updated = current.map((t) =>
-    t.id === transactionId
-      ? {
-          ...t,
-          accountId,
-          accountCode,
-          accountName,
-          status,
-          reconciledAt: now,
-        }
-      : t
-  );
+  const updated = current.map((t) => {
+    if (t.id !== transactionId) return t;
+    const { splits: _splits, ...rest } = t;
+    void _splits;
+    return { ...rest, accountId, accountCode, accountName, status, isSplit: false, reconciledAt: now };
+  });
   setLocalData(STORAGE_KEYS.TRANSACTIONS, updated);
+}
+
+/**
+ * Grava o desdobramento (rateio) de um lançamento: status RECONCILED, `isSplit = true`
+ * e a lista de `splits`. A conta única é removida, pois o rateio a substitui.
+ */
+export async function saveTransactionSplits(transactionId: string, splits: TransactionSplit[]): Promise<void> {
+  const now = new Date().toISOString();
+  const cleanSplits = splits.map((sp) => withoutUndefined(sp));
+  if (isFirebaseConfigured() && db) {
+    await updateDoc(doc(db, 'transactions', transactionId), {
+      status: 'RECONCILED',
+      isSplit: true,
+      splits: cleanSplits,
+      accountId: deleteField(),
+      accountCode: deleteField(),
+      accountName: deleteField(),
+      matchedRuleId: deleteField(),
+      reconciledAt: now,
+    });
+  }
+  const current = getLocalData<BankTransaction[]>(STORAGE_KEYS.TRANSACTIONS, []);
+  setLocalData(
+    STORAGE_KEYS.TRANSACTIONS,
+    current.map((t) => {
+      if (t.id !== transactionId) return t;
+      const { accountId: _a, accountCode: _c, accountName: _n, matchedRuleId: _m, ...rest } = t;
+      void [_a, _c, _n, _m];
+      return { ...rest, status: 'RECONCILED' as const, isSplit: true, splits, reconciledAt: now };
+    })
+  );
 }

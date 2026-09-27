@@ -7,6 +7,7 @@ import {
   documentId,
   getDocs,
   query,
+  deleteField,
   serverTimestamp,
   where,
   writeBatch,
@@ -17,10 +18,12 @@ import {
   getRules,
   getTransactions,
   saveRule,
+  saveTransactionSplits,
   saveTransactionsBatch,
   updateTransactionClassification,
 } from '@/lib/services/data-service';
 import type { OFXTransaction } from '@/lib/ofx-parser';
+import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import type {
   BankTransaction,
   ChartAccount,
@@ -135,6 +138,11 @@ export interface UseReconciliationReturn {
     accountId: string,
     options?: ClassifyOptions
   ) => Promise<ClassifyResult>;
+  /**
+   * Desdobra o lançamento em várias contas analíticas (rateio). Rejeita se a soma
+   * das linhas não for exatamente o valor do lançamento.
+   */
+  splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
   /** Confirma em lote todos os lançamentos auto-classificados. Retorna a quantidade aprovada. */
   approveAutoClassified: () => Promise<number>;
   reload: () => Promise<void>;
@@ -391,6 +399,9 @@ export function useReconciliation({
             accountCode,
             accountName,
             reconciledAt: now,
+            // Conta única desfaz um rateio anterior.
+            isSplit: false,
+            splits: deleteField(),
           });
 
           let ruleId: string | undefined;
@@ -447,7 +458,7 @@ export function useReconciliation({
         setTransactions((prev) =>
           prev.map((t) => {
             if (t.id === transactionId) {
-              return { ...t, status: 'RECONCILED', accountId, accountCode, accountName, reconciledAt: now };
+              return { ...t, status: 'RECONCILED', accountId, accountCode, accountName, reconciledAt: now, isSplit: false, splits: undefined };
             }
             if (similarIds.has(t.id)) {
               return { ...t, status: 'AUTO_CLASSIFIED', accountId, accountCode, accountName, matchedRuleId: rule?.id };
@@ -470,6 +481,53 @@ export function useReconciliation({
       }
     },
     [clientId, transactions, accountsById]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Desdobramento (rateio)                                              */
+  /* ------------------------------------------------------------------ */
+  const splitTransaction = useCallback(
+    async (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> => {
+      const target = transactions.find((t) => t.id === transactionId);
+      if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
+
+      const summary = summarizeSplits(target.amount, drafts, accountsById);
+      if (!summary.isComplete) throw new Error(summary.errors[0]);
+      if (!summary.isBalanced) throw new Error('A soma do rateio difere do valor do lançamento.');
+
+      const splits = draftsToSplits(target, drafts, accountsById);
+      const now = new Date().toISOString();
+
+      setIsSaving(true);
+      setError(null);
+      try {
+        await saveTransactionSplits(transactionId, splits);
+        setTransactions((prev) =>
+          prev.map((t) =>
+            t.id === transactionId
+              ? {
+                  ...t,
+                  status: 'RECONCILED',
+                  isSplit: true,
+                  splits,
+                  accountId: undefined,
+                  accountCode: undefined,
+                  accountName: undefined,
+                  matchedRuleId: undefined,
+                  reconciledAt: now,
+                }
+              : t
+          )
+        );
+      } catch (e) {
+        console.error('[useReconciliation] Falha ao salvar rateio:', e);
+        setError('Não foi possível salvar o rateio.');
+        throw e;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [transactions, accountsById]
   );
 
   /* ------------------------------------------------------------------ */
@@ -554,6 +612,7 @@ export function useReconciliation({
     error,
     importTransactions,
     classifyTransaction,
+    splitTransaction,
     approveAutoClassified,
     reload,
   };

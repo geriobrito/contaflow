@@ -86,6 +86,21 @@ export interface ChartAccount {
 export type TransactionType = 'DEBIT' | 'CREDIT' | 'OTHER';
 export type ReconciliationStatus = 'PENDING' | 'AUTO_CLASSIFIED' | 'RECONCILED';
 
+/**
+ * Sub-item de um lançamento desdobrado (rateio de fatura de cartão, lotes etc.).
+ * `amount` segue o sinal do lançamento original (débito negativo, crédito positivo),
+ * de modo que a soma dos splits é igual a `BankTransaction.amount`.
+ */
+export interface TransactionSplit {
+  id: string;
+  accountId: string;
+  amount: number;
+  memo: string;
+  /** Metadados desnormalizados para exibição. */
+  accountCode?: string;
+  accountName?: string;
+}
+
 export interface BankTransaction {
   id: string; // Document ID: `${clientId}_${fitid}`
   clientId: string;
@@ -106,6 +121,9 @@ export interface BankTransaction {
   accountNumber?: string;
   importBatchId?: string;
   reconciledAt?: string;
+  /** Lançamento desdobrado em várias contas; quando true, `splits` substitui `accountId`. */
+  isSplit?: boolean;
+  splits?: TransactionSplit[];
   createdAt: string;
 }
 
