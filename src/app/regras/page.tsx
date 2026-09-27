@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Navbar } from '@/components/layout/Navbar';
-import { ClassificationRule, ChartAccount, ClientCompany } from '@/types/firestore';
-import { getRules, saveRule, getAccounts, getClients } from '@/lib/services/data-service';
+import { useClient } from '@/contexts/ClientContext';
+import { ClassificationRule, ChartAccount } from '@/types/firestore';
+import { getRules, saveRule, getAccounts } from '@/lib/services/data-service';
 import { BrainCircuit, Plus, Search, Trash2, Sparkles, Check, X } from 'lucide-react';
 
 export default function RegrasPage() {
   const [rules, setRules] = useState<ClassificationRule[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [clients, setClients] = useState<ClientCompany[]>([]);
-  const [currentClient, setCurrentClient] = useState<ClientCompany | null>(null);
+  const { currentClient } = useClient();
+  const clientId = currentClient?.id;
   const [searchTerm, setSearchTerm] = useState('');
 
   // Modal nova regra
@@ -20,20 +20,12 @@ export default function RegrasPage() {
   const [newMatchType, setNewMatchType] = useState<'CONTAINS' | 'STARTS_WITH' | 'EXACT'>('CONTAINS');
 
   useEffect(() => {
-    async function load() {
-      const loadedClients = await getClients();
-      setClients(loadedClients);
-      if (loadedClients.length > 0) setCurrentClient(loadedClients[0]);
-
-      const [loadedRules, loadedAccounts] = await Promise.all([
-        getRules(loadedClients[0]?.id),
-        getAccounts(loadedClients[0]?.id),
-      ]);
+    if (!clientId) return;
+    Promise.all([getRules(clientId), getAccounts(clientId)]).then(([loadedRules, loadedAccounts]) => {
       setRules(loadedRules);
       setAccounts(loadedAccounts);
-    }
-    load();
-  }, []);
+    });
+  }, [clientId]);
 
   const handleCreateRule = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,8 +66,7 @@ export default function RegrasPage() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fbfbfd] dark:bg-black">
-      <Navbar currentClient={currentClient || undefined} clients={clients} />
+    <div className="flex flex-col">
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}

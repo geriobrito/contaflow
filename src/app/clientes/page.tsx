@@ -1,15 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Navbar } from '@/components/layout/Navbar';
+import React, { useState } from 'react';
+import { useClient } from '@/contexts/ClientContext';
 import { ClientCompany, TaxRegime } from '@/types/firestore';
-import { getClients, saveClient } from '@/lib/services/data-service';
+import { saveClient } from '@/lib/services/data-service';
 import { formatCNPJ } from '@/lib/utils/formatters';
 import { Building2, Plus, Search, Building, Check, X, Mail, Phone } from 'lucide-react';
 
 export default function ClientesPage() {
-  const [clients, setClients] = useState<ClientCompany[]>([]);
-  const [currentClient, setCurrentClient] = useState<ClientCompany | null>(null);
+  const { clients, currentClient, selectClient, refreshClients } = useClient();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Modal
@@ -20,15 +19,6 @@ export default function ClientesPage() {
   const [taxRegime, setTaxRegime] = useState<TaxRegime>('SIMPLES_NACIONAL');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-
-  useEffect(() => {
-    async function load() {
-      const loaded = await getClients();
-      setClients(loaded);
-      if (loaded.length > 0) setCurrentClient(loaded[0]);
-    }
-    load();
-  }, []);
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,9 +38,8 @@ export default function ClientesPage() {
     };
 
     await saveClient(newClient);
-    const refreshed = await getClients();
-    setClients(refreshed);
-    setCurrentClient(newClient);
+    await refreshClients();
+    selectClient(newClient);
 
     setIsModalOpen(false);
     setName('');
@@ -71,8 +60,7 @@ export default function ClientesPage() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fbfbfd] dark:bg-black">
-      <Navbar currentClient={currentClient || undefined} clients={clients} />
+    <div className="flex flex-col">
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}
@@ -120,7 +108,7 @@ export default function ClientesPage() {
             return (
               <div
                 key={client.id}
-                onClick={() => setCurrentClient(client)}
+                onClick={() => selectClient(client)}
                 className={`ios-card p-5 rounded-3xl cursor-pointer transition-all border ${
                   isSelected
                     ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md bg-blue-50/20 dark:bg-blue-950/20'

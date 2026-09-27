@@ -135,6 +135,8 @@ export interface UseReconciliationReturn {
     accountId: string,
     options?: ClassifyOptions
   ) => Promise<ClassifyResult>;
+  /** Confirma em lote todos os lançamentos auto-classificados. Retorna a quantidade aprovada. */
+  approveAutoClassified: () => Promise<number>;
   reload: () => Promise<void>;
 }
 
@@ -463,6 +465,51 @@ export function useReconciliation({
   );
 
   /* ------------------------------------------------------------------ */
+  /* Aprovação em lote dos auto-classificados                            */
+  /* ------------------------------------------------------------------ */
+  const approveAutoClassified = useCallback(async (): Promise<number> => {
+    const eligible = transactions.filter(
+      (t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId)
+    );
+    if (eligible.length === 0) return 0;
+    const now = new Date().toISOString();
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      if (firestoreEnabled()) {
+        await commitInBatches(eligible, (batch, t) =>
+          batch.update(doc(db, TRANSACTIONS, t.id), {
+            status: 'RECONCILED' satisfies ReconciliationStatus,
+            reconciledAt: now,
+          })
+        );
+      } else {
+        for (const t of eligible) {
+          await updateTransactionClassification(
+            t.id,
+            t.accountId ?? '',
+            t.accountCode ?? '',
+            t.accountName ?? '',
+            'RECONCILED'
+          );
+        }
+      }
+      const ids = new Set(eligible.map((t) => t.id));
+      setTransactions((prev) =>
+        prev.map((t) => (ids.has(t.id) ? { ...t, status: 'RECONCILED', reconciledAt: now } : t))
+      );
+      return eligible.length;
+    } catch (e) {
+      console.error('[useReconciliation] Falha na aprovação em lote:', e);
+      setError('Não foi possível aprovar os lançamentos.');
+      throw e;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [transactions]);
+
+  /* ------------------------------------------------------------------ */
   /* Métricas                                                            */
   /* ------------------------------------------------------------------ */
   const metrics = useMemo<ReconciliationMetrics>(() => {
@@ -499,6 +546,7 @@ export function useReconciliation({
     error,
     importTransactions,
     classifyTransaction,
+    approveAutoClassified,
     reload,
   };
 }

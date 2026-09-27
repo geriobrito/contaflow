@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Navbar } from '@/components/layout/Navbar';
-import { ClientCompany, DREResult } from '@/types/firestore';
-import { getClients, generateDRE } from '@/lib/services/data-service';
+import { useClient } from '@/contexts/ClientContext';
+import { DREResult } from '@/types/firestore';
+import { generateDRE } from '@/lib/services/data-service';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import {
   TrendingUp,
@@ -17,8 +17,8 @@ import {
 } from 'lucide-react';
 
 export default function DREPage() {
-  const [clients, setClients] = useState<ClientCompany[]>([]);
-  const [currentClient, setCurrentClient] = useState<ClientCompany | null>(null);
+  const { currentClient } = useClient();
+  const clientId = currentClient?.id;
   const [startDate, setStartDate] = useState('2024-01-01');
   const [endDate, setEndDate] = useState('2024-12-31');
   const [dreResult, setDreResult] = useState<DREResult | null>(null);
@@ -31,18 +31,11 @@ export default function DREPage() {
   });
 
   useEffect(() => {
-    async function init() {
-      const loadedClients = await getClients();
-      setClients(loadedClients);
-      if (loadedClients.length > 0) {
-        const client = loadedClients[0];
-        setCurrentClient(client);
-        const res = await generateDRE(client.id, startDate, endDate);
-        setDreResult(res);
-      }
-    }
-    init();
-  }, []);
+    if (!clientId) return;
+    generateDRE(clientId, startDate, endDate).then(setDreResult);
+    // Recalcula automaticamente apenas ao trocar de cliente; datas usam "Recalcular".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   const handleRecalculate = async () => {
     if (!currentClient) return;
@@ -55,8 +48,7 @@ export default function DREPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fbfbfd] dark:bg-black">
-      <Navbar currentClient={currentClient || undefined} clients={clients} />
+    <div className="flex flex-col">
 
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}

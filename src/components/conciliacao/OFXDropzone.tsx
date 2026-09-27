@@ -1,29 +1,17 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import {
-  UploadCloud,
-  FileCheck2,
-  AlertCircle,
-  Building,
-  Calendar,
-  DollarSign,
-  Sparkles,
-} from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { AlertCircle, FileText, Loader2, Upload } from 'lucide-react';
 import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
-import { OFXParseResult } from '@/lib/ofx/types';
+import type { OFXParseResult } from '@/lib/ofx/types';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 interface OFXDropzoneProps {
   onParsed: (result: OFXParseResult, fileName: string) => void;
   isLoading?: boolean;
 }
 
-export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
-  onParsed,
-  isLoading = false,
-}) => {
+export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
@@ -31,63 +19,59 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
 
   const handleProcessFile = async (file: File) => {
     if (!file.name.toLowerCase().endsWith('.ofx')) {
-      setErrorMessage('Por favor, envie um arquivo bancário com extensão .ofx válido.');
+      setErrorMessage('Envie um arquivo com extensão .ofx.');
       return;
     }
     setErrorMessage(null);
     setActiveFileName(file.name);
-
     try {
       const parsed = await parseOFXFile(file);
       if (parsed.transactions.length === 0) {
-        setErrorMessage('Nenhuma transação foi encontrada no arquivo OFX enviado.');
+        setErrorMessage('Nenhuma transação encontrada no arquivo.');
         return;
       }
       onParsed(parsed, file.name);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Falha ao processar o arquivo OFX.';
-      setErrorMessage(message);
+      setErrorMessage(err instanceof Error ? err.message : 'Falha ao processar o arquivo OFX.');
     }
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      await handleProcessFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
   };
 
   const handleLoadSample = () => {
+    const name = 'extrato_modelo.ofx';
     setErrorMessage(null);
-    const sampleFileName = 'extrato_inter_marco_2024.ofx';
-    setActiveFileName(sampleFileName);
-    const parsed = parseOFXString(SAMPLE_BRAZILIAN_OFX);
-    onParsed(parsed, sampleFileName);
+    setActiveFileName(name);
+    onParsed(parseOFXString(SAMPLE_BRAZILIAN_OFX), name);
   };
 
   return (
-    <div className="w-full space-y-3">
-      {/* Drop Zone */}
+    <div className="space-y-2">
       <div
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
+        role="button"
+        tabIndex={0}
+        aria-label="Importar extrato OFX"
         onClick={() => fileInputRef.current?.click()}
-        className={`relative group cursor-pointer rounded-3xl p-8 border-2 border-dashed transition-all duration-300 text-center flex flex-col items-center justify-center ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInputRef.current?.click();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) void handleProcessFile(file);
+        }}
+        className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 cursor-pointer border border-dashed transition-all duration-150 active:scale-[0.995] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/40 ${
           isDragging
-            ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/20 scale-[0.99]'
-            : 'border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-white/80'
-        } ios-card`}
+            ? 'border-[#0071E3]/50 bg-blue-50/60 dark:bg-blue-950/20'
+            : 'border-black/[0.10] dark:border-white/[0.12] bg-white/50 dark:bg-white/[0.02] hover:bg-white/80 dark:hover:bg-white/[0.04] hover:border-black/[0.16]'
+        }`}
       >
         <input
           ref={fileInputRef}
@@ -95,51 +79,53 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
           accept=".ofx"
           className="hidden"
           onChange={(e) => {
-            if (e.target.files && e.target.files[0]) {
-              handleProcessFile(e.target.files[0]);
-            }
+            const file = e.target.files?.[0];
+            if (file) void handleProcessFile(file);
+            e.target.value = '';
           }}
         />
 
-        <div className="w-14 h-14 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
-          <UploadCloud className="w-7 h-7" />
-        </div>
+        <span
+          className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
+            isDragging ? 'bg-[#0071E3] text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-200'
+          }`}
+        >
+          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
+        </span>
 
-        <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
-          Arraste seu arquivo bancário OFX aqui
-        </h3>
-        <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mb-4">
-          Compatível com extratos de todos os bancos brasileiros (Itaú, Bradesco, Santander, BB, Nubank, Inter, etc.)
-        </p>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
+            {isDragging ? 'Solte para importar' : 'Importar extrato OFX'}
+          </span>
+          <span className="flex items-center gap-1.5 text-[12px] text-stone-500 truncate">
+            {activeFileName ? (
+              <>
+                <FileText className="w-3 h-3 shrink-0" />
+                <span className="truncate">{activeFileName}</span>
+              </>
+            ) : (
+              'Arraste o arquivo aqui ou clique para selecionar'
+            )}
+          </span>
+        </span>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className="ios-button px-4 py-2 rounded-xl text-xs font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 shadow-sm hover:opacity-90"
-          >
-            Selecionar do Computador
-          </button>
-
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleLoadSample();
-            }}
-            className="ios-button px-4 py-2 rounded-xl text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 flex items-center gap-1.5"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Testar com OFX Modelo</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLoadSample();
+          }}
+          className="hidden sm:inline-flex shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.97]"
+        >
+          Usar arquivo modelo
+        </button>
       </div>
 
-      {/* Error alert */}
       {errorMessage && (
-        <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2.5">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
+        <p className="flex items-center gap-2 px-1 text-[12px] text-rose-600 animate-fade-in">
+          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+          {errorMessage}
+        </p>
       )}
     </div>
   );
