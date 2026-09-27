@@ -2,36 +2,25 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
-import type { BankTransaction, ChartAccount, ClassificationRule, ReconciliationStatus } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts, getLatestTransactionDate } from '@/lib/services/data-service';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
-import { Check, CheckCheck, ChevronDown, Pencil, Search, Split, X } from 'lucide-react';
+import { useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
+import { AlertTriangle, CheckCheck, ChevronDown, Lock, Pencil, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { IOSSwitch, PAGE, SegmentedControl, SURFACE } from '@/components/ui/primitives';
-import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
-import { splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { PAGE, SURFACE } from '@/components/ui/primitives';
+import type { SplitDraft } from '@/lib/splits';
+import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
+import { StatusBadge } from '@/components/conciliacao/StatusBadge';
+import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
+import { BalanceCheckBadge, StatementPanel } from '@/components/conciliacao/StatementPanel';
+import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 
 /* =========================================================================
-   Primitivos visuais
+   Métricas
    ========================================================================= */
-
-const STATUS_BADGE: Record<ReconciliationStatus, { label: string; className: string }> = {
-  PENDING: { label: 'Pendente', className: 'bg-amber-50 text-amber-700 border-amber-200/60' },
-  AUTO_CLASSIFIED: { label: 'Auto', className: 'bg-blue-50 text-[#0071E3] border-blue-200/60' },
-  RECONCILED: { label: 'Conciliado', className: 'bg-emerald-50 text-emerald-700 border-emerald-200/60' },
-};
-
-function StatusBadge({ status }: { status: ReconciliationStatus }) {
-  const { label, className } = STATUS_BADGE[status];
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium whitespace-nowrap ${className}`}>
-      {label}
-    </span>
-  );
-}
 
 interface MetricProps {
   label: string;
@@ -69,282 +58,6 @@ function Metric({ label, value, caption, tone = 'neutral', progress }: MetricPro
 /* =========================================================================
    Sheet de classificação manual
    ========================================================================= */
-
-interface ClassifySheetProps {
-  transaction: BankTransaction;
-  accounts: ChartAccount[];
-  isSaving: boolean;
-  onClose: () => void;
-  onConfirm: (accountId: string, learnRule: boolean, customPattern: string) => Promise<void>;
-  onSplit: (drafts: SplitDraft[]) => Promise<void>;
-  onUnreconcile: () => Promise<void>;
-  /** Regras do cliente, para pré-carregar o termo da regra que originou o lançamento. */
-  rules: readonly ClassificationRule[];
-}
-
-type SheetMode = 'single' | 'split';
-
-function ClassifySheet({
-  transaction,
-  accounts,
-  isSaving,
-  onClose,
-  onConfirm,
-  onSplit,
-  onUnreconcile,
-  rules,
-}: ClassifySheetProps) {
-  const isEditing = transaction.status !== 'PENDING';
-  const sourceRule = transaction.matchedRuleId ? rules.find((r) => r.id === transaction.matchedRuleId) : undefined;
-  const [confirmUndo, setConfirmUndo] = useState(false);
-  const accountListRef = useRef<HTMLUListElement>(null);
-
-
-  useEffect(() => {
-    if (!confirmUndo) return;
-    const t = setTimeout(() => setConfirmUndo(false), 3500);
-    return () => clearTimeout(t);
-  }, [confirmUndo]);
-
-  const [mode, setMode] = useState<SheetMode>(transaction.isSplit ? 'split' : 'single');
-  const [drafts, setDrafts] = useState<SplitDraft[]>(() =>
-    transaction.isSplit && transaction.splits?.length ? splitsToDrafts(transaction.splits) : [emptySplitDraft(), emptySplitDraft()]
-  );
-  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
-  const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
-  const canSaveSplit = splitSummary.isBalanced && splitSummary.isComplete;
-
-  // Em edição, traz a conta atual para o centro da lista (inclusive ao voltar do modo rateio).
-  useEffect(() => {
-    const list = accountListRef.current;
-    const item = list?.querySelector<HTMLElement>('[aria-selected="true"]')?.closest('li');
-    // Rola só a lista (scrollIntoView rolaria também o sheet e a página).
-    if (list && item) list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
-  }, [mode]);
-  const [search, setSearch] = useState('');
-  const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
-  // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
-  const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
-  const [customPattern, setCustomPattern] = useState(normalizePattern(sourceRule?.pattern ?? transaction.memo));
-
-  const options = useMemo(() => {
-    const term = normalizePattern(search);
-    return accounts
-      .filter((a) => a.nature === 'ANALYTIC')
-      .filter((a) => !term || `${a.code} ${a.name}`.toLowerCase().includes(term));
-  }, [accounts, search]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [onClose]);
-
-  const negative = transaction.amount < 0;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
-      <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
-
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'sm:max-w-[640px]' : 'sm:max-w-[440px]'} max-h-[92vh] flex flex-col transition-[max-width] duration-200 rounded-t-[28px] sm:rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
-      >
-        <div className="sm:hidden flex justify-center pt-2">
-          <span className="w-9 h-[5px] rounded-full bg-black/15 dark:bg-white/20" />
-        </div>
-
-        {/* Cabeçalho */}
-        <div className="flex items-start gap-3 px-6 pt-5 pb-4">
-          <div className="flex-1 min-w-0">
-            <h2 id="classify-title" className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-              {isEditing ? 'Editar classificação' : 'Classificar lançamento'}
-            </h2>
-            <p className="mt-1 text-[13px] text-stone-500 truncate">{transaction.memo}</p>
-            {isEditing && (
-              <p className="mt-2 inline-flex items-center gap-1.5 max-w-full text-[12px] text-stone-500">
-                <StatusBadge status={transaction.status} />
-                <span className="truncate">
-                  {transaction.isSplit
-                    ? `Rateado em ${transaction.splits?.length ?? 0} contas`
-                    : transaction.accountName
-                      ? `${transaction.accountCode ?? ''} ${transaction.accountName}`
-                      : 'Sem conta'}
-                </span>
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="w-7 h-7 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-stone-500 flex items-center justify-center hover:bg-black/[0.08] active:scale-[0.94] transition-all duration-150"
-          >
-            <X className="w-3.5 h-3.5" strokeWidth={2.25} />
-          </button>
-        </div>
-
-        <div className="px-6 pb-4 flex items-baseline justify-between">
-          <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
-          <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
-            {formatCurrency(transaction.amount)}
-          </span>
-        </div>
-
-        <div className="px-6 pb-4">
-          <SegmentedControl
-            ariaLabel="Modo de classificação"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: 'single', label: 'Conta única' },
-              { value: 'split', label: 'Classificar com rateio / desdobrar' },
-            ]}
-          />
-        </div>
-
-        {mode === 'split' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6">
-            <SplitEditor transactionAmount={transaction.amount} accounts={accounts} drafts={drafts} onChange={setDrafts} />
-          </div>
-        ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 space-y-5">
-          {/* Plano de contas */}
-          <section className="space-y-2">
-            <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-            <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
-              <div className="relative border-b border-black/[0.04] dark:border-white/[0.06]">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                <input
-                  autoFocus
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por código ou nome"
-                  className="w-full pl-10 pr-3 py-3 bg-transparent text-[14px] tracking-tight placeholder:text-stone-400 outline-none"
-                />
-              </div>
-              <ul ref={accountListRef} role="listbox" className="relative max-h-56 overflow-y-auto overscroll-contain">
-                {options.length === 0 && (
-                  <li className="px-4 py-6 text-center text-[13px] text-stone-400">Nenhuma conta encontrada</li>
-                )}
-                {options.map((a) => {
-                  const selected = a.id === accountId;
-                  return (
-                    <li key={a.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-0">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        onClick={() => setAccountId(a.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${
-                          selected ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
-                        }`}
-                      >
-                        <span className="w-[96px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
-                        <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-[#0071E3] font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
-                          {a.name}
-                        </span>
-                        {selected && <Check className="w-4 h-4 text-[#0071E3] shrink-0" strokeWidth={2.5} />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </section>
-
-          {/* Aprendizado */}
-          <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
-            <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">
-                  {isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
-                </span>
-                <span className="block text-[12px] text-stone-500">
-                  {sourceRule
-                    ? `A regra “${sourceRule.pattern}” passará a usar a nova conta`
-                    : 'Aplica a lançamentos semelhantes'}
-                </span>
-              </span>
-              <IOSSwitch id="learn-rule" checked={learnRule} onChange={setLearnRule} />
-            </label>
-            {learnRule && (
-              <div className="border-t border-black/[0.04] dark:border-white/[0.06] px-4 py-3 animate-fade-in">
-                <label htmlFor="pattern" className="block text-[12px] text-stone-500 mb-1">
-                  Termo a memorizar
-                </label>
-                <input
-                  id="pattern"
-                  value={customPattern}
-                  onChange={(e) => setCustomPattern(e.target.value)}
-                  placeholder="ex.: uber, aws, tarifa"
-                  className="w-full bg-transparent font-mono text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
-                />
-              </div>
-            )}
-          </section>
-        </div>
-        )}
-
-        <div className="px-6 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-          {mode === 'split' ? (
-            <>
-              {!canSaveSplit && (
-                <p className="mb-2 text-center text-[12px] text-stone-500">
-                  {!splitSummary.isBalanced
-                    ? 'A soma das linhas deve ser igual ao valor do lançamento.'
-                    : splitSummary.errors[0]}
-                </p>
-              )}
-              <button
-                type="button"
-                disabled={!canSaveSplit || isSaving}
-                onClick={() => void onSplit(drafts)}
-                className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
-              >
-                {isSaving ? 'Salvando…' : isEditing ? 'Salvar novo rateio' : 'Salvar rateio'}
-              </button>
-            </>
-          ) : (
-          <button
-            type="button"
-            disabled={!accountId || isSaving}
-            onClick={() => void onConfirm(accountId, learnRule, customPattern)}
-            className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
-          >
-            {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
-          </button>
-          )}
-          {isEditing && (
-            <div className="mt-2 flex justify-center">
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => {
-                  if (confirmUndo) void onUnreconcile();
-                  else setConfirmUndo(true);
-                }}
-                className={`rounded-xl px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
-                  confirmUndo
-                    ? 'bg-rose-600 text-white shadow-[0_2px_10px_rgba(225,29,72,0.3)] animate-pop-in'
-                    : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                }`}
-              >
-                {confirmUndo ? 'Toque para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* =========================================================================
    Página
@@ -408,7 +121,14 @@ export default function ConciliacaoPage() {
     splitTransaction,
     unreconcileTransaction,
     approveAutoClassified,
+    locks,
+    lockedMonths,
+    closeMonth,
+    reopenMonth,
+    loadAudit,
   } = useReconciliation({ clientId, accounts, range });
+  const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
+  const [statementsKey, setStatementsKey] = useState(0);
 
   useEffect(() => {
     if (!clientId) return;
@@ -453,14 +173,21 @@ export default function ConciliacaoPage() {
     tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
   const approvable = useMemo(
-    () => transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId).length,
-    [transactions]
+    () => transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths)).length,
+    [transactions, lockedMonths]
   );
 
-  const handleOFXParsed = async (result: OFXParseResult) => {
+  const handleOFXParsed = async (result: OFXParseResult, fileName: string) => {
     try {
-      const imported = await importTransactions(result.transactions);
+      const imported = await importTransactions(result.transactions, {
+        fileName,
+        account: result.account,
+        startDate: result.startDate,
+        endDate: result.endDate,
+        ledgerBalance: result.ledgerBalance,
+      });
       setLastImport(imported);
+      setStatementsKey((k) => k + 1);
       // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
       if (imported.latestDate && range && (imported.latestDate < range.start || imported.latestDate > range.end)) {
         jumpTo(imported.latestDate);
@@ -507,12 +234,13 @@ export default function ConciliacaoPage() {
     }
   };
 
-  const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string) => {
+  const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => {
     if (!selected) return;
     try {
       const { propagated } = await classifyTransaction(selected.id, accountId, {
         learnRule,
         customPattern: customPattern.trim() || undefined,
+        matchType,
       });
       setSelected(null);
       const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
@@ -545,7 +273,26 @@ export default function ConciliacaoPage() {
         </p>
       </header>
 
-      <PeriodPicker period={period} />
+      <div className="space-y-2">
+        <PeriodPicker period={period} />
+        {clientId && range && (
+          <MonthCloseBar
+            month={selectedMonth}
+            range={range}
+            locks={locks}
+            openItems={metrics.pending + metrics.autoClassified}
+            busy={isSaving}
+            onClose={async (m) => {
+              await closeMonth(m);
+              setToast(`Competência de ${formatMonth(m)} fechada`);
+            }}
+            onReopen={async (m, reason) => {
+              await reopenMonth(m, reason);
+              setToast(`Competência de ${formatMonth(m)} reaberta`);
+            }}
+          />
+        )}
+      </div>
 
       {/* Métricas */}
       <section
@@ -580,6 +327,21 @@ export default function ConciliacaoPage() {
                     <span className="font-mono tabular-nums">{lastImport.duplicates}</span> duplicado(s) ignorado(s)
                   </>
                 )}
+                <span className="block mt-1 space-x-3">
+                  <BalanceCheckBadge check={lastImport.balanceCheck} />
+                  {lastImport.gaps.map((g) => (
+                    <span key={g.from} className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700">
+                      <AlertTriangle className="w-3 h-3" />
+                      Falta extrato de {formatDateBR(g.from)} a {formatDateBR(g.to)}
+                    </span>
+                  ))}
+                  {lastImport.outOfRange > 0 && (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                      <AlertTriangle className="w-3 h-3" />
+                      {lastImport.outOfRange} lançamento(s) fora do período declarado no arquivo
+                    </span>
+                  )}
+                </span>
               </span>
               <button
                 type="button"
@@ -593,6 +355,8 @@ export default function ConciliacaoPage() {
           )}
         </div>
       )}
+
+      {clientId && <StatementPanel clientId={clientId} refreshKey={statementsKey} />}
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
@@ -722,6 +486,9 @@ export default function ConciliacaoPage() {
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5">
                           <StatusBadge status={t.status} />
+                          {isMonthLocked(t.date, lockedMonths) && (
+                            <Lock aria-label="Competência fechada" className="w-3 h-3 text-stone-400" />
+                          )}
                           {t.status !== 'PENDING' && (
                             <Pencil
                               aria-hidden
@@ -810,6 +577,8 @@ export default function ConciliacaoPage() {
           onSplit={handleSplit}
           onUnreconcile={handleUnreconcile}
           rules={rules}
+          lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
+          loadAudit={() => loadAudit(selected.id)}
         />
       )}
 

@@ -5,7 +5,7 @@ import { Check, CheckCircle2, Pencil, Plus, Trash2, XCircle } from 'lucide-react
 import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
-import { cleanDigits, formatCNPJ, isValidCNPJ, maskCNPJ } from '@/lib/utils/formatters';
+import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
@@ -134,6 +134,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
   const [email, setEmail] = useState(client?.email ?? '');
   const [phone, setPhone] = useState(client?.phone ?? '');
+  const [repName, setRepName] = useState(client?.legalRepresentativeName ?? '');
+  const [repCpf, setRepCpf] = useState(client?.legalRepresentativeCpf ? maskCPF(client.legalRepresentativeCpf) : '');
   const [saving, setSaving] = useState(false);
 
   const digits = cleanDigits(cnpj);
@@ -143,7 +145,9 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const cnpjUnchanged = Boolean(client) && digits === cleanDigits(client?.cnpj ?? '');
   const cnpjError = complete && !cnpjValid ? 'CNPJ inválido: dígitos verificadores não conferem.' : null;
   const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
-  const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError;
+  const cpfDigits = cleanDigits(repCpf);
+  const cpfError = cpfDigits && !(cpfDigits.length === 11 && isValidCPF(cpfDigits)) ? 'CPF inválido.' : null;
+  const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError && !cpfError;
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -161,6 +165,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       taxRegime: regime,
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
+      legalRepresentativeName: repName.trim() || undefined,
+      legalRepresentativeCpf: cpfDigits ? maskCPF(cpfDigits) : undefined,
       createdAt: client?.createdAt ?? now,
       updatedAt: now,
     };
@@ -245,6 +251,26 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
           </Field>
           <Field label="Telefone">
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={INPUT} />
+          </Field>
+        </div>
+
+        <div className="pt-2 space-y-1">
+          <span className="block text-[13px] font-semibold text-stone-800 dark:text-stone-200 px-0.5">Representante legal</span>
+          <p className="text-[12px] text-stone-400 px-0.5">Assina a DRE exportada (PDF e Excel) ao lado do contador.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Nome do representante" hint="Opcional">
+            <input value={repName} onChange={(e) => setRepName(e.target.value)} className={INPUT} />
+          </Field>
+          <Field label="CPF do representante" hint="Opcional" error={cpfError}>
+            <input
+              inputMode="numeric"
+              value={repCpf}
+              onChange={(e) => setRepCpf(maskCPF(e.target.value))}
+              placeholder="000.000.000-00"
+              aria-invalid={Boolean(cpfError)}
+              className={`${INPUT} font-mono tabular-nums`}
+            />
           </Field>
         </div>
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />

@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { ensureUserProfile } from '@/lib/data/profile';
-import { setOrgId } from '@/lib/data/scope';
+import { setSession } from '@/lib/data/scope';
 import { LOCAL_ORG_ID } from '@/lib/data/local-repository';
 
 export interface AuthContextType {
@@ -35,7 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   /** Define o escopo de dados ANTES de expor o usuário, para nenhuma leitura sair sem orgId. */
   const applySession = (nextUser: User | null, nextOrg: string | null) => {
-    setOrgId(nextOrg);
+    setSession(nextOrg, nextUser ? { uid: nextUser.uid, ...(nextUser.email ? { email: nextUser.email } : {}) } : null);
     setOrg(nextOrg);
     setUser(nextUser);
   };

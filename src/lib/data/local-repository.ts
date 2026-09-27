@@ -1,11 +1,15 @@
 import type {
+  AuditEntry,
   BankTransaction,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  OrgSettings,
+  PeriodLock,
 } from '@/types/firestore';
-import type { ClassificationCommit, DataRepository } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository } from '@/lib/data/repository';
+import { applyPatch } from '@/lib/transitions';
 
 /** Subconjunto de `Storage` usado — permite injetar um armazenamento em memória nos testes. */
 export interface KeyValueStore {
@@ -19,6 +23,9 @@ export const LOCAL_KEYS = {
   transactions: 'contaflow_transactions',
   rules: 'contaflow_rules',
   batches: 'contaflow_batches',
+  locks: 'contaflow_period_locks',
+  audit: 'contaflow_audit_log',
+  org: 'contaflow_org',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -26,13 +33,6 @@ export const LOCAL_ORG_ID = 'local';
 
 const byCode = (a: ChartAccount, b: ChartAccount) => a.code.localeCompare(b.code, undefined, { numeric: true });
 const byDateDesc = (a: BankTransaction, b: BankTransaction) => b.date.localeCompare(a.date);
-
-/** Remove campos da transação (equivalente local de `deleteField`). */
-function omit<T extends object, K extends keyof T>(obj: T, keys: readonly K[]): Omit<T, K> {
-  const copy = { ...obj };
-  for (const k of keys) delete copy[k];
-  return copy;
-}
 
 /**
  * Repositório de desenvolvimento/demonstração em localStorage. Usado apenas quando o
@@ -63,18 +63,18 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       read<T>(key).filter((x) => x.id !== id)
     );
   }
-  function updateTx(id: string, fn: (t: BankTransaction) => BankTransaction): void {
-    const items = read<BankTransaction>(LOCAL_KEYS.transactions);
-    const i = items.findIndex((t) => t.id === id);
-    if (i < 0) throw new Error(`Lançamento ${id} não encontrado.`);
-    items[i] = fn(items[i]);
-    write(LOCAL_KEYS.transactions, items);
-  }
   const stamp = <T extends object>(x: T): T => ({ ...x, orgId: LOCAL_ORG_ID });
   const inScope = (owner: string, clientId: string) => owner === clientId || owner === 'global';
 
   return {
     mode: 'local',
+
+    async getOrgSettings() {
+      return read<OrgSettings>(LOCAL_KEYS.org)[0] ?? null;
+    },
+    async saveOrgSettings(settings) {
+      write(LOCAL_KEYS.org, [stamp(settings)]);
+    },
 
     async listClients() {
       return read<ClientCompany>(LOCAL_KEYS.clients);
@@ -84,7 +84,8 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     },
     async deleteClient(clientId) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
-      for (const key of [LOCAL_KEYS.accounts, LOCAL_KEYS.rules, LOCAL_KEYS.transactions, LOCAL_KEYS.batches]) {
+      // A trilha de auditoria é preservada, como no Firestore.
+      for (const key of [LOCAL_KEYS.accounts, LOCAL_KEYS.rules, LOCAL_KEYS.transactions, LOCAL_KEYS.batches, LOCAL_KEYS.locks]) {
         write(
           key,
           read<{ clientId: string }>(key).filter((x) => x.clientId !== clientId)
@@ -121,6 +122,9 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         .filter((t) => t.clientId === clientId && (!range || (t.date >= range.start && t.date <= range.end)))
         .sort(byDateDesc);
     },
+    async listPendingTransactions(clientId) {
+      return read<BankTransaction>(LOCAL_KEYS.transactions).filter((t) => t.clientId === clientId && t.status === 'PENDING');
+    },
     async latestTransactionDate(clientId) {
       const dates = read<BankTransaction>(LOCAL_KEYS.transactions)
         .filter((t) => t.clientId === clientId)
@@ -140,57 +144,51 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       if (batch) write(LOCAL_KEYS.batches, [stamp(batch), ...read<ImportBatch>(LOCAL_KEYS.batches)]);
     },
 
-    async commitClassification({ transactionId, account, rule, similarIds, now }: ClassificationCommit) {
-      // Monta tudo em memória e grava de uma vez (atomicidade equivalente ao writeBatch).
-      const similar = new Set(similarIds);
+    async commitChanges({ patches, rules = [], audits }: ChangeSet) {
+      // Valida tudo antes de gravar (equivalente à atomicidade do writeBatch).
       const txs = read<BankTransaction>(LOCAL_KEYS.transactions);
-      if (!txs.some((t) => t.id === transactionId)) throw new Error(`Lançamento ${transactionId} não encontrado.`);
-      const next = txs.map((t) => {
-        if (t.id === transactionId) {
-          return {
-            ...omit(t, ['splits', 'matchedRuleId']),
-            ...account,
-            status: 'RECONCILED' as const,
-            isSplit: false,
-            reconciledAt: now,
-            ...(rule ? { matchedRuleId: rule.id } : {}),
-          };
-        }
-        if (similar.has(t.id)) {
-          return { ...t, ...account, status: 'AUTO_CLASSIFIED' as const, ...(rule ? { matchedRuleId: rule.id } : {}) };
-        }
-        return t;
-      });
-      if (rule) upsert(LOCAL_KEYS.rules, stamp(rule));
-      write(LOCAL_KEYS.transactions, next);
+      const index = new Map(txs.map((t, i) => [t.id, i] as const));
+      for (const p of patches) if (!index.has(p.id)) throw new Error(`Lançamento ${p.id} não encontrado.`);
+      for (const p of patches) {
+        const i = index.get(p.id)!;
+        txs[i] = applyPatch(txs[i], p);
+      }
+      const storedRules = read<ClassificationRule>(LOCAL_KEYS.rules);
+      for (const rule of rules) {
+        const i = storedRules.findIndex((r) => r.id === rule.id);
+        if (i >= 0) storedRules[i] = { ...storedRules[i], ...stamp(rule) };
+        else storedRules.push(stamp(rule));
+      }
+      write(LOCAL_KEYS.rules, storedRules);
+      write(LOCAL_KEYS.transactions, txs);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), ...audits.map(stamp)]);
     },
 
-    async saveSplits(transactionId, splits, now) {
-      updateTx(transactionId, (t) => ({
-        ...omit(t, ['accountId', 'accountCode', 'accountName', 'matchedRuleId']),
-        status: 'RECONCILED',
-        isSplit: true,
-        splits: [...splits],
-        reconciledAt: now,
-      }));
+    async listImportBatches(clientId) {
+      return read<ImportBatch>(LOCAL_KEYS.batches).filter((b) => b.clientId === clientId);
+    },
+    async saveImportBatch(batch) {
+      upsert(LOCAL_KEYS.batches, stamp(batch));
     },
 
-    async resetToPending(transactionId) {
-      updateTx(transactionId, (t) => ({
-        ...omit(t, ['accountId', 'accountCode', 'accountName', 'matchedRuleId', 'splits', 'reconciledAt']),
-        status: 'PENDING',
-        isSplit: false,
-      }));
+    async listPeriodLocks(clientId) {
+      return read<PeriodLock>(LOCAL_KEYS.locks).filter((l) => l.clientId === clientId);
+    },
+    async closePeriod(lock, audit) {
+      if (read<PeriodLock>(LOCAL_KEYS.locks).some((l) => l.id === lock.id)) throw new Error('Competência já está fechada.');
+      upsert(LOCAL_KEYS.locks, stamp(lock));
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+    },
+    async reopenPeriod(lock, audit) {
+      remove<PeriodLock>(LOCAL_KEYS.locks, lock.id);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
 
-    async approveTransactions(ids, now) {
-      const wanted = new Set(ids);
-      write(
-        LOCAL_KEYS.transactions,
-        read<BankTransaction>(LOCAL_KEYS.transactions).map((t) =>
-          wanted.has(t.id) ? { ...t, status: 'RECONCILED' as const, reconciledAt: now } : t
-        )
-      );
+    async listAudit(clientId, options = {}) {
+      return read<AuditEntry>(LOCAL_KEYS.audit)
+        .filter((a) => a.clientId === clientId && (!options.transactionId || a.transactionId === options.transactionId))
+        .sort((a, b) => b.at.localeCompare(a.at))
+        .slice(0, options.limit ?? 200);
     },
   };
 }

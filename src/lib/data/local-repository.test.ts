@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createLocalRepository, LOCAL_KEYS, LOCAL_ORG_ID, type KeyValueStore } from '@/lib/data/local-repository';
 import type { DataRepository } from '@/lib/data/repository';
 import type { BankTransaction, ClassificationRule } from '@/types/firestore';
+import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
+import { transactionAudit } from '@/lib/audit';
 
 function memoryStore(): KeyValueStore & { dump: Map<string, string> } {
   const dump = new Map<string, string>();
@@ -44,35 +46,64 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect([...(await repo.findExistingTransactionIds('c1', ['a', 'z', 'c']))]).toEqual(['a']);
   });
 
-  it('classificação, rateio e desfazer sobrescrevem o estado anterior', async () => {
+  it('commitChanges aplica patches, regras e auditoria juntos; transições sobrescrevem o estado', async () => {
+    const actor = { uid: 'u1', email: 'u1@x' };
+    const ref = { accountId: 'x', accountCode: '1', accountName: 'X' };
     const rule: ClassificationRule = { id: 'r1', clientId: 'c1', pattern: 'memo', accountId: 'x', createdAt: '', updatedAt: '' };
-    await repo.commitClassification({
-      transactionId: 'a',
-      account: { accountId: 'x', accountCode: '1', accountName: 'X' },
-      rule,
-      similarIds: ['b'],
-      now: 'T1',
+    const [b0, a0] = await repo.listTransactions('c1');
+
+    const c = classifyTransition(a0, ref, rule.id, 'T1');
+    const auto = autoClassifyTransition(b0, ref, rule.id);
+    await repo.commitChanges({
+      patches: [c.patch, auto.patch],
+      rules: [rule],
+      audits: [transactionAudit('CLASSIFY', actor, a0, c.after, 'T1'), transactionAudit('AUTO_CLASSIFY', actor, b0, auto.after, 'T1')],
     });
     const [b, first] = await repo.listTransactions('c1');
     let a = first;
     expect(a).toMatchObject({ status: 'RECONCILED', accountId: 'x', matchedRuleId: 'r1', isSplit: false });
     expect(b).toMatchObject({ status: 'AUTO_CLASSIFIED', accountId: 'x', matchedRuleId: 'r1' });
     expect(await repo.listRules('c1')).toHaveLength(1);
+    expect((await repo.listAudit('c1', { transactionId: 'a' })).map((e) => e.action)).toEqual(['CLASSIFY']);
 
-    await repo.saveSplits('a', [{ id: 's', accountId: 'y', amount: -10, memo: '' }], 'T2');
+    const s = splitTransition(a, [{ id: 's', accountId: 'y', amount: -10, memo: '' }], 'T2');
+    await repo.commitChanges({ patches: [s.patch], audits: [] });
     [, a] = await repo.listTransactions('c1');
     expect(a.isSplit).toBe(true);
     expect(a).not.toHaveProperty('accountId');
     expect(a).not.toHaveProperty('matchedRuleId');
 
-    await repo.resetToPending('a');
+    await repo.commitChanges({ patches: [resetTransition(a).patch], audits: [] });
     [, a] = await repo.listTransactions('c1');
     expect(a.status).toBe('PENDING');
     for (const f of ['accountId', 'splits', 'reconciledAt', 'matchedRuleId'] as const) expect(a).not.toHaveProperty(f);
+    expect((await repo.listPendingTransactions('c1')).map((t) => t.id).sort()).toEqual(['a']);
+  });
+
+  it('commitChanges é tudo-ou-nada: patch inválido não grava nada', async () => {
+    const [, a0] = await repo.listTransactions('c1');
+    const ok = approveTransition(a0, 'T');
+    await expect(
+      repo.commitChanges({ patches: [ok.patch, { id: 'inexistente', date: '2025-01-01', set: {} }], audits: [] })
+    ).rejects.toThrow(/não encontrado/);
+    expect((await repo.listTransactions('c1')).find((t) => t.id === 'a')?.status).toBe('PENDING');
+  });
+
+  it('fechamento de competência é auditado e não duplica', async () => {
+    const lock = { id: 'c1_2025-01', clientId: 'c1', month: '2025-01', lockedAt: 'T', lockedByUid: 'u1' };
+    const audit = { id: 'au1', clientId: 'c1', action: 'PERIOD_CLOSE' as const, actorUid: 'u1', at: 'T', month: '2025-01' };
+    await repo.closePeriod(lock, audit);
+    await expect(repo.closePeriod(lock, { ...audit, id: 'au2' })).rejects.toThrow(/já está fechada/);
+    expect(await repo.listPeriodLocks('c1')).toHaveLength(1);
+    await repo.reopenPeriod(lock, { ...audit, id: 'au3', action: 'PERIOD_REOPEN', note: 'ajuste' });
+    expect(await repo.listPeriodLocks('c1')).toHaveLength(0);
+    expect((await repo.listAudit('c1')).map((e) => e.action).sort()).toEqual(['PERIOD_CLOSE', 'PERIOD_REOPEN']);
   });
 
   it('falhas sobem ao chamador (sem sucesso falso)', async () => {
-    await expect(repo.resetToPending('inexistente')).rejects.toThrow(/não encontrado/);
+    await expect(repo.commitChanges({ patches: [{ id: 'inexistente', date: '2025-01-01', set: {} }], audits: [] })).rejects.toThrow(
+      /não encontrado/
+    );
     store.setItem(LOCAL_KEYS.transactions, '{corrompido');
     await expect(repo.listTransactions('c1')).rejects.toThrow();
   });
@@ -80,8 +111,11 @@ describe('repositório local (modo único, sem Firestore)', () => {
   it('exclusão de cliente é em cascata e preserva outros clientes', async () => {
     await repo.saveClient({ id: 'c1', name: 'A', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
     await repo.saveClient({ id: 'c2', name: 'B', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
+    await repo.commitChanges({ patches: [], audits: [{ id: 'keep', clientId: 'c1', action: 'APPROVE', actorUid: 'u', at: 'T' }] });
     await repo.deleteClient('c1');
     expect((await repo.listClients()).map((c) => c.id)).toEqual(['c2']);
+    // A trilha de auditoria sobrevive à exclusão da empresa.
+    expect(await repo.listAudit('c1')).toHaveLength(1);
     expect(await repo.listTransactions('c1')).toEqual([]);
     expect(await repo.listTransactions('c2')).toHaveLength(1);
     await expect(repo.deleteClient('global')).rejects.toThrow();
