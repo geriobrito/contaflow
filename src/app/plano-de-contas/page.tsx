@@ -281,9 +281,12 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
     setDreGroup(inheritedDREGroup(p, accounts));
   };
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const submit = async () => {
     if (!parent || !valid) return;
     setSaving(true);
+    setSaveError(null);
     const now = new Date().toISOString();
     try {
       await saveAccount({
@@ -300,6 +303,8 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
         updatedAt: now,
       });
       onCreated();
+    } catch (e: unknown) {
+      setSaveError(`Não foi possível criar a conta (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
     } finally {
       setSaving(false);
     }
@@ -312,6 +317,8 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
       subtitle="Contas analíticas recebem lançamentos na conciliação."
       onClose={onClose}
       footer={
+        <>
+        {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
         <button
           type="button"
           disabled={!valid || saving}
@@ -320,6 +327,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
         >
           {saving ? 'Salvando…' : 'Criar conta'}
         </button>
+        </>
       }
     >
       <div className="space-y-4 pb-2">
@@ -408,8 +416,12 @@ export default function PlanoDeContasPage() {
   const toggle = (code: string) => setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
 
   const handleDelete = async (account: ChartAccount) => {
-    await deleteAccount(account.id);
-    if (clientId) await load(clientId);
+    try {
+      await deleteAccount(account.id);
+      if (clientId) await load(clientId);
+    } catch (e: unknown) {
+      setNotice(`Não foi possível excluir a conta ${account.code} (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+    }
   };
 
   const handleApplyTemplate = async () => {
@@ -419,8 +431,8 @@ export default function PlanoDeContasPage() {
       const created = await applyDefaultChartTemplate(clientId);
       await load(clientId);
       setNotice(created > 0 ? `${created} contas do plano ITG 1000 adicionadas.` : 'O plano já contém todas as contas da ITG 1000.');
-    } catch {
-      setNotice('Não foi possível aplicar o plano ITG 1000.');
+    } catch (e: unknown) {
+      setNotice(`Não foi possível aplicar o plano ITG 1000 (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
     } finally {
       setApplying(false);
     }

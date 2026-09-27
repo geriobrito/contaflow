@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// ContaFlow — isolamento de dados por escritório (orgId).
+//
+// Modelo:
+//   users/{uid}            → { uid, orgId, email?, createdAt }  (vínculo usuário → escritório)
+//   clients, chart_of_accounts, classification_rules, transactions, import_batches
+//                          → todo documento carrega `orgId`.
+//
+// Garantias:
+//   1. Só usuários autenticados com perfil acessam dados, e apenas do próprio escritório.
+//   2. Consultas precisam filtrar por orgId (regras de leitura valem para cada resultado).
+//   3. `orgId` é imutável: nenhuma escrita move um documento para outro escritório.
+//   4. Documentos vinculados a um cliente (clientId) só podem apontar para clientes do
+//      mesmo escritório (ou para o plano 'global' do próprio escritório).
+//   5. O usuário cria o próprio perfil apenas como dono de um escritório novo
+//      (orgId == uid). Entrar em um escritório existente exige alteração administrativa
+//      (console / Admin SDK), nunca pelo próprio cliente.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profilePath() {
+      return /databases/$(database)/documents/users/$(request.auth.uid);
+    }
+
+    function hasProfile() {
+      return signedIn() && exists(profilePath());
+    }
+
+    function myOrg() {
+      return get(profilePath()).data.orgId;
+    }
+
+    function isMine(data) {
+      return hasProfile() && data.orgId == myOrg();
+    }
+
+    // clientId deve ser um cliente do mesmo escritório (ou o plano 'global').
+    function clientInMyOrg(data) {
+      return data.clientId == 'global'
+        || (exists(/databases/$(database)/documents/clients/$(data.clientId))
+            && get(/databases/$(database)/documents/clients/$(data.clientId)).data.orgId == myOrg());
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // ── Perfil do usuário ────────────────────────────────────────────────
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.orgId == uid;
+      // Troca de escritório/edição de perfil: somente via Admin SDK.
+      allow update, delete: if false;
+    }
+
+    // ── Empresas ─────────────────────────────────────────────────────────
+    match /clients/{clientId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId');
+    }
+
+    // ── Dados vinculados a uma empresa ───────────────────────────────────
+    match /chart_of_accounts/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    match /classification_rules/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    match /transactions/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    match /import_batches/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+  }
+}

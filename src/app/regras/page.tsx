@@ -38,8 +38,12 @@ function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: Rul
 
   const commit = async () => {
     if (error) return;
-    await onSave(rule, normalized);
-    setEditing(false);
+    try {
+      await onSave(rule, normalized);
+      setEditing(false);
+    } catch {
+      /* mensagem exibida pela página; mantém a edição aberta para nova tentativa */
+    }
   };
 
   return (
@@ -226,19 +230,35 @@ export default function RegrasPage() {
       });
       setNewPattern('');
       await load(clientId);
+    } catch (e: unknown) {
+      setAddError(`Não foi possível salvar a regra (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
     } finally {
       setAdding(false);
     }
   };
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  /** Propaga ao RuleRow (que mantém o modo de edição aberto) e informa o usuário. */
   const handleSave = async (rule: ClassificationRule, pattern: string) => {
-    await saveRule({ ...rule, pattern, updatedAt: new Date().toISOString() });
-    if (clientId) await load(clientId);
+    setActionError(null);
+    try {
+      await saveRule({ ...rule, pattern, updatedAt: new Date().toISOString() });
+      if (clientId) await load(clientId);
+    } catch (e: unknown) {
+      setActionError(`Não foi possível atualizar a regra “${rule.pattern}” (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      throw e;
+    }
   };
 
   const handleDelete = async (rule: ClassificationRule) => {
-    await deleteRule(rule.id);
-    setRules((prev) => prev.filter((r) => r.id !== rule.id));
+    setActionError(null);
+    try {
+      await deleteRule(rule.id);
+      setRules((prev) => prev.filter((r) => r.id !== rule.id));
+    } catch (e: unknown) {
+      setActionError(`Não foi possível excluir a regra “${rule.pattern}” (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+    }
   };
 
   return (
@@ -287,6 +307,11 @@ export default function RegrasPage() {
       </form>
 
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por termo ou conta" />
+      {actionError && (
+        <p role="alert" className="-mt-4 px-1 text-[13px] text-rose-600 animate-fade-in">
+          {actionError}
+        </p>
+      )}
 
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
         {isLoading ? (

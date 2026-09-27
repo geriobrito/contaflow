@@ -33,6 +33,16 @@ export function parseOFXAmount(amountStr: string): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
+/** Hash FNV-1a (32 bits) em base 36 — curto, estável e sem dependências. */
+function hashString(value: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
 /**
  * Limpeza e normalização do MEMO / Descrição da transação
  */
@@ -142,6 +152,8 @@ export function parseOFXString(rawContent: string): OFXParseResult {
   // 6. Extração das transações (<STMTTRN>...</STMTTRN>)
   // Tratamos tanto tags fechadas </STMTTRN> quanto separação por abertura
   const transactions: OFXRawTransaction[] = [];
+  /** Ocorrências por base de FITID sintético (lançamentos idênticos no mesmo arquivo). */
+  const generatedIds = new Map<string, number>();
   const stmtTrnRegex = /<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>))/gi;
   let match: RegExpExecArray | null;
 
@@ -178,9 +190,14 @@ export function parseOFXString(rawContent: string): OFXParseResult {
     const fitidMatch = trnBlock.match(/<FITID>([^<\r\n]+)/i);
     let fitid = fitidMatch ? fitidMatch[1].trim() : '';
 
-    // Se por algum motivo o banco não fornecer FITID, geramos um hash determinístico
+    // Sem FITID do banco: ID determinístico (data + valor + histórico + ocorrência), para que
+    // reimportar o mesmo arquivo não duplique lançamentos.
     if (!fitid) {
-      fitid = `GEN_${rawDate}_${amount}_${Math.random().toString(36).substring(2, 8)}`;
+      const rawMemoForId = (trnBlock.match(/<MEMO>([^<\r\n]+)/i) ?? trnBlock.match(/<NAME>([^<\r\n]+)/i))?.[1] ?? '';
+      const base = `GEN_${rawDate || date}_${amount.toFixed(2)}_${hashString(cleanOFXMemo(rawMemoForId))}`;
+      const occurrence = (generatedIds.get(base) ?? 0) + 1;
+      generatedIds.set(base, occurrence);
+      fitid = `${base}_${occurrence}`;
       warnings.push(`Transação sem FITID identificada na data ${date}. FITID sintético gerado.`);
     }
 

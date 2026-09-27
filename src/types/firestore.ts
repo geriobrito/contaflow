@@ -1,5 +1,8 @@
 /**
  * ContaFlow - Tipos e Schema Oficial das Coleções do Firestore
+ *
+ * Isolamento: todo documento de dados carrega `orgId` (escritório). O vínculo
+ * usuário → escritório fica em `users/{uid}.orgId`. Ver `firestore.rules`.
  * 
  * Coleções:
  * 1. clients (auto-id): name, cnpj, regime
@@ -11,6 +14,8 @@
 export type TaxRegime = 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL' | 'MEI';
 
 export interface ClientCompany {
+  /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
+  orgId?: string;
   id: string; // auto-id
   name: string; // Razão Social
   tradeName?: string; // Nome Fantasia
@@ -67,6 +72,8 @@ export type DREGroup =
   | 'IMPOSTOS_LUCRO';
 
 export interface ChartAccount {
+  /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
+  orgId?: string;
   id: string; // auto-id
   clientId: string; // 'global' ou ID do cliente específico
   code: string; // ex: "3.1.01", "4.1.02.001"
@@ -102,6 +109,8 @@ export interface TransactionSplit {
 }
 
 export interface BankTransaction {
+  /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
+  orgId?: string;
   id: string; // Document ID: `${clientId}_${fitid}`
   clientId: string;
   fitid: string;
@@ -130,6 +139,8 @@ export interface BankTransaction {
 export type RuleMatchType = 'CONTAINS' | 'STARTS_WITH' | 'EXACT' | 'REGEX';
 
 export interface ClassificationRule {
+  /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
+  orgId?: string;
   id: string; // auto-id
   clientId: string; // ID do cliente ou 'global'
   pattern: string; // Termo da descrição bancária em caixa alta (ex: "UBER", "AWS")
@@ -144,6 +155,8 @@ export interface ClassificationRule {
 }
 
 export interface ImportBatch {
+  /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
+  orgId?: string;
   id: string;
   clientId: string;
   fileName: string;
@@ -189,4 +202,12 @@ export interface DREResult {
   taxes: number;
   netProfit: number;
   items: DRELineItem[];
+}
+
+/** Perfil do usuário: define a qual escritório (org) ele pertence. */
+export interface UserProfile {
+  uid: string;
+  orgId: string;
+  email?: string;
+  createdAt: string;
 }

@@ -1,30 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  collection,
-  doc,
-  documentId,
-  getDocs,
-  query,
-  deleteField,
-  serverTimestamp,
-  where,
-  writeBatch,
-  type WriteBatch,
-} from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
-import {
-  getRules,
-  getTransactions,
-  saveRule,
-  resetTransactionToPending,
-  saveTransactionSplits,
-  saveTransactionsBatch,
-  updateTransactionClassification,
-} from '@/lib/services/data-service';
+import { getRepository } from '@/lib/services/data-service';
+import type { DateRange } from '@/lib/data/repository';
 import type { OFXTransaction } from '@/lib/ofx-parser';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { buildTransactionId, findMatchingRule, normalizePattern } from '@/lib/reconciliation';
 import type {
   BankTransaction,
   ChartAccount,
@@ -33,56 +14,7 @@ import type {
   TransactionType,
 } from '@/types/firestore';
 
-/* =========================================================================
-   Constantes & utilitários puros
-   ========================================================================= */
-
-const TRANSACTIONS = 'transactions';
-const RULES = 'classification_rules';
-
-/** Limite do operador `in` do Firestore. */
-const IN_QUERY_LIMIT = 30;
-/** Limite de operações por writeBatch. */
-const BATCH_LIMIT = 500;
-
-/** Normalização canônica usada tanto para memos quanto para padrões. */
-export const normalizePattern = (value: string): string => value.toLowerCase().trim();
-
-export const buildTransactionId = (clientId: string, fitid: string): string =>
-  `${clientId}_${fitid}`;
-
-function chunk<T>(items: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-/** Retorna a regra mais específica (padrão mais longo) contida no memo. */
-function findMatchingRule(
-  memo: string,
-  rules: readonly ClassificationRule[]
-): ClassificationRule | null {
-  const normalizedMemo = normalizePattern(memo);
-  let best: ClassificationRule | null = null;
-  for (const rule of rules) {
-    const pattern = normalizePattern(rule.pattern);
-    if (!pattern || !normalizedMemo.includes(pattern)) continue;
-    if (!best || pattern.length > normalizePattern(best.pattern).length) best = rule;
-  }
-  return best;
-}
-
-/** Commita operações em múltiplos batches respeitando o limite do Firestore. */
-async function commitInBatches<T>(
-  items: readonly T[],
-  apply: (batch: WriteBatch, item: T) => void
-): Promise<void> {
-  for (const group of chunk(items, BATCH_LIMIT)) {
-    const batch = writeBatch(db);
-    group.forEach((item) => apply(batch, item));
-    await batch.commit();
-  }
-}
+export { normalizePattern, buildTransactionId } from '@/lib/reconciliation';
 
 /* =========================================================================
    Tipos públicos
@@ -97,6 +29,8 @@ export interface ImportResult {
   added: number;
   duplicates: number;
   autoClassified: number;
+  /** Data mais recente entre os lançamentos importados (para posicionar o período). */
+  latestDate: string | null;
 }
 
 export interface ClassifyOptions {
@@ -105,9 +39,9 @@ export interface ClassifyOptions {
 }
 
 export interface ClassifyResult {
-  /** Regra criada, quando `learnRule` estiver ativo. */
+  /** Regra criada ou atualizada, quando `learnRule` estiver ativo. */
   rule: ClassificationRule | null;
-  /** Quantidade de lançamentos pendentes retroalimentados pela nova regra. */
+  /** Quantidade de lançamentos pendentes retroalimentados pela regra. */
   propagated: number;
 }
 
@@ -124,6 +58,8 @@ export interface ReconciliationMetrics {
 export interface UseReconciliationParams {
   clientId: string | null;
   accounts: readonly ChartAccount[];
+  /** Período consultado no banco; `null` aguarda a definição do período (não carrega nada). */
+  range: DateRange | null;
 }
 
 export interface UseReconciliationReturn {
@@ -134,91 +70,37 @@ export interface UseReconciliationReturn {
   isSaving: boolean;
   error: string | null;
   importTransactions: (items: readonly ImportableTransaction[]) => Promise<ImportResult>;
-  classifyTransaction: (
-    transactionId: string,
-    accountId: string,
-    options?: ClassifyOptions
-  ) => Promise<ClassifyResult>;
-  /**
-   * Desdobra o lançamento em várias contas analíticas (rateio). Rejeita se a soma
-   * das linhas não for exatamente o valor do lançamento.
-   */
+  classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
+  /** Desdobra o lançamento em várias contas analíticas (rateio); rejeita se a soma não fechar. */
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
   /** Volta o lançamento para PENDING, limpando conta, rateio e vínculo com regra. */
   unreconcileTransaction: (transactionId: string) => Promise<void>;
-  /** Confirma em lote todos os lançamentos auto-classificados. Retorna a quantidade aprovada. */
+  /** Confirma em lote os auto-classificados do período. Retorna a quantidade aprovada. */
   approveAutoClassified: () => Promise<number>;
   reload: () => Promise<void>;
 }
 
-/* =========================================================================
-   Camada de dados (Firestore, com fallback local em modo desenvolvimento)
-   ========================================================================= */
-
-const firestoreEnabled = (): boolean => isFirebaseConfigured();
-
-async function fetchRules(clientId: string): Promise<ClassificationRule[]> {
-  if (firestoreEnabled()) {
-    const snap = await getDocs(query(collection(db, RULES), where('clientId', '==', clientId)));
-    return snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        ...(data as Omit<ClassificationRule, 'id'>),
-        id: d.id,
-        createdAt: typeof data.createdAt === 'string' ? data.createdAt : '',
-        updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : '',
-      };
-    });
-  }
-  const all = await getRules(clientId);
-  return all.filter((r) => r.clientId === clientId || r.clientId === 'global');
-}
-
-async function fetchTransactions(clientId: string): Promise<BankTransaction[]> {
-  if (firestoreEnabled()) {
-    const snap = await getDocs(
-      query(collection(db, TRANSACTIONS), where('clientId', '==', clientId))
-    );
-    return snap.docs
-      .map((d) => ({ ...(d.data() as BankTransaction), id: d.id }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }
-  return getTransactions(clientId);
-}
-
-/** Consulta, em blocos de 30, quais IDs determinísticos já existem no Firestore. */
-async function fetchExistingIds(ids: readonly string[]): Promise<Set<string>> {
-  const existing = new Set<string>();
-  for (const group of chunk(ids, IN_QUERY_LIMIT)) {
-    const snap = await getDocs(
-      query(collection(db, TRANSACTIONS), where(documentId(), 'in', group))
-    );
-    snap.docs.forEach((d) => existing.add(d.id));
-  }
-  return existing;
-}
+const inRange = (date: string, range: DateRange | null) => !range || (date >= range.start && date <= range.end);
+const byDateDesc = (a: BankTransaction, b: BankTransaction) => b.date.localeCompare(a.date);
+const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
 /* =========================================================================
    Hook
    ========================================================================= */
 
-export function useReconciliation({
-  clientId,
-  accounts,
-}: UseReconciliationParams): UseReconciliationReturn {
+export function useReconciliation({ clientId, accounts, range }: UseReconciliationParams): UseReconciliationReturn {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [rules, setRules] = useState<ClassificationRule[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const accountsById = useMemo(
-    () => new Map(accounts.map((a) => [a.id, a] as const)),
-    [accounts]
-  );
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
+  const rangeStart = range?.start;
+  const rangeEnd = range?.end;
 
   const reload = useCallback(async (): Promise<void> => {
-    if (!clientId) {
+    if (!clientId || !rangeStart || !rangeEnd) {
       setTransactions([]);
       setRules([]);
       return;
@@ -226,21 +108,22 @@ export function useReconciliation({
     setIsLoading(true);
     setError(null);
     try {
+      const repo = getRepository();
       const [loadedRules, loadedTxs] = await Promise.all([
-        fetchRules(clientId),
-        fetchTransactions(clientId),
+        repo.listRules(clientId),
+        repo.listTransactions(clientId, { start: rangeStart, end: rangeEnd }),
       ]);
       setRules(loadedRules);
       setTransactions(loadedTxs);
     } catch (e) {
       console.error('[useReconciliation] Falha ao carregar dados:', e);
-      setError('Não foi possível carregar os lançamentos.');
+      setError(`Não foi possível carregar os lançamentos (${describe(e)}).`);
     } finally {
       setIsLoading(false);
     }
-  }, [clientId]);
+  }, [clientId, rangeStart, rangeEnd]);
 
-  // Carrega ao trocar de cliente (adiado um microtask para não setar estado no corpo do effect).
+  // Recarrega ao trocar cliente ou período (adiado um microtask para não setar estado no corpo do effect).
   useEffect(() => {
     let active = true;
     const run = async (): Promise<void> => {
@@ -253,39 +136,44 @@ export function useReconciliation({
     };
   }, [reload]);
 
+  /** Envolve uma operação de escrita com estado de gravação e mensagem de erro. */
+  const mutate = useCallback(async <T,>(failure: string, op: () => Promise<T>): Promise<T> => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      return await op();
+    } catch (e) {
+      console.error(`[useReconciliation] ${failure}:`, e);
+      setError(`${failure} (${describe(e)}).`);
+      throw e;
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
   /* ------------------------------------------------------------------ */
-  /* 1 + 2. Importação anti-duplicidade com classificação automática     */
+  /* Importação anti-duplicidade com classificação automática            */
   /* ------------------------------------------------------------------ */
   const importTransactions = useCallback(
-    async (items: readonly ImportableTransaction[]): Promise<ImportResult> => {
-      if (!clientId) throw new Error('Selecione um cliente antes de importar.');
-      setIsSaving(true);
-      setError(null);
-
-      try {
-        // Deduplica dentro do próprio arquivo (FITIDs repetidos no OFX).
+    (items: readonly ImportableTransaction[]): Promise<ImportResult> => {
+      if (!clientId) return Promise.reject(new Error('Selecione um cliente antes de importar.'));
+      return mutate('Falha ao importar o extrato', async () => {
+        const repo = getRepository();
+        // Deduplica dentro do arquivo e contra o banco inteiro (não só o período visível).
         const uniqueInFile = new Map<string, ImportableTransaction>();
         items.forEach((t) => uniqueInFile.set(buildTransactionId(clientId, t.fitid), t));
-        const ids = [...uniqueInFile.keys()];
+        const existing = await repo.findExistingTransactionIds(clientId, [...uniqueInFile.keys()]);
 
-        const existing = firestoreEnabled()
-          ? await fetchExistingIds(ids)
-          : new Set(transactions.map((t) => t.id));
-
-        const activeRules = firestoreEnabled() ? await fetchRules(clientId) : rules;
+        const activeRules = await repo.listRules(clientId);
         // Regras apontando para contas sintéticas não classificam (o lançamento fica pendente).
-        const classifiableRules = activeRules.filter(
-          (r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC'
-        );
+        const classifiable = activeRules.filter((r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC');
         const now = new Date().toISOString();
 
         const fresh: BankTransaction[] = [];
         for (const [id, raw] of uniqueInFile) {
           if (existing.has(id)) continue;
-          const rule = findMatchingRule(raw.memo, classifiableRules);
+          const rule = findMatchingRule(raw.memo, classifiable);
           const account = rule ? accountsById.get(rule.accountId) : undefined;
-          const status: ReconciliationStatus = rule ? 'AUTO_CLASSIFIED' : 'PENDING';
-
           const tx: BankTransaction = {
             id,
             clientId,
@@ -294,7 +182,7 @@ export function useReconciliation({
             amount: raw.amount,
             type: raw.type,
             memo: raw.memo,
-            status,
+            status: rule ? 'AUTO_CLASSIFIED' : 'PENDING',
             createdAt: now,
           };
           if (rule) {
@@ -307,268 +195,135 @@ export function useReconciliation({
         }
 
         if (fresh.length > 0) {
-          if (firestoreEnabled()) {
-            await commitInBatches(fresh, (batch, tx) => {
-              // accountId: null explícito para lançamentos pendentes.
-              batch.set(doc(db, TRANSACTIONS, tx.id), {
-                ...stripUndefined(tx),
-                accountId: tx.accountId ?? null,
-              });
-            });
-          } else {
-            await saveTransactionsBatch(clientId, fresh, {
-              id: `batch_${Date.now()}`,
-              clientId,
-              fileName: 'ofx',
-              fileSize: 0,
-              totalTransactions: fresh.length,
-              importedCount: fresh.length,
-              duplicateCount: 0,
-              autoClassifiedCount: 0,
-              totalDebit: 0,
-              totalCredit: 0,
-              importedAt: now,
-            });
-          }
+          const autoClassifiedCount = fresh.filter((t) => t.status === 'AUTO_CLASSIFIED').length;
+          await repo.insertTransactions(fresh, {
+            id: `batch_${Date.now()}`,
+            clientId,
+            fileName: 'ofx',
+            fileSize: 0,
+            totalTransactions: items.length,
+            importedCount: fresh.length,
+            duplicateCount: items.length - fresh.length,
+            autoClassifiedCount,
+            totalDebit: fresh.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0),
+            totalCredit: fresh.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+            importedAt: now,
+          });
         }
 
         setRules(activeRules);
-        setTransactions((prev) =>
-          [...fresh, ...prev].sort((a, b) => b.date.localeCompare(a.date))
-        );
+        const visible = fresh.filter((t) => inRange(t.date, range));
+        if (visible.length) setTransactions((prev) => [...visible, ...prev].sort(byDateDesc));
 
         return {
           added: fresh.length,
           duplicates: items.length - fresh.length,
           autoClassified: fresh.filter((t) => t.status === 'AUTO_CLASSIFIED').length,
+          latestDate: fresh.reduce<string | null>((max, t) => (!max || t.date > max ? t.date : max), null),
         };
-      } catch (e) {
-        console.error('[useReconciliation] Falha na importação:', e);
-        setError('Falha ao importar o extrato.');
-        throw e;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [clientId, transactions, rules, accountsById]
+    [clientId, accountsById, mutate, range]
   );
 
   /* ------------------------------------------------------------------ */
-  /* 3. Classificação manual + aprendizado contínuo                      */
+  /* Classificação manual / reclassificação + aprendizado contínuo       */
   /* ------------------------------------------------------------------ */
   const classifyTransaction = useCallback(
-    async (
-      transactionId: string,
-      accountId: string,
-      options: ClassifyOptions = {}
-    ): Promise<ClassifyResult> => {
-      if (!clientId) throw new Error('Nenhum cliente selecionado.');
+    (transactionId: string, accountId: string, options: ClassifyOptions = {}): Promise<ClassifyResult> => {
+      if (!clientId) return Promise.reject(new Error('Nenhum cliente selecionado.'));
       const target = transactions.find((t) => t.id === transactionId);
-      if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
-
+      if (!target) return Promise.reject(new Error(`Lançamento ${transactionId} não encontrado.`));
       const account = accountsById.get(accountId);
       // Contas sintéticas apenas totalizam: lançamentos só em contas analíticas.
       if (account && account.nature !== 'ANALYTIC') {
-        throw new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`);
+        return Promise.reject(new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`));
       }
-      const accountCode = account?.code ?? '';
-      const accountName = account?.name ?? '';
+
+      const ref = { accountId, accountCode: account?.code ?? '', accountName: account?.name ?? '' };
       const now = new Date().toISOString();
+      const pattern = options.learnRule ? normalizePattern(options.customPattern || target.memo) : '';
 
-      const pattern = options.learnRule
-        ? normalizePattern(options.customPattern || target.memo)
-        : '';
-
-      // Retroalimentação: pendentes (exceto o próprio) que contêm o padrão.
+      // Retroalimentação: pendentes do período (exceto o próprio) que contêm o padrão.
       const similar = pattern
         ? transactions.filter(
-            (t) =>
-              t.id !== transactionId &&
-              t.status === 'PENDING' &&
-              normalizePattern(t.memo).includes(pattern)
+            (t) => t.id !== transactionId && t.status === 'PENDING' && normalizePattern(t.memo).includes(pattern)
           )
         : [];
 
-      // Reclassificação: reaproveita a regra que originou o lançamento (ou uma com o
-      // mesmo termo) e a atualiza para a nova conta, em vez de criar uma duplicata.
+      // Reclassificação: atualiza a regra de origem (ou uma com o mesmo termo) em vez de duplicar.
       const existingRule = pattern
         ? (rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId) ??
           rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === pattern))
         : undefined;
+      const rule: ClassificationRule | null = pattern
+        ? existingRule
+          ? { ...existingRule, pattern, ...ref, updatedAt: now }
+          : { id: `rule_${Date.now()}`, clientId, pattern, ...ref, matchType: 'CONTAINS', createdAt: now, updatedAt: now }
+        : null;
 
-      setIsSaving(true);
-      setError(null);
-      try {
-        let rule: ClassificationRule | null = null;
-        let ruleIsNew = false;
-
-        if (firestoreEnabled()) {
-          const batch = writeBatch(db);
-          batch.update(doc(db, TRANSACTIONS, transactionId), {
-            status: 'RECONCILED' satisfies ReconciliationStatus,
-            accountId,
-            accountCode,
-            accountName,
-            reconciledAt: now,
-            // Conta única sobrescreve um rateio anterior.
-            isSplit: false,
-            splits: deleteField(),
-          });
-
-          let ruleId: string | undefined;
-          if (pattern && existingRule) {
-            ruleId = existingRule.id;
-            batch.set(
-              doc(db, RULES, existingRule.id),
-              { pattern, accountId, accountCode, accountName, updatedAt: now },
-              { merge: true }
-            );
-          } else if (pattern) {
-            const ruleRef = doc(collection(db, RULES));
-            ruleId = ruleRef.id;
-            ruleIsNew = true;
-            batch.set(ruleRef, {
-              clientId,
-              pattern,
-              accountId,
-              accountCode,
-              accountName,
-              createdAt: serverTimestamp(),
-            });
-          }
-          batch.update(doc(db, TRANSACTIONS, transactionId), {
-            matchedRuleId: ruleId ?? deleteField(),
-          });
-          // A transação + regra + até 498 similares cabem no primeiro batch;
-          // o excedente segue em batches adicionais.
-          const head = similar.slice(0, BATCH_LIMIT - 2);
-          head.forEach((t) =>
-            batch.update(doc(db, TRANSACTIONS, t.id), {
-              status: 'AUTO_CLASSIFIED' satisfies ReconciliationStatus,
-              accountId,
-              accountCode,
-              accountName,
-              ...(ruleId ? { matchedRuleId: ruleId } : {}),
-            })
-          );
-          await batch.commit();
-          await commitInBatches(similar.slice(BATCH_LIMIT - 2), (b, t) =>
-            b.update(doc(db, TRANSACTIONS, t.id), {
-              status: 'AUTO_CLASSIFIED' satisfies ReconciliationStatus,
-              accountId,
-              accountCode,
-              accountName,
-              ...(ruleId ? { matchedRuleId: ruleId } : {}),
-            })
-          );
-
-          if (ruleId) {
-            rule = existingRule
-              ? { ...existingRule, pattern, accountId, accountCode, accountName, updatedAt: now }
-              : { id: ruleId, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
-          }
-        } else {
-          await updateTransactionClassification(transactionId, accountId, accountCode, accountName, 'RECONCILED');
-          if (pattern) {
-            ruleIsNew = !existingRule;
-            rule = existingRule
-              ? { ...existingRule, pattern, accountId, accountCode, accountName, updatedAt: now }
-              : { id: `rule_${Date.now()}`, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
-            await saveRule(rule);
-          }
-          for (const t of similar) {
-            await updateTransactionClassification(t.id, accountId, accountCode, accountName, 'AUTO_CLASSIFIED');
-          }
-        }
+      return mutate('Não foi possível salvar a classificação', async () => {
+        await getRepository().commitClassification({
+          transactionId,
+          account: ref,
+          rule,
+          similarIds: similar.map((t) => t.id),
+          now,
+        });
 
         const similarIds = new Set(similar.map((t) => t.id));
         setTransactions((prev) =>
           prev.map((t) => {
             if (t.id === transactionId) {
-              return {
-                ...t,
-                status: 'RECONCILED',
-                accountId,
-                accountCode,
-                accountName,
-                reconciledAt: now,
-                isSplit: false,
-                splits: undefined,
-                matchedRuleId: rule?.id,
-              };
+              return { ...t, ...ref, status: 'RECONCILED', reconciledAt: now, isSplit: false, splits: undefined, matchedRuleId: rule?.id };
             }
-            if (similarIds.has(t.id)) {
-              return { ...t, status: 'AUTO_CLASSIFIED', accountId, accountCode, accountName, matchedRuleId: rule?.id };
-            }
+            if (similarIds.has(t.id)) return { ...t, ...ref, status: 'AUTO_CLASSIFIED', matchedRuleId: rule?.id };
             return t;
           })
         );
         if (rule) {
-          const saved = rule;
-          setRules((prev) => (ruleIsNew ? [saved, ...prev] : prev.map((r) => (r.id === saved.id ? saved : r))));
+          setRules((prev) => (existingRule ? prev.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...prev]));
         }
-
         return { rule, propagated: similar.length };
-      } catch (e) {
-        console.error('[useReconciliation] Falha ao classificar:', e);
-        setError('Não foi possível salvar a classificação.');
-        throw e;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [clientId, transactions, rules, accountsById]
+    [clientId, transactions, rules, accountsById, mutate]
   );
 
   /* ------------------------------------------------------------------ */
   /* Desfazer conciliação                                                */
   /* ------------------------------------------------------------------ */
   const unreconcileTransaction = useCallback(
-    async (transactionId: string): Promise<void> => {
-      const target = transactions.find((t) => t.id === transactionId);
-      if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
-      setIsSaving(true);
-      setError(null);
-      try {
-        await resetTransactionToPending(transactionId);
+    (transactionId: string): Promise<void> =>
+      mutate('Não foi possível desfazer a conciliação', async () => {
+        await getRepository().resetToPending(transactionId);
         setTransactions((prev) =>
           prev.map((t) => {
             if (t.id !== transactionId) return t;
             const { accountId: _a, accountCode: _c, accountName: _n, matchedRuleId: _m, splits: _s, reconciledAt: _r, ...rest } = t;
             void [_a, _c, _n, _m, _s, _r];
-            return { ...rest, status: 'PENDING', isSplit: false };
+            return { ...rest, status: 'PENDING' as ReconciliationStatus, isSplit: false };
           })
         );
-      } catch (e) {
-        console.error('[useReconciliation] Falha ao desfazer conciliação:', e);
-        setError('Não foi possível desfazer a conciliação.');
-        throw e;
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [transactions]
+      }),
+    [mutate]
   );
 
   /* ------------------------------------------------------------------ */
   /* Desdobramento (rateio)                                              */
   /* ------------------------------------------------------------------ */
   const splitTransaction = useCallback(
-    async (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> => {
+    (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> => {
       const target = transactions.find((t) => t.id === transactionId);
-      if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
-
+      if (!target) return Promise.reject(new Error(`Lançamento ${transactionId} não encontrado.`));
       const summary = summarizeSplits(target.amount, drafts, accountsById);
-      if (!summary.isComplete) throw new Error(summary.errors[0]);
-      if (!summary.isBalanced) throw new Error('A soma do rateio difere do valor do lançamento.');
+      if (!summary.isComplete) return Promise.reject(new Error(summary.errors[0]));
+      if (!summary.isBalanced) return Promise.reject(new Error('A soma do rateio difere do valor do lançamento.'));
 
       const splits = draftsToSplits(target, drafts, accountsById);
       const now = new Date().toISOString();
-
-      setIsSaving(true);
-      setError(null);
-      try {
-        await saveTransactionSplits(transactionId, splits);
+      return mutate('Não foi possível salvar o rateio', async () => {
+        await getRepository().saveSplits(transactionId, splits, now);
         setTransactions((prev) =>
           prev.map((t) =>
             t.id === transactionId
@@ -586,64 +341,29 @@ export function useReconciliation({
               : t
           )
         );
-      } catch (e) {
-        console.error('[useReconciliation] Falha ao salvar rateio:', e);
-        setError('Não foi possível salvar o rateio.');
-        throw e;
-      } finally {
-        setIsSaving(false);
-      }
+      });
     },
-    [transactions, accountsById]
+    [transactions, accountsById, mutate]
   );
 
   /* ------------------------------------------------------------------ */
   /* Aprovação em lote dos auto-classificados                            */
   /* ------------------------------------------------------------------ */
-  const approveAutoClassified = useCallback(async (): Promise<number> => {
-    const eligible = transactions.filter(
-      (t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId)
-    );
-    if (eligible.length === 0) return 0;
+  const approveAutoClassified = useCallback((): Promise<number> => {
+    const eligible = transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId));
+    if (eligible.length === 0) return Promise.resolve(0);
     const now = new Date().toISOString();
-
-    setIsSaving(true);
-    setError(null);
-    try {
-      if (firestoreEnabled()) {
-        await commitInBatches(eligible, (batch, t) =>
-          batch.update(doc(db, TRANSACTIONS, t.id), {
-            status: 'RECONCILED' satisfies ReconciliationStatus,
-            reconciledAt: now,
-          })
-        );
-      } else {
-        for (const t of eligible) {
-          await updateTransactionClassification(
-            t.id,
-            t.accountId ?? '',
-            t.accountCode ?? '',
-            t.accountName ?? '',
-            'RECONCILED'
-          );
-        }
-      }
-      const ids = new Set(eligible.map((t) => t.id));
-      setTransactions((prev) =>
-        prev.map((t) => (ids.has(t.id) ? { ...t, status: 'RECONCILED', reconciledAt: now } : t))
-      );
-      return eligible.length;
-    } catch (e) {
-      console.error('[useReconciliation] Falha na aprovação em lote:', e);
-      setError('Não foi possível aprovar os lançamentos.');
-      throw e;
-    } finally {
-      setIsSaving(false);
-    }
-  }, [transactions]);
+    const ids = eligible.map((t) => t.id);
+    return mutate('Não foi possível aprovar os lançamentos', async () => {
+      await getRepository().approveTransactions(ids, now);
+      const set = new Set(ids);
+      setTransactions((prev) => prev.map((t) => (set.has(t.id) ? { ...t, status: 'RECONCILED', reconciledAt: now } : t)));
+      return ids.length;
+    });
+  }, [transactions, mutate]);
 
   /* ------------------------------------------------------------------ */
-  /* Métricas                                                            */
+  /* Métricas do período                                                 */
   /* ------------------------------------------------------------------ */
   const metrics = useMemo<ReconciliationMetrics>(() => {
     let pending = 0;
@@ -684,11 +404,4 @@ export function useReconciliation({
     approveAutoClassified,
     reload,
   };
-}
-
-/** Firestore rejeita campos `undefined`; remove-os antes do `set`. */
-function stripUndefined<T extends object>(obj: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(obj).filter(([, v]) => v !== undefined)
-  ) as Partial<T>;
 }

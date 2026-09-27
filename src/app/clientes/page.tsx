@@ -145,9 +145,12 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
   const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError;
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const submit = async () => {
     if (!valid) return;
     setSaving(true);
+    setSaveError(null);
     const now = new Date().toISOString();
     const saved: ClientCompany = {
       id: client?.id ?? `client-${Date.now()}`,
@@ -164,6 +167,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     try {
       await saveClient(saved);
       onSaved(saved);
+    } catch (e: unknown) {
+      setSaveError(`Não foi possível salvar o cliente (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
     } finally {
       setSaving(false);
     }
@@ -175,6 +180,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       subtitle={client ? client.name : 'Cadastre a empresa para importar extratos e gerar a DRE.'}
       onClose={onClose}
       footer={
+        <>
+        {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
         <button
           type="button"
           disabled={!valid || saving}
@@ -183,6 +190,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
         >
           {saving ? 'Salvando…' : client ? 'Salvar alterações' : 'Cadastrar cliente'}
         </button>
+        </>
       }
     >
       <form
