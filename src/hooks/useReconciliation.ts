@@ -262,12 +262,16 @@ export function useReconciliation({
           : new Set(transactions.map((t) => t.id));
 
         const activeRules = firestoreEnabled() ? await fetchRules(clientId) : rules;
+        // Regras apontando para contas sintéticas não classificam (o lançamento fica pendente).
+        const classifiableRules = activeRules.filter(
+          (r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC'
+        );
         const now = new Date().toISOString();
 
         const fresh: BankTransaction[] = [];
         for (const [id, raw] of uniqueInFile) {
           if (existing.has(id)) continue;
-          const rule = findMatchingRule(raw.memo, activeRules);
+          const rule = findMatchingRule(raw.memo, classifiableRules);
           const account = rule ? accountsById.get(rule.accountId) : undefined;
           const status: ReconciliationStatus = rule ? 'AUTO_CLASSIFIED' : 'PENDING';
 
@@ -352,6 +356,10 @@ export function useReconciliation({
       if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
 
       const account = accountsById.get(accountId);
+      // Contas sintéticas apenas totalizam: lançamentos só em contas analíticas.
+      if (account && account.nature !== 'ANALYTIC') {
+        throw new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`);
+      }
       const accountCode = account?.code ?? '';
       const accountName = account?.name ?? '';
       const now = new Date().toISOString();
