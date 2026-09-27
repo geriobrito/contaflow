@@ -1,12 +1,23 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, Printer, TrendingDown, TrendingUp } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileSpreadsheet,
+  FileText,
+  Loader2,
+  Printer,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
 import type { BankTransaction, ChartAccount } from '@/types/firestore';
 import { getAccounts, getTransactions } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { buildDRE, periodRange, type DREAccountLine, type PeriodMode } from '@/lib/dre/build';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import type { DREExportContext } from '@/lib/export/dre-rows';
 import { BUTTON, EmptyState, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 
 const MODES: readonly { value: PeriodMode; label: string }[] = [
@@ -180,6 +191,38 @@ export default function DREPage() {
 
   const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
   const isOpen = (id: string) => !collapsed[id];
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const canExport = hasData && !isLoading && Boolean(currentClient);
+  const busy = isGeneratingPdf || isGeneratingExcel;
+
+  const exportContext = (): DREExportContext | null =>
+    currentClient ? { client: currentClient, range, statement: dre, issuedAt: new Date() } : null;
+
+  /** Carrega o gerador sob demanda (jsPDF/ExcelJS ficam fora do bundle inicial). */
+  const handleExport = async (format: 'pdf' | 'xlsx') => {
+    const ctx = exportContext();
+    if (!ctx || busy) return;
+    const setBusy = format === 'pdf' ? setIsGeneratingPdf : setIsGeneratingExcel;
+    setBusy(true);
+    setExportError(null);
+    try {
+      const [{ downloadBlob }, file] = await Promise.all([
+        import('@/lib/export/dre-rows'),
+        format === 'pdf'
+          ? import('@/lib/export/dre-pdf').then((m) => m.generateDREPdf(ctx))
+          : import('@/lib/export/dre-excel').then((m) => m.generateDREExcel(ctx)),
+      ]);
+      downloadBlob(file.blob, file.fileName);
+    } catch (e) {
+      console.error('Erro ao exportar a DRE:', e);
+      setExportError(`Não foi possível gerar o ${format === 'pdf' ? 'PDF' : 'Excel'}. Tente novamente.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const periodLabel =
     mode === 'year' ? String(year) : mode === 'quarter' ? `${quarter}º trimestre de ${year}` : `${MONTHS[month - 1]}/${year}`;
 
@@ -196,10 +239,41 @@ export default function DREPage() {
           </>
         }
         actions={
-          <button type="button" onClick={() => window.print()} className={BUTTON.secondary}>
-            <Printer className="w-4 h-4" strokeWidth={1.75} />
-            Imprimir / PDF
-          </button>
+          <div role="group" aria-label="Exportar DRE" className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleExport('pdf')}
+              disabled={!canExport || busy}
+              aria-busy={isGeneratingPdf}
+              className={BUTTON.primary}
+            >
+              {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" strokeWidth={1.75} />}
+              {isGeneratingPdf ? 'Gerando…' : 'PDF Oficial'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('xlsx')}
+              disabled={!canExport || busy}
+              aria-busy={isGeneratingExcel}
+              className={BUTTON.secondary}
+            >
+              {isGeneratingExcel ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />
+              )}
+              {isGeneratingExcel ? 'Gerando…' : 'Exportar Excel'}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              aria-label="Imprimir"
+              title="Imprimir"
+              className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] active:scale-[0.96] transition-all duration-150"
+            >
+              <Printer className="w-4 h-4 shrink-0" strokeWidth={1.75} />
+            </button>
+          </div>
         }
       />
 
@@ -246,6 +320,17 @@ export default function DREPage() {
           </div>
         )}
       </section>
+
+      {!isLoading && !hasData && (
+        <p className="-mt-4 text-[13px] text-stone-500 print:hidden">
+          Exportação indisponível: não há lançamentos conciliados neste período.
+        </p>
+      )}
+      {exportError && (
+        <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden animate-fade-in">
+          {exportError}
+        </p>
+      )}
 
       {/* Resultado em destaque */}
       <section
