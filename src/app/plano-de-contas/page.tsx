@@ -5,17 +5,8 @@ import { ChevronRight, Plus, Trash2, Wand2 } from 'lucide-react';
 import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
 import { applyDefaultChartTemplate, deleteAccount, getAccounts, saveAccount } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
-import {
-  BUTTON,
-  ConfirmButton,
-  EmptyState,
-  Field,
-  INPUT,
-  PageHeader,
-  SearchField,
-  Sheet,
-  SURFACE,
-} from '@/components/ui/primitives';
+import { resolveDREGroup } from '@/lib/dre/build';
+import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
 
 /* =========================================================================
    Rótulos
@@ -46,6 +37,14 @@ const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
   { value: 'OTHER_EXPENSES', label: 'Outras despesas operacionais' },
   { value: 'INCOME_TAXES', label: 'IRPJ e CSLL' },
 ];
+
+const DRE_LABEL = new Map<string, string>(DRE_GROUPS.map((g) => [g.value, g.label]));
+
+/** Rótulo do grupo da DRE de uma conta analítica (inclui códigos legados), ou null se patrimonial. */
+function dreLabel(account: ChartAccount): string | null {
+  const group = resolveDREGroup(account);
+  return group ? (DRE_LABEL.get(group) ?? null) : null;
+}
 
 /** Grupo da DRE sugerido para uma nova conta: o do pai ou o das contas irmãs. */
 function inheritedDREGroup(parent: ChartAccount | undefined, accounts: readonly ChartAccount[]): DREGroup | '' {
@@ -171,7 +170,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
         </button>
 
-        <span className={`w-24 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
+        <span className={`w-24 lg:w-32 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
           {account.code}
         </span>
         <span
@@ -186,7 +185,8 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           {account.name}
         </span>
 
-        {depth === 0 && <span className="hidden sm:inline text-[11px] text-stone-400">{TYPE_LABEL[account.type]}</span>}
+        <span className="hidden sm:flex items-center gap-1.5 shrink-0">
+        {depth === 0 && <span className="lg:hidden text-[11px] text-stone-400">{TYPE_LABEL[account.type]}</span>}
         {account.isContra && (
           <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
             Redutora
@@ -197,6 +197,25 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
             Compartilhada
           </span>
         )}
+        </span>
+
+        {/* Colunas de detalhe no desktop */}
+        <span className="hidden lg:block w-28 shrink-0 text-[12px] text-stone-500">
+          {depth === 0 ? (
+            <span className="font-medium text-stone-600 dark:text-stone-300">{TYPE_LABEL[account.type]}</span>
+          ) : synthetic ? (
+            'Sintética'
+          ) : (
+            <span className="inline-flex px-2 py-0.5 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] text-stone-700 dark:text-stone-300">
+              Analítica
+            </span>
+          )}
+        </span>
+        <span className="hidden lg:block w-56 xl:w-64 shrink-0 truncate text-[12px] text-stone-500">
+          {!synthetic ? dreLabel(account) ?? <span className="text-stone-300 dark:text-stone-600">Patrimonial</span> : null}
+        </span>
+
+        <span className="w-8 shrink-0 flex justify-end">
         {!synthetic && !hasChildren && (
           <span className="sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <ConfirmButton
@@ -207,6 +226,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
             />
           </span>
         )}
+        </span>
       </div>
       {hasChildren &&
         open &&
@@ -407,7 +427,7 @@ export default function PlanoDeContasPage() {
   };
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+    <main className={PAGE}>
       <PageHeader
         eyebrow={currentClient?.name}
         title="Plano de contas"
@@ -466,11 +486,23 @@ export default function PlanoDeContasPage() {
         ) : visible.length === 0 ? (
           <EmptyState title="Nenhuma conta encontrada" description={`Nada corresponde a “${search}”.`} />
         ) : (
+          <>
+          <div
+            aria-hidden
+            className="hidden lg:flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400"
+          >
+            <span className="w-32 shrink-0">Código</span>
+            <span className="flex-1">Conta</span>
+            <span className="w-28 shrink-0">Natureza</span>
+            <span className="w-56 xl:w-64 shrink-0">Grupo na DRE</span>
+            <span className="w-8 shrink-0" />
+          </div>
           <div role="tree" aria-label="Plano de contas" className="[&>*:last-child]:border-b-0">
             {visible.map((n) => (
               <TreeRow key={n.account.id} node={n} expanded={expanded} onToggle={toggle} onDelete={(a) => void handleDelete(a)} />
             ))}
           </div>
+          </>
         )}
       </section>
 

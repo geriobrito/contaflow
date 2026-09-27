@@ -9,7 +9,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
 import { Check, CheckCheck, Search, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { IOSSwitch, SURFACE } from '@/components/ui/primitives';
+import { IOSSwitch, PAGE, SURFACE } from '@/components/ui/primitives';
 
 /* =========================================================================
    Primitivos visuais
@@ -324,7 +324,7 @@ export default function ConciliacaoPage() {
   };
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+    <main className={PAGE}>
       {/* Cabeçalho editorial */}
       <header className="space-y-1.5">
         <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
@@ -477,12 +477,14 @@ export default function ConciliacaoPage() {
                         {formatDateBR(t.date)}
                       </td>
                       <td className="px-3 py-3 max-w-0 w-full">
-                        <p className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 truncate">{t.memo}</p>
+                        <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 truncate lg:whitespace-normal lg:break-words">
+                          {t.memo}
+                        </p>
                         {t.accountName && (
                           <p className="md:hidden text-[12px] text-stone-400 truncate">{t.accountName}</p>
                         )}
                       </td>
-                      <td className="px-3 py-3 hidden md:table-cell max-w-[240px]">
+                      <td className="px-3 py-3 hidden md:table-cell max-w-[240px] xl:max-w-[380px]">
                         {t.accountName ? (
                           <p className="text-[13px] text-stone-600 dark:text-stone-400 truncate">
                             <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{t.accountCode}</span>

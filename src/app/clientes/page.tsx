@@ -6,7 +6,7 @@ import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, maskCNPJ } from '@/lib/utils/formatters';
-import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
@@ -97,7 +97,7 @@ function ClientCard({ client, active, onActivate, onEdit, onDelete, deleting }: 
         )}
         <div className="flex items-center gap-1">
           {!active && (
-            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
+            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 whitespace-nowrap text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
               Definir como ativo
             </button>
           )}
@@ -289,7 +289,7 @@ export default function ClientesPage() {
   };
 
   return (
-    <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+    <main className={`${PAGE} @container`}>
       <PageHeader
         title="Clientes"
         description={
@@ -309,7 +309,7 @@ export default function ClientesPage() {
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por razão social, nome fantasia ou CNPJ" />
 
       {isLoading ? (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-52 rounded-[22px] bg-black/[0.04] animate-pulse" />
           ))}
@@ -330,7 +330,7 @@ export default function ClientesPage() {
           />
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6">
           {visible.map((c) => (
             <ClientCard
               key={c.id}

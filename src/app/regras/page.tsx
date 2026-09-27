@@ -7,7 +7,7 @@ import { deleteRule, getAccounts, getRules, getTransactions, saveRule } from '@/
 import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern } from '@/hooks/useReconciliation';
 import { formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, ConfirmButton, EmptyState, INPUT, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 
 /** Lançamentos afetados: vinculados à regra ou cujo histórico contém o padrão. */
 function countAffected(rule: ClassificationRule, transactions: readonly BankTransaction[]): number {
@@ -64,7 +64,7 @@ function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: Rul
             {error && <p className="text-[11px] text-rose-600">{error}</p>}
           </div>
         ) : (
-          <span className="inline-flex max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
+          <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
             {rule.pattern}
           </span>
         )}
@@ -242,7 +242,7 @@ export default function RegrasPage() {
   };
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+    <main className={PAGE}>
       <PageHeader
         eyebrow={currentClient?.name}
         title="Regras de aprendizado"
@@ -257,19 +257,19 @@ export default function RegrasPage() {
       {/* Adição rápida */}
       <form onSubmit={handleAdd} className={`${SURFACE} rounded-[22px] p-4 sm:p-5 space-y-3`}>
         <p className="text-[13px] font-medium text-stone-700 dark:text-stone-300">Nova regra</p>
-        <div className="flex flex-col md:flex-row gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] gap-2.5">
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
             placeholder="Termo, ex.: uber"
             aria-label="Termo"
-            className={`${INPUT} md:w-64 font-mono text-[13px]`}
+            className={`${INPUT} font-mono text-[13px]`}
           />
           <select
             value={newAccountId}
             onChange={(e) => setNewAccountId(e.target.value)}
             aria-label="Conta de destino"
-            className={`${INPUT} flex-1 min-w-0 ${newAccountId ? '' : 'text-stone-400'}`}
+            className={`${INPUT} min-w-0 ${newAccountId ? '' : 'text-stone-400'}`}
           >
             <option value="">Conta de destino…</option>
             {analytic.map((a) => (
@@ -309,10 +309,10 @@ export default function RegrasPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
-                  <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-56">Termo</th>
+                  <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
                   <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
-                  <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell w-28">Criada em</th>
-                  <th scope="col" className="font-medium px-3 py-2.5 text-right w-24">Afetados</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell w-32">Criada em</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 text-right w-44 whitespace-nowrap">Lançamentos afetados</th>
                   <th scope="col" className="pl-3 pr-4 py-2.5 w-24">
                     <span className="sr-only">Ações</span>
                   </th>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
   ChevronLeft,
@@ -18,7 +18,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { buildDRE, periodRange, type DREAccountLine, type PeriodMode } from '@/lib/dre/build';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import type { DREExportContext } from '@/lib/export/dre-rows';
-import { BUTTON, EmptyState, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 
 const MODES: readonly { value: PeriodMode; label: string }[] = [
   { value: 'month', label: 'Mês' },
@@ -28,6 +28,24 @@ const MODES: readonly { value: PeriodMode; label: string }[] = [
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const;
 const QUARTERS = ['T1', 'T2', 'T3', 'T4'] as const;
+
+/** Receita bruta do período, base da análise vertical (% s/ receita bruta). */
+const GrossRevenueContext = createContext(0);
+
+function Pct({ value, strong = false }: { value: number; strong?: boolean }) {
+  const base = useContext(GrossRevenueContext);
+  const text =
+    base > 0 ? `${((value / base) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '—';
+  return (
+    <span
+      className={`hidden md:inline w-20 shrink-0 text-right font-mono tabular-nums text-[12px] ${
+        strong ? 'text-stone-600 dark:text-stone-300' : 'text-stone-400'
+      }`}
+    >
+      {text}
+    </span>
+  );
+}
 
 /** Valor contábil: negativos entre parênteses, como em demonstrativos impressos. */
 function Amount({ value, strong = false }: { value: number; strong?: boolean }) {
@@ -47,7 +65,8 @@ function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 })
           <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{l.code}</span>
           <span className="flex-1 min-w-0 truncate">{l.name}</span>
           <span className="hidden sm:inline font-mono tabular-nums text-[11px] text-stone-400 w-10 text-right">{l.count}×</span>
-          <span className="w-36 text-right">
+          <Pct value={sign * l.value} />
+          <span className="w-36 xl:w-44 text-right">
             <Amount value={sign * l.value} />
           </span>
         </div>
@@ -71,7 +90,8 @@ function Row({ label, value, variant = 'line' }: { label: string; value: number;
       >
         {label}
       </span>
-      <span className="w-36 text-right text-[14px] text-stone-900 dark:text-stone-100">
+      <Pct value={value} strong />
+      <span className="w-36 xl:w-44 text-right text-[14px] text-stone-900 dark:text-stone-100">
         <Amount value={value} strong={subtotal} />
       </span>
     </div>
@@ -105,7 +125,8 @@ function Section({ id, label, value, parts, open, onToggle }: SectionProps) {
           } ${open ? '' : '-rotate-90'}`}
         />
         <span className="flex-1 min-w-0 text-[14px] font-medium tracking-tight text-stone-800 dark:text-stone-200">{label}</span>
-        <span className="w-36 text-right text-[14px] text-stone-900 dark:text-stone-100">
+        <Pct value={value} strong />
+        <span className="w-36 xl:w-44 text-right text-[14px] text-stone-900 dark:text-stone-100">
           <Amount value={value} />
         </span>
       </button>
@@ -227,7 +248,7 @@ export default function DREPage() {
     mode === 'year' ? String(year) : mode === 'quarter' ? `${quarter}º trimestre de ${year}` : `${MONTHS[month - 1]}/${year}`;
 
   return (
-    <main className="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8 print:p-0 print:space-y-6">
+    <main className={`${PAGE} print:p-0 print:space-y-6`}>
       <PageHeader
         eyebrow={currentClient?.name}
         title="Demonstração do resultado"
@@ -371,11 +392,13 @@ export default function DREPage() {
         </p>
       )}
 
+      <GrossRevenueContext.Provider value={dre.grossRevenue}>
       {/* Demonstrativo */}
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        <div className="flex items-baseline justify-between px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
-          <span>Demonstrativo</span>
-          <span>R$</span>
+        <div className="flex items-baseline gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
+          <span className="flex-1">Demonstrativo</span>
+          <span className="hidden md:inline w-20 text-right">% RB</span>
+          <span className="w-36 xl:w-44 text-right">R$</span>
         </div>
 
         {isLoading ? (
@@ -463,13 +486,15 @@ export default function DREPage() {
               <span className="flex-1 text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
                 (=) Resultado líquido do exercício
               </span>
-              <span className={`w-36 text-right text-[15px] ${profit ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+              <Pct value={dre.netResult} strong />
+              <span className={`w-36 xl:w-44 text-right text-[15px] ${profit ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
                 <Amount value={dre.netResult} strong />
               </span>
             </div>
           </div>
         )}
       </section>
+      </GrossRevenueContext.Provider>
 
       <p className="text-[12px] text-stone-400">
         Baseado em <span className="font-mono tabular-nums">{dre.reconciledCount}</span> lançamento(s) conciliado(s). Valores entre
