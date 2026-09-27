@@ -1,18 +1,21 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  User,
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { auth, isFirebaseConfigured } from '@/lib/firebase';
+import { User, signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { ensureUserProfile } from '@/lib/data/profile';
+import { setOrgId } from '@/lib/data/scope';
+import { LOCAL_ORG_ID } from '@/lib/data/local-repository';
 
 export interface AuthContextType {
   user: User | null;
+  /** Escritório do usuário; todos os dados lidos/gravados pertencem a ele. */
+  orgId: string | null;
   loading: boolean;
+  /** Autenticado E com escritório resolvido (pronto para acessar dados). */
   isAuthenticated: boolean;
+  /** Falha ao resolver o perfil/escritório (ex.: regras recusaram, rede). */
+  authError: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   isMockAuth: boolean;
@@ -20,107 +23,96 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Chave local para sessão em ambiente de desenvolvimento sem Firebase configurado
+// Sessão do modo local (sem Firebase configurado).
 const DEV_AUTH_KEY = 'contaflow_dev_user';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const firestoreMode = isFirebaseConfigured();
   const [user, setUser] = useState<User | null>(null);
+  const [orgId, setOrg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isMockAuth, setIsMockAuth] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  /** Define o escopo de dados ANTES de expor o usuário, para nenhuma leitura sair sem orgId. */
+  const applySession = (nextUser: User | null, nextOrg: string | null) => {
+    setOrgId(nextOrg);
+    setOrg(nextOrg);
+    setUser(nextUser);
+  };
 
   useEffect(() => {
-    // Se o Firebase tiver credenciais reais configuradas
-    if (isFirebaseConfigured() && auth) {
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-        setLoading(false);
-      });
-      return () => unsubscribe();
-    } else {
-      // Modo de contingência para desenvolvimento local (quando sem chaves reais no .env.local).
-      // A leitura do localStorage é externa ao React; o estado é aplicado fora do corpo síncrono do effect.
-      let restored: User | null = null;
-      try {
-        const saved = localStorage.getItem(DEV_AUTH_KEY);
-        restored = saved ? (JSON.parse(saved) as User) : null;
-      } catch {
-        restored = null;
-      }
-      queueMicrotask(() => {
-        setIsMockAuth(true);
-        setUser(restored);
-        setLoading(false);
+    if (firestoreMode) {
+      return onAuthStateChanged(auth, (currentUser) => {
+        if (!currentUser) {
+          applySession(null, null);
+          setLoading(false);
+          return;
+        }
+        setLoading(true);
+        ensureUserProfile(db, currentUser)
+          .then((org) => {
+            setAuthError(null);
+            applySession(currentUser, org);
+          })
+          .catch((e: unknown) => {
+            console.error('Falha ao resolver o escritório do usuário:', e);
+            setAuthError('Não foi possível carregar seu perfil de acesso. Tente novamente ou contate o administrador.');
+            applySession(null, null);
+          })
+          .finally(() => setLoading(false));
       });
     }
-  }, []);
+
+    // Modo local: sessão salva no navegador, escritório fixo.
+    let restored: User | null = null;
+    try {
+      const saved = localStorage.getItem(DEV_AUTH_KEY);
+      restored = saved ? (JSON.parse(saved) as User) : null;
+    } catch {
+      restored = null;
+    }
+    queueMicrotask(() => {
+      applySession(restored, restored ? LOCAL_ORG_ID : null);
+      setLoading(false);
+    });
+  }, [firestoreMode]);
 
   const signIn = async (email: string, password: string): Promise<void> => {
-    setLoading(true);
-    try {
-      if (isFirebaseConfigured() && auth) {
-        try {
-          const userCredential = await signInWithEmailAndPassword(auth, email, password);
-          setUser(userCredential.user);
-          return;
-        } catch (firebaseErr: unknown) {
-          // Se a chave no .env.local for inválida, expirada ou placeholder
-          const { code, message } = (firebaseErr ?? {}) as { code?: string; message?: string };
-          if (code === 'auth/api-key-not-valid' || message?.includes('api-key-not-valid')) {
-            console.warn(
-              'Aviso: Chave do Firebase no .env.local é inválida ou de teste. Prosseguindo com autenticação local de desenvolvimento.'
-            );
-          } else {
-            throw firebaseErr;
-          }
-        }
-      }
-
-      // Validação no modo de desenvolvimento / fallback
-      if (!email.includes('@') || password.length < 6) {
-        throw Object.assign(new Error('E-mail inválido ou senha com menos de 6 caracteres.'), {
-          code: 'auth/invalid-credential',
-        });
-      }
-
-      const mockUser = {
-        uid: 'mock-user-1',
-        email,
-        displayName: email.split('@')[0],
-      } as unknown as User;
-
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(DEV_AUTH_KEY, JSON.stringify(mockUser));
-      }
-      setUser(mockUser);
-    } finally {
-      setLoading(false);
+    setAuthError(null);
+    if (firestoreMode) {
+      // Erros (credencial, chave inválida, rede) sobem para a tela de login.
+      // O perfil/escritório é resolvido pelo onAuthStateChanged.
+      await signInWithEmailAndPassword(auth, email, password);
+      return;
     }
+
+    if (!email.includes('@') || password.length < 6) {
+      throw Object.assign(new Error('E-mail inválido ou senha com menos de 6 caracteres.'), {
+        code: 'auth/invalid-credential',
+      });
+    }
+    const mockUser = { uid: 'mock-user-1', email, displayName: email.split('@')[0] } as unknown as User;
+    localStorage.setItem(DEV_AUTH_KEY, JSON.stringify(mockUser));
+    applySession(mockUser, LOCAL_ORG_ID);
   };
 
   const signOut = async (): Promise<void> => {
-    setLoading(true);
-    try {
-      if (isFirebaseConfigured() && auth) {
-        await firebaseSignOut(auth);
-      }
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(DEV_AUTH_KEY);
-      }
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
+    if (firestoreMode) await firebaseSignOut(auth);
+    else localStorage.removeItem(DEV_AUTH_KEY);
+    applySession(null, null);
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        orgId,
         loading,
-        isAuthenticated: Boolean(user),
+        isAuthenticated: Boolean(user && orgId),
+        authError,
         signIn,
         signOut,
-        isMockAuth,
+        isMockAuth: !firestoreMode,
       }}
     >
       {children}

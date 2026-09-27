@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
 import type { BankTransaction, ChartAccount, ClassificationRule, ReconciliationStatus } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
-import { getAccounts } from '@/lib/services/data-service';
+import { getAccounts, getLatestTransactionDate } from '@/lib/services/data-service';
+import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
 import { Check, CheckCheck, ChevronDown, Pencil, Search, Split, X } from 'lucide-react';
@@ -349,6 +350,9 @@ function ClassifySheet({
    Página
    ========================================================================= */
 
+/** Linhas por página na tabela de lançamentos. */
+const PAGE_SIZE = 50;
+
 type Filter = 'ALL' | ReconciliationStatus;
 
 const FILTERS: { value: Filter; label: string }[] = [
@@ -368,6 +372,30 @@ export default function ConciliacaoPage() {
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
+  // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
+  const period = usePeriod('month');
+  const { jumpTo } = period;
+  const [positionedFor, setPositionedFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    let active = true;
+    getLatestTransactionDate(clientId)
+      .then((latest) => {
+        if (!active) return;
+        if (latest) jumpTo(latest);
+        setPositionedFor(clientId);
+      })
+      .catch((e) => {
+        console.error('Erro ao localizar o período mais recente:', e);
+        if (active) setPositionedFor(clientId);
+      });
+    return () => {
+      active = false;
+    };
+  }, [clientId, jumpTo]);
+  const range = clientId && positionedFor === clientId ? period.range : null;
+
   const {
     transactions,
     rules,
@@ -380,7 +408,7 @@ export default function ConciliacaoPage() {
     splitTransaction,
     unreconcileTransaction,
     approveAutoClassified,
-  } = useReconciliation({ clientId, accounts });
+  } = useReconciliation({ clientId, accounts, range });
 
   useEffect(() => {
     if (!clientId) return;
@@ -407,6 +435,23 @@ export default function ConciliacaoPage() {
     () => (filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter)),
     [transactions, filter]
   );
+
+  // Paginação da tabela (volta à 1ª página ao trocar filtro, período ou cliente).
+  const [page, setPage] = useState(0);
+  const pageKey = `${clientId}|${filter}|${range?.start}|${range?.end}`;
+  const [lastPageKey, setLastPageKey] = useState(pageKey);
+  if (lastPageKey !== pageKey) {
+    setLastPageKey(pageKey);
+    setPage(0);
+  }
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageRows = visible.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  const tableRef = useRef<HTMLElement>(null);
+  const goToPage = (next: number) => {
+    setPage(next);
+    tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
   const approvable = useMemo(
     () => transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId).length,
     [transactions]
@@ -414,7 +459,12 @@ export default function ConciliacaoPage() {
 
   const handleOFXParsed = async (result: OFXParseResult) => {
     try {
-      setLastImport(await importTransactions(result.transactions));
+      const imported = await importTransactions(result.transactions);
+      setLastImport(imported);
+      // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
+      if (imported.latestDate && range && (imported.latestDate < range.start || imported.latestDate > range.end)) {
+        jumpTo(imported.latestDate);
+      }
     } catch {
       /* erro exposto pelo hook */
     }
@@ -495,13 +545,15 @@ export default function ConciliacaoPage() {
         </p>
       </header>
 
+      <PeriodPicker period={period} />
+
       {/* Métricas */}
       <section
         aria-label="Resumo"
         className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
       >
         <Metric
-          label="Lançamentos"
+          label={`Lançamentos · ${period.label}`}
           value={String(metrics.total)}
           caption={`${metrics.pending} pendente(s)`}
         />
@@ -543,7 +595,7 @@ export default function ConciliacaoPage() {
       )}
 
       {/* Lançamentos */}
-      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+      <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
           <div role="tablist" className="inline-flex p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start">
             {FILTERS.map((f) => (
@@ -608,7 +660,7 @@ export default function ConciliacaoPage() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((t) => {
+                {pageRows.map((t) => {
                   const splitCount = t.isSplit ? (t.splits?.length ?? 0) : 0;
                   const isExpanded = expanded.has(t.id);
                   const splitBadge = splitCount > 0 && (
@@ -712,6 +764,37 @@ export default function ConciliacaoPage() {
                 })}
               </tbody>
             </table>
+            {visible.length > PAGE_SIZE && (
+              <nav
+                aria-label="Paginação"
+                className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/[0.04] dark:border-white/[0.06] text-[12px] text-stone-500"
+              >
+                <span className="font-mono tabular-nums">
+                  {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, visible.length)} de {visible.length}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+                  >
+                    Anterior
+                  </button>
+                  <span className="font-mono tabular-nums px-1">
+                    {currentPage + 1}/{pageCount}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= pageCount - 1}
+                    className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+                  >
+                    Próxima
+                  </button>
+                </span>
+              </nav>
+            )}
           </div>
         )}
       </section>

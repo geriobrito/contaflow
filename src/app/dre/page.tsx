@@ -3,8 +3,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   FileSpreadsheet,
   FileText,
   Loader2,
@@ -13,21 +11,13 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import type { BankTransaction, ChartAccount } from '@/types/firestore';
-import { getAccounts, getTransactions } from '@/lib/services/data-service';
+import { getAccounts, getLatestTransactionDate, getTransactions } from '@/lib/services/data-service';
+import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { buildDRE, periodRange, type DREAccountLine, type PeriodMode } from '@/lib/dre/build';
+import { buildDRE, type DREAccountLine } from '@/lib/dre/build';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import type { DREExportContext } from '@/lib/export/dre-rows';
-import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
-
-const MODES: readonly { value: PeriodMode; label: string }[] = [
-  { value: 'month', label: 'Mês' },
-  { value: 'quarter', label: 'Trimestre' },
-  { value: 'year', label: 'Ano' },
-];
-
-const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const;
-const QUARTERS = ['T1', 'T2', 'T3', 'T4'] as const;
+import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 
 /** Receita bruta do período, base da análise vertical (% s/ receita bruta). */
 const GrossRevenueContext = createContext(0);
@@ -147,45 +137,59 @@ export default function DREPage() {
 
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [loadedFor, setLoadedFor] = useState<string | null>(null);
-
-  const [mode, setMode] = useState<PeriodMode>('year');
-  const [year, setYear] = useState<number>(() => new Date().getFullYear());
-  const [month, setMonth] = useState<number>(() => new Date().getMonth() + 1);
-  const [quarter, setQuarter] = useState<number>(() => Math.floor(new Date().getMonth() / 3) + 1);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  const period = usePeriod('year');
+  const { range, label: periodLabel, jumpTo } = period;
+
+  // 1) Ao trocar de cliente: plano de contas + posiciona o período no lançamento mais recente.
+  const [positionedFor, setPositionedFor] = useState<string | null>(null);
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    Promise.all([getTransactions(clientId), getAccounts(clientId)])
-      .then(([txs, accs]) => {
+    Promise.all([getAccounts(clientId), getLatestTransactionDate(clientId)])
+      .then(([accs, latest]) => {
         if (!active) return;
-        setTransactions(txs);
         setAccounts(accs);
-        setLoadedFor(clientId);
-        // Posiciona o período no lançamento mais recente, se houver.
-        const latest = txs.reduce<string>((max, t) => (t.date > max ? t.date : max), '');
-        if (latest) {
-          const [y, m] = latest.split('-').map(Number);
-          setYear(y);
-          setMonth(m);
-          setQuarter(Math.floor((m - 1) / 3) + 1);
-        }
+        if (latest) jumpTo(latest);
+        setPositionedFor(clientId);
       })
-      .catch((e) => console.error('Erro ao carregar dados da DRE:', e));
+      .catch((e: unknown) => {
+        console.error('Erro ao carregar dados da DRE:', e);
+        if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
+      });
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, jumpTo]);
 
-  const range = useMemo(
-    () => periodRange(mode, year, mode === 'month' ? month : quarter),
-    [mode, year, month, quarter]
-  );
+  // 2) Busca no banco apenas os lançamentos do período selecionado.
+  const ready = Boolean(clientId) && positionedFor === clientId;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const periodKey = `${clientId}|${range.start}|${range.end}`;
+  useEffect(() => {
+    if (!clientId || !ready) return;
+    let active = true;
+    getTransactions(clientId, range)
+      .then((txs) => {
+        if (!active) return;
+        setTransactions(txs);
+        setLoadError(null);
+        setLoadedKey(`${clientId}|${range.start}|${range.end}`);
+      })
+      .catch((e: unknown) => {
+        console.error('Erro ao carregar lançamentos da DRE:', e);
+        if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
+      });
+    return () => {
+      active = false;
+    };
+  }, [clientId, ready, range]);
+
   const dre = useMemo(() => buildDRE(transactions, accounts, range), [transactions, accounts, range]);
 
-  const isLoading = Boolean(clientId) && loadedFor !== clientId;
+  const isLoading = Boolean(clientId) && loadedKey !== periodKey && !loadError;
   const profit = dre.netResult >= 0;
   const hasData = dre.reconciledCount > 0;
   const tone: 'neutral' | 'profit' | 'loss' = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
@@ -244,8 +248,6 @@ export default function DREPage() {
     }
   };
 
-  const periodLabel =
-    mode === 'year' ? String(year) : mode === 'quarter' ? `${quarter}º trimestre de ${year}` : `${MONTHS[month - 1]}/${year}`;
 
   return (
     <main className={`${PAGE} print:p-0 print:space-y-6`}>
@@ -299,48 +301,12 @@ export default function DREPage() {
       />
 
       {/* Seletor de período */}
-      <section className="flex flex-wrap items-center gap-3 print:hidden">
-        <SegmentedControl ariaLabel="Tipo de período" value={mode} onChange={setMode} options={MODES} />
-
-        <div className="inline-flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setYear((y) => y - 1)}
-            aria-label="Ano anterior"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="w-12 text-center font-mono tabular-nums text-[14px] font-medium text-stone-900 dark:text-stone-100">{year}</span>
-          <button
-            type="button"
-            onClick={() => setYear((y) => y + 1)}
-            aria-label="Próximo ano"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-
-        {mode === 'quarter' && (
-          <SegmentedControl
-            ariaLabel="Trimestre"
-            value={String(quarter)}
-            onChange={(v) => setQuarter(Number(v))}
-            options={QUARTERS.map((q, i) => ({ value: String(i + 1), label: q }))}
-          />
-        )}
-        {mode === 'month' && (
-          <div className="w-full sm:w-auto overflow-x-auto">
-            <SegmentedControl
-              ariaLabel="Mês"
-              value={String(month)}
-              onChange={(v) => setMonth(Number(v))}
-              options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
-            />
-          </div>
-        )}
-      </section>
+      <PeriodPicker period={period} />
+      {loadError && (
+        <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden">
+          Não foi possível carregar a DRE: {loadError}
+        </p>
+      )}
 
       {!isLoading && !hasData && (
         <p className="-mt-4 text-[13px] text-stone-500 print:hidden">

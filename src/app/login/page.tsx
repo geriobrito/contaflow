@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
 
@@ -41,8 +40,7 @@ const FLOAT_LABEL =
   'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-[#0071E3]';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { signIn, isMockAuth } = useAuth();
+  const { signIn, isMockAuth, authError } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,8 +57,8 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMessage(null);
     try {
+      // O redirecionamento acontece no ProtectedRoute assim que o escritório do usuário é resolvido.
       await signIn(email, password);
-      router.replace('/');
     } catch (err: unknown) {
       console.error('Erro de login:', err);
       setErrorMessage(friendlyError(errorCode(err)));
@@ -94,10 +92,10 @@ export default function LoginPage() {
           </div>
 
           <div className="rounded-[28px] p-6 sm:p-7 backdrop-blur-2xl bg-white/60 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04),0_24px_48px_-12px_rgba(0,0,0,0.08)]">
-            {errorMessage && (
+            {(errorMessage ?? authError) && (
               <div role="alert" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200/60 text-[13px] text-rose-700 dark:text-rose-300 animate-fade-in">
                 <AlertCircle className="w-4 h-4 mt-px shrink-0" />
-                <span>{errorMessage}</span>
+                <span>{errorMessage ?? authError}</span>
               </div>
             )}
 

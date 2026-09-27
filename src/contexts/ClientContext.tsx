@@ -11,6 +11,8 @@ export interface ClientContextType {
   clients: ClientCompany[];
   currentClient: ClientCompany | null;
   isLoading: boolean;
+  /** Falha ao carregar a carteira (ex.: regras do Firestore recusaram, rede). */
+  loadError: string | null;
   selectClient: (client: ClientCompany) => void;
   refreshClients: () => Promise<ClientCompany[]>;
   /** Exclui o cliente (em cascata). Se for o ativo, ativa o próximo disponível ou nenhum. */
@@ -28,13 +30,15 @@ function readStoredId(): string | null {
 }
 
 export function ClientProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, orgId } = useAuth();
   const [clients, setClients] = useState<ClientCompany[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refreshClients = useCallback(async (): Promise<ClientCompany[]> => {
     const list = await getClients();
+    setLoadError(null);
     setClients(list);
     setCurrentId((prev) => {
       const wanted = prev ?? readStoredId();
@@ -44,15 +48,29 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     return list;
   }, []);
 
+  // Recarrega ao entrar ou trocar de escritório; no logout, descarta os dados em memória.
   useEffect(() => {
-    if (!isAuthenticated) return;
+    let active = true;
     Promise.resolve()
-      .then(refreshClients)
-      .catch((e) => {
+      .then(() => {
+        if (!active) return;
+        if (!isAuthenticated || !orgId) {
+          setClients([]);
+          setCurrentId(null);
+          return;
+        }
+        setIsLoading(true);
+        return refreshClients();
+      })
+      .catch((e: unknown) => {
         console.error('Erro ao carregar clientes:', e);
-        setIsLoading(false);
-      });
-  }, [isAuthenticated, refreshClients]);
+        if (active) setLoadError(e instanceof Error ? e.message : 'Não foi possível carregar os clientes.');
+      })
+      .finally(() => active && setIsLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, orgId, refreshClients]);
 
   const selectClient = useCallback((client: ClientCompany) => {
     setClients((prev) => (prev.some((c) => c.id === client.id) ? prev : [client, ...prev]));
@@ -87,11 +105,12 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       clients,
       currentClient: clients.find((c) => c.id === currentId) ?? null,
       isLoading,
+      loadError,
       selectClient,
       refreshClients,
       removeClient,
     }),
-    [clients, currentId, isLoading, selectClient, refreshClients, removeClient]
+    [clients, currentId, isLoading, loadError, selectClient, refreshClients, removeClient]
   );
 
   return <ClientContext.Provider value={value}>{children}</ClientContext.Provider>;
