@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Sparkles } from 'lucide-react';
 
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 

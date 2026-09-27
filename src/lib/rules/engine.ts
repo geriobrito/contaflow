@@ -1,4 +1,4 @@
-import { ClassificationRule, BankTransaction, ChartAccount } from '@/types/firestore';
+import { ClassificationRule, ChartAccount } from '@/types/firestore';
 
 /**
  * Normaliza um texto para comparação de regras (letras maiúsculas, sem acentos, sem pontuações supérfluas)

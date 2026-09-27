@@ -1,398 +1,475 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronRight, Plus, Trash2, Wand2 } from 'lucide-react';
+import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
+import { applyDefaultChartTemplate, deleteAccount, getAccounts, saveAccount } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import {
-  ChartAccount,
-  AccountType,
-  AccountNature,
-  DREGroup,
-} from '@/types/firestore';
-import {
-  getAccounts,
-  saveAccount,
-  deleteAccount,
-} from '@/lib/services/data-service';
-import {
-  Layers,
-  Plus,
-  FolderTree,
-  FileText,
-  Search,
-  Check,
-  X,
-  Trash2,
-} from 'lucide-react';
+  BUTTON,
+  ConfirmButton,
+  EmptyState,
+  Field,
+  INPUT,
+  PageHeader,
+  SearchField,
+  Sheet,
+  SURFACE,
+} from '@/components/ui/primitives';
 
-export default function PlanoDeContasPage() {
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const { currentClient } = useClient();
-  const clientId = currentClient?.id;
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
+/* =========================================================================
+   Rótulos
+   ========================================================================= */
 
-  // Modal de criação de conta
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newCode, setNewCode] = useState('');
-  const [newName, setNewName] = useState('');
-  const [newType, setNewType] = useState<AccountType>('EXPENSE');
-  const [newNature, setNewNature] = useState<AccountNature>('ANALYTIC');
-  const [newDREGroup, setNewDREGroup] = useState<DREGroup | ''>('DESPESAS_ADMINISTRATIVAS');
-  const [selectedParentId, setSelectedParentId] = useState('');
+const TYPE_LABEL: Record<AccountType, string> = {
+  ASSET: 'Ativo',
+  ATIVO: 'Ativo',
+  LIABILITY: 'Passivo',
+  PASSIVO: 'Passivo',
+  COST: 'Custo',
+  CUSTO: 'Custo',
+  EXPENSE: 'Despesa',
+  DESPESA: 'Despesa',
+  REVENUE: 'Receita',
+  RECEITA: 'Receita',
+};
 
-  useEffect(() => {
-    if (!clientId) return;
-    getAccounts(clientId).then(setAccounts);
-  }, [clientId]);
+const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
+  { value: 'RECEITA_BRUTA', label: 'Receita bruta' },
+  { value: 'DEDUCOES_RECEITA', label: 'Deduções da receita' },
+  { value: 'CUSTOS', label: 'Custos' },
+  { value: 'DESPESAS_ADMINISTRATIVAS', label: 'Despesas administrativas' },
+  { value: 'DESPESAS_COMERCIAIS', label: 'Despesas comerciais' },
+  { value: 'DESPESAS_OPERACIONAIS', label: 'Outras despesas operacionais' },
+  { value: 'DESPESAS_FINANCEIRAS', label: 'Despesas financeiras' },
+  { value: 'RECEITAS_FINANCEIRAS', label: 'Receitas financeiras' },
+  { value: 'IMPOSTOS_LUCRO', label: 'IRPJ e CSLL' },
+];
 
-  const handleCreateAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCode || !newName) return;
+const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA', 'EXPENSE', 'DESPESA', 'COST', 'CUSTO']);
 
-    const newAcc: ChartAccount = {
-      id: `acc-${Date.now()}`,
-      clientId: currentClient?.id || 'global',
-      code: newCode.trim(),
-      name: newName.trim(),
-      type: newType,
-      nature: newNature,
-      parentId: selectedParentId || undefined,
-      level: newCode.split('.').length,
-      dreGroup: newDREGroup ? (newDREGroup as DREGroup) : undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+/* =========================================================================
+   Árvore (hierarquia inferida pelo código: 1 › 1.1 › 1.1.01 › 1.1.01.001)
+   ========================================================================= */
 
-    await saveAccount(newAcc);
-    const refreshed = await getAccounts(currentClient?.id);
-    setAccounts(refreshed);
+interface TreeNode {
+  account: ChartAccount;
+  depth: number;
+  children: TreeNode[];
+}
 
-    setIsModalOpen(false);
-    setNewCode('');
-    setNewName('');
+function buildTree(accounts: readonly ChartAccount[]): TreeNode[] {
+  const nodes = new Map<string, TreeNode>(accounts.map((a) => [a.code, { account: a, depth: 0, children: [] }]));
+  const roots: TreeNode[] = [];
+
+  const parentOf = (code: string): TreeNode | undefined => {
+    const parts = code.split('.');
+    for (let i = parts.length - 1; i > 0; i--) {
+      const candidate = nodes.get(parts.slice(0, i).join('.'));
+      if (candidate) return candidate;
+    }
+    return undefined;
   };
 
-  const handleDelete = async (id: string) => {
-    if (confirm('Tem certeza de que deseja excluir esta conta contábil?')) {
-      await deleteAccount(id);
-      const refreshed = await getAccounts(currentClient?.id);
-      setAccounts(refreshed);
+  for (const node of nodes.values()) {
+    const parent = parentOf(node.account.code);
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+
+  const sortAndDepth = (list: TreeNode[], depth: number) => {
+    list.sort((a, b) => a.account.code.localeCompare(b.account.code, undefined, { numeric: true }));
+    for (const n of list) {
+      n.depth = depth;
+      sortAndDepth(n.children, depth + 1);
     }
   };
+  sortAndDepth(roots, 0);
+  return roots;
+}
 
-  const filteredAccounts = accounts.filter((acc) => {
-    if (selectedTypeFilter !== 'ALL' && acc.type !== selectedTypeFilter) return false;
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      return acc.name.toLowerCase().includes(term) || acc.code.includes(term);
-    }
-    return true;
-  });
+/** Filtra a árvore mantendo os ancestrais de cada correspondência. */
+function filterTree(nodes: TreeNode[], term: string): TreeNode[] {
+  if (!term) return nodes;
+  const out: TreeNode[] = [];
+  for (const n of nodes) {
+    const children = filterTree(n.children, term);
+    const hit = `${n.account.code} ${n.account.name}`.toLowerCase().includes(term);
+    if (hit || children.length > 0) out.push({ ...n, children: hit && children.length === 0 ? n.children : children });
+  }
+  return out;
+}
 
-  const getTypeBadgeColor = (type: AccountType) => {
-    switch (type) {
-      case 'ASSET':
-        return 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border-blue-200';
-      case 'LIABILITY':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border-amber-200';
-      case 'COST':
-        return 'bg-orange-50 text-orange-700 dark:bg-orange-950/40 dark:text-orange-300 border-orange-200';
-      case 'EXPENSE':
-        return 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border-rose-200';
-      case 'REVENUE':
-        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200';
-      default:
-        return 'bg-zinc-50 text-zinc-700 border-zinc-200';
-    }
+/** Próximo código disponível sob um pai (ex.: 4.1.02 → 4.1.02.004). */
+function suggestCode(parent: ChartAccount | undefined, accounts: readonly ChartAccount[]): string {
+  if (!parent) return '';
+  const prefix = `${parent.code}.`;
+  const siblings = accounts
+    .map((a) => a.code)
+    .filter((c) => c.startsWith(prefix) && !c.slice(prefix.length).includes('.'))
+    .map((c) => c.slice(prefix.length));
+  const width = siblings[0]?.length ?? (parent.code.split('.').length >= 3 ? 3 : 2);
+  let next = siblings.reduce((max, s) => Math.max(max, Number(s) || 0), 0) + 1;
+  // Evita colidir com códigos já usados como prefixo (ex.: 1.1.02 quando existe 1.1.02.001).
+  while (isCodeTaken(`${prefix}${String(next).padStart(width, '0')}`, accounts)) next++;
+  return `${prefix}${String(next).padStart(width, '0')}`;
+}
+
+/** Código ocupado: já existe ou é prefixo hierárquico de outra conta. */
+function isCodeTaken(code: string, accounts: readonly ChartAccount[]): boolean {
+  return accounts.some((a) => a.code === code || a.code.startsWith(`${code}.`));
+}
+
+/* =========================================================================
+   Linha da árvore
+   ========================================================================= */
+
+interface TreeRowProps {
+  node: TreeNode;
+  expanded: (code: string) => boolean;
+  onToggle: (code: string) => void;
+  onDelete: (account: ChartAccount) => void;
+}
+
+function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
+  const { account, depth, children } = node;
+  const hasChildren = children.length > 0;
+  const open = expanded(account.code);
+  const synthetic = account.nature === 'SYNTHETIC';
+
+  return (
+    <>
+      <div
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-selected={false}
+        aria-expanded={hasChildren ? open : undefined}
+        className={`group flex items-center gap-2 pr-3 border-b border-black/[0.04] dark:border-white/[0.05] ${
+          depth === 0 ? 'py-3 bg-stone-900/[0.02] dark:bg-white/[0.02]' : 'py-2'
+        }`}
+        style={{ paddingLeft: 12 + depth * 22 }}
+      >
+        <button
+          type="button"
+          onClick={() => hasChildren && onToggle(account.code)}
+          aria-label={hasChildren ? (open ? `Recolher ${account.name}` : `Expandir ${account.name}`) : undefined}
+          tabIndex={hasChildren ? 0 : -1}
+          className={`w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-stone-400 ${
+            hasChildren ? 'hover:bg-black/[0.05] active:scale-[0.92] transition-all duration-150' : 'invisible'
+          }`}
+        >
+          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
+        </button>
+
+        <span className={`w-24 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
+          {account.code}
+        </span>
+        <span
+          className={`flex-1 min-w-0 truncate tracking-tight ${
+            depth === 0
+              ? 'text-[14px] font-semibold text-stone-900 dark:text-stone-50'
+              : synthetic
+                ? 'text-[13px] font-medium text-stone-800 dark:text-stone-200'
+                : 'text-[13px] text-stone-600 dark:text-stone-400'
+          }`}
+        >
+          {account.name}
+        </span>
+
+        {depth === 0 && <span className="hidden sm:inline text-[11px] text-stone-400">{TYPE_LABEL[account.type]}</span>}
+        {!synthetic && account.clientId !== 'global' && (
+          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-[#0071E3] border border-blue-200/60">
+            Cliente
+          </span>
+        )}
+        {!synthetic && !hasChildren && (
+          <span className="sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <ConfirmButton
+              ariaLabel={`Excluir ${account.name}`}
+              label={<Trash2 className="w-3.5 h-3.5" />}
+              confirmLabel="Excluir"
+              onConfirm={() => onDelete(account)}
+            />
+          </span>
+        )}
+      </div>
+      {hasChildren &&
+        open &&
+        children.map((c) => <TreeRow key={c.account.id} node={c} expanded={expanded} onToggle={onToggle} onDelete={onDelete} />)}
+    </>
+  );
+}
+
+/* =========================================================================
+   Sheet lateral "Nova conta"
+   ========================================================================= */
+
+interface NewAccountSheetProps {
+  accounts: ChartAccount[];
+  clientId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountSheetProps) {
+  const parents = useMemo(() => accounts.filter((a) => a.nature === 'SYNTHETIC'), [accounts]);
+    const initialParent = useMemo(() => {
+    const analyticUnder = (p: ChartAccount) =>
+      accounts.filter((a) => a.nature === 'ANALYTIC' && RESULT_TYPES.has(a.type) && a.code.startsWith(`${p.code}.`)).length;
+    // Grupo mais específico (mais segmentos) entre os que concentram mais contas analíticas de resultado.
+    return [...parents].sort(
+      (x, y) => analyticUnder(y) - analyticUnder(x) || y.code.split('.').length - x.code.split('.').length
+    )[0];
+  }, [parents, accounts]);
+
+  const [parentId, setParentId] = useState<string>(initialParent?.id ?? '');
+  const [code, setCode] = useState(() => suggestCode(initialParent, accounts));
+  const [name, setName] = useState('');
+  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(initialParent?.dreGroup ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const parent = parents.find((p) => p.id === parentId);
+  const trimmed = code.trim();
+  const codeError = !trimmed
+    ? null
+    : isCodeTaken(trimmed, accounts)
+      ? 'Código já utilizado.'
+      : parent && !trimmed.startsWith(`${parent.code}.`)
+        ? `Deve começar com ${parent.code}.`
+        : null;
+  const valid = Boolean(parent && name.trim() && trimmed && !codeError);
+
+  const handleParent = (id: string) => {
+    const p = parents.find((x) => x.id === id);
+    setParentId(id);
+    setCode(suggestCode(p, accounts));
+    setDreGroup(p?.dreGroup ?? '');
   };
 
-  const getTypeLabel = (type: AccountType) => {
-    switch (type) {
-      case 'ASSET': return '1. Ativo';
-      case 'LIABILITY': return '2. Passivo';
-      case 'COST': return '3. Custos';
-      case 'EXPENSE': return '4. Despesas';
-      case 'REVENUE': return '5. Receitas';
+  const submit = async () => {
+    if (!parent || !valid) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    try {
+      await saveAccount({
+        id: `acc-${Date.now()}`,
+        clientId,
+        code: trimmed,
+        name: name.trim(),
+        type: parent.type,
+        nature: 'ANALYTIC',
+        parentId: parent.id,
+        level: parent.level + 1,
+        dreGroup: dreGroup || undefined,
+        createdAt: now,
+        updatedAt: now,
+      });
+      onCreated();
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div className="flex flex-col">
+    <Sheet
+      side="right"
+      title="Nova conta analítica"
+      subtitle="Contas analíticas recebem lançamentos na conciliação."
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          disabled={!valid || saving}
+          onClick={() => void submit()}
+          className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
+        >
+          {saving ? 'Salvando…' : 'Criar conta'}
+        </button>
+      }
+    >
+      <div className="space-y-4 pb-2">
+        <Field label="Conta superior">
+          <select value={parentId} onChange={(e) => handleParent(e.target.value)} className={INPUT}>
+            {parents.map((p) => (
+              <option key={p.id} value={p.id}>
+                {'  '.repeat(p.code.split('.').length - 1)}
+                {p.code} · {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-              Plano de Contas
-            </h1>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-              Estrutura hierárquica contábil oficial (Ativo, Passivo, Custos, Despesas e Receitas)
-            </p>
-          </div>
+        <Field label="Código" error={codeError} hint={parent ? `Tipo herdado: ${TYPE_LABEL[parent.type]}` : undefined}>
+          <input value={code} onChange={(e) => setCode(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+        </Field>
 
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="ios-button inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nova Subconta Analítica</span>
+        <Field label="Nome">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ex.: Energia elétrica" className={INPUT} />
+        </Field>
+
+        {parent && RESULT_TYPES.has(parent.type) && (
+          <Field label="Grupo na DRE">
+            <select value={dreGroup} onChange={(e) => setDreGroup(e.target.value as DREGroup | '')} className={INPUT}>
+              <option value="">Não informado</option>
+              {DRE_GROUPS.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* =========================================================================
+   Página
+   ========================================================================= */
+
+export default function PlanoDeContasPage() {
+  const { currentClient } = useClient();
+  const clientId = currentClient?.id;
+
+  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async (id: string) => {
+    const list = await getAccounts(id);
+    setAccounts(list);
+    setLoadedFor(id);
+  }, []);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let active = true;
+    getAccounts(clientId)
+      .then((list) => {
+        if (!active) return;
+        setAccounts(list);
+        setLoadedFor(clientId);
+      })
+      .catch((e) => console.error('Erro ao carregar plano de contas:', e));
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+
+  const tree = useMemo(() => buildTree(accounts), [accounts]);
+  const term = search.trim().toLowerCase();
+  const visible = useMemo(() => filterTree(tree, term), [tree, term]);
+
+  const analyticCount = accounts.filter((a) => a.nature === 'ANALYTIC').length;
+  const isLoading = Boolean(clientId) && loadedFor !== clientId;
+  const isEmpty = !isLoading && accounts.length === 0;
+
+  const expanded = useCallback((code: string) => Boolean(term) || !collapsed[code], [collapsed, term]);
+  const toggle = (code: string) => setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
+
+  const handleDelete = async (account: ChartAccount) => {
+    await deleteAccount(account.id);
+    if (clientId) await load(clientId);
+  };
+
+  const handleApplyTemplate = async () => {
+    if (!clientId) return;
+    setApplying(true);
+    try {
+      const created = await applyDefaultChartTemplate(clientId);
+      await load(clientId);
+      setNotice(created > 0 ? `${created} contas do modelo padrão adicionadas.` : 'O plano já contém todas as contas do modelo padrão.');
+    } catch {
+      setNotice('Não foi possível aplicar o modelo padrão.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <main className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+      <PageHeader
+        eyebrow={currentClient?.name}
+        title="Plano de contas"
+        description={
+          <>
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{accounts.length}</span> contas ·{' '}
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{analyticCount}</span> analíticas disponíveis
+            para classificação.
+          </>
+        }
+        actions={
+          <>
+            {isEmpty && (
+              <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.secondary}>
+                <Wand2 className="w-4 h-4" strokeWidth={1.75} />
+                {applying ? 'Aplicando…' : 'Aplicar modelo padrão CFC/SPED'}
+              </button>
+            )}
+            <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId} className={BUTTON.primary}>
+              <Plus className="w-4 h-4" strokeWidth={2} />
+              Nova conta
+            </button>
+          </>
+        }
+      />
+
+      {notice && (
+        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
+          {notice}
+          <button type="button" onClick={() => setNotice(null)} className="text-[#0071E3] font-medium">
+            OK
           </button>
         </div>
-
-        {/* Filter Bar */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por código ou nome da conta..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
-            />
-          </div>
-
-          <div className="flex items-center gap-1.5 p-1 bg-black/[0.03] dark:bg-white/[0.04] rounded-2xl border border-black/[0.04] dark:border-white/[0.06] overflow-x-auto">
-            <button
-              onClick={() => setSelectedTypeFilter('ALL')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                selectedTypeFilter === 'ALL'
-                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-              }`}
-            >
-              Todas ({accounts.length})
-            </button>
-            {(['ASSET', 'LIABILITY', 'COST', 'EXPENSE', 'REVENUE'] as AccountType[]).map(
-              (type) => (
-                <button
-                  key={type}
-                  onClick={() => setSelectedTypeFilter(type)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
-                    selectedTypeFilter === type
-                      ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white shadow-sm'
-                      : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900'
-                  }`}
-                >
-                  {getTypeLabel(type)}
-                </button>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* Hierarchical Tree Table */}
-        <div className="ios-card rounded-3xl overflow-hidden border border-black/[0.06] dark:border-white/[0.08] shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-zinc-50/70 dark:bg-zinc-800/40 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  <th className="py-3 px-4">Código</th>
-                  <th className="py-3 px-4">Descrição da Conta</th>
-                  <th className="py-3 px-4">Grupo / Tipo</th>
-                  <th className="py-3 px-4">Natureza</th>
-                  <th className="py-3 px-4">Mapeamento DRE</th>
-                  <th className="py-3 px-4 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04] text-xs">
-                {filteredAccounts.map((acc) => {
-                  const isSynthetic = acc.nature === 'SYNTHETIC';
-                  const indentLevel = Math.max(0, acc.level - 1) * 20;
-
-                  return (
-                    <tr
-                      key={acc.id}
-                      className={`hover:bg-black/[0.015] dark:hover:bg-white/[0.02] transition-colors ${
-                        isSynthetic ? 'bg-zinc-50/40 dark:bg-zinc-900/30 font-semibold' : ''
-                      }`}
-                    >
-                      <td className="py-3 px-4 font-mono text-zinc-800 dark:text-zinc-200">
-                        {acc.code}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div
-                          className="flex items-center gap-2"
-                          style={{ paddingLeft: `${indentLevel}px` }}
-                        >
-                          {isSynthetic ? (
-                            <FolderTree className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                          ) : (
-                            <FileText className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                          )}
-                          <span
-                            className={
-                              isSynthetic
-                                ? 'text-zinc-900 dark:text-white font-medium'
-                                : 'text-zinc-700 dark:text-zinc-300'
-                            }
-                          >
-                            {acc.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-medium border ${getTypeBadgeColor(
-                            acc.type
-                          )}`}
-                        >
-                          {getTypeLabel(acc.type)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span
-                          className={`text-[11px] font-medium ${
-                            isSynthetic
-                              ? 'text-zinc-500 uppercase tracking-wider text-[10px]'
-                              : 'text-blue-600 dark:text-blue-400'
-                          }`}
-                        >
-                          {isSynthetic ? 'Sintética (Grupo)' : 'Analítica (Lançamentos)'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400 font-mono text-[11px]">
-                        {acc.dreGroup || '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        {!isSynthetic && (
-                          <button
-                            onClick={() => handleDelete(acc.id)}
-                            className="p-1.5 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                            title="Excluir conta analítica"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
-
-      {/* Modal Nova Conta */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl ios-card p-6 shadow-2xl bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.1]">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                Cadastrar Subconta Contábil
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-black/[0.04]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateAccount} className="mt-4 space-y-3.5 text-xs">
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Código Contábil (ex: 4.1.02.004)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newCode}
-                  onChange={(e) => setNewCode(e.target.value)}
-                  placeholder="Ex: 4.1.02.004"
-                  className="w-full font-mono px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Nome da Conta
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Ex: Assinaturas de IA e Ferramentas Cloud"
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Tipo de Conta
-                  </label>
-                  <select
-                    value={newType}
-                    onChange={(e) => setNewType(e.target.value as AccountType)}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  >
-                    <option value="EXPENSE">4. Despesas</option>
-                    <option value="REVENUE">5. Receitas</option>
-                    <option value="COST">3. Custos</option>
-                    <option value="ASSET">1. Ativo</option>
-                    <option value="LIABILITY">2. Passivo</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Natureza
-                  </label>
-                  <select
-                    value={newNature}
-                    onChange={(e) => setNewNature(e.target.value as AccountNature)}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  >
-                    <option value="ANALYTIC">Analítica (Recebe lançamentos)</option>
-                    <option value="SYNTHETIC">Sintética (Grupo pai)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Grupo no Demonstrativo DRE
-                </label>
-                <select
-                  value={newDREGroup}
-                  onChange={(e) => setNewDREGroup(e.target.value as DREGroup)}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                >
-                  <option value="">Não impacta DRE (Patrimonial)</option>
-                  <option value="RECEITA_BRUTA">Receita Bruta</option>
-                  <option value="DEDUCOES_RECEITA">Deduções da Receita / Impostos</option>
-                  <option value="CUSTOS">Custos dos Serviços / CMV</option>
-                  <option value="DESPESAS_ADMINISTRATIVAS">Despesas Administrativas</option>
-                  <option value="DESPESAS_COMERCIAIS">Despesas Comerciais / Marketing</option>
-                  <option value="DESPESAS_FINANCEIRAS">Despesas Financeiras / Tarifas</option>
-                  <option value="RECEITAS_FINANCEIRAS">Receitas Financeiras / Rendimentos</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="ios-button px-4 py-2 rounded-xl text-zinc-600 dark:text-zinc-400"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="ios-button px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Cadastrar Conta</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
-    </div>
+
+      <SearchField value={search} onChange={setSearch} placeholder="Buscar por código ou nome da conta" />
+
+      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+        {isLoading ? (
+          <div className="p-5 space-y-3">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" style={{ marginLeft: (i % 4) * 22 }} />
+            ))}
+          </div>
+        ) : isEmpty ? (
+          <EmptyState
+            title="Plano de contas vazio"
+            description="Comece pelo modelo padrão com as contas mais usadas em escritórios contábeis."
+            action={
+              <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.accent}>
+                <Wand2 className="w-4 h-4" />
+                {applying ? 'Aplicando…' : 'Aplicar modelo padrão CFC/SPED'}
+              </button>
+            }
+          />
+        ) : visible.length === 0 ? (
+          <EmptyState title="Nenhuma conta encontrada" description={`Nada corresponde a “${search}”.`} />
+        ) : (
+          <div role="tree" aria-label="Plano de contas" className="[&>*:last-child]:border-b-0">
+            {visible.map((n) => (
+              <TreeRow key={n.account.id} node={n} expanded={expanded} onToggle={toggle} onDelete={(a) => void handleDelete(a)} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {sheetOpen && clientId && (
+        <NewAccountSheet
+          accounts={accounts}
+          clientId={clientId}
+          onClose={() => setSheetOpen(false)}
+          onCreated={() => {
+            setSheetOpen(false);
+            void load(clientId);
+          }}
+        />
+      )}
+    </main>
   );
 }

@@ -1,290 +1,360 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useClient } from '@/contexts/ClientContext';
-import { ClientCompany, TaxRegime } from '@/types/firestore';
+import React, { useMemo, useState } from 'react';
+import { Check, CheckCircle2, Pencil, Plus, XCircle } from 'lucide-react';
+import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
-import { formatCNPJ } from '@/lib/utils/formatters';
-import { Building2, Plus, Search, Building, Check, X, Mail, Phone } from 'lucide-react';
+import { useClient } from '@/contexts/ClientContext';
+import { cleanDigits, formatCNPJ, isValidCNPJ, maskCNPJ } from '@/lib/utils/formatters';
+import { BUTTON, EmptyState, Field, INPUT, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
-export default function ClientesPage() {
-  const { clients, currentClient, selectClient, refreshClients } = useClient();
-  const [searchTerm, setSearchTerm] = useState('');
+const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
+  { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
+  { value: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido', short: 'Presumido' },
+  { value: 'LUCRO_REAL', label: 'Lucro Real', short: 'Real' },
+  { value: 'MEI', label: 'MEI', short: 'MEI' },
+];
 
-  // Modal
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [tradeName, setTradeName] = useState('');
-  const [cnpj, setCnpj] = useState('');
-  const [taxRegime, setTaxRegime] = useState<TaxRegime>('SIMPLES_NACIONAL');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+const regimeLabel = (r: TaxRegime) => REGIMES.find((x) => x.value === r)?.label ?? r;
 
-  const handleCreateClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !cnpj) return;
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter((w) => w.length > 2)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
 
-    const newClient: ClientCompany = {
-      id: `client-${Date.now()}`,
+/* =========================================================================
+   Cartão de cliente (Apple Card)
+   ========================================================================= */
+
+interface ClientCardProps {
+  client: ClientCompany;
+  active: boolean;
+  onActivate: () => void;
+  onEdit: () => void;
+}
+
+function ClientCard({ client, active, onActivate, onEdit }: ClientCardProps) {
+  const regime = client.regime ?? client.taxRegime;
+  return (
+    <article
+      className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
+        active
+          ? 'bg-white dark:bg-stone-900 border-[#0071E3]/30 shadow-[0_0_0_4px_rgba(0,113,227,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
+          : 'bg-white/70 dark:bg-stone-900/60 border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center text-[13px] font-semibold tracking-tight ${
+            active ? 'bg-[#0071E3] text-white' : 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
+          }`}
+        >
+          {initials(client.tradeName || client.name) || '—'}
+        </span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50 truncate">
+            {client.tradeName || client.name}
+          </h3>
+          <p className="text-[12px] text-stone-500 truncate">{client.name}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Editar ${client.name}`}
+          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <dl className="mt-5 grid grid-cols-2 gap-3 text-[12px]">
+        <div className="min-w-0">
+          <dt className="text-stone-400">CNPJ</dt>
+          <dd className="mt-0.5 font-mono tabular-nums text-stone-800 dark:text-stone-200 truncate">{formatCNPJ(client.cnpj)}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-stone-400">Regime</dt>
+          <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{regimeLabel(regime)}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-5 pt-4 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between gap-3">
+        {active ? (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 text-emerald-700 border-emerald-200/60">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Ativo
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-stone-50 dark:bg-stone-800 text-stone-500 border-stone-200/60 dark:border-stone-700">
+            Disponível
+          </span>
+        )}
+        {!active && (
+          <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
+            Definir como ativo
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+/* =========================================================================
+   Sheet de cadastro / edição
+   ========================================================================= */
+
+interface ClientSheetProps {
+  client: ClientCompany | null;
+  onClose: () => void;
+  onSaved: (client: ClientCompany) => void;
+}
+
+function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
+  const [name, setName] = useState(client?.name ?? '');
+  const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
+  const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
+  const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
+  const [email, setEmail] = useState(client?.email ?? '');
+  const [phone, setPhone] = useState(client?.phone ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const digits = cleanDigits(cnpj);
+  const complete = digits.length === 14;
+  const cnpjValid = complete && isValidCNPJ(digits);
+  // Registros legados com CNPJ inválido podem ser salvos sem alterar o documento.
+  const cnpjUnchanged = Boolean(client) && digits === cleanDigits(client?.cnpj ?? '');
+  const cnpjError = complete && !cnpjValid ? 'CNPJ inválido: dígitos verificadores não conferem.' : null;
+  const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
+  const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError;
+
+  const submit = async () => {
+    if (!valid) return;
+    setSaving(true);
+    const now = new Date().toISOString();
+    const saved: ClientCompany = {
+      id: client?.id ?? `client-${Date.now()}`,
       name: name.trim(),
       tradeName: tradeName.trim() || undefined,
-      cnpj: cnpj.trim(),
-      regime: taxRegime,
-      taxRegime,
+      cnpj: formatCNPJ(digits),
+      regime,
+      taxRegime: regime,
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: client?.createdAt ?? now,
+      updatedAt: now,
     };
-
-    await saveClient(newClient);
-    await refreshClients();
-    selectClient(newClient);
-
-    setIsModalOpen(false);
-    setName('');
-    setTradeName('');
-    setCnpj('');
-    setEmail('');
-    setPhone('');
+    try {
+      await saveClient(saved);
+      onSaved(saved);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const filteredClients = clients.filter((c) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(term) ||
-      (c.tradeName && c.tradeName.toLowerCase().includes(term)) ||
-      c.cnpj.includes(term)
+  return (
+    <Sheet
+      title={client ? 'Editar cliente' : 'Novo cliente'}
+      subtitle={client ? client.name : 'Cadastre a empresa para importar extratos e gerar a DRE.'}
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          disabled={!valid || saving}
+          onClick={() => void submit()}
+          className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
+        >
+          {saving ? 'Salvando…' : client ? 'Salvar alterações' : 'Cadastrar cliente'}
+        </button>
+      }
+    >
+      <form
+        className="space-y-4 pb-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <Field label="Razão social">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
+        </Field>
+        <Field label="Nome fantasia" hint="Opcional">
+          <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className={INPUT} />
+        </Field>
+
+        <Field label="CNPJ" error={cnpjError}>
+          <div className="relative">
+            <input
+              inputMode="numeric"
+              value={cnpj}
+              onChange={(e) => setCnpj(maskCNPJ(e.target.value))}
+              placeholder="00.000.000/0000-00"
+              aria-invalid={Boolean(cnpjError)}
+              className={`${INPUT} pr-10 font-mono tabular-nums ${
+                cnpjError ? 'border-rose-300 focus:border-rose-400 focus:shadow-[0_0_0_4px_rgba(225,29,72,0.10)]' : ''
+              } ${cnpjValid ? 'border-emerald-300' : ''}`}
+            />
+            {complete && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 animate-pop-in">
+                {cnpjValid ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-rose-500" />}
+              </span>
+            )}
+          </div>
+        </Field>
+
+        <div className="space-y-1.5">
+          <span className="block text-[12px] font-medium text-stone-500 px-0.5">Regime tributário</span>
+          <div className="overflow-x-auto">
+            <SegmentedControl
+              ariaLabel="Regime tributário"
+              value={regime}
+              onChange={setRegime}
+              options={REGIMES.map((r) => ({ value: r.value, label: r.short }))}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="E-mail" error={emailError}>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
+          </Field>
+          <Field label="Telefone">
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={INPUT} />
+          </Field>
+        </div>
+        <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+      </form>
+    </Sheet>
+  );
+}
+
+/* =========================================================================
+   Página
+   ========================================================================= */
+
+export default function ClientesPage() {
+  const { clients, currentClient, selectClient, refreshClients, isLoading } = useClient();
+  const [search, setSearch] = useState('');
+  const [editing, setEditing] = useState<ClientCompany | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const visible = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    const digits = cleanDigits(term);
+    return clients.filter(
+      (c) =>
+        !term ||
+        c.name.toLowerCase().includes(term) ||
+        (c.tradeName?.toLowerCase().includes(term) ?? false) ||
+        (digits.length > 0 && cleanDigits(c.cnpj).includes(digits))
     );
-  });
+  }, [clients, search]);
+
+  const openNew = () => {
+    setEditing(null);
+    setSheetOpen(true);
+  };
+
+  const flash = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast((t) => (t === message ? null : t)), 2800);
+  };
+
+  const handleSaved = async (client: ClientCompany) => {
+    const isNew = !editing;
+    setSheetOpen(false);
+    setEditing(null);
+    await refreshClients();
+    if (isNew) selectClient(client);
+    flash(isNew ? 'Cliente cadastrado e definido como ativo' : 'Alterações salvas');
+  };
 
   return (
-    <div className="flex flex-col">
-
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-sm">
-              <Building2 className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                Gestor de Empresas & Clientes
-              </h1>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Cadastro de pessoas jurídicas para isolamento contábil e conciliação por CNPJ
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="ios-button inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Cadastrar Empresa</span>
+    <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+      <PageHeader
+        title="Clientes"
+        description={
+          <>
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{clients.length}</span> empresa(s) na carteira. O
+            cliente ativo define os dados exibidos em todo o sistema.
+          </>
+        }
+        actions={
+          <button type="button" onClick={openNew} className={BUTTON.primary}>
+            <Plus className="w-4 h-4" strokeWidth={2} />
+            Novo cliente
           </button>
-        </div>
+        }
+      />
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Buscar por razão social, nome fantasia ou CNPJ..."
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 shadow-sm"
+      <SearchField value={search} onChange={setSearch} placeholder="Buscar por razão social, nome fantasia ou CNPJ" />
+
+      {isLoading ? (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-52 rounded-[22px] bg-black/[0.04] animate-pulse" />
+          ))}
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-[22px] border border-dashed border-black/[0.10]">
+          <EmptyState
+            title={clients.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum cliente encontrado'}
+            description={clients.length === 0 ? 'Cadastre a primeira empresa para começar.' : `Nada corresponde a “${search}”.`}
+            action={
+              clients.length === 0 ? (
+                <button type="button" onClick={openNew} className={BUTTON.accent}>
+                  <Plus className="w-4 h-4" />
+                  Novo cliente
+                </button>
+              ) : undefined
+            }
           />
         </div>
-
-        {/* Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredClients.map((client) => {
-            const isSelected = currentClient?.id === client.id;
-
-            return (
-              <div
-                key={client.id}
-                onClick={() => selectClient(client)}
-                className={`ios-card p-5 rounded-3xl cursor-pointer transition-all border ${
-                  isSelected
-                    ? 'border-blue-500 ring-2 ring-blue-500/20 shadow-md bg-blue-50/20 dark:bg-blue-950/20'
-                    : 'border-black/[0.06] dark:border-white/[0.08] hover:border-zinc-300'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 flex items-center justify-center">
-                      <Building className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                        {client.tradeName || client.name}
-                      </h3>
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {formatCNPJ(client.cnpj)}
-                      </p>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                      Ativa
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-black/[0.04] dark:border-white/[0.04] space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-                  <div className="flex items-center justify-between">
-                    <span>Regime Tributário:</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {client.taxRegime}
-                    </span>
-                  </div>
-                  {client.email && (
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Mail className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                      <span className="truncate">{client.email}</span>
-                    </div>
-                  )}
-                  {client.phone && (
-                    <div className="flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                      <span>{client.phone}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </main>
-
-      {/* Modal Cadastro Empresa */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl ios-card p-6 shadow-2xl bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.1]">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                Cadastrar Empresa / Cliente
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-black/[0.04]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateClient} className="mt-4 space-y-3.5 text-xs">
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Razão Social
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: Beta Consultoria Contábil Ltda"
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Nome Fantasia
-                </label>
-                <input
-                  type="text"
-                  value={tradeName}
-                  onChange={(e) => setTradeName(e.target.value)}
-                  placeholder="Ex: Beta Consultoria"
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    CNPJ
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={cnpj}
-                    onChange={(e) => setCnpj(e.target.value)}
-                    placeholder="00.000.000/0000-00"
-                    className="w-full font-mono px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Regime Tributário
-                  </label>
-                  <select
-                    value={taxRegime}
-                    onChange={(e) => setTaxRegime(e.target.value as TaxRegime)}
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  >
-                    <option value="SIMPLES_NACIONAL">Simples Nacional</option>
-                    <option value="LUCRO_PRESUMIDO">Lucro Presumido</option>
-                    <option value="LUCRO_REAL">Lucro Real</option>
-                    <option value="MEI">MEI</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    E-mail
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="contato@empresa.com"
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                    Telefone
-                  </label>
-                  <input
-                    type="text"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="(11) 99999-9999"
-                    className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="ios-button px-4 py-2 rounded-xl text-zinc-600 dark:text-zinc-400"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="ios-button px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Salvar Empresa</span>
-                </button>
-              </div>
-            </form>
-          </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visible.map((c) => (
+            <ClientCard
+              key={c.id}
+              client={c}
+              active={c.id === currentClient?.id}
+              onActivate={() => {
+                selectClient(c);
+                flash(`${c.tradeName || c.name} definido como ativo`);
+              }}
+              onEdit={() => {
+                setEditing(c);
+                setSheetOpen(true);
+              }}
+            />
+          ))}
         </div>
       )}
-    </div>
+
+      {sheetOpen && (
+        <ClientSheet
+          key={editing?.id ?? 'new'}
+          client={editing}
+          onClose={() => {
+            setSheetOpen(false);
+            setEditing(null);
+          }}
+          onSaved={(c) => void handleSaved(c)}
+        />
+      )}
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-[13px] tracking-tight shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in"
+        >
+          <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+          {toast}
+        </div>
+      )}
+    </main>
   );
 }

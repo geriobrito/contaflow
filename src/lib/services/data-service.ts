@@ -7,7 +7,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   writeBatch,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
@@ -17,8 +16,6 @@ import {
   BankTransaction,
   ClassificationRule,
   ImportBatch,
-  DREResult,
-  DRELineItem,
 } from '@/types/firestore';
 import {
   INITIAL_CLIENT,
@@ -54,6 +51,10 @@ function setLocalData<T>(key: string, data: T): void {
   }
 }
 
+/** Firestore rejeita campos `undefined`. */
+const withoutUndefined = <T extends object>(obj: T): Partial<T> =>
+  Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>;
+
 /* =========================================================================
    CLIENTES / EMPRESAS
    ========================================================================= */
@@ -75,7 +76,7 @@ export async function getClients(): Promise<ClientCompany[]> {
 export async function saveClient(client: ClientCompany): Promise<void> {
   if (isFirebaseConfigured() && db) {
     try {
-      await setDoc(doc(db, 'clients', client.id), client, { merge: true });
+      await setDoc(doc(db, 'clients', client.id), withoutUndefined(client), { merge: true });
     } catch (e) {
       console.error('Erro ao salvar cliente no Firestore:', e);
     }
@@ -91,26 +92,79 @@ export async function saveClient(client: ClientCompany): Promise<void> {
    PLANO DE CONTAS
    ========================================================================= */
 
+const byCode = (a: ChartAccount, b: ChartAccount): number =>
+  a.code.localeCompare(b.code, undefined, { numeric: true });
+
+/** Escopo visível para um cliente: contas próprias + plano 'global' compartilhado. */
+const inClientScope = (owner: string, clientId?: string): boolean =>
+  !clientId || owner === clientId || owner === 'global';
+
+/** Converte Timestamp do Firestore (ou valores ausentes) em ISO string. */
+function toISO(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && 'toDate' in value) {
+    const toDate = (value as { toDate: () => Date }).toDate;
+    if (typeof toDate === 'function') return toDate.call(value).toISOString();
+  }
+  return '';
+}
+
 export async function getAccounts(clientId?: string): Promise<ChartAccount[]> {
   if (isFirebaseConfigured() && db) {
     try {
-      const snap = await getDocs(collection(db, 'chart_of_accounts'));
-      if (!snap.empty) {
-        const list = snap.docs.map((d) => d.data() as ChartAccount);
-        return list.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-      }
+      const ref = collection(db, 'chart_of_accounts');
+      const q = clientId ? query(ref, where('clientId', 'in', [clientId, 'global'])) : ref;
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ ...(d.data() as ChartAccount), id: d.id })).sort(byCode);
     } catch (e) {
       console.warn('Erro ao carregar contas do Firestore, usando fallback:', e);
     }
   }
   const local = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, INITIAL_CHART_OF_ACCOUNTS);
-  return local.sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+  return local.filter((a) => inClientScope(a.clientId, clientId)).sort(byCode);
+}
+
+/**
+ * Aplica o modelo padrão (CFC/SPED simplificado) como contas próprias do cliente.
+ * Códigos já existentes no escopo do cliente são preservados. Retorna quantas contas foram criadas.
+ */
+export async function applyDefaultChartTemplate(clientId: string): Promise<number> {
+  const existingCodes = new Set((await getAccounts(clientId)).map((a) => a.code));
+  const now = new Date().toISOString();
+  const remap = (id: string) => `${clientId}_${id}`;
+  const toCreate: ChartAccount[] = INITIAL_CHART_OF_ACCOUNTS.filter(
+    (a) => !existingCodes.has(a.code)
+  ).map((a) => ({
+    ...a,
+    id: remap(a.id),
+    clientId,
+    parentId: a.parentId ? remap(a.parentId) : undefined,
+    createdAt: now,
+    updatedAt: now,
+  }));
+  if (toCreate.length === 0) return 0;
+
+  if (isFirebaseConfigured() && db) {
+    try {
+      const batch = writeBatch(db);
+      for (const acc of toCreate) {
+        batch.set(doc(db, 'chart_of_accounts', acc.id), withoutUndefined(acc));
+      }
+      await batch.commit();
+    } catch (e) {
+      console.error('Erro ao aplicar modelo padrão no Firestore:', e);
+      throw e;
+    }
+  }
+  const all = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, INITIAL_CHART_OF_ACCOUNTS);
+  setLocalData(STORAGE_KEYS.ACCOUNTS, [...all, ...toCreate]);
+  return toCreate.length;
 }
 
 export async function saveAccount(account: ChartAccount): Promise<void> {
   if (isFirebaseConfigured() && db) {
     try {
-      await setDoc(doc(db, 'chart_of_accounts', account.id), account, { merge: true });
+      await setDoc(doc(db, 'chart_of_accounts', account.id), withoutUndefined(account), { merge: true });
     } catch (e) {
       console.error('Erro ao salvar conta no Firestore:', e);
     }
@@ -142,24 +196,49 @@ export async function deleteAccount(accountId: string): Promise<void> {
 export async function getRules(clientId?: string): Promise<ClassificationRule[]> {
   if (isFirebaseConfigured() && db) {
     try {
-      const snap = await getDocs(collection(db, 'classification_rules'));
+      const ref = collection(db, 'classification_rules');
+      const q = clientId ? query(ref, where('clientId', 'in', [clientId, 'global'])) : ref;
+      const snap = await getDocs(q);
       if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as ClassificationRule);
+        return snap.docs.map((d) => {
+          const data = d.data();
+          return {
+            ...(data as ClassificationRule),
+            id: d.id,
+            createdAt: toISO(data.createdAt),
+            updatedAt: toISO(data.updatedAt),
+          };
+        });
       }
     } catch (e) {
       console.warn('Erro ao buscar regras no Firestore:', e);
     }
   }
-  return getLocalData<ClassificationRule[]>(
+  return getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, INITIAL_CLASSIFICATION_RULES).filter(
+    (r) => inClientScope(r.clientId, clientId)
+  );
+}
+
+export async function deleteRule(ruleId: string): Promise<void> {
+  if (isFirebaseConfigured() && db) {
+    try {
+      await deleteDoc(doc(db, 'classification_rules', ruleId));
+    } catch (e) {
+      console.error('Erro ao excluir regra no Firestore:', e);
+      throw e;
+    }
+  }
+  const current = getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, INITIAL_CLASSIFICATION_RULES);
+  setLocalData(
     STORAGE_KEYS.RULES,
-    INITIAL_CLASSIFICATION_RULES
+    current.filter((r) => r.id !== ruleId)
   );
 }
 
 export async function saveRule(rule: ClassificationRule): Promise<void> {
   if (isFirebaseConfigured() && db) {
     try {
-      await setDoc(doc(db, 'classification_rules', rule.id), rule, { merge: true });
+      await setDoc(doc(db, 'classification_rules', rule.id), withoutUndefined(rule), { merge: true });
     } catch (e) {
       console.error('Erro ao salvar regra no Firestore:', e);
     }
@@ -292,218 +371,4 @@ export async function updateTransactionClassification(
       : t
   );
   setLocalData(STORAGE_KEYS.TRANSACTIONS, updated);
-}
-
-/* =========================================================================
-   GERAÇÃO DE DRE (Demonstração do Resultado do Exercício)
-   ========================================================================= */
-
-export async function generateDRE(
-  clientId: string,
-  startDate: string,
-  endDate: string
-): Promise<DREResult> {
-  const transactions = await getTransactions(clientId);
-  const accounts = await getAccounts(clientId);
-  const accountMap = new Map(accounts.map((a) => [a.id, a]));
-
-  // Filtrar transações conciliadas ou auto-classificadas no período com conta atribuída
-  const periodTransactions = transactions.filter((t) => {
-    if (!t.accountId) return false;
-    if (t.status === 'PENDING') return false;
-    if (startDate && t.date < startDate) return false;
-    if (endDate && t.date > endDate) return false;
-    return true;
-  });
-
-  // Agrupamento por DRE Group
-  let grossRevenue = 0;
-  let deductions = 0;
-  let costs = 0;
-  let operatingExpenses = 0;
-  let financialResult = 0;
-  let taxes = 0;
-
-  // Detalhamento analítico por conta contábil
-  const accountSums: Record<string, { account: ChartAccount; total: number }> = {};
-
-  for (const trn of periodTransactions) {
-    if (!trn.accountId) continue;
-    const acc = accountMap.get(trn.accountId);
-    if (!acc) continue;
-
-    const val = Math.abs(trn.amount);
-
-    if (!accountSums[acc.id]) {
-      accountSums[acc.id] = { account: acc, total: 0 };
-    }
-    accountSums[acc.id].total += val;
-
-    // Regras de agrupamento padrão da contabilidade brasileira
-    if (acc.type === 'REVENUE') {
-      if (acc.dreGroup === 'RECEITAS_FINANCEIRAS') {
-        financialResult += val;
-      } else {
-        grossRevenue += val;
-      }
-    } else if (acc.type === 'COST' || acc.dreGroup === 'CUSTOS') {
-      costs += val;
-    } else if (acc.type === 'EXPENSE') {
-      if (acc.dreGroup === 'DEDUCOES_RECEITA') {
-        deductions += val;
-      } else if (acc.dreGroup === 'DESPESAS_FINANCEIRAS') {
-        financialResult -= val;
-      } else if (acc.dreGroup === 'IMPOSTOS_LUCRO') {
-        taxes += val;
-      } else {
-        operatingExpenses += val;
-      }
-    }
-  }
-
-  const netRevenue = grossRevenue - deductions;
-  const grossProfit = netRevenue - costs;
-  const netIncomeBeforeTaxes = grossProfit - operatingExpenses + financialResult;
-  const netProfit = netIncomeBeforeTaxes - taxes;
-
-  // Montagem da árvore de itens da DRE
-  const items: DRELineItem[] = [
-    {
-      id: 'dre-1',
-      title: '1. RECEITA OPERACIONAL BRUTA',
-      level: 1,
-      isTotal: false,
-      value: grossRevenue,
-      children: Object.values(accountSums)
-        .filter((a) => a.account.type === 'REVENUE' && a.account.dreGroup !== 'RECEITAS_FINANCEIRAS')
-        .map((a) => ({
-          id: `dre-acc-${a.account.id}`,
-          title: `(+) ${a.account.code} - ${a.account.name}`,
-          level: 2,
-          value: a.total,
-        })),
-    },
-    {
-      id: 'dre-2',
-      title: '(-) Deduções da Receita Bruta e Impostos sobre Vendas',
-      level: 1,
-      isTotal: false,
-      value: -deductions,
-      children: Object.values(accountSums)
-        .filter((a) => a.account.dreGroup === 'DEDUCOES_RECEITA')
-        .map((a) => ({
-          id: `dre-acc-${a.account.id}`,
-          title: `(-) ${a.account.code} - ${a.account.name}`,
-          level: 2,
-          value: -a.total,
-        })),
-    },
-    {
-      id: 'dre-3',
-      title: '(=) RECEITA OPERACIONAL LÍQUIDA',
-      level: 1,
-      isTotal: true,
-      value: netRevenue,
-    },
-    {
-      id: 'dre-4',
-      title: '(-) Custos dos Serviços Prestados / Mercadorias Vendidas (CSP/CMV)',
-      level: 1,
-      isTotal: false,
-      value: -costs,
-      children: Object.values(accountSums)
-        .filter((a) => a.account.type === 'COST' || a.account.dreGroup === 'CUSTOS')
-        .map((a) => ({
-          id: `dre-acc-${a.account.id}`,
-          title: `(-) ${a.account.code} - ${a.account.name}`,
-          level: 2,
-          value: -a.total,
-        })),
-    },
-    {
-      id: 'dre-5',
-      title: '(=) RESULTADO BRUTO / LUCRO BRUTO',
-      level: 1,
-      isTotal: true,
-      value: grossProfit,
-    },
-    {
-      id: 'dre-6',
-      title: '(-) Despesas Operacionais e Administrativas',
-      level: 1,
-      isTotal: false,
-      value: -operatingExpenses,
-      children: Object.values(accountSums)
-        .filter(
-          (a) =>
-            a.account.type === 'EXPENSE' &&
-            a.account.dreGroup !== 'DEDUCOES_RECEITA' &&
-            a.account.dreGroup !== 'DESPESAS_FINANCEIRAS' &&
-            a.account.dreGroup !== 'IMPOSTOS_LUCRO'
-        )
-        .map((a) => ({
-          id: `dre-acc-${a.account.id}`,
-          title: `(-) ${a.account.code} - ${a.account.name}`,
-          level: 2,
-          value: -a.total,
-        })),
-    },
-    {
-      id: 'dre-7',
-      title: '(+/-) Resultado Financeiro Líquido',
-      level: 1,
-      isTotal: false,
-      value: financialResult,
-      children: Object.values(accountSums)
-        .filter(
-          (a) =>
-            a.account.dreGroup === 'RECEITAS_FINANCEIRAS' ||
-            a.account.dreGroup === 'DESPESAS_FINANCEIRAS'
-        )
-        .map((a) => ({
-          id: `dre-acc-${a.account.id}`,
-          title: `${a.account.type === 'REVENUE' ? '(+)' : '(-)'} ${a.account.code} - ${a.account.name}`,
-          level: 2,
-          value: a.account.type === 'REVENUE' ? a.total : -a.total,
-        })),
-    },
-    {
-      id: 'dre-8',
-      title: '(=) RESULTADO ANTES DOS TRIBUTOS (LAIR)',
-      level: 1,
-      isTotal: true,
-      value: netIncomeBeforeTaxes,
-    },
-    {
-      id: 'dre-9',
-      title: '(-) Provisão para IRPJ e CSLL',
-      level: 1,
-      isTotal: false,
-      value: -taxes,
-    },
-    {
-      id: 'dre-10',
-      title: '(=) RESULTADO LÍQUIDO DO EXERCÍCIO (LUCRO/PREJUÍZO)',
-      level: 1,
-      isTotal: true,
-      value: netProfit,
-    },
-  ];
-
-  return {
-    period: { startDate, endDate },
-    clientId,
-    regime: 'SIMPLES_NACIONAL',
-    grossRevenue,
-    deductions,
-    netRevenue,
-    costs,
-    grossProfit,
-    operatingExpenses,
-    financialResult,
-    netIncomeBeforeTaxes,
-    taxes,
-    netProfit,
-    items,
-  };
 }

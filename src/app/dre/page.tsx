@@ -1,241 +1,327 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, Printer, TrendingDown, TrendingUp } from 'lucide-react';
+import type { BankTransaction, ChartAccount } from '@/types/firestore';
+import { getAccounts, getTransactions } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
-import { DREResult } from '@/types/firestore';
-import { generateDRE } from '@/lib/services/data-service';
+import { buildDRE, periodRange, type DREAccountLine, type PeriodMode } from '@/lib/dre/build';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import {
-  TrendingUp,
-  Calendar,
-  Building2,
-  FileSpreadsheet,
-  ChevronDown,
-  ChevronRight,
-  Printer,
-  Sparkles,
-} from 'lucide-react';
+import { BUTTON, EmptyState, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+
+const MODES: readonly { value: PeriodMode; label: string }[] = [
+  { value: 'month', label: 'Mês' },
+  { value: 'quarter', label: 'Trimestre' },
+  { value: 'year', label: 'Ano' },
+];
+
+const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'] as const;
+const QUARTERS = ['T1', 'T2', 'T3', 'T4'] as const;
+
+/** Valor contábil: negativos entre parênteses, como em demonstrativos impressos. */
+function Amount({ value, strong = false }: { value: number; strong?: boolean }) {
+  const abs = formatCurrency(Math.abs(value));
+  return (
+    <span className={`font-mono tabular-nums whitespace-nowrap ${strong ? 'font-semibold' : ''}`}>
+      {value < 0 ? `(${abs})` : abs}
+    </span>
+  );
+}
+
+function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 }) {
+  return (
+    <>
+      {lines.map((l) => (
+        <div key={l.accountId} className="flex items-baseline gap-3 py-2 pl-8 pr-5 text-[13px] text-stone-600 dark:text-stone-400">
+          <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{l.code}</span>
+          <span className="flex-1 min-w-0 truncate">{l.name}</span>
+          <span className="hidden sm:inline font-mono tabular-nums text-[11px] text-stone-400 w-10 text-right">{l.count}×</span>
+          <span className="w-36 text-right">
+            <Amount value={sign * l.value} />
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function Row({ label, value, variant = 'line' }: { label: string; value: number; variant?: 'line' | 'subtotal' }) {
+  const subtotal = variant === 'subtotal';
+  return (
+    <div
+      className={`flex items-baseline gap-3 px-5 ${
+        subtotal ? 'py-3.5 bg-stone-900/[0.03] dark:bg-white/[0.04]' : 'py-3'
+      }`}
+    >
+      <span
+        className={`flex-1 min-w-0 text-[14px] tracking-tight ${
+          subtotal ? 'font-semibold text-stone-900 dark:text-stone-50' : 'font-medium text-stone-800 dark:text-stone-200'
+        }`}
+      >
+        {label}
+      </span>
+      <span className="w-36 text-right text-[14px] text-stone-900 dark:text-stone-100">
+        <Amount value={value} strong={subtotal} />
+      </span>
+    </div>
+  );
+}
 
 export default function DREPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const [startDate, setStartDate] = useState('2024-01-01');
-  const [endDate, setEndDate] = useState('2024-12-31');
-  const [dreResult, setDreResult] = useState<DREResult | null>(null);
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
-    'dre-1': true,
-    'dre-2': true,
-    'dre-4': true,
-    'dre-6': true,
-    'dre-7': true,
-  });
+
+  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  const [mode, setMode] = useState<PeriodMode>('year');
+  const [year, setYear] = useState<number>(() => new Date().getFullYear());
+  const [month, setMonth] = useState<number>(() => new Date().getMonth() + 1);
+  const [quarter, setQuarter] = useState<number>(() => Math.floor(new Date().getMonth() / 3) + 1);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!clientId) return;
-    generateDRE(clientId, startDate, endDate).then(setDreResult);
-    // Recalcula automaticamente apenas ao trocar de cliente; datas usam "Recalcular".
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    Promise.all([getTransactions(clientId), getAccounts(clientId)])
+      .then(([txs, accs]) => {
+        if (!active) return;
+        setTransactions(txs);
+        setAccounts(accs);
+        setLoadedFor(clientId);
+        // Posiciona o período no lançamento mais recente, se houver.
+        const latest = txs.reduce<string>((max, t) => (t.date > max ? t.date : max), '');
+        if (latest) {
+          const [y, m] = latest.split('-').map(Number);
+          setYear(y);
+          setMonth(m);
+          setQuarter(Math.floor((m - 1) / 3) + 1);
+        }
+      })
+      .catch((e) => console.error('Erro ao carregar dados da DRE:', e));
+    return () => {
+      active = false;
+    };
   }, [clientId]);
 
-  const handleRecalculate = async () => {
-    if (!currentClient) return;
-    const res = await generateDRE(currentClient.id, startDate, endDate);
-    setDreResult(res);
-  };
+  const range = useMemo(
+    () => periodRange(mode, year, mode === 'month' ? month : quarter),
+    [mode, year, month, quarter]
+  );
+  const dre = useMemo(() => buildDRE(transactions, accounts, range), [transactions, accounts, range]);
 
-  const toggleSection = (id: string) => {
-    setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
+  const isLoading = Boolean(clientId) && loadedFor !== clientId;
+  const profit = dre.netResult >= 0;
+  const hasData = dre.reconciledCount > 0;
+  const tone: 'neutral' | 'profit' | 'loss' = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
+  const TONE = {
+    neutral: {
+      card: 'bg-white/70 dark:bg-stone-900/60 border-black/[0.06] dark:border-white/[0.08]',
+      label: 'text-stone-500',
+      value: 'text-stone-400 dark:text-stone-500',
+      icon: 'bg-stone-200 dark:bg-stone-700 text-stone-500',
+    },
+    profit: {
+      card: 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-900/40',
+      label: 'text-emerald-700 dark:text-emerald-400',
+      value: 'text-emerald-700 dark:text-emerald-300',
+      icon: 'bg-emerald-600 text-white',
+    },
+    loss: {
+      card: 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200/60 dark:border-rose-900/40',
+      label: 'text-rose-700 dark:text-rose-400',
+      value: 'text-rose-700 dark:text-rose-300',
+      icon: 'bg-rose-600 text-white',
+    },
+  }[tone];
+
+  const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  const periodLabel =
+    mode === 'year' ? String(year) : mode === 'quarter' ? `${quarter}º trimestre de ${year}` : `${MONTHS[month - 1]}/${year}`;
 
   return (
-    <div className="flex flex-col">
+    <main className="max-w-4xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8 print:p-0 print:space-y-6">
+      <PageHeader
+        eyebrow={currentClient?.name}
+        title="Demonstração do resultado"
+        description={
+          <>
+            De <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.start)}</span> a{' '}
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, somente
+            lançamentos conciliados.
+          </>
+        }
+        actions={
+          <button type="button" onClick={() => window.print()} className={BUTTON.secondary}>
+            <Printer className="w-4 h-4" strokeWidth={1.75} />
+            Imprimir / PDF
+          </button>
+        }
+      />
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shadow-sm">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                DRE - Demonstração do Resultado
-              </h1>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Relatório sintético e analítico oficial calculado a partir dos lançamentos conciliados
-              </p>
-            </div>
-          </div>
+      {/* Seletor de período */}
+      <section className="flex flex-wrap items-center gap-3 print:hidden">
+        <SegmentedControl ariaLabel="Tipo de período" value={mode} onChange={setMode} options={MODES} />
 
+        <div className="inline-flex items-center gap-1">
           <button
-            onClick={() => window.print()}
-            className="ios-button inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 shadow-sm"
+            type="button"
+            onClick={() => setYear((y) => y - 1)}
+            aria-label="Ano anterior"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
           >
-            <Printer className="w-4 h-4" />
-            <span>Imprimir / PDF</span>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="w-12 text-center font-mono tabular-nums text-[14px] font-medium text-stone-900 dark:text-stone-100">{year}</span>
+          <button
+            type="button"
+            onClick={() => setYear((y) => y + 1)}
+            aria-label="Próximo ano"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
+          >
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Filter Controls Bar */}
-        <div className="ios-card p-4 rounded-3xl border border-black/[0.06] dark:border-white/[0.08] flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-zinc-400" />
-              <span className="font-medium text-zinc-600 dark:text-zinc-400">De:</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-zinc-600 dark:text-zinc-400">Até:</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-              />
-            </div>
-
-            <button
-              onClick={handleRecalculate}
-              className="ios-button px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm"
-            >
-              Atualizar Período
-            </button>
+        {mode === 'quarter' && (
+          <SegmentedControl
+            ariaLabel="Trimestre"
+            value={String(quarter)}
+            onChange={(v) => setQuarter(Number(v))}
+            options={QUARTERS.map((q, i) => ({ value: String(i + 1), label: q }))}
+          />
+        )}
+        {mode === 'month' && (
+          <div className="w-full sm:w-auto overflow-x-auto">
+            <SegmentedControl
+              ariaLabel="Mês"
+              value={String(month)}
+              onChange={(v) => setMonth(Number(v))}
+              options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+            />
           </div>
+        )}
+      </section>
 
-          {currentClient && (
-            <div className="text-right">
-              <div className="text-xs font-semibold text-zinc-900 dark:text-white">
-                {currentClient.name}
-              </div>
-              <div className="text-[11px] text-zinc-400">
-                Regime: {currentClient.taxRegime} • CNPJ: {currentClient.cnpj}
-              </div>
-            </div>
-          )}
+      {/* Resultado em destaque */}
+      <section
+        className={`print-avoid-break rounded-[22px] p-6 sm:p-7 border ${TONE.card}`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className={`text-[13px] font-medium ${TONE.label}`}>
+              Resultado líquido do exercício · {periodLabel}
+            </p>
+            <p
+              className={`mt-2 text-[32px] sm:text-[40px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE.value}`}
+            >
+              {isLoading ? '—' : formatCurrency(dre.netResult)}
+            </p>
+            <p className="mt-3 text-[13px] text-stone-600 dark:text-stone-400">
+              {tone === 'neutral' ? 'Sem movimentação conciliada' : profit ? 'Lucro' : 'Prejuízo'}
+              {dre.netMargin !== null && (
+                <>
+                  {' · margem líquida '}
+                  <span className="font-mono tabular-nums">{dre.netMargin.toFixed(1).replace('.', ',')}%</span>
+                </>
+              )}
+            </p>
+          </div>
+          <span
+            className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${TONE.icon}`}
+          >
+            {profit ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
+          </span>
+        </div>
+      </section>
+
+      {dre.awaitingApproval > 0 && (
+        <p className="text-[13px] text-stone-500 print:hidden">
+          <span className="font-mono tabular-nums text-[#0071E3]">{dre.awaitingApproval}</span> lançamento(s) auto-classificado(s)
+          neste período aguardam aprovação na Conciliação e ainda não entram na DRE.
+        </p>
+      )}
+
+      {/* Demonstrativo */}
+      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+        <div className="flex items-baseline justify-between px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
+          <span>Demonstrativo</span>
+          <span>R$</span>
         </div>
 
-        {/* Highlight KPI Cards */}
-        {dreResult && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="ios-card p-4 rounded-3xl border border-black/[0.06] dark:border-white/[0.08]">
-              <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-medium">
-                Receita Operacional Bruta
-              </span>
-              <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                {formatCurrency(dreResult.grossRevenue)}
-              </div>
+        {isLoading ? (
+          <div className="p-5 space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
+            ))}
+          </div>
+        ) : !hasData ? (
+          <EmptyState title="Sem lançamentos conciliados" description="Não há movimentação conciliada neste período." />
+        ) : (
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+            <div className="print-avoid-break">
+              <Row label="Receita operacional bruta" value={dre.grossRevenue} />
+              <AccountRows lines={dre.revenueLines} sign={1} />
             </div>
 
-            <div className="ios-card p-4 rounded-3xl border border-black/[0.06] dark:border-white/[0.08]">
-              <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-medium">
-                Lucro Bruto
-              </span>
-              <div className="text-xl font-bold text-zinc-900 dark:text-white mt-1">
-                {formatCurrency(dreResult.grossProfit)}
-              </div>
+            <div className="print-avoid-break">
+              <Row label="(−) Deduções e abatimentos" value={-dre.deductions} />
+              <AccountRows lines={dre.deductionLines} sign={-1} />
             </div>
 
-            <div className="ios-card p-4 rounded-3xl border border-black/[0.06] dark:border-white/[0.08]">
-              <span className="text-[11px] uppercase tracking-wider text-zinc-400 font-medium">
-                Resultado Líquido (Lucro/Prejuízo)
+            <Row label="(=) Receita operacional líquida" value={dre.netRevenue} variant="subtotal" />
+
+            <div>
+              <Row label="(−) Custos e despesas operacionais" value={-dre.totalExpenses} />
+              {dre.expenseGroups.map((g) => {
+                const open = !collapsed[g.id];
+                return (
+                  <div key={g.id} className="print-avoid-break">
+                    <button
+                      type="button"
+                      onClick={() => toggle(g.id)}
+                      aria-expanded={open}
+                      className="w-full flex items-baseline gap-3 px-5 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
+                    >
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 self-center shrink-0 text-stone-400 transition-transform duration-200 print:hidden ${
+                          open ? '' : '-rotate-90'
+                        }`}
+                      />
+                      <span className="flex-1 min-w-0 text-[13px] font-medium text-stone-700 dark:text-stone-300 truncate">{g.title}</span>
+                      <span className="w-36 text-right text-[13px] text-stone-700 dark:text-stone-300">
+                        <Amount value={-g.total} />
+                      </span>
+                    </button>
+                    <div className={open ? '' : 'hidden print:block'}>
+                      <AccountRows lines={g.lines} sign={-1} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              className={`flex items-baseline gap-3 px-5 py-4 ${
+                profit ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : 'bg-rose-50/60 dark:bg-rose-950/20'
+              }`}
+            >
+              <span className="flex-1 text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                (=) Resultado líquido do exercício
               </span>
-              <div
-                className={`text-xl font-bold mt-1 ${
-                  dreResult.netProfit >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-rose-600 dark:text-rose-400'
-                }`}
-              >
-                {formatCurrency(dreResult.netProfit)}
-              </div>
+              <span className={`w-36 text-right text-[15px] ${profit ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
+                <Amount value={dre.netResult} strong />
+              </span>
             </div>
           </div>
         )}
+      </section>
 
-        {/* DRE Structured Statement Table */}
-        <div className="ios-card rounded-3xl overflow-hidden border border-black/[0.06] dark:border-white/[0.08] shadow-sm">
-          <div className="p-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-zinc-50/50 dark:bg-zinc-800/30 flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-zinc-900 dark:text-white uppercase tracking-wider">
-              Estrutura Demonstrativa do Resultado
-            </h3>
-            <span className="text-[11px] text-zinc-400">
-              Período: {formatDateBR(startDate)} a {formatDateBR(endDate)}
-            </span>
-          </div>
-
-          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04] text-xs">
-            {dreResult?.items.map((line) => {
-              const hasChildren = line.children && line.children.length > 0;
-              const isExpanded = expandedSections[line.id] ?? false;
-
-              return (
-                <div key={line.id} className="group">
-                  <div
-                    onClick={() => hasChildren && toggleSection(line.id)}
-                    className={`flex items-center justify-between py-3.5 px-5 transition-colors ${
-                      line.isTotal
-                        ? 'bg-zinc-100/60 dark:bg-zinc-800/60 font-bold text-zinc-900 dark:text-white'
-                        : hasChildren
-                        ? 'cursor-pointer hover:bg-black/[0.015] dark:hover:bg-white/[0.02]'
-                        : ''
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {hasChildren ? (
-                        <button className="text-zinc-400 hover:text-zinc-600">
-                          {isExpanded ? (
-                            <ChevronDown className="w-3.5 h-3.5" />
-                          ) : (
-                            <ChevronRight className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      ) : (
-                        <span className="w-3.5" />
-                      )}
-                      <span className={line.isTotal ? 'text-xs' : 'font-semibold text-zinc-800 dark:text-zinc-200'}>
-                        {line.title}
-                      </span>
-                    </div>
-
-                    <div
-                      className={`font-mono text-right font-semibold ${
-                        line.isTotal
-                          ? line.value >= 0
-                            ? 'text-emerald-600 dark:text-emerald-400 text-sm'
-                            : 'text-rose-600 dark:text-rose-400 text-sm'
-                          : 'text-zinc-800 dark:text-zinc-200'
-                      }`}
-                    >
-                      {formatCurrency(line.value)}
-                    </div>
-                  </div>
-
-                  {/* Subcontas Analíticas Detalhadas */}
-                  {hasChildren && isExpanded && (
-                    <div className="bg-zinc-50/50 dark:bg-zinc-900/40 border-y border-black/[0.02] dark:border-white/[0.02] divide-y divide-black/[0.02] dark:divide-white/[0.02]">
-                      {line.children?.map((sub) => (
-                        <div
-                          key={sub.id}
-                          className="flex items-center justify-between py-2.5 px-5 pl-12 text-[11px] text-zinc-600 dark:text-zinc-400 hover:bg-black/[0.01]"
-                        >
-                          <span>{sub.title}</span>
-                          <span className="font-mono">{formatCurrency(sub.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </main>
-    </div>
+      <p className="text-[12px] text-stone-400">
+        Baseado em <span className="font-mono tabular-nums">{dre.reconciledCount}</span> lançamento(s) conciliado(s). Valores entre
+        parênteses reduzem o resultado.
+      </p>
+    </main>
   );
 }

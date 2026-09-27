@@ -9,13 +9,11 @@ import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
 import { Check, CheckCheck, Search, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { IOSSwitch, SURFACE } from '@/components/ui/primitives';
 
 /* =========================================================================
    Primitivos visuais
    ========================================================================= */
-
-const SURFACE =
-  'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
 
 const STATUS_BADGE: Record<ReconciliationStatus, { label: string; className: string }> = {
   PENDING: { label: 'Pendente', className: 'bg-amber-50 text-amber-700 border-amber-200/60' },
@@ -28,32 +26,6 @@ function StatusBadge({ status }: { status: ReconciliationStatus }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium whitespace-nowrap ${className}`}>
       {label}
-    </span>
-  );
-}
-
-/** Switch no padrão exato do iOS (51×31, knob 27, verde #34C759) sobre checkbox nativo. */
-function IOSSwitch({
-  checked,
-  onChange,
-  id,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  id: string;
-}) {
-  return (
-    <span className="relative inline-flex shrink-0 w-[51px] h-[31px]">
-      <input
-        id={id}
-        type="checkbox"
-        role="switch"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="peer absolute inset-0 opacity-0 cursor-pointer z-10"
-      />
-      <span className="absolute inset-0 rounded-full bg-[#E9E9EA] dark:bg-stone-700 transition-colors duration-200 peer-checked:bg-[#34C759] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0071E3]/50 peer-focus-visible:ring-offset-2" />
-      <span className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.15),0_1px_1px_rgba(0,0,0,0.06)] transition-transform duration-200 ease-out peer-checked:translate-x-[20px]" />
     </span>
   );
 }

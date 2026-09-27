@@ -12,7 +12,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (BARE_ROUTES.has(pathname)) return <>{children}</>;
 
   return (
-    <div className="min-h-screen bg-[#F9F9F8] dark:bg-stone-950 lg:flex">
+    <div className="min-h-screen bg-[#F9F9F8] dark:bg-stone-950 print:bg-white lg:flex">
       <Sidebar />
       <div className="flex-1 min-w-0">{children}</div>
     </div>

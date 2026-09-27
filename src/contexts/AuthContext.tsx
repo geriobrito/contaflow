@@ -37,17 +37,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       return () => unsubscribe();
     } else {
-      // Modo de contingência para desenvolvimento local (quando sem chaves reais no .env.local)
-      setIsMockAuth(true);
-      const savedMockUser = typeof window !== 'undefined' ? localStorage.getItem(DEV_AUTH_KEY) : null;
-      if (savedMockUser) {
-        try {
-          setUser(JSON.parse(savedMockUser));
-        } catch {
-          setUser(null);
-        }
+      // Modo de contingência para desenvolvimento local (quando sem chaves reais no .env.local).
+      // A leitura do localStorage é externa ao React; o estado é aplicado fora do corpo síncrono do effect.
+      let restored: User | null = null;
+      try {
+        const saved = localStorage.getItem(DEV_AUTH_KEY);
+        restored = saved ? (JSON.parse(saved) as User) : null;
+      } catch {
+        restored = null;
       }
-      setLoading(false);
+      queueMicrotask(() => {
+        setIsMockAuth(true);
+        setUser(restored);
+        setLoading(false);
+      });
     }
   }, []);
 
@@ -59,12 +62,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const userCredential = await signInWithEmailAndPassword(auth, email, password);
           setUser(userCredential.user);
           return;
-        } catch (firebaseErr: any) {
+        } catch (firebaseErr: unknown) {
           // Se a chave no .env.local for inválida, expirada ou placeholder
-          if (
-            firebaseErr?.code === 'auth/api-key-not-valid' ||
-            firebaseErr?.message?.includes('api-key-not-valid')
-          ) {
+          const { code, message } = (firebaseErr ?? {}) as { code?: string; message?: string };
+          if (code === 'auth/api-key-not-valid' || message?.includes('api-key-not-valid')) {
             console.warn(
               'Aviso: Chave do Firebase no .env.local é inválida ou de teste. Prosseguindo com autenticação local de desenvolvimento.'
             );
@@ -76,9 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Validação no modo de desenvolvimento / fallback
       if (!email.includes('@') || password.length < 6) {
-        const error: any = new Error('E-mail inválido ou senha com menos de 6 caracteres.');
-        error.code = 'auth/invalid-credential';
-        throw error;
+        throw Object.assign(new Error('E-mail inválido ou senha com menos de 6 caracteres.'), {
+          code: 'auth/invalid-credential',
+        });
       }
 
       const mockUser = {
