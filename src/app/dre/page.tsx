@@ -6,12 +6,14 @@ import {
   FileSpreadsheet,
   FileText,
   Loader2,
+  Lock,
   Printer,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import type { BankTransaction, ChartAccount } from '@/types/firestore';
-import { getAccounts, getLatestTransactionDate, getTransactions } from '@/lib/services/data-service';
+import type { BankTransaction, ChartAccount, OrgSettings, PeriodLock } from '@/types/firestore';
+import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
+import { monthsBetween } from '@/lib/periods';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
 import { buildDRE, type DREAccountLine } from '@/lib/dre/build';
@@ -164,6 +166,30 @@ export default function DREPage() {
     };
   }, [clientId, jumpTo]);
 
+  // Competências fechadas (selo de DRE definitiva) e dados do escritório (assinaturas).
+  const [locks, setLocks] = useState<PeriodLock[]>([]);
+  const [org, setOrg] = useState<OrgSettings | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    let active = true;
+    const repo = getRepository();
+    Promise.all([repo.listPeriodLocks(clientId), repo.getOrgSettings()])
+      .then(([l, o]) => {
+        if (!active) return;
+        setLocks(l);
+        setOrg(o);
+      })
+      .catch((e: unknown) => console.error('Erro ao carregar fechamentos/escritório:', e));
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+  const lockStatus = useMemo(() => {
+    const months = monthsBetween(range.start, range.end);
+    const closed = months.filter((m) => locks.some((l) => l.month === m)).length;
+    return { total: months.length, closed };
+  }, [locks, range]);
+
   // 2) Busca no banco apenas os lançamentos do período selecionado.
   const ready = Boolean(clientId) && positionedFor === clientId;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -223,7 +249,18 @@ export default function DREPage() {
   const busy = isGeneratingPdf || isGeneratingExcel;
 
   const exportContext = (): DREExportContext | null =>
-    currentClient ? { client: currentClient, range, statement: dre, issuedAt: new Date() } : null;
+    currentClient
+      ? {
+          client: currentClient,
+          range,
+          statement: dre,
+          issuedAt: new Date(),
+          signatories: {
+            legalRepresentative: { name: currentClient.legalRepresentativeName, cpf: currentClient.legalRepresentativeCpf },
+            accountant: org ? { name: org.accountantName, crc: org.accountantCrc } : undefined,
+          },
+        }
+      : null;
 
   /** Carrega o gerador sob demanda (jsPDF/ExcelJS ficam fora do bundle inicial). */
   const handleExport = async (format: 'pdf' | 'xlsx') => {
@@ -302,6 +339,17 @@ export default function DREPage() {
 
       {/* Seletor de período */}
       <PeriodPicker period={period} />
+      {Boolean(clientId) && lockStatus.total > 0 && (
+        <p className="-mt-4 text-[12px] text-stone-500 print:hidden">
+          <Lock className="inline w-3 h-3 -mt-0.5 mr-1" />
+          {lockStatus.closed === lockStatus.total
+            ? 'Todas as competências deste período estão fechadas: esta DRE é definitiva.'
+            : lockStatus.closed > 0
+              ? `${lockStatus.closed} de ${lockStatus.total} competência(s) fechada(s); as demais ainda podem mudar.`
+              : 'Nenhuma competência deste período foi fechada; os valores ainda podem mudar.'}
+          {!org && ' Cadastre o contador em Escritório para assinar a DRE exportada.'}
+        </p>
+      )}
       {loadError && (
         <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden">
           Não foi possível carregar a DRE: {loadError}

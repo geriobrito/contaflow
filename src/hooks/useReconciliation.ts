@@ -2,15 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRepository } from '@/lib/services/data-service';
+import { applyRuleToPending, checkStatementBalance, closeMonth, reopenMonth } from '@/lib/services/reconciliation-service';
+import { getActor } from '@/lib/data/scope';
 import type { DateRange } from '@/lib/data/repository';
 import type { OFXTransaction } from '@/lib/ofx-parser';
+import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { buildTransactionId, findMatchingRule, normalizePattern } from '@/lib/reconciliation';
+import { classifyAction, transactionAudit } from '@/lib/audit';
+import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
+import { accountKeyOf, findCoverageGaps, outOfRangeDates, type CoverageGap } from '@/lib/statement';
+import {
+  approveTransition,
+  classifyTransition,
+  resetTransition,
+  splitTransition,
+} from '@/lib/transitions';
 import type {
+  AuditEntry,
+  BalanceCheck,
   BankTransaction,
   ChartAccount,
   ClassificationRule,
-  ReconciliationStatus,
+  ImportBatch,
+  PeriodLock,
+  RuleMatchType,
   TransactionType,
 } from '@/types/firestore';
 
@@ -25,23 +41,38 @@ export type ImportableTransaction = Pick<OFXTransaction, 'fitid' | 'date' | 'amo
   type: TransactionType;
 };
 
+/** Metadados do arquivo OFX para registro do extrato e conferência de saldo. */
+export interface StatementMeta {
+  fileName?: string;
+  account?: OFXAccountInfo;
+  startDate?: string;
+  endDate?: string;
+  ledgerBalance?: { amount: number; date?: string };
+}
+
 export interface ImportResult {
   added: number;
   duplicates: number;
   autoClassified: number;
   /** Data mais recente entre os lançamentos importados (para posicionar o período). */
   latestDate: string | null;
+  balanceCheck?: BalanceCheck;
+  /** Lacunas de datas na cobertura de extratos da conta. */
+  gaps: CoverageGap[];
+  /** Lançamentos com data fora do intervalo declarado no arquivo. */
+  outOfRange: number;
 }
 
 export interface ClassifyOptions {
   learnRule?: boolean;
   customPattern?: string;
+  matchType?: RuleMatchType;
 }
 
 export interface ClassifyResult {
   /** Regra criada ou atualizada, quando `learnRule` estiver ativo. */
   rule: ClassificationRule | null;
-  /** Quantidade de lançamentos pendentes retroalimentados pela regra. */
+  /** Pendentes (de qualquer período) auto-classificados pela regra. */
   propagated: number;
 }
 
@@ -65,18 +96,20 @@ export interface UseReconciliationParams {
 export interface UseReconciliationReturn {
   transactions: BankTransaction[];
   rules: ClassificationRule[];
+  locks: PeriodLock[];
+  lockedMonths: ReadonlySet<string>;
   metrics: ReconciliationMetrics;
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
-  importTransactions: (items: readonly ImportableTransaction[]) => Promise<ImportResult>;
+  importTransactions: (items: readonly ImportableTransaction[], meta?: StatementMeta) => Promise<ImportResult>;
   classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
-  /** Desdobra o lançamento em várias contas analíticas (rateio); rejeita se a soma não fechar. */
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
-  /** Volta o lançamento para PENDING, limpando conta, rateio e vínculo com regra. */
   unreconcileTransaction: (transactionId: string) => Promise<void>;
-  /** Confirma em lote os auto-classificados do período. Retorna a quantidade aprovada. */
   approveAutoClassified: () => Promise<number>;
+  closeMonth: (month: string) => Promise<void>;
+  reopenMonth: (month: string, reason: string) => Promise<void>;
+  loadAudit: (transactionId: string) => Promise<AuditEntry[]>;
   reload: () => Promise<void>;
 }
 
@@ -91,11 +124,13 @@ const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 
 export function useReconciliation({ clientId, accounts, range }: UseReconciliationParams): UseReconciliationReturn {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [rules, setRules] = useState<ClassificationRule[]>([]);
+  const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
+  const lockedMonths = useMemo(() => new Set(locks.map((l) => l.month)), [locks]);
   const rangeStart = range?.start;
   const rangeEnd = range?.end;
 
@@ -103,18 +138,21 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     if (!clientId || !rangeStart || !rangeEnd) {
       setTransactions([]);
       setRules([]);
+      setLocks([]);
       return;
     }
     setIsLoading(true);
     setError(null);
     try {
       const repo = getRepository();
-      const [loadedRules, loadedTxs] = await Promise.all([
+      const [loadedRules, loadedTxs, loadedLocks] = await Promise.all([
         repo.listRules(clientId),
         repo.listTransactions(clientId, { start: rangeStart, end: rangeEnd }),
+        repo.listPeriodLocks(clientId),
       ]);
       setRules(loadedRules);
       setTransactions(loadedTxs);
+      setLocks(loadedLocks);
     } catch (e) {
       console.error('[useReconciliation] Falha ao carregar dados:', e);
       setError(`Não foi possível carregar os lançamentos (${describe(e)}).`);
@@ -151,21 +189,48 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     }
   }, []);
 
+  /** Substitui lançamentos no estado local (apenas os que estão carregados). */
+  const replaceLoaded = useCallback((updated: readonly BankTransaction[]) => {
+    if (!updated.length) return;
+    const byId = new Map(updated.map((t) => [t.id, t] as const));
+    setTransactions((prev) => prev.map((t) => byId.get(t.id) ?? t));
+  }, []);
+
+  /** Recusa alterações em competência fechada (as regras do Firestore também recusam). */
+  const assertOpen = useCallback(
+    (tx: BankTransaction) => {
+      if (isMonthLocked(tx.date, lockedMonths)) {
+        throw new Error(`A competência de ${formatMonth(monthOf(tx.date))} está fechada. Reabra-a para alterar lançamentos.`);
+      }
+    },
+    [lockedMonths]
+  );
+
+  const findLoaded = useCallback(
+    (id: string) => {
+      const tx = transactions.find((t) => t.id === id);
+      if (!tx) throw new Error(`Lançamento ${id} não encontrado.`);
+      return tx;
+    },
+    [transactions]
+  );
+
   /* ------------------------------------------------------------------ */
-  /* Importação anti-duplicidade com classificação automática            */
+  /* Importação: deduplicação, auto-classificação e conferência de saldo */
   /* ------------------------------------------------------------------ */
   const importTransactions = useCallback(
-    (items: readonly ImportableTransaction[]): Promise<ImportResult> => {
+    (items: readonly ImportableTransaction[], meta: StatementMeta = {}): Promise<ImportResult> => {
       if (!clientId) return Promise.reject(new Error('Selecione um cliente antes de importar.'));
       return mutate('Falha ao importar o extrato', async () => {
         const repo = getRepository();
+        const accountKey = meta.account ? accountKeyOf(meta.account) : undefined;
+
         // Deduplica dentro do arquivo e contra o banco inteiro (não só o período visível).
         const uniqueInFile = new Map<string, ImportableTransaction>();
         items.forEach((t) => uniqueInFile.set(buildTransactionId(clientId, t.fitid), t));
         const existing = await repo.findExistingTransactionIds(clientId, [...uniqueInFile.keys()]);
 
-        const activeRules = await repo.listRules(clientId);
-        // Regras apontando para contas sintéticas não classificam (o lançamento fica pendente).
+        const [activeRules, batches] = await Promise.all([repo.listRules(clientId), repo.listImportBatches(clientId)]);
         const classifiable = activeRules.filter((r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC');
         const now = new Date().toISOString();
 
@@ -184,6 +249,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
             memo: raw.memo,
             status: rule ? 'AUTO_CLASSIFIED' : 'PENDING',
             createdAt: now,
+            ...(accountKey ? { accountKey } : {}),
           };
           if (rule) {
             tx.accountId = rule.accountId;
@@ -194,22 +260,33 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
           fresh.push(tx);
         }
 
-        if (fresh.length > 0) {
-          const autoClassifiedCount = fresh.filter((t) => t.status === 'AUTO_CLASSIFIED').length;
-          await repo.insertTransactions(fresh, {
-            id: `batch_${Date.now()}`,
-            clientId,
-            fileName: 'ofx',
-            fileSize: 0,
-            totalTransactions: items.length,
-            importedCount: fresh.length,
-            duplicateCount: items.length - fresh.length,
-            autoClassifiedCount,
-            totalDebit: fresh.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0),
-            totalCredit: fresh.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
-            importedAt: now,
-          });
-        }
+        // Registro do extrato + conferência do saldo final contra o extrato anterior.
+        const ledger = meta.ledgerBalance;
+        const batch: ImportBatch = {
+          id: `batch_${Date.now()}`,
+          clientId,
+          fileName: meta.fileName ?? 'extrato.ofx',
+          fileSize: 0,
+          totalTransactions: items.length,
+          importedCount: fresh.length,
+          duplicateCount: items.length - fresh.length,
+          autoClassifiedCount: fresh.filter((t) => t.status === 'AUTO_CLASSIFIED').length,
+          totalDebit: fresh.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0),
+          totalCredit: fresh.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+          fileNet: items.reduce((s, t) => s + t.amount, 0),
+          importedAt: now,
+          importedByUid: getActor().uid,
+          ...(meta.startDate ? { startDate: meta.startDate } : {}),
+          ...(meta.endDate ? { endDate: meta.endDate } : {}),
+          ...(meta.account?.bankId ? { bankId: meta.account.bankId } : {}),
+          ...(meta.account?.accountId ? { accountNumber: meta.account.accountId } : {}),
+          ...(meta.account?.org ? { bankName: meta.account.org } : {}),
+          ...(accountKey ? { accountKey } : {}),
+          ...(ledger ? { ledgerBalance: ledger.amount, ledgerDate: ledger.date ?? meta.endDate } : {}),
+        };
+        batch.balanceCheck = await checkStatementBalance({ clientId, batch, batches, pendingInsert: fresh });
+
+        await repo.insertTransactions(fresh, batch);
 
         setRules(activeRules);
         const visible = fresh.filter((t) => inRange(t.date, range));
@@ -218,8 +295,11 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         return {
           added: fresh.length,
           duplicates: items.length - fresh.length,
-          autoClassified: fresh.filter((t) => t.status === 'AUTO_CLASSIFIED').length,
+          autoClassified: batch.autoClassifiedCount,
           latestDate: fresh.reduce<string | null>((max, t) => (!max || t.date > max ? t.date : max), null),
+          balanceCheck: batch.balanceCheck,
+          gaps: accountKey ? findCoverageGaps([...batches, batch]).filter((g) => g.accountKey === accountKey) : [],
+          outOfRange: outOfRangeDates(items.map((t) => t.date), meta.startDate, meta.endDate).length,
         };
       });
     },
@@ -227,67 +307,66 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   );
 
   /* ------------------------------------------------------------------ */
-  /* Classificação manual / reclassificação + aprendizado contínuo       */
+  /* Classificação / reclassificação + aprendizado contínuo              */
   /* ------------------------------------------------------------------ */
   const classifyTransaction = useCallback(
-    (transactionId: string, accountId: string, options: ClassifyOptions = {}): Promise<ClassifyResult> => {
-      if (!clientId) return Promise.reject(new Error('Nenhum cliente selecionado.'));
-      const target = transactions.find((t) => t.id === transactionId);
-      if (!target) return Promise.reject(new Error(`Lançamento ${transactionId} não encontrado.`));
-      const account = accountsById.get(accountId);
-      // Contas sintéticas apenas totalizam: lançamentos só em contas analíticas.
-      if (account && account.nature !== 'ANALYTIC') {
-        return Promise.reject(new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`));
-      }
-
-      const ref = { accountId, accountCode: account?.code ?? '', accountName: account?.name ?? '' };
-      const now = new Date().toISOString();
-      const pattern = options.learnRule ? normalizePattern(options.customPattern || target.memo) : '';
-
-      // Retroalimentação: pendentes do período (exceto o próprio) que contêm o padrão.
-      const similar = pattern
-        ? transactions.filter(
-            (t) => t.id !== transactionId && t.status === 'PENDING' && normalizePattern(t.memo).includes(pattern)
-          )
-        : [];
-
-      // Reclassificação: atualiza a regra de origem (ou uma com o mesmo termo) em vez de duplicar.
-      const existingRule = pattern
-        ? (rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId) ??
-          rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === pattern))
-        : undefined;
-      const rule: ClassificationRule | null = pattern
-        ? existingRule
-          ? { ...existingRule, pattern, ...ref, updatedAt: now }
-          : { id: `rule_${Date.now()}`, clientId, pattern, ...ref, matchType: 'CONTAINS', createdAt: now, updatedAt: now }
-        : null;
-
-      return mutate('Não foi possível salvar a classificação', async () => {
-        await getRepository().commitClassification({
-          transactionId,
-          account: ref,
-          rule,
-          similarIds: similar.map((t) => t.id),
-          now,
-        });
-
-        const similarIds = new Set(similar.map((t) => t.id));
-        setTransactions((prev) =>
-          prev.map((t) => {
-            if (t.id === transactionId) {
-              return { ...t, ...ref, status: 'RECONCILED', reconciledAt: now, isSplit: false, splits: undefined, matchedRuleId: rule?.id };
-            }
-            if (similarIds.has(t.id)) return { ...t, ...ref, status: 'AUTO_CLASSIFIED', matchedRuleId: rule?.id };
-            return t;
-          })
-        );
-        if (rule) {
-          setRules((prev) => (existingRule ? prev.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...prev]));
+    (transactionId: string, accountId: string, options: ClassifyOptions = {}): Promise<ClassifyResult> =>
+      mutate('Não foi possível salvar a classificação', async () => {
+        if (!clientId) throw new Error('Nenhum cliente selecionado.');
+        const target = findLoaded(transactionId);
+        assertOpen(target);
+        const account = accountsById.get(accountId);
+        // Contas sintéticas apenas totalizam: lançamentos só em contas analíticas.
+        if (account && account.nature !== 'ANALYTIC') {
+          throw new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`);
         }
-        return { rule, propagated: similar.length };
-      });
-    },
-    [clientId, transactions, rules, accountsById, mutate]
+
+        const actor = getActor();
+        const ref = { accountId, accountCode: account?.code ?? '', accountName: account?.name ?? '' };
+        const now = new Date().toISOString();
+        const pattern = options.learnRule ? normalizePattern(options.customPattern || target.memo) : '';
+        const matchType = options.matchType ?? 'CONTAINS';
+
+        // Reclassificação: atualiza a regra de origem (ou uma com o mesmo termo e tipo) em vez de duplicar.
+        const existingRule = pattern
+          ? (rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId) ??
+            rules.find(
+              (r) => r.clientId === clientId && normalizePattern(r.pattern) === pattern && (r.matchType ?? 'CONTAINS') === matchType
+            ))
+          : undefined;
+        const rule: ClassificationRule | null = pattern
+          ? existingRule
+            ? { ...existingRule, pattern, matchType, ...ref, updatedAt: now }
+            : { id: `rule_${Date.now()}`, clientId, pattern, matchType, ...ref, createdAt: now, updatedAt: now }
+          : null;
+
+        const { patch, after } = classifyTransition(target, ref, rule?.id ?? null, now);
+        await getRepository().commitChanges({
+          patches: [patch],
+          rules: rule ? [rule] : [],
+          audits: [transactionAudit(classifyAction(target), actor, target, after, now, rule ? { ruleId: rule.id } : {})],
+        });
+        replaceLoaded([after]);
+
+        let propagated: BankTransaction[] = [];
+        if (rule) {
+          const nextRules = existingRule ? rules.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...rules];
+          setRules(nextRules);
+          // Retroalimentação: pendentes de QUALQUER período no banco que a regra vence.
+          propagated = await applyRuleToPending({
+            clientId,
+            rule,
+            rules: nextRules,
+            accountsById,
+            lockedMonths,
+            exclude: new Set([transactionId]),
+            now,
+          });
+          replaceLoaded(propagated);
+        }
+        return { rule, propagated: propagated.length };
+      }),
+    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded]
   );
 
   /* ------------------------------------------------------------------ */
@@ -296,71 +375,93 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   const unreconcileTransaction = useCallback(
     (transactionId: string): Promise<void> =>
       mutate('Não foi possível desfazer a conciliação', async () => {
-        await getRepository().resetToPending(transactionId);
-        setTransactions((prev) =>
-          prev.map((t) => {
-            if (t.id !== transactionId) return t;
-            const { accountId: _a, accountCode: _c, accountName: _n, matchedRuleId: _m, splits: _s, reconciledAt: _r, ...rest } = t;
-            void [_a, _c, _n, _m, _s, _r];
-            return { ...rest, status: 'PENDING' as ReconciliationStatus, isSplit: false };
-          })
-        );
+        const target = findLoaded(transactionId);
+        assertOpen(target);
+        const { patch, after } = resetTransition(target);
+        const now = new Date().toISOString();
+        await getRepository().commitChanges({
+          patches: [patch],
+          audits: [transactionAudit('UNRECONCILE', getActor(), target, after, now)],
+        });
+        replaceLoaded([after]);
       }),
-    [mutate]
+    [mutate, findLoaded, assertOpen, replaceLoaded]
   );
 
   /* ------------------------------------------------------------------ */
   /* Desdobramento (rateio)                                              */
   /* ------------------------------------------------------------------ */
   const splitTransaction = useCallback(
-    (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> => {
-      const target = transactions.find((t) => t.id === transactionId);
-      if (!target) return Promise.reject(new Error(`Lançamento ${transactionId} não encontrado.`));
-      const summary = summarizeSplits(target.amount, drafts, accountsById);
-      if (!summary.isComplete) return Promise.reject(new Error(summary.errors[0]));
-      if (!summary.isBalanced) return Promise.reject(new Error('A soma do rateio difere do valor do lançamento.'));
-
-      const splits = draftsToSplits(target, drafts, accountsById);
-      const now = new Date().toISOString();
-      return mutate('Não foi possível salvar o rateio', async () => {
-        await getRepository().saveSplits(transactionId, splits, now);
-        setTransactions((prev) =>
-          prev.map((t) =>
-            t.id === transactionId
-              ? {
-                  ...t,
-                  status: 'RECONCILED',
-                  isSplit: true,
-                  splits,
-                  accountId: undefined,
-                  accountCode: undefined,
-                  accountName: undefined,
-                  matchedRuleId: undefined,
-                  reconciledAt: now,
-                }
-              : t
-          )
-        );
-      });
-    },
-    [transactions, accountsById, mutate]
+    (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> =>
+      mutate('Não foi possível salvar o rateio', async () => {
+        const target = findLoaded(transactionId);
+        assertOpen(target);
+        const summary = summarizeSplits(target.amount, drafts, accountsById);
+        if (!summary.isComplete) throw new Error(summary.errors[0]);
+        if (!summary.isBalanced) throw new Error('A soma do rateio difere do valor do lançamento.');
+        const now = new Date().toISOString();
+        const { patch, after } = splitTransition(target, draftsToSplits(target, drafts, accountsById), now);
+        await getRepository().commitChanges({
+          patches: [patch],
+          audits: [transactionAudit('SPLIT', getActor(), target, after, now)],
+        });
+        replaceLoaded([after]);
+      }),
+    [accountsById, mutate, findLoaded, assertOpen, replaceLoaded]
   );
 
   /* ------------------------------------------------------------------ */
-  /* Aprovação em lote dos auto-classificados                            */
+  /* Aprovação em lote dos auto-classificados (competências abertas)     */
   /* ------------------------------------------------------------------ */
-  const approveAutoClassified = useCallback((): Promise<number> => {
-    const eligible = transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId));
-    if (eligible.length === 0) return Promise.resolve(0);
-    const now = new Date().toISOString();
-    const ids = eligible.map((t) => t.id);
-    return mutate('Não foi possível aprovar os lançamentos', async () => {
-      await getRepository().approveTransactions(ids, now);
-      const set = new Set(ids);
-      setTransactions((prev) => prev.map((t) => (set.has(t.id) ? { ...t, status: 'RECONCILED', reconciledAt: now } : t)));
-      return ids.length;
-    });
-  }, [transactions, mutate]);
+  const approveAutoClassified = useCallback(
+    (): Promise<number> =>
+      mutate('Não foi possível aprovar os lançamentos', async () => {
+        const eligible = transactions.filter(
+          (t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId) && !isMonthLocked(t.date, lockedMonths)
+        );
+        if (!eligible.length) return 0;
+        const actor = getActor();
+        const now = new Date().toISOString();
+        const moves = eligible.map((tx) => ({ tx, ...approveTransition(tx, now) }));
+        await getRepository().commitChanges({
+          patches: moves.map((m) => m.patch),
+          audits: moves.map((m) => transactionAudit('APPROVE', actor, m.tx, m.after, now)),
+        });
+        replaceLoaded(moves.map((m) => m.after));
+        return moves.length;
+      }),
+    [transactions, lockedMonths, mutate, replaceLoaded]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Fechamento de competência                                           */
+  /* ------------------------------------------------------------------ */
+  const closeMonthCb = useCallback(
+    (month: string): Promise<void> =>
+      mutate('Não foi possível fechar a competência', async () => {
+        if (!clientId) throw new Error('Nenhum cliente selecionado.');
+        const lock = await closeMonth(clientId, month);
+        setLocks((prev) => [...prev.filter((l) => l.id !== lock.id), lock]);
+      }),
+    [clientId, mutate]
+  );
+
+  const reopenMonthCb = useCallback(
+    (month: string, reason: string): Promise<void> =>
+      mutate('Não foi possível reabrir a competência', async () => {
+        const lock = locks.find((l) => l.month === month);
+        if (!lock) throw new Error('Competência não está fechada.');
+        if (!reason.trim()) throw new Error('Informe o motivo da reabertura.');
+        await reopenMonth(lock, reason.trim());
+        setLocks((prev) => prev.filter((l) => l.id !== lock.id));
+      }),
+    [locks, mutate]
+  );
+
+  const loadAudit = useCallback(
+    (transactionId: string) => (clientId ? getRepository().listAudit(clientId, { transactionId }) : Promise.resolve([])),
+    [clientId]
+  );
 
   /* ------------------------------------------------------------------ */
   /* Métricas do período                                                 */
@@ -393,6 +494,8 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   return {
     transactions,
     rules,
+    locks,
+    lockedMonths,
     metrics,
     isLoading,
     isSaving,
@@ -402,6 +505,9 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     splitTransaction,
     unreconcileTransaction,
     approveAutoClassified,
+    closeMonth: closeMonthCb,
+    reopenMonth: reopenMonthCb,
+    loadAudit,
     reload,
   };
 }

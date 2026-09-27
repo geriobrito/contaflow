@@ -1,7 +1,9 @@
 import {
   collection,
+  deleteDoc,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   limit,
   orderBy,
@@ -9,34 +11,44 @@ import {
   setDoc,
   where,
   writeBatch,
-  deleteDoc,
-  updateDoc,
   type DocumentData,
   type Firestore,
   type QueryConstraint,
   type WriteBatch,
 } from 'firebase/firestore';
 import type {
+  AuditEntry,
   BankTransaction,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
   ImportBatch,
-  TransactionSplit,
+  OrgSettings,
+  PeriodLock,
 } from '@/types/firestore';
-import type { ClassificationCommit, DataRepository, DateRange } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
+import { monthOf } from '@/lib/periods';
 
-const COL = {
+export const COL = {
+  orgs: 'orgs',
   clients: 'clients',
   accounts: 'chart_of_accounts',
   rules: 'classification_rules',
   transactions: 'transactions',
   batches: 'import_batches',
+  locks: 'period_locks',
+  audit: 'audit_log',
 } as const;
 
 /** Limites do Firestore. */
 const BATCH_LIMIT = 500;
 const IN_LIMIT = 30;
+/**
+ * As regras consultam o documento de fechamento de cada competência alterada, e o
+ * Firestore permite no máximo 20 documentos distintos consultados por lote. Com o
+ * perfil do usuário e o cliente, 15 competências por lote deixam folga.
+ */
+export const MONTHS_PER_BATCH = 15;
 
 const chunk = <T,>(items: readonly T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -61,11 +73,19 @@ function toISO(value: unknown): string {
 const byCode = (a: ChartAccount, b: ChartAccount) => a.code.localeCompare(b.code, undefined, { numeric: true });
 
 /**
+ * Grupo indivisível de escritas (ex.: alteração do lançamento + seu registro de auditoria)
+ * e a competência que ele toca — nunca é partido entre dois lotes.
+ */
+interface Group {
+  month?: string;
+  writes: ((b: WriteBatch) => void)[];
+}
+const single = (write: (b: WriteBatch) => void, month?: string): Group => ({ month, writes: [write] });
+
+/**
  * Repositório Firestore com isolamento por escritório.
- *
- * - Toda consulta inclui `where('orgId', '==', org)` — exigido pelas regras de
- *   segurança, que recusam consultas capazes de retornar documentos de outro escritório.
- * - Toda escrita de criação carimba `orgId`; atualizações nunca o alteram.
+ * - Toda consulta inclui `where('orgId', '==', org)` (exigido pelas regras).
+ * - Toda criação carimba `orgId`; atualizações nunca o alteram.
  * - Erros sobem ao chamador.
  */
 export function createFirestoreRepository(db: Firestore, getOrgId: () => string): DataRepository {
@@ -74,35 +94,60 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   const stamp = <T extends object>(data: T): DocumentData => clean({ ...data, orgId: getOrgId() });
 
-  async function commitInBatches<T>(items: readonly T[], apply: (b: WriteBatch, item: T) => void) {
-    for (const group of chunk(items, BATCH_LIMIT)) {
+  /** Executa grupos em lotes de até 500 escritas e no máximo MONTHS_PER_BATCH competências. */
+  async function run(groups: readonly Group[]) {
+    let writes: Group['writes'] = [];
+    let months = new Set<string>();
+    const flush = async () => {
+      if (!writes.length) return;
       const b = writeBatch(db);
-      group.forEach((item) => apply(b, item));
+      writes.forEach((w) => w(b));
       await b.commit();
+      writes = [];
+      months = new Set();
+    };
+    for (const g of groups) {
+      if (g.writes.length > BATCH_LIMIT) throw new Error('Grupo de escrita maior que o limite do lote.');
+      const newMonth = g.month !== undefined && !months.has(g.month);
+      if (writes.length + g.writes.length > BATCH_LIMIT || (newMonth && months.size >= MONTHS_PER_BATCH)) await flush();
+      if (g.month !== undefined) months.add(g.month);
+      writes.push(...g.writes);
     }
+    await flush();
   }
 
   async function deleteByClient(name: string, clientId: string) {
     const snap = await getDocs(scoped(name, where('clientId', '==', clientId)));
-    await commitInBatches(snap.docs, (b, d) => b.delete(d.ref));
+    await run(snap.docs.map((d) => single((b) => b.delete(d.ref))));
   }
+
+  const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), stamp(entry));
 
   return {
     mode: 'firestore',
+
+    /* ── Escritório ───────────────────────────────────────────────────── */
+    async getOrgSettings() {
+      const snap = await getDoc(doc(db, COL.orgs, getOrgId()));
+      return snap.exists() ? ({ ...(snap.data() as OrgSettings), orgId: snap.id }) : null;
+    },
+    async saveOrgSettings(settings) {
+      await setDoc(doc(db, COL.orgs, getOrgId()), stamp(settings));
+    },
 
     /* ── Clientes ─────────────────────────────────────────────────────── */
     async listClients() {
       const snap = await getDocs(scoped(COL.clients));
       return snap.docs.map((d) => ({ ...(d.data() as ClientCompany), id: d.id }));
     },
-
     async saveClient(client) {
-      await setDoc(doc(db, COL.clients, client.id), stamp(client), { merge: true });
+      // Substitui o documento: campos apagados no formulário (ex.: CPF do representante) somem de fato.
+      await setDoc(doc(db, COL.clients, client.id), stamp(client));
     },
-
     async deleteClient(clientId) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
-      for (const name of [COL.transactions, COL.rules, COL.accounts, COL.batches]) {
+      // A trilha de auditoria é preservada (imutável por regra).
+      for (const name of [COL.transactions, COL.rules, COL.accounts, COL.batches, COL.locks]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(doc(db, COL.clients, clientId));
@@ -113,17 +158,14 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDocs(scoped(COL.accounts, where('clientId', 'in', [clientId, 'global'])));
       return snap.docs.map((d) => ({ ...(d.data() as ChartAccount), id: d.id })).sort(byCode);
     },
-
     async saveAccount(account) {
       await setDoc(doc(db, COL.accounts, account.id), stamp(account), { merge: true });
     },
-
     async deleteAccount(accountId) {
       await deleteDoc(doc(db, COL.accounts, accountId));
     },
-
     async insertAccounts(accounts) {
-      await commitInBatches(accounts, (b, acc) => b.set(doc(db, COL.accounts, acc.id), stamp(acc)));
+      await run(accounts.map((acc) => single((b) => b.set(doc(db, COL.accounts, acc.id), stamp(acc)))));
     },
 
     /* ── Regras ───────────────────────────────────────────────────────── */
@@ -131,113 +173,109 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDocs(scoped(COL.rules, where('clientId', 'in', [clientId, 'global'])));
       return snap.docs.map((d) => {
         const data = d.data();
-        return {
-          ...(data as ClassificationRule),
-          id: d.id,
-          createdAt: toISO(data.createdAt),
-          updatedAt: toISO(data.updatedAt),
-        };
+        return { ...(data as ClassificationRule), id: d.id, createdAt: toISO(data.createdAt), updatedAt: toISO(data.updatedAt) };
       });
     },
-
     async saveRule(rule) {
       await setDoc(doc(db, COL.rules, rule.id), stamp(rule), { merge: true });
     },
-
     async deleteRule(ruleId) {
       await deleteDoc(doc(db, COL.rules, ruleId));
     },
 
     /* ── Lançamentos ──────────────────────────────────────────────────── */
     async listTransactions(clientId, range?: DateRange) {
-      // Índice composto: orgId ASC, clientId ASC, date DESC (firestore.indexes.json).
+      // Índice composto: orgId ASC, clientId ASC, date DESC.
       const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
       if (range) constraints.push(where('date', '>=', range.start), where('date', '<=', range.end));
       constraints.push(orderBy('date', 'desc'));
       const snap = await getDocs(scoped(COL.transactions, ...constraints));
       return snap.docs.map((d) => ({ ...(d.data() as BankTransaction), id: d.id }));
     },
-
+    async listPendingTransactions(clientId) {
+      const snap = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('status', '==', 'PENDING')));
+      return snap.docs.map((d) => ({ ...(d.data() as BankTransaction), id: d.id }));
+    },
     async latestTransactionDate(clientId) {
       const snap = await getDocs(
         scoped(COL.transactions, where('clientId', '==', clientId), orderBy('date', 'desc'), limit(1))
       );
       return snap.empty ? null : ((snap.docs[0].data() as BankTransaction).date ?? null);
     },
-
     async findExistingTransactionIds(clientId, ids) {
       // Consulta pelo campo `fitid` (e não por documentId): consultas por ID são avaliadas
       // documento a documento pelas regras, inclusive IDs inexistentes, e seriam recusadas.
       const prefix = `${clientId}_`;
-      const fitidToId = new Map(ids.map((id) => [id.startsWith(prefix) ? id.slice(prefix.length) : id, id] as const));
+      const fitids = ids.map((id) => (id.startsWith(prefix) ? id.slice(prefix.length) : id));
       const existing = new Set<string>();
-      for (const group of chunk([...fitidToId.keys()], IN_LIMIT)) {
-        const snap = await getDocs(
-          scoped(COL.transactions, where('clientId', '==', clientId), where('fitid', 'in', group))
-        );
+      for (const group of chunk(fitids, IN_LIMIT)) {
+        const snap = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('fitid', 'in', group)));
         snap.docs.forEach((d) => existing.add(d.id));
       }
       return existing;
     },
-
     async insertTransactions(transactions, batch?: ImportBatch) {
-      await commitInBatches(transactions, (b, tx) => b.set(doc(db, COL.transactions, tx.id), stamp(tx)));
+      await run(transactions.map((tx) => single((b) => b.set(doc(db, COL.transactions, tx.id), stamp(tx)))));
       if (batch) await setDoc(doc(db, COL.batches, batch.id), stamp(batch));
     },
 
-    async commitClassification({ transactionId, account, rule, similarIds, now }: ClassificationCommit) {
+    async commitChanges({ patches, rules = [], audits }: ChangeSet) {
+      const groups: Group[] = rules.map((rule) => single((b) => b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true })));
+      const auditByTx = new Map<string, AuditEntry[]>();
+      const loose: AuditEntry[] = [];
+      for (const a of audits) {
+        if (a.transactionId) auditByTx.set(a.transactionId, [...(auditByTx.get(a.transactionId) ?? []), a]);
+        else loose.push(a);
+      }
+      // Ordena por competência para reduzir o número de lotes; cada patch vai junto da sua auditoria.
+      for (const p of [...patches].sort((a, b) => a.date.localeCompare(b.date))) {
+        const update: DocumentData = { ...clean(p.set) };
+        for (const f of p.remove ?? []) update[f] = deleteField();
+        groups.push({
+          month: monthOf(p.date),
+          writes: [(b) => b.update(doc(db, COL.transactions, p.id), update), ...(auditByTx.get(p.id) ?? []).map(auditWrite)],
+        });
+        auditByTx.delete(p.id);
+      }
+      for (const a of [...loose, ...[...auditByTx.values()].flat()]) groups.push(single(auditWrite(a)));
+      await run(groups);
+    },
+
+    /* ── Extratos ─────────────────────────────────────────────────────── */
+    async listImportBatches(clientId) {
+      const snap = await getDocs(scoped(COL.batches, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as ImportBatch), id: d.id }));
+    },
+    async saveImportBatch(batch) {
+      await setDoc(doc(db, COL.batches, batch.id), stamp(batch), { merge: true });
+    },
+
+    /* ── Fechamento de período ────────────────────────────────────────── */
+    async listPeriodLocks(clientId) {
+      const snap = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as PeriodLock), id: d.id }));
+    },
+    async closePeriod(lock, audit) {
       const b = writeBatch(db);
-      b.update(doc(db, COL.transactions, transactionId), {
-        status: 'RECONCILED',
-        ...account,
-        reconciledAt: now,
-        // Conta única sobrescreve rateio anterior.
-        isSplit: false,
-        splits: deleteField(),
-        matchedRuleId: rule ? rule.id : deleteField(),
-      });
-      if (rule) b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true });
-
-      // Transação + regra + semelhantes no mesmo batch; o excedente vai em lotes extras.
-      const head = similarIds.slice(0, BATCH_LIMIT - 2);
-      const similarUpdate = { status: 'AUTO_CLASSIFIED', ...account, ...(rule ? { matchedRuleId: rule.id } : {}) };
-      head.forEach((id) => b.update(doc(db, COL.transactions, id), similarUpdate));
+      b.set(doc(db, COL.locks, lock.id), stamp(lock));
+      b.set(doc(db, COL.audit, audit.id), stamp(audit));
       await b.commit();
-      await commitInBatches(similarIds.slice(BATCH_LIMIT - 2), (bb, id) =>
-        bb.update(doc(db, COL.transactions, id), similarUpdate)
-      );
+    },
+    async reopenPeriod(lock, audit) {
+      const b = writeBatch(db);
+      b.delete(doc(db, COL.locks, lock.id));
+      b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      await b.commit();
     },
 
-    async saveSplits(transactionId, splits: readonly TransactionSplit[], now) {
-      await updateDoc(doc(db, COL.transactions, transactionId), {
-        status: 'RECONCILED',
-        isSplit: true,
-        splits: splits.map((s) => clean(s)),
-        accountId: deleteField(),
-        accountCode: deleteField(),
-        accountName: deleteField(),
-        matchedRuleId: deleteField(),
-        reconciledAt: now,
-      });
-    },
-
-    async resetToPending(transactionId) {
-      await updateDoc(doc(db, COL.transactions, transactionId), {
-        status: 'PENDING',
-        isSplit: false,
-        accountId: deleteField(),
-        accountCode: deleteField(),
-        accountName: deleteField(),
-        matchedRuleId: deleteField(),
-        splits: deleteField(),
-        reconciledAt: deleteField(),
-      });
-    },
-
-    async approveTransactions(ids, now) {
-      await commitInBatches(ids, (b, id) =>
-        b.update(doc(db, COL.transactions, id), { status: 'RECONCILED', reconciledAt: now })
-      );
+    /* ── Auditoria ────────────────────────────────────────────────────── */
+    async listAudit(clientId, options = {}) {
+      // Índices compostos: (orgId, clientId, at desc) e (orgId, clientId, transactionId, at desc).
+      const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
+      if (options.transactionId) constraints.push(where('transactionId', '==', options.transactionId));
+      constraints.push(orderBy('at', 'desc'), limit(options.limit ?? 200));
+      const snap = await getDocs(scoped(COL.audit, ...constraints));
+      return snap.docs.map((d) => ({ ...(d.data() as AuditEntry), id: d.id }));
     },
   };
 }

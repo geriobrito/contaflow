@@ -35,6 +35,18 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 - **Colocar vários contadores no mesmo escritório:** defina `users/{uid}.orgId` igual ao do dono, pelo console do Firebase ou com o script de backfill (`--users`). O próprio usuário não consegue trocar de escritório.
 - `firestore.rules` garante: leitura/escrita só no próprio escritório, `orgId` imutável, `clientId` sempre de um cliente do mesmo escritório, consultas obrigatoriamente filtradas por `orgId`.
 
+### Auditoria, fechamento e escritório
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `audit_log` | Quem classificou, reclassificou, rateou, desfez, aprovou ou auto-classificou (com a classificação anterior e a nova), e quem fechou/reabriu competências (com motivo). | Somente inclusão, com `actorUid == auth.uid`; nunca alterada nem apagada — sobrevive até à exclusão do cliente. |
+| `period_locks` | Competências fechadas (`{clientId}_{AAAA-MM}`). | Enquanto o documento existir, nenhum lançamento daquele mês pode ser alterado (`date` e `amount` são imutáveis). Reabrir = apagar o lock, registrando o motivo na auditoria. Importar novos lançamentos num mês fechado continua permitido. |
+| `orgs/{orgId}` | Nome/CNPJ do escritório, nome, CRC e CPF do contador. | Só o próprio escritório lê e grava. |
+
+- O representante legal (nome e CPF) fica em cada cliente. Os dois preenchem as assinaturas da DRE em PDF e Excel.
+- Regras de aprendizado respeitam `matchType` (contém, começa com, exato). Quando várias casam, vence a mais restritiva, depois o termo mais longo, depois a mais recente. Criar ou aplicar uma regra classifica também os pendentes já gravados, em todos os meses abertos.
+- Cada importação de OFX guarda o saldo final (`LEDGERBAL`) em `import_batches` e o confere com o saldo do extrato anterior da mesma conta mais a movimentação gravada no intervalo. A tela de Conciliação alerta divergências e lacunas de datas entre extratos.
+
 ## Implantação (Firestore)
 
 > ⚠️ **Ordem importa.** Documentos gravados antes do isolamento não têm `orgId` e ficam **inacessíveis** assim que as novas regras são publicadas. Rode o backfill antes.
@@ -58,6 +70,6 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
    npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>
    ```
 
-   O índice composto `transactions (orgId, clientId, date desc)` é necessário para as consultas por período; aguarde o status *Enabled* no console antes de usar o app.
+   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks` e `orgs`.
 
 3. **Deploy do app** (Vercel) normalmente.

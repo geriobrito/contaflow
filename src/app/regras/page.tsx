@@ -1,19 +1,48 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
-import type { BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
-import { deleteRule, getAccounts, getRules, getTransactions, saveRule } from '@/lib/services/data-service';
+import { AlertTriangle, Check, Pencil, Plus, Trash2, Wand2, X } from 'lucide-react';
+import type { BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
+import { deleteRule, getAccounts, getRepository, getRules, getTransactions, saveRule } from '@/lib/services/data-service';
+import { applyRuleToPending } from '@/lib/services/reconciliation-service';
 import { useClient } from '@/contexts/ClientContext';
-import { normalizePattern } from '@/hooks/useReconciliation';
+import {
+  MATCH_TYPE_LABEL,
+  detectRuleConflicts,
+  matchesRule,
+  normalizePattern,
+  pendingWonByRule,
+  type RuleConflict,
+} from '@/lib/reconciliation';
+import { isMonthLocked } from '@/lib/periods';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 
-/** Lançamentos afetados: vinculados à regra ou cujo histórico contém o padrão. */
+/** Tipos oferecidos na interface (REGEX existente continua funcionando e sendo exibido). */
+const MATCH_OPTIONS: readonly RuleMatchType[] = ['CONTAINS', 'STARTS_WITH', 'EXACT'];
+
+/** Lançamentos afetados: vinculados à regra ou cujo histórico casa com ela. */
 function countAffected(rule: ClassificationRule, transactions: readonly BankTransaction[]): number {
-  const pattern = normalizePattern(rule.pattern);
-  if (!pattern) return 0;
-  return transactions.filter((t) => t.matchedRuleId === rule.id || normalizePattern(t.memo).includes(pattern)).length;
+  return transactions.filter((t) => t.matchedRuleId === rule.id || matchesRule(t.memo, rule)).length;
+}
+
+const ruleKey = (pattern: string, type: RuleMatchType | undefined) => `${type ?? 'CONTAINS'}:${pattern}`;
+
+function MatchTypeSelect({ value, onChange, className = '' }: { value: RuleMatchType; onChange: (v: RuleMatchType) => void; className?: string }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as RuleMatchType)}
+      aria-label="Tipo de comparação"
+      className={`${INPUT} ${className}`}
+    >
+      {(MATCH_OPTIONS.includes(value) ? MATCH_OPTIONS : [...MATCH_OPTIONS, value]).map((t) => (
+        <option key={t} value={t}>
+          {MATCH_TYPE_LABEL[t]}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 /* =========================================================================
@@ -24,22 +53,39 @@ interface RuleRowProps {
   rule: ClassificationRule;
   account: ChartAccount | undefined;
   affected: number;
-  isDuplicate: (pattern: string, exceptId: string) => boolean;
-  onSave: (rule: ClassificationRule, pattern: string) => Promise<void>;
+  /** Pendentes que esta regra classificaria agora (casa e vence o conflito). */
+  pending: number;
+  conflicts: readonly RuleConflict[];
+  rulesById: ReadonlyMap<string, ClassificationRule>;
+  isDuplicate: (key: string, exceptId: string) => boolean;
+  onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
+  onApply: (rule: ClassificationRule) => Promise<void>;
+  applying: boolean;
 }
 
-function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: RuleRowProps) {
+function RuleRow({ rule, account, affected, pending, conflicts, rulesById, isDuplicate, onSave, onDelete, onApply, applying }: RuleRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(rule.pattern);
+  const [draftType, setDraftType] = useState<RuleMatchType>(rule.matchType ?? 'CONTAINS');
 
-  const normalized = normalizePattern(draft);
-  const error = !normalized ? 'Informe um termo.' : isDuplicate(normalized, rule.id) ? 'Termo já cadastrado.' : null;
+  const normalized = draftType === 'REGEX' ? draft.trim() : normalizePattern(draft);
+  const error = !normalized
+    ? 'Informe um termo.'
+    : isDuplicate(ruleKey(normalized, draftType), rule.id)
+      ? 'Já existe regra com esse termo e tipo.'
+      : null;
+
+  const cancel = () => {
+    setDraft(rule.pattern);
+    setDraftType(rule.matchType ?? 'CONTAINS');
+    setEditing(false);
+  };
 
   const commit = async () => {
     if (error) return;
     try {
-      await onSave(rule, normalized);
+      await onSave(rule, normalized, draftType);
       setEditing(false);
     } catch {
       /* mensagem exibida pela página; mantém a edição aberta para nova tentativa */
@@ -57,20 +103,36 @@ function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: Rul
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void commit();
-                if (e.key === 'Escape') {
-                  setDraft(rule.pattern);
-                  setEditing(false);
-                }
+                if (e.key === 'Escape') cancel();
               }}
               aria-invalid={Boolean(error)}
               className={`${INPUT} h-9 font-mono text-[13px]`}
             />
+            <MatchTypeSelect value={draftType} onChange={setDraftType} className="h-9 text-[12px]" />
             {error && <p className="text-[11px] text-rose-600">{error}</p>}
           </div>
         ) : (
-          <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
-            {rule.pattern}
-          </span>
+          <div className="min-w-0 space-y-1">
+            <span className="block text-[10px] uppercase tracking-wider text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
+            <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
+              {rule.pattern}
+            </span>
+            {conflicts.map((c) => {
+              const winner = rulesById.get(c.winnerId);
+              return (
+                <p
+                  key={c.winnerId}
+                  title={`Históricos em disputa:\n${c.memos.join('\n')}`}
+                  className="flex items-start gap-1 text-[11px] leading-snug text-amber-700 dark:text-amber-400"
+                >
+                  <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
+                  <span>
+                    Perde para “{winner?.pattern ?? c.winnerId}” ({winner?.accountName ?? 'outra conta'}) em {c.count} histórico(s)
+                  </span>
+                </p>
+              );
+            })}
+          </div>
         )}
       </td>
       <td className="px-3 py-3 max-w-0 w-full">
@@ -84,6 +146,18 @@ function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: Rul
       </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-[13px] text-stone-600 dark:text-stone-400 whitespace-nowrap">
         {affected}
+        {pending > 0 && !editing && (
+          <button
+            type="button"
+            disabled={applying}
+            onClick={() => void onApply(rule)}
+            title="Classificar agora os lançamentos pendentes que esta regra vence (todos os períodos abertos)"
+            className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[11px] font-medium text-[#0071E3] bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
+          >
+            <Wand2 className="w-3 h-3" />
+            {applying ? 'Aplicando…' : `Aplicar a ${pending}`}
+          </button>
+        )}
       </td>
       <td className="pl-3 pr-4 py-3">
         <div className="flex items-center justify-end gap-1">
@@ -100,10 +174,7 @@ function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: Rul
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setDraft(rule.pattern);
-                  setEditing(false);
-                }}
+                onClick={cancel}
                 aria-label="Cancelar edição"
                 className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
               >
@@ -145,30 +216,36 @@ export default function RegrasPage() {
   const [rules, setRules] = useState<ClassificationRule[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [lockedMonths, setLockedMonths] = useState<ReadonlySet<string>>(new Set());
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
   const [newPattern, setNewPattern] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
+  const [newType, setNewType] = useState<RuleMatchType>('CONTAINS');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
   const apply = useCallback(
-    (id: string, [r, a, t]: [ClassificationRule[], ChartAccount[], BankTransaction[]]) => {
+    (id: string, [r, a, t, l]: [ClassificationRule[], ChartAccount[], BankTransaction[], { month: string }[]]) => {
       setRules(r);
       setAccounts(a);
       setTransactions(t);
+      setLockedMonths(new Set(l.map((x) => x.month)));
       setLoadedFor(id);
     },
     []
   );
-  const fetchAll = (id: string) => Promise.all([getRules(id), getAccounts(id), getTransactions(id)]);
+  const fetchAll = (id: string) =>
+    Promise.all([getRules(id), getAccounts(id), getTransactions(id), getRepository().listPeriodLocks(id)]);
   const load = async (id: string) => apply(id, await fetchAll(id));
 
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    Promise.all([getRules(clientId), getAccounts(clientId), getTransactions(clientId)])
+    fetchAll(clientId)
       .then((data) => active && apply(clientId, data))
       .catch((e) => console.error('Erro ao carregar regras:', e));
     return () => {
@@ -179,10 +256,23 @@ export default function RegrasPage() {
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
   const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
 
+  const rulesById = useMemo(() => new Map(rules.map((r) => [r.id, r] as const)), [rules]);
+  const conflicts = useMemo(() => detectRuleConflicts(transactions.map((t) => t.memo), rules), [transactions, rules]);
+  const openPending = useMemo(
+    () => transactions.filter((t) => t.status === 'PENDING' && !isMonthLocked(t.date, lockedMonths)),
+    [transactions, lockedMonths]
+  );
+  const conflictCount = conflicts.size;
+
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return rules
-      .map((rule) => ({ rule, account: accountsById.get(rule.accountId), affected: countAffected(rule, transactions) }))
+      .map((rule) => ({
+        rule,
+        account: accountsById.get(rule.accountId),
+        affected: countAffected(rule, transactions),
+        pending: pendingWonByRule(openPending, rules, rule).length,
+      }))
       .filter(
         ({ rule, account }) =>
           !term ||
@@ -191,12 +281,35 @@ export default function RegrasPage() {
           (account?.code ?? rule.accountCode ?? '').includes(term)
       )
       .sort((a, b) => b.affected - a.affected || a.rule.pattern.localeCompare(b.rule.pattern));
-  }, [rules, accountsById, transactions, search]);
+  }, [rules, accountsById, transactions, openPending, search]);
 
   const isDuplicate = useCallback(
-    (pattern: string, exceptId: string) => rules.some((r) => r.id !== exceptId && normalizePattern(r.pattern) === pattern),
+    (key: string, exceptId: string) =>
+      rules.some((r) => r.id !== exceptId && ruleKey(r.matchType === 'REGEX' ? r.pattern.trim() : normalizePattern(r.pattern), r.matchType) === key),
     [rules]
   );
+
+  /** Classifica os pendentes já gravados (todos os períodos abertos) que a regra vence. */
+  const applyToPending = async (rule: ClassificationRule, pool: readonly ClassificationRule[]): Promise<number> => {
+    if (!clientId) return 0;
+    const updated = await applyRuleToPending({ clientId, rule, rules: pool, accountsById, lockedMonths });
+    return updated.length;
+  };
+
+  const handleApply = async (rule: ClassificationRule) => {
+    setActionError(null);
+    setNotice(null);
+    setApplyingId(rule.id);
+    try {
+      const n = await applyToPending(rule, rules);
+      setNotice(`“${rule.pattern}” classificou ${n} lançamento(s) pendente(s).`);
+      if (clientId) await load(clientId);
+    } catch (e: unknown) {
+      setActionError(`Não foi possível aplicar a regra “${rule.pattern}” (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+    } finally {
+      setApplyingId(null);
+    }
+  };
 
   const isLoading = Boolean(clientId) && loadedFor !== clientId;
 
@@ -209,26 +322,35 @@ export default function RegrasPage() {
       setAddError('Informe o termo e a conta de destino.');
       return;
     }
-    if (isDuplicate(pattern, '')) {
-      setAddError('Já existe uma regra com esse termo.');
+    if (isDuplicate(ruleKey(pattern, newType), '')) {
+      setAddError('Já existe uma regra com esse termo e tipo.');
       return;
     }
     setAdding(true);
     setAddError(null);
+    setNotice(null);
     const now = new Date().toISOString();
+    const rule: ClassificationRule = {
+      id: `rule-${Date.parse(now)}`,
+      clientId,
+      pattern,
+      accountId: account.id,
+      accountCode: account.code,
+      accountName: account.name,
+      matchType: newType,
+      createdAt: now,
+      updatedAt: now,
+    };
     try {
-      await saveRule({
-        id: `rule-${Date.now()}`,
-        clientId,
-        pattern,
-        accountId: account.id,
-        accountCode: account.code,
-        accountName: account.name,
-        matchType: 'CONTAINS',
-        createdAt: now,
-        updatedAt: now,
-      });
+      await saveRule(rule);
       setNewPattern('');
+      // Regra nova vale também para o que já está no banco, não só para as próximas importações.
+      try {
+        const n = await applyToPending(rule, [...rules, rule]);
+        setNotice(n > 0 ? `Regra criada e aplicada a ${n} lançamento(s) pendente(s).` : 'Regra criada. Nenhum pendente em período aberto casou com ela.');
+      } catch (e: unknown) {
+        setActionError(`Regra criada, mas não foi possível aplicá-la aos pendentes (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      }
       await load(clientId);
     } catch (e: unknown) {
       setAddError(`Não foi possível salvar a regra (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
@@ -240,10 +362,10 @@ export default function RegrasPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   /** Propaga ao RuleRow (que mantém o modo de edição aberto) e informa o usuário. */
-  const handleSave = async (rule: ClassificationRule, pattern: string) => {
+  const handleSave = async (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => {
     setActionError(null);
     try {
-      await saveRule({ ...rule, pattern, updatedAt: new Date().toISOString() });
+      await saveRule({ ...rule, pattern, matchType, updatedAt: new Date().toISOString() });
       if (clientId) await load(clientId);
     } catch (e: unknown) {
       setActionError(`Não foi possível atualizar a regra “${rule.pattern}” (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
@@ -268,8 +390,10 @@ export default function RegrasPage() {
         title="Regras de aprendizado"
         description={
           <>
-            Termos memorizados que classificam lançamentos automaticamente na importação.{' '}
-            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
+            Termos memorizados que classificam lançamentos automaticamente. Quando duas regras casam o mesmo histórico, vence a
+            mais restritiva (exato › começa com › contém), depois o termo mais longo e, por fim, a mais recente.{' '}
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s)
+            {conflictCount > 0 && <span className="text-amber-700 dark:text-amber-400"> · {conflictCount} com conflito</span>}.
           </>
         }
       />
@@ -277,7 +401,8 @@ export default function RegrasPage() {
       {/* Adição rápida */}
       <form onSubmit={handleAdd} className={`${SURFACE} rounded-[22px] p-4 sm:p-5 space-y-3`}>
         <p className="text-[13px] font-medium text-stone-700 dark:text-stone-300">Nova regra</p>
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_auto] gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,3fr)_auto] gap-2.5">
+          <MatchTypeSelect value={newType} onChange={setNewType} />
           <input
             value={newPattern}
             onChange={(e) => setNewPattern(e.target.value)}
@@ -304,6 +429,11 @@ export default function RegrasPage() {
           </button>
         </div>
         {addError && <p className="text-[12px] text-rose-600 animate-fade-in">{addError}</p>}
+        {notice && (
+          <p role="status" className="text-[12px] text-emerald-700 animate-fade-in">
+            {notice}
+          </p>
+        )}
       </form>
 
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por termo ou conta" />
@@ -344,12 +474,17 @@ export default function RegrasPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ rule, account, affected }) => (
+                {rows.map(({ rule, account, affected, pending }) => (
                   <RuleRow
                     key={rule.id}
                     rule={rule}
                     account={account}
                     affected={affected}
+                    pending={pending}
+                    conflicts={conflicts.get(rule.id) ?? []}
+                    rulesById={rulesById}
+                    onApply={handleApply}
+                    applying={applyingId === rule.id}
                     isDuplicate={isDuplicate}
                     onSave={handleSave}
                     onDelete={handleDelete}

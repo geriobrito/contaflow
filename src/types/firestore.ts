@@ -24,6 +24,9 @@ export interface ClientCompany {
   taxRegime?: TaxRegime; // Alias de compatibilidade
   email?: string;
   phone?: string;
+  /** Representante legal / administrador que assina as demonstrações. */
+  legalRepresentativeName?: string;
+  legalRepresentativeCpf?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -130,6 +133,8 @@ export interface BankTransaction {
   accountNumber?: string;
   importBatchId?: string;
   reconciledAt?: string;
+  /** Conta bancária de origem (banco-agência-conta do OFX), usada na conferência de saldo. */
+  accountKey?: string;
   /** Lançamento desdobrado em várias contas; quando true, `splits` substitui `accountId`. */
   isSplit?: boolean;
   splits?: TransactionSplit[];
@@ -172,6 +177,15 @@ export interface ImportBatch {
   totalDebit: number;
   totalCredit: number;
   importedAt: string;
+  /** Conta bancária do extrato e saldo final informado pelo banco (LEDGERBAL). */
+  accountKey?: string;
+  bankName?: string;
+  ledgerBalance?: number;
+  ledgerDate?: string;
+  /** Soma de todos os lançamentos do arquivo (inclusive duplicados). */
+  fileNet?: number;
+  balanceCheck?: BalanceCheck;
+  importedByUid?: string;
 }
 
 export interface DRELineItem {
@@ -210,4 +224,89 @@ export interface UserProfile {
   orgId: string;
   email?: string;
   createdAt: string;
+}
+
+/* =========================================================================
+   Auditoria, fechamento de período, escritório e extratos
+   ========================================================================= */
+
+export type AuditAction =
+  | 'CLASSIFY'
+  | 'RECLASSIFY'
+  | 'SPLIT'
+  | 'UNRECONCILE'
+  | 'APPROVE'
+  | 'AUTO_CLASSIFY'
+  | 'PERIOD_CLOSE'
+  | 'PERIOD_REOPEN';
+
+/** Estado de classificação de um lançamento num instante (antes/depois). */
+export interface ClassificationSnapshot {
+  status: ReconciliationStatus;
+  accountId?: string;
+  accountCode?: string;
+  accountName?: string;
+  matchedRuleId?: string;
+  isSplit?: boolean;
+  splits?: { accountId: string; accountCode?: string; accountName?: string; amount: number }[];
+}
+
+/** Registro imutável da trilha de auditoria (coleção `audit_log`, somente inclusão). */
+export interface AuditEntry {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  action: AuditAction;
+  actorUid: string;
+  actorEmail?: string;
+  at: string;
+  transactionId?: string;
+  /** Data e histórico do lançamento, para leitura da trilha sem consultar a transação. */
+  transactionDate?: string;
+  transactionMemo?: string;
+  transactionAmount?: number;
+  /** Competência (YYYY-MM) em ações de fechamento/reabertura. */
+  month?: string;
+  before?: ClassificationSnapshot;
+  after?: ClassificationSnapshot;
+  /** Regra que motivou a ação (auto-classificação). */
+  ruleId?: string;
+  note?: string;
+}
+
+/** Competência fechada (coleção `period_locks`, id `${clientId}_${YYYY-MM}`). */
+export interface PeriodLock {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  month: string;
+  lockedAt: string;
+  lockedByUid: string;
+  lockedByEmail?: string;
+}
+
+/** Dados do escritório e do responsável técnico (coleção `orgs`, id = orgId). */
+export interface OrgSettings {
+  orgId: string;
+  officeName: string;
+  officeCnpj?: string;
+  accountantName: string;
+  accountantCrc: string;
+  accountantCpf?: string;
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+export type BalanceCheckStatus = 'OK' | 'MISMATCH' | 'BASELINE' | 'NO_LEDGER';
+
+/** Conferência do saldo final do extrato (LEDGERBAL) contra a movimentação. */
+export interface BalanceCheck {
+  status: BalanceCheckStatus;
+  reported?: number;
+  /** Saldo do extrato anterior + movimentação no intervalo. */
+  expected?: number;
+  difference?: number;
+  previousBatchId?: string;
+  previousLedgerDate?: string;
+  movement?: number;
 }

@@ -69,3 +69,41 @@ export function maskCNPJ(value: string): string {
     .replace(/\.(\d{3})(\d)/, '.$1/$2')
     .replace(/(\d{4})(\d)/, '$1-$2');
 }
+
+/**
+ * Valida CPF pelos dígitos verificadores (módulo 11).
+ */
+export function isValidCPF(value: string): boolean {
+  const d = value.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const check = (len: number): number => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(d[i]) * (len + 1 - i);
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return check(9) === Number(d[9]) && check(10) === Number(d[10]);
+}
+
+/** Máscara progressiva de CPF (000.000.000-00). */
+export function maskCPF(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, '$1.$2')
+    .replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1-$2');
+}
+
+/**
+ * Registro no CRC: UF + número, com categoria opcional (ex.: "SP-123456/O-5", "RJ 098765").
+ * Retorna a forma normalizada ou null se inválido.
+ */
+export function normalizeCRC(value: string): string | null {
+  const m = value
+    .trim()
+    .toUpperCase()
+    .match(/^([A-Z]{2})\s*[-/ ]?\s*(\d{3,7})(?:\s*\/\s*([OPST]))?(?:\s*-\s*(\d))?$/);
+  if (!m) return null;
+  const [, uf, num, cat, dv] = m;
+  return `${uf}-${num}${cat ? `/${cat}` : ''}${dv ? `-${dv}` : ''}`;
+}

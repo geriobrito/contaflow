@@ -16,6 +16,13 @@ rules_version = '2';
 //   5. O usuário cria o próprio perfil apenas como dono de um escritório novo
 //      (orgId == uid). Entrar em um escritório existente exige alteração administrativa
 //      (console / Admin SDK), nunca pelo próprio cliente.
+//   6. Trilha de auditoria (audit_log) é somente-inclusão: ninguém edita nem apaga, e o
+//      registro precisa ser do próprio usuário autenticado (actorUid == auth.uid).
+//   7. Competência fechada (period_locks/{clientId}_{YYYY-MM}) congela os lançamentos
+//      daquele mês: nenhuma alteração até a reabertura (que também é auditada).
+//
+// Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
+// cliente e um fechamento por competência). O app agrupa os lotes por competência.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -48,6 +55,11 @@ service cloud.firestore {
 
     function unchanged(field) {
       return request.resource.data[field] == resource.data[field];
+    }
+
+    // Competência (YYYY-MM) do lançamento está aberta?
+    function monthOpen(tx) {
+      return !exists(/databases/$(database)/documents/period_locks/$(tx.clientId + '_' + tx.date[0:7]));
     }
 
     // ── Perfil do usuário ────────────────────────────────────────────────
@@ -83,14 +95,45 @@ service cloud.firestore {
 
     match /transactions/{docId} {
       allow read, delete: if isMine(resource.data);
+      // Importar em mês fechado é permitido (entra como pendente/auto e não altera a DRE).
       allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
-      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+      // Nenhuma alteração em competência fechada; data e valor são imutáveis.
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('date') && unchanged('amount')
+        && monthOpen(resource.data);
     }
 
     match /import_batches/{docId} {
       allow read, delete: if isMine(resource.data);
       allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    // ── Fechamento de competência ────────────────────────────────────────
+    match /period_locks/{lockId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && request.resource.data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && lockId == request.resource.data.clientId + '_' + request.resource.data.month
+        && request.resource.data.lockedByUid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ── Trilha de auditoria (somente inclusão) ───────────────────────────
+    match /audit_log/{entryId} {
+      allow read: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ── Escritório e responsável técnico ─────────────────────────────────
+    match /orgs/{orgId} {
+      allow read: if hasProfile() && orgId == myOrg();
+      allow create, update: if hasProfile() && orgId == myOrg() && request.resource.data.orgId == orgId;
+      allow delete: if false;
     }
   }
 }

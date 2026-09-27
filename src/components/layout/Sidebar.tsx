@@ -17,6 +17,8 @@ import {
   Sparkles,
   X,
   type LucideIcon,
+  History,
+  Landmark,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -34,6 +36,8 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
   { href: '/dre', label: 'DRE', icon: LineChart },
   { href: '/clientes', label: 'Clientes', icon: Building2 },
+  { href: '/auditoria', label: 'Auditoria', icon: History },
+  { href: '/escritorio', label: 'Escritório', icon: Landmark },
 ];
 
 const COLLAPSE_KEY = 'contaflow_sidebar_collapsed';
