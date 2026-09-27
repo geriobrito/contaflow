@@ -26,6 +26,8 @@ export default function LoginPage() {
         return 'Esta conta de usuário foi desativada.';
       case 'auth/too-many-requests':
         return 'Muitas tentativas sem sucesso. Tente novamente em alguns minutos.';
+      case 'auth/network-request-failed':
+        return 'Erro de conexão com o Firebase. Verifique sua internet.';
       case 'auth/api-key-not-valid':
         return 'Chave de API do Firebase ausente ou inválida. Configure as credenciais reais no .env.local.';
       default:
@@ -54,7 +56,7 @@ export default function LoginPage() {
     }
   };
 
-  // Preenchimento de credenciais para teste rápido
+  // Preenchimento de credenciais para teste rápido em ambiente local
   const handleQuickFill = () => {
     setEmail('admin@contaflow.com.br');
     setPassword('contaflow123');
@@ -67,13 +69,13 @@ export default function LoginPage() {
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-tr from-blue-400/20 to-indigo-400/20 rounded-full blur-3xl pointer-events-none" />
 
       {/* Floating Centered Glassmorphism Card */}
-      <div className="relative z-10 w-full max-w-sm rounded-3xl backdrop-blur-xl bg-white/80 dark:bg-zinc-900/80 border border-black/5 dark:border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.06)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)] p-8 flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
-        {/* Top Icon with Subtle Gradient */}
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#0071E3] to-blue-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/25 mb-4 group hover:scale-105 transition-transform duration-200">
-          <ShieldCheck className="w-7 h-7" />
+      <div className="relative z-10 w-full max-w-sm rounded-3xl backdrop-blur-xl bg-white/80 dark:bg-zinc-900/80 border border-black/5 dark:border-white/10 shadow-xl p-8 flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
+        {/* Top Icon with Subtle Circle */}
+        <div className="w-16 h-16 rounded-full bg-[#0071E3]/10 dark:bg-blue-500/10 flex items-center justify-center text-[#0071E3] dark:text-blue-400 mb-4 border border-[#0071E3]/20 shadow-sm">
+          <ShieldCheck className="w-8 h-8" />
         </div>
 
-        {/* Title & Subtitle */}
+        {/* Title & Subtitle (SF Pro Style) */}
         <h1 className="text-xl font-semibold tracking-tight text-[#1D1D1F] dark:text-white text-center">
           ContaFlow
         </h1>
@@ -93,7 +95,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="w-full space-y-3.5">
           {/* Email Input */}
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-[#1D1D1F] dark:text-zinc-300 block">
+            <label className="text-xs font-medium text-[#1D1D1F] dark:text-zinc-300 block">
               E-mail
             </label>
             <div className="relative">
@@ -104,14 +106,14 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu.email@exemplo.com"
-                className="w-full pl-9 pr-3.5 py-2.5 text-xs rounded-xl border border-black/10 dark:border-white/10 bg-white/90 dark:bg-zinc-800 text-[#1D1D1F] dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0071E3] transition-all"
+                className="w-full pl-10 pr-4 py-3 text-sm rounded-xl bg-[#F5F5F7]/80 dark:bg-zinc-800/80 border border-black/10 dark:border-white/10 text-[#1D1D1F] dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0071E3] transition-all"
               />
             </div>
           </div>
 
           {/* Password Input */}
           <div className="space-y-1">
-            <label className="text-[11px] font-medium text-[#1D1D1F] dark:text-zinc-300 block">
+            <label className="text-xs font-medium text-[#1D1D1F] dark:text-zinc-300 block">
               Senha
             </label>
             <div className="relative">
@@ -122,16 +124,16 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-9 pr-3.5 py-2.5 text-xs rounded-xl border border-black/10 dark:border-white/10 bg-white/90 dark:bg-zinc-800 text-[#1D1D1F] dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0071E3] transition-all"
+                className="w-full pl-10 pr-4 py-3 text-sm rounded-xl bg-[#F5F5F7]/80 dark:bg-zinc-800/80 border border-black/10 dark:border-white/10 text-[#1D1D1F] dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#0071E3] transition-all"
               />
             </div>
           </div>
 
-          {/* Submit Button (Native iOS style) */}
+          {/* Native iOS Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 py-2.5 px-4 rounded-xl text-xs font-semibold text-white bg-[#0071E3] hover:bg-[#0077ED] active:scale-[0.98] transition-all shadow-md shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full mt-2 bg-[#0071E3] hover:bg-[#0077ED] active:scale-[0.98] text-white font-medium rounded-xl py-3 text-sm transition-all shadow-md shadow-blue-500/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
@@ -141,7 +143,7 @@ export default function LoginPage() {
             ) : (
               <>
                 <span>Entrar no Sistema</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <ArrowRight className="w-4 h-4" />
               </>
             )}
           </button>
@@ -153,7 +155,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={handleQuickFill}
-              className="text-[11px] font-medium text-[#0071E3] hover:underline"
+              className="text-xs font-medium text-[#0071E3] hover:underline"
             >
               Preencher dados de teste local
             </button>
@@ -162,7 +164,7 @@ export default function LoginPage() {
 
         {/* Footer info */}
         <div className="mt-6 text-center">
-          <span className="text-[10px] text-zinc-400 font-medium">
+          <span className="text-[11px] text-zinc-400 font-medium">
             Protegido por Firebase Authentication
           </span>
         </div>
