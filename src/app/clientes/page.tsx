@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Check, CheckCircle2, Pencil, Plus, XCircle } from 'lucide-react';
+import { Check, CheckCircle2, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, maskCNPJ } from '@/lib/utils/formatters';
-import { BUTTON, EmptyState, Field, INPUT, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
@@ -35,9 +35,11 @@ interface ClientCardProps {
   active: boolean;
   onActivate: () => void;
   onEdit: () => void;
+  onDelete: () => Promise<void>;
+  deleting: boolean;
 }
 
-function ClientCard({ client, active, onActivate, onEdit }: ClientCardProps) {
+function ClientCard({ client, active, onActivate, onEdit, onDelete, deleting }: ClientCardProps) {
   const regime = client.regime ?? client.taxRegime;
   return (
     <article
@@ -93,11 +95,23 @@ function ClientCard({ client, active, onActivate, onEdit }: ClientCardProps) {
             Disponível
           </span>
         )}
-        {!active && (
-          <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
-            Definir como ativo
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {!active && (
+            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
+              Definir como ativo
+            </button>
+          )}
+          {deleting ? (
+            <span className="px-2 text-[12px] text-stone-400">Excluindo…</span>
+          ) : (
+            <ConfirmButton
+              ariaLabel={`Excluir ${client.tradeName || client.name} e todos os seus dados`}
+              label={<Trash2 className="w-3.5 h-3.5" />}
+              confirmLabel="Excluir empresa"
+              onConfirm={onDelete}
+            />
+          )}
+        </div>
       </div>
     </article>
   );
@@ -236,7 +250,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
    ========================================================================= */
 
 export default function ClientesPage() {
-  const { clients, currentClient, selectClient, refreshClients, isLoading } = useClient();
+  const { clients, currentClient, selectClient, refreshClients, removeClient, isLoading } = useClient();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ClientCompany | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -324,6 +339,19 @@ export default function ClientesPage() {
               onActivate={() => {
                 selectClient(c);
                 flash(`${c.tradeName || c.name} definido como ativo`);
+              }}
+              deleting={deletingId === c.id}
+              onDelete={async () => {
+                setDeletingId(c.id);
+                try {
+                  await removeClient(c.id);
+                  flash(`${c.tradeName || c.name} excluído com seus lançamentos, regras e contas`);
+                } catch (e) {
+                  console.error('Erro ao excluir cliente:', e);
+                  flash('Não foi possível excluir a empresa');
+                } finally {
+                  setDeletingId(null);
+                }
               }}
               onEdit={() => {
                 setEditing(c);

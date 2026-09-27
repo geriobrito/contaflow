@@ -24,19 +24,35 @@ export interface ClientCompany {
 }
 
 export type AccountNature = 'SYNTHETIC' | 'ANALYTIC';
-export type AccountType = 
-  | 'RECEITA' 
-  | 'DESPESA' 
-  | 'ATIVO' 
-  | 'PASSIVO' 
-  | 'CUSTO'
+export type AccountType =
   | 'ASSET'
   | 'LIABILITY'
+  | 'EQUITY'
+  | 'REVENUE'
   | 'COST'
   | 'EXPENSE'
-  | 'REVENUE';
+  // Aliases legados em português (dados antigos)
+  | 'RECEITA'
+  | 'DESPESA'
+  | 'ATIVO'
+  | 'PASSIVO'
+  | 'CUSTO';
 
-export type DREGroup = 
+/**
+ * Grupos da DRE (ITG 1000 — Resolução CFC nº 1.418/2012).
+ * Os valores em português são legados e continuam aceitos pelo `buildDRE`.
+ */
+export type DREGroup =
+  | 'GROSS_REVENUE'
+  | 'DEDUCTIONS'
+  | 'COSTS'
+  | 'OPERATING_EXPENSES'
+  | 'FINANCIAL_INCOME'
+  | 'FINANCIAL_EXPENSES'
+  | 'OTHER_INCOME'
+  | 'OTHER_EXPENSES'
+  | 'INCOME_TAXES'
+  // Legados
   | 'RECEITA_BRUTA'
   | 'DEDUCOES_RECEITA'
   | 'RECEITA_LIQUIDA'
@@ -60,6 +76,8 @@ export interface ChartAccount {
   parentId?: string;
   level: number;
   dreGroup?: DREGroup;
+  /** Conta redutora (retificadora), ex.: (-) Depreciação Acumulada. */
+  isContra?: boolean;
   description?: string;
   createdAt: string;
   updatedAt: string;

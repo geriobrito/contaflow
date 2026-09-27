@@ -17,11 +17,7 @@ import {
   ClassificationRule,
   ImportBatch,
 } from '@/types/firestore';
-import {
-  INITIAL_CLIENT,
-  INITIAL_CHART_OF_ACCOUNTS,
-  INITIAL_CLASSIFICATION_RULES,
-} from '@/lib/mock/initial-data';
+import { buildITG1000Chart } from '@/lib/chart/itg1000';
 
 // Chaves do LocalStorage para modo fallback / desenvolvimento local
 const STORAGE_KEYS = {
@@ -63,14 +59,54 @@ export async function getClients(): Promise<ClientCompany[]> {
   if (isFirebaseConfigured() && db) {
     try {
       const snap = await getDocs(collection(db, 'clients'));
-      if (!snap.empty) {
-        return snap.docs.map((d) => d.data() as ClientCompany);
-      }
+      return snap.docs.map((d) => ({ ...(d.data() as ClientCompany), id: d.id }));
     } catch (e) {
       console.warn('Erro ao carregar do Firestore, usando fallback local:', e);
     }
   }
-  return getLocalData<ClientCompany[]>(STORAGE_KEYS.CLIENTS, [INITIAL_CLIENT]);
+  return getLocalData<ClientCompany[]>(STORAGE_KEYS.CLIENTS, []);
+}
+
+/** Firestore limita cada writeBatch a 500 operações. */
+async function deleteWhereClientId(collectionName: string, clientId: string): Promise<number> {
+  const snap = await getDocs(query(collection(db, collectionName), where('clientId', '==', clientId)));
+  const refs = snap.docs.map((d) => d.ref);
+  for (let i = 0; i < refs.length; i += 500) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 500).forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
+  return refs.length;
+}
+
+/**
+ * Exclui a empresa e, em cascata, todos os dados vinculados ao `clientId`:
+ * plano de contas próprio, regras, lançamentos e lotes de importação.
+ * O plano `global` compartilhado nunca é afetado.
+ */
+export async function deleteClient(clientId: string): Promise<void> {
+  if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
+
+  if (isFirebaseConfigured() && db) {
+    for (const name of ['transactions', 'classification_rules', 'chart_of_accounts', 'import_batches']) {
+      await deleteWhereClientId(name, clientId);
+    }
+    await deleteDoc(doc(db, 'clients', clientId));
+  }
+
+  const drop = <T extends { clientId: string }>(key: string) =>
+    setLocalData(
+      key,
+      getLocalData<T[]>(key, []).filter((item) => item.clientId !== clientId)
+    );
+  drop<ChartAccount>(STORAGE_KEYS.ACCOUNTS);
+  drop<ClassificationRule>(STORAGE_KEYS.RULES);
+  drop<BankTransaction>(STORAGE_KEYS.TRANSACTIONS);
+  drop<ImportBatch>(STORAGE_KEYS.BATCHES);
+  setLocalData(
+    STORAGE_KEYS.CLIENTS,
+    getLocalData<ClientCompany[]>(STORAGE_KEYS.CLIENTS, []).filter((c) => c.id !== clientId)
+  );
 }
 
 export async function saveClient(client: ClientCompany): Promise<void> {
@@ -120,28 +156,18 @@ export async function getAccounts(clientId?: string): Promise<ChartAccount[]> {
       console.warn('Erro ao carregar contas do Firestore, usando fallback:', e);
     }
   }
-  const local = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, INITIAL_CHART_OF_ACCOUNTS);
+  const local = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
   return local.filter((a) => inClientScope(a.clientId, clientId)).sort(byCode);
 }
 
 /**
- * Aplica o modelo padrão (CFC/SPED simplificado) como contas próprias do cliente.
- * Códigos já existentes no escopo do cliente são preservados. Retorna quantas contas foram criadas.
+ * Aplica o Plano de Contas Simplificado da ITG 1000 (Resolução CFC nº 1.418/2012)
+ * como contas próprias do cliente. Códigos já existentes no escopo do cliente são
+ * preservados. Retorna quantas contas foram criadas.
  */
 export async function applyDefaultChartTemplate(clientId: string): Promise<number> {
   const existingCodes = new Set((await getAccounts(clientId)).map((a) => a.code));
-  const now = new Date().toISOString();
-  const remap = (id: string) => `${clientId}_${id}`;
-  const toCreate: ChartAccount[] = INITIAL_CHART_OF_ACCOUNTS.filter(
-    (a) => !existingCodes.has(a.code)
-  ).map((a) => ({
-    ...a,
-    id: remap(a.id),
-    clientId,
-    parentId: a.parentId ? remap(a.parentId) : undefined,
-    createdAt: now,
-    updatedAt: now,
-  }));
+  const toCreate = buildITG1000Chart(clientId).filter((a) => !existingCodes.has(a.code));
   if (toCreate.length === 0) return 0;
 
   if (isFirebaseConfigured() && db) {
@@ -156,7 +182,7 @@ export async function applyDefaultChartTemplate(clientId: string): Promise<numbe
       throw e;
     }
   }
-  const all = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, INITIAL_CHART_OF_ACCOUNTS);
+  const all = getLocalData<ChartAccount[]>(STORAGE_KEYS.ACCOUNTS, []);
   setLocalData(STORAGE_KEYS.ACCOUNTS, [...all, ...toCreate]);
   return toCreate.length;
 }
@@ -214,7 +240,7 @@ export async function getRules(clientId?: string): Promise<ClassificationRule[]>
       console.warn('Erro ao buscar regras no Firestore:', e);
     }
   }
-  return getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, INITIAL_CLASSIFICATION_RULES).filter(
+  return getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, []).filter(
     (r) => inClientScope(r.clientId, clientId)
   );
 }
@@ -228,7 +254,7 @@ export async function deleteRule(ruleId: string): Promise<void> {
       throw e;
     }
   }
-  const current = getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, INITIAL_CLASSIFICATION_RULES);
+  const current = getLocalData<ClassificationRule[]>(STORAGE_KEYS.RULES, []);
   setLocalData(
     STORAGE_KEYS.RULES,
     current.filter((r) => r.id !== ruleId)
