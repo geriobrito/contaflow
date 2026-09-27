@@ -1,5 +1,6 @@
 import type { BalanceCheck, ImportBatch } from '@/types/firestore';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
+import { isISODate } from '@/lib/periods';
 
 /**
  * Conferência de extratos: saldo final informado pelo banco (LEDGERBAL) contra a
@@ -60,7 +61,7 @@ export function previousStatement<T extends Pick<ImportBatch, 'accountKey' | 'le
   ledgerDate: string
 ): T | undefined {
   return batches
-    .filter((b) => b.accountKey === accountKey && b.ledgerDate && b.ledgerBalance !== undefined && b.ledgerDate < ledgerDate)
+    .filter((b) => b.accountKey === accountKey && isISODate(b.ledgerDate) && b.ledgerBalance !== undefined && b.ledgerDate < ledgerDate)
     .sort((a, b) => (b.ledgerDate ?? '').localeCompare(a.ledgerDate ?? ''))[0];
 }
 
@@ -76,7 +77,7 @@ export function findCoverageGaps(
 ): CoverageGap[] {
   const byAccount = new Map<string, { start: string; end: string }[]>();
   for (const b of batches) {
-    if (!b.accountKey || !b.startDate || !b.endDate) continue;
+    if (!b.accountKey || !isISODate(b.startDate) || !isISODate(b.endDate)) continue;
     const list = byAccount.get(b.accountKey) ?? [];
     list.push({ start: b.startDate, end: b.endDate });
     byAccount.set(b.accountKey, list);

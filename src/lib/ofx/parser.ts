@@ -1,37 +1,70 @@
 import { OFXParseResult, OFXRawTransaction, OFXAccountInfo } from './types';
 
+import { isISODate } from '@/lib/periods';
+
 /**
- * Utilitário de parsing de data no formato OFX (ex: 20240315120000[-3:BRT] ou 20240315)
+ * Normaliza qualquer data vinda do OFX para YYYY-MM-DD, ou `null` se não for uma data real.
+ *
+ * Aceita o padrão OFX (`20250329`, `20250329120000`, `20250329120000.000[-3:BRT]`),
+ * ISO (`2025-03-29`, `2025-03-29T10:00:00`) e o formato brasileiro que alguns bancos
+ * (ex.: PagBank/PagSeguro) enviam fora do padrão (`29/03/2025`, `29/03/2025 10:00`).
+ *
+ * Nunca devolve "hoje" como fallback: uma data inventada lançaria o movimento na
+ * competência errada sem ninguém perceber. Quem chama decide o que fazer com `null`.
  */
-export function parseOFXDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const clean = dateStr.trim();
-  // Formato YYYYMMDD
-  if (clean.length >= 8) {
-    const year = clean.substring(0, 4);
-    const month = clean.substring(4, 6);
-    const day = clean.substring(6, 8);
-    return `${year}-${month}-${day}`;
-  }
-  return clean;
+export function normalizeOFXDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const cleaned = raw.replace(/\[[^\]]*\]/g, '').trim();
+  let parts: RegExpMatchArray | null;
+  let y: string, m: string, d: string;
+  if ((parts = cleaned.match(/^(\d{4})(\d{2})(\d{2})/))) [, y, m, d] = parts;
+  else if ((parts = cleaned.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/))) [, y, m, d] = parts;
+  else if ((parts = cleaned.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)/))) [, d, m, y] = parts;
+  else return null;
+  const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  return isISODate(iso) ? iso : null;
 }
 
 /**
- * Utilitário de parsing de valores monetários no OFX (suporta pontos e vírgulas)
+ * Normaliza um valor monetário do OFX, ou `null` se não houver número.
+ *
+ * - Remove moeda e texto (`R$ 3.327,70`, `BRL -10.00`) e espaços.
+ * - Sinal: `-10`, `10-` ou `(10,00)`.
+ * - Separador decimal: o último entre vírgula e ponto quando há os dois (`1.250,50`,
+ *   `1,250.50`); vírgula sozinha é decimal (`-802,66`); ponto sozinho é decimal, como
+ *   manda o padrão OFX (`-802.66`), exceto em valores com `R$` no formato brasileiro de
+ *   milhar sem centavos (`R$ 3.327`). Vários separadores iguais são de milhar.
  */
-export function parseOFXAmount(amountStr: string): number {
-  if (!amountStr) return 0;
-  let clean = amountStr.trim().replace(/\s/g, '');
-  // Se contiver vírgula como separador decimal (comum no Brasil)
-  if (clean.includes(',') && !clean.includes('.')) {
-    clean = clean.replace(',', '.');
-  } else if (clean.includes(',') && clean.includes('.')) {
-    // Ex: 1.250,50 -> 1250.50
-    clean = clean.replace(/\./g, '').replace(',', '.');
+export function normalizeOFXAmount(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const text = raw.trim();
+  const negative = /^\(.*\)$/.test(text) || /-/.test(text);
+  let digits = text.replace(/[^\d.,]/g, '');
+  if (!/\d/.test(digits)) return null;
+
+  const commas = (digits.match(/,/g) ?? []).length;
+  const dots = (digits.match(/\./g) ?? []).length;
+  if (commas && dots) {
+    const decimal = digits.lastIndexOf(',') > digits.lastIndexOf('.') ? ',' : '.';
+    const thousands = decimal === ',' ? /\./g : /,/g;
+    digits = digits.replace(thousands, '').replace(decimal, '.');
+  } else if (commas) {
+    digits = commas > 1 ? digits.replace(/,/g, '') : digits.replace(',', '.');
+  } else if (dots > 1 || (dots === 1 && /R\$/i.test(text) && /\.\d{3}$/.test(digits))) {
+    digits = digits.replace(/\./g, '');
   }
-  const parsed = parseFloat(clean);
-  return isNaN(parsed) ? 0 : parsed;
+
+  const value = Number.parseFloat(digits);
+  if (!Number.isFinite(value)) return null;
+  const cents = Math.round(value * 100) / 100;
+  return negative ? -cents : cents;
 }
+
+/** @deprecated use `normalizeOFXDate` (devolve '' quando a data é inválida). */
+export const parseOFXDate = (dateStr: string): string => normalizeOFXDate(dateStr) ?? '';
+
+/** @deprecated use `normalizeOFXAmount` (devolve 0 quando não há número). */
+export const parseOFXAmount = (amountStr: string): number => normalizeOFXAmount(amountStr) ?? 0;
 
 /** Hash FNV-1a (32 bits) em base 36 — curto, estável e sem dependências. */
 function hashString(value: string): string {
@@ -132,21 +165,25 @@ export function parseOFXString(rawContent: string): OFXParseResult {
   if (fidMatch) account.fid = fidMatch[1].trim();
 
   // 4. Período do extrato (DTSTART / DTEND)
-  const dtStartMatch = bodyPart.match(/<DTSTART>([^<\r\n]+)/i);
-  const startDate = dtStartMatch ? parseOFXDate(dtStartMatch[1]) : undefined;
+  /** Data de cabeçalho: inválida vira `undefined` com aviso, sem derrubar a importação. */
+  const headerDate = (source: string, tag: string): string | undefined => {
+    const raw = source.match(new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i'))?.[1]?.trim();
+    if (!raw) return undefined;
+    const date = normalizeOFXDate(raw);
+    if (!date) warnings.push(`Data ${tag} inválida no arquivo (“${raw}”); ignorada.`);
+    return date ?? undefined;
+  };
+  const startDate = headerDate(bodyPart, 'DTSTART');
+  const endDate = headerDate(bodyPart, 'DTEND');
 
-  const dtEndMatch = bodyPart.match(/<DTEND>([^<\r\n]+)/i);
-  const endDate = dtEndMatch ? parseOFXDate(dtEndMatch[1]) : undefined;
-
-  // 5. Saldo final (LEDGERBAL)
+  // 5. Saldo final (LEDGERBAL). Procura dentro do bloco LEDGERBAL para não confundir com AVAILBAL.
   let ledgerBalance: { amount: number; date?: string } | undefined;
-  const balAmtMatch = bodyPart.match(/<BALAMT>([^<\r\n]+)/i);
-  if (balAmtMatch) {
-    const dtAsOfMatch = bodyPart.match(/<DTASOF>([^<\r\n]+)/i);
-    ledgerBalance = {
-      amount: parseOFXAmount(balAmtMatch[1]),
-      date: dtAsOfMatch ? parseOFXDate(dtAsOfMatch[1]) : undefined,
-    };
+  const ledgerBlock = bodyPart.match(/<LEDGERBAL>([\s\S]*?)(?:<\/LEDGERBAL>|<AVAILBAL>|<\/STMTRS>|$)/i)?.[1] ?? bodyPart;
+  const rawBalance = ledgerBlock.match(/<BALAMT>([^<\r\n]+)/i)?.[1]?.trim();
+  if (rawBalance) {
+    const amount = normalizeOFXAmount(rawBalance);
+    if (amount === null) warnings.push(`Saldo final inválido no arquivo (“${rawBalance}”); conferência de saldo ignorada.`);
+    else ledgerBalance = { amount, date: headerDate(ledgerBlock, 'DTASOF') };
   }
 
   // 6. Extração das transações (<STMTTRN>...</STMTTRN>)
@@ -154,6 +191,7 @@ export function parseOFXString(rawContent: string): OFXParseResult {
   const transactions: OFXRawTransaction[] = [];
   /** Ocorrências por base de FITID sintético (lançamentos idênticos no mesmo arquivo). */
   const generatedIds = new Map<string, number>();
+  let skipped = 0;
   const stmtTrnRegex = /<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST>))/gi;
   let match: RegExpExecArray | null;
 
@@ -173,11 +211,23 @@ export function parseOFXString(rawContent: string): OFXParseResult {
     // Data da postagem
     const dtPostedMatch = trnBlock.match(/<DTPOSTED>([^<\r\n]+)/i);
     const rawDate = dtPostedMatch ? dtPostedMatch[1].trim() : '';
-    const date = parseOFXDate(rawDate);
+    const date = normalizeOFXDate(rawDate);
 
     // Valor da transação
     const trnAmtMatch = trnBlock.match(/<TRNAMT>([^<\r\n]+)/i);
-    const amount = trnAmtMatch ? parseOFXAmount(trnAmtMatch[1]) : 0;
+    const rawAmount = trnAmtMatch ? trnAmtMatch[1].trim() : '';
+    const amount = normalizeOFXAmount(rawAmount);
+
+    // Sem data ou valor legível o lançamento não pode ser contabilizado: descarta com aviso
+    // (em vez de inventar uma data e jogá-lo na competência errada).
+    if (!date || amount === null) {
+      const memoHint = cleanOFXMemo((trnBlock.match(/<MEMO>([^<\r\n]+)/i) ?? trnBlock.match(/<NAME>([^<\r\n]+)/i))?.[1] ?? '');
+      warnings.push(
+        `Lançamento “${memoHint}” ignorado: ${!date ? `data inválida (“${rawDate || 'vazia'}”)` : `valor inválido (“${rawAmount || 'vazio'}”)`}.`
+      );
+      skipped += 1;
+      continue;
+    }
 
     // Se o valor for negativo, é débito; se for positivo, é crédito (padronização bancária)
     if (amount < 0 && type === 'OTHER') {
@@ -238,7 +288,8 @@ export function parseOFXString(rawContent: string): OFXParseResult {
     transactions,
     rawHeader,
     encoding,
-    hasErrors: false,
+    // Erro só quando havia lançamentos e nenhum pôde ser lido.
+    hasErrors: transactions.length === 0 && skipped > 0,
     warnings,
   };
 }

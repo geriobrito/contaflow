@@ -5,12 +5,12 @@ import { getRepository } from '@/lib/services/data-service';
 import { applyRuleToPending, checkStatementBalance, closeMonth, reopenMonth } from '@/lib/services/reconciliation-service';
 import { getActor } from '@/lib/data/scope';
 import type { DateRange } from '@/lib/data/repository';
-import type { OFXTransaction } from '@/lib/ofx-parser';
+import type { OFXRawTransaction } from '@/lib/ofx/types';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { buildTransactionId, findMatchingRule, normalizePattern } from '@/lib/reconciliation';
 import { classifyAction, transactionAudit } from '@/lib/audit';
-import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
+import { formatMonth, isISODate, isMonthLocked, monthOf } from '@/lib/periods';
 import { accountKeyOf, findCoverageGaps, outOfRangeDates, type CoverageGap } from '@/lib/statement';
 import {
   approveTransition,
@@ -32,12 +32,26 @@ import type {
 
 export { normalizePattern, buildTransactionId } from '@/lib/reconciliation';
 
+/** Descarta datas/saldo de cabeçalho inválidos em vez de deixar a importação falhar. */
+function sanitizeMeta(meta: StatementMeta): StatementMeta {
+  const ledger = meta.ledgerBalance;
+  return {
+    ...meta,
+    startDate: isISODate(meta.startDate) ? meta.startDate : undefined,
+    endDate: isISODate(meta.endDate) ? meta.endDate : undefined,
+    ledgerBalance:
+      ledger && Number.isFinite(ledger.amount)
+        ? { amount: ledger.amount, date: isISODate(ledger.date) ? ledger.date : undefined }
+        : undefined,
+  };
+}
+
 /* =========================================================================
    Tipos públicos
    ========================================================================= */
 
-/** Aceita tanto `OFXTransaction` (lib/ofx-parser) quanto `OFXRawTransaction` (lib/ofx). */
-export type ImportableTransaction = Pick<OFXTransaction, 'fitid' | 'date' | 'amount' | 'memo'> & {
+/** Lançamento pronto para importar (ex.: `OFXRawTransaction` de lib/ofx). */
+export type ImportableTransaction = Pick<OFXRawTransaction, 'fitid' | 'date' | 'amount' | 'memo'> & {
   type: TransactionType;
 };
 
@@ -219,9 +233,16 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   /* Importação: deduplicação, auto-classificação e conferência de saldo */
   /* ------------------------------------------------------------------ */
   const importTransactions = useCallback(
-    (items: readonly ImportableTransaction[], meta: StatementMeta = {}): Promise<ImportResult> => {
+    (items: readonly ImportableTransaction[], rawMeta: StatementMeta = {}): Promise<ImportResult> => {
       if (!clientId) return Promise.reject(new Error('Selecione um cliente antes de importar.'));
       return mutate('Falha ao importar o extrato', async () => {
+        // Última barreira antes de gravar: nenhuma data fora de YYYY-MM-DD chega ao banco
+        // nem às contas de saldo/lacunas (que quebrariam com "Invalid time value").
+        const invalid = items.find((t) => !isISODate(t.date) || !Number.isFinite(t.amount));
+        if (invalid) {
+          throw new Error(`lançamento “${invalid.memo}” com data ou valor inválido (${invalid.date || 'sem data'}).`);
+        }
+        const meta = sanitizeMeta(rawMeta);
         const repo = getRepository();
         const accountKey = meta.account ? accountKeyOf(meta.account) : undefined;
 
