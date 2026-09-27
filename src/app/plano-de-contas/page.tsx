@@ -1,19 +1,17 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Navbar } from '@/components/layout/Navbar';
+import { useClient } from '@/contexts/ClientContext';
 import {
   ChartAccount,
   AccountType,
   AccountNature,
   DREGroup,
-  ClientCompany,
 } from '@/types/firestore';
 import {
   getAccounts,
   saveAccount,
   deleteAccount,
-  getClients,
 } from '@/lib/services/data-service';
 import {
   Layers,
@@ -28,8 +26,8 @@ import {
 
 export default function PlanoDeContasPage() {
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [clients, setClients] = useState<ClientCompany[]>([]);
-  const [currentClient, setCurrentClient] = useState<ClientCompany | null>(null);
+  const { currentClient } = useClient();
+  const clientId = currentClient?.id;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('ALL');
 
@@ -43,16 +41,9 @@ export default function PlanoDeContasPage() {
   const [selectedParentId, setSelectedParentId] = useState('');
 
   useEffect(() => {
-    async function load() {
-      const loadedClients = await getClients();
-      setClients(loadedClients);
-      if (loadedClients.length > 0) setCurrentClient(loadedClients[0]);
-
-      const loadedAccounts = await getAccounts(loadedClients[0]?.id);
-      setAccounts(loadedAccounts);
-    }
-    load();
-  }, []);
+    if (!clientId) return;
+    getAccounts(clientId).then(setAccounts);
+  }, [clientId]);
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,8 +117,7 @@ export default function PlanoDeContasPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fbfbfd] dark:bg-black">
-      <Navbar currentClient={currentClient || undefined} clients={clients} />
+    <div className="flex flex-col">
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Header */}

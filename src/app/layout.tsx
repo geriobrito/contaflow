@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Newsreader } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { ClientProvider } from '@/contexts/ClientContext';
+import { AppShell } from '@/components/layout/AppShell';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -12,6 +14,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+});
+
+const newsreader = Newsreader({
+  variable: '--font-newsreader',
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
 });
 
 export const metadata: Metadata = {
@@ -28,11 +36,15 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full bg-[#F9F9F8] dark:bg-stone-950 text-stone-900 dark:text-stone-100">
         <AuthProvider>
-          <ProtectedRoute>{children}</ProtectedRoute>
+          <ProtectedRoute>
+            <ClientProvider>
+              <AppShell>{children}</AppShell>
+            </ClientProvider>
+          </ProtectedRoute>
         </AuthProvider>
       </body>
     </html>

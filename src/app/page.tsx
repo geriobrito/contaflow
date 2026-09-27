@@ -1,94 +1,101 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Navbar } from '@/components/layout/Navbar';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
-import type {
-  BankTransaction,
-  ChartAccount,
-  ClientCompany,
-  ReconciliationStatus,
-} from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ReconciliationStatus } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
-import { getAccounts, getClients } from '@/lib/services/data-service';
-import {
-  normalizePattern,
-  useReconciliation,
-  type ImportResult,
-} from '@/hooks/useReconciliation';
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  CheckCircle2,
-  Layers,
-  Percent,
-  Search,
-  X,
-} from 'lucide-react';
+import { getAccounts } from '@/lib/services/data-service';
+import { useClient } from '@/contexts/ClientContext';
+import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
+import { Check, CheckCheck, Search, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /* =========================================================================
-   Badges de status (Apple style)
+   Primitivos visuais
    ========================================================================= */
 
+const SURFACE =
+  'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
+
 const STATUS_BADGE: Record<ReconciliationStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: 'Pendente',
-    className: 'bg-amber-50 text-amber-700 border-amber-200/60',
-  },
-  AUTO_CLASSIFIED: {
-    label: 'Auto-Classificado',
-    className: 'bg-blue-50 text-[#0071E3] border-blue-200/60',
-  },
-  RECONCILED: {
-    label: 'Conciliado',
-    className: 'bg-emerald-50 text-emerald-700 border-emerald-200/60',
-  },
+  PENDING: { label: 'Pendente', className: 'bg-amber-50 text-amber-700 border-amber-200/60' },
+  AUTO_CLASSIFIED: { label: 'Auto', className: 'bg-blue-50 text-[#0071E3] border-blue-200/60' },
+  RECONCILED: { label: 'Conciliado', className: 'bg-emerald-50 text-emerald-700 border-emerald-200/60' },
 };
 
 function StatusBadge({ status }: { status: ReconciliationStatus }) {
   const { label, className } = STATUS_BADGE[status];
   return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium ${className}`}
-    >
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium whitespace-nowrap ${className}`}>
       {label}
     </span>
   );
 }
 
-/* =========================================================================
-   Barra de métricas (Apple Card)
-   ========================================================================= */
-
-interface MetricCardProps {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  accent: string;
+/** Switch no padrão exato do iOS (51×31, knob 27, verde #34C759) sobre checkbox nativo. */
+function IOSSwitch({
+  checked,
+  onChange,
+  id,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  id: string;
+}) {
+  return (
+    <span className="relative inline-flex shrink-0 w-[51px] h-[31px]">
+      <input
+        id={id}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="peer absolute inset-0 opacity-0 cursor-pointer z-10"
+      />
+      <span className="absolute inset-0 rounded-full bg-[#E9E9EA] dark:bg-stone-700 transition-colors duration-200 peer-checked:bg-[#34C759] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0071E3]/50 peer-focus-visible:ring-offset-2" />
+      <span className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.15),0_1px_1px_rgba(0,0,0,0.06)] transition-transform duration-200 ease-out peer-checked:translate-x-[20px]" />
+    </span>
+  );
 }
 
-function MetricCard({ label, value, icon, accent }: MetricCardProps) {
+interface MetricProps {
+  label: string;
+  value: string;
+  caption?: string;
+  tone?: 'neutral' | 'positive' | 'negative' | 'accent';
+  progress?: number;
+}
+
+const TONE: Record<NonNullable<MetricProps['tone']>, string> = {
+  neutral: 'text-stone-900 dark:text-stone-100',
+  positive: 'text-emerald-600 dark:text-emerald-400',
+  negative: 'text-rose-600 dark:text-rose-400',
+  accent: 'text-[#0071E3]',
+};
+
+function Metric({ label, value, caption, tone = 'neutral', progress }: MetricProps) {
   return (
-    <div className="rounded-3xl bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)] p-5 flex items-center gap-4">
-      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${accent}`}>
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-[11px] uppercase tracking-wider font-medium text-zinc-400">{label}</p>
-        <p className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white truncate">
-          {value}
-        </p>
-      </div>
+    <div className="px-5 py-4 min-w-0 backdrop-blur-xl bg-white/80 dark:bg-stone-900/80">
+      <p className="text-[12px] font-medium text-stone-500">{label}</p>
+      <p className={`mt-1.5 text-[22px] leading-none font-semibold tracking-tight font-mono tabular-nums truncate ${TONE[tone]}`}>
+        {value}
+      </p>
+      {progress !== undefined ? (
+        <div className="mt-3 h-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08] overflow-hidden">
+          <div className="h-full rounded-full bg-[#0071E3] transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
+        </div>
+      ) : (
+        caption && <p className="mt-2 text-[11px] text-stone-400 truncate">{caption}</p>
+      )}
     </div>
   );
 }
 
 /* =========================================================================
-   Modal de conciliação
+   Sheet de classificação manual
    ========================================================================= */
 
-interface ReconcileSheetProps {
+interface ClassifySheetProps {
   transaction: BankTransaction;
   accounts: ChartAccount[];
   isSaving: boolean;
@@ -96,13 +103,13 @@ interface ReconcileSheetProps {
   onConfirm: (accountId: string, learnRule: boolean, customPattern: string) => Promise<void>;
 }
 
-function ReconcileSheet({ transaction, accounts, isSaving, onClose, onConfirm }: ReconcileSheetProps) {
+function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: ClassifySheetProps) {
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
   const [learnRule, setLearnRule] = useState(true);
   const [customPattern, setCustomPattern] = useState(normalizePattern(transaction.memo));
 
-  const analytic = useMemo(() => {
+  const options = useMemo(() => {
     const term = normalizePattern(search);
     return accounts
       .filter((a) => a.nature === 'ANALYTIC')
@@ -111,129 +118,166 @@ function ReconcileSheet({ transaction, accounts, isSaving, onClose, onConfirm }:
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
   }, [onClose]);
 
+  const negative = transaction.amount < 0;
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/20 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
+      <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-3xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] shadow-2xl p-6 space-y-5"
-        onClick={(e) => e.stopPropagation()}
+        aria-labelledby="classify-title"
+        className="relative w-full sm:max-w-[440px] max-h-[92vh] flex flex-col rounded-t-[28px] sm:rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-base font-semibold text-zinc-900 dark:text-white">Conciliar lançamento</h3>
-            <p className="text-xs text-zinc-500 mt-1 truncate">{transaction.memo}</p>
-            <p className={`text-sm font-semibold mt-1 ${transaction.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-              {formatCurrency(transaction.amount)} · {formatDateBR(transaction.date)}
-            </p>
+        <div className="sm:hidden flex justify-center pt-2">
+          <span className="w-9 h-[5px] rounded-full bg-black/15 dark:bg-white/20" />
+        </div>
+
+        {/* Cabeçalho */}
+        <div className="flex items-start gap-3 px-6 pt-5 pb-4">
+          <div className="flex-1 min-w-0">
+            <h2 id="classify-title" className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+              Classificar lançamento
+            </h2>
+            <p className="mt-1 text-[13px] text-stone-500 truncate">{transaction.memo}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label="Fechar">
-            <X className="w-4 h-4 text-zinc-500" />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="w-7 h-7 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-stone-500 flex items-center justify-center hover:bg-black/[0.08] active:scale-[0.94] transition-all duration-150"
+          >
+            <X className="w-3.5 h-3.5" strokeWidth={2.25} />
           </button>
         </div>
 
-        {/* Seletor com busca do plano de contas */}
-        <div className="space-y-2">
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar conta por código ou nome…"
-              className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-[#0071E3]/40"
-            />
-          </div>
-          <ul className="max-h-52 overflow-y-auto rounded-xl border border-black/[0.06] dark:border-white/[0.08] divide-y divide-black/[0.04] dark:divide-white/[0.06]">
-            {analytic.length === 0 && (
-              <li className="px-3 py-4 text-xs text-center text-zinc-400">Nenhuma conta encontrada</li>
-            )}
-            {analytic.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  onClick={() => setAccountId(a.id)}
-                  className={`w-full text-left px-3 py-2 text-sm flex items-center gap-3 transition-colors ${
-                    accountId === a.id ? 'bg-blue-50 dark:bg-blue-950/40 text-[#0071E3]' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/60'
-                  }`}
-                >
-                  <span className="font-mono text-[11px] text-zinc-400 w-20 shrink-0">{a.code}</span>
-                  <span className="truncate flex-1">{a.name}</span>
-                  {accountId === a.id && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                </button>
-              </li>
-            ))}
-          </ul>
+        <div className="px-6 pb-4 flex items-baseline justify-between">
+          <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
+          <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
+            {formatCurrency(transaction.amount)}
+          </span>
         </div>
 
-        {/* Switch iOS (checkbox nativo) */}
-        <label className="flex items-center justify-between gap-4 cursor-pointer select-none">
-          <span className="text-sm text-zinc-700 dark:text-zinc-300">
-            Lembrar essa classificação para lançamentos semelhantes?
-          </span>
-          <span className="relative inline-flex shrink-0">
-            <input
-              type="checkbox"
-              checked={learnRule}
-              onChange={(e) => setLearnRule(e.target.checked)}
-              className="peer sr-only"
-            />
-            <span className="w-[51px] h-[31px] rounded-full bg-zinc-200 dark:bg-zinc-700 transition-colors peer-checked:bg-[#34C759] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0071E3]/50" />
-            <span className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow-md transition-transform peer-checked:translate-x-5" />
-          </span>
-        </label>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 space-y-5">
+          {/* Plano de contas */}
+          <section className="space-y-2">
+            <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
+            <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
+              <div className="relative border-b border-black/[0.04] dark:border-white/[0.06]">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
+                <input
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar por código ou nome"
+                  className="w-full pl-10 pr-3 py-3 bg-transparent text-[14px] tracking-tight placeholder:text-stone-400 outline-none"
+                />
+              </div>
+              <ul role="listbox" className="max-h-56 overflow-y-auto overscroll-contain scroll-smooth">
+                {options.length === 0 && (
+                  <li className="px-4 py-6 text-center text-[13px] text-stone-400">Nenhuma conta encontrada</li>
+                )}
+                {options.map((a) => {
+                  const selected = a.id === accountId;
+                  return (
+                    <li key={a.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-0">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => setAccountId(a.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${
+                          selected ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
+                        }`}
+                      >
+                        <span className="w-[72px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
+                        <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-[#0071E3] font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
+                          {a.name}
+                        </span>
+                        {selected && <Check className="w-4 h-4 text-[#0071E3] shrink-0" strokeWidth={2.5} />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </section>
 
-        {learnRule && (
-          <div className="space-y-1.5">
-            <label htmlFor="pattern" className="text-[11px] uppercase tracking-wider font-medium text-zinc-400">
-              Termo a memorizar (opcional)
+          {/* Aprendizado */}
+          <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
+            <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
+              <span className="flex-1 min-w-0">
+                <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">
+                  Lembrar essa classificação
+                </span>
+                <span className="block text-[12px] text-stone-500">Aplica a lançamentos semelhantes</span>
+              </span>
+              <IOSSwitch id="learn-rule" checked={learnRule} onChange={setLearnRule} />
             </label>
-            <input
-              id="pattern"
-              value={customPattern}
-              onChange={(e) => setCustomPattern(e.target.value)}
-              placeholder="ex: uber, aws, pix recebido"
-              className="w-full px-3 py-2.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800 text-sm outline-none focus:ring-2 focus:ring-[#0071E3]/40"
-            />
-            <p className="text-[11px] text-zinc-400">
-              Lançamentos pendentes contendo este termo serão classificados automaticamente.
-            </p>
-          </div>
-        )}
+            {learnRule && (
+              <div className="border-t border-black/[0.04] dark:border-white/[0.06] px-4 py-3 animate-fade-in">
+                <label htmlFor="pattern" className="block text-[12px] text-stone-500 mb-1">
+                  Termo a memorizar
+                </label>
+                <input
+                  id="pattern"
+                  value={customPattern}
+                  onChange={(e) => setCustomPattern(e.target.value)}
+                  placeholder="ex.: uber, aws, tarifa"
+                  className="w-full bg-transparent font-mono text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
+                />
+              </div>
+            )}
+          </section>
+        </div>
 
-        <button
-          type="button"
-          disabled={!accountId || isSaving}
-          onClick={() => onConfirm(accountId, learnRule, customPattern)}
-          className="w-full py-3 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] disabled:opacity-40 text-white text-sm font-medium transition-colors"
-        >
-          {isSaving ? 'Salvando…' : 'Conciliar'}
-        </button>
+        <div className="px-6 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            disabled={!accountId || isSaving}
+            onClick={() => void onConfirm(accountId, learnRule, customPattern)}
+            className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
+          >
+            {isSaving ? 'Salvando…' : 'Conciliar'}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 /* =========================================================================
-   Página principal
+   Página
    ========================================================================= */
 
+type Filter = 'ALL' | ReconciliationStatus;
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'PENDING', label: 'Pendentes' },
+  { value: 'AUTO_CLASSIFIED', label: 'Auto' },
+  { value: 'RECONCILED', label: 'Conciliados' },
+];
+
 export default function ConciliacaoPage() {
-  const [clients, setClients] = useState<ClientCompany[]>([]);
-  const [currentClient, setCurrentClient] = useState<ClientCompany | null>(null);
+  const { currentClient } = useClient();
+  const clientId = currentClient?.id ?? null;
+
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [selected, setSelected] = useState<BankTransaction | null>(null);
+  const [filter, setFilter] = useState<Filter>('ALL');
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const clientId = currentClient?.id ?? null;
   const {
     transactions,
     rules,
@@ -243,16 +287,8 @@ export default function ConciliacaoPage() {
     error,
     importTransactions,
     classifyTransaction,
+    approveAutoClassified,
   } = useReconciliation({ clientId, accounts });
-
-  useEffect(() => {
-    getClients()
-      .then((list) => {
-        setClients(list);
-        setCurrentClient((prev) => prev ?? list[0] ?? null);
-      })
-      .catch((e) => console.error('Erro ao carregar clientes:', e));
-  }, []);
 
   useEffect(() => {
     if (!clientId) return;
@@ -261,11 +297,28 @@ export default function ConciliacaoPage() {
       .catch((e) => console.error('Erro ao carregar plano de contas:', e));
   }, [clientId]);
 
-  const handleSelectClient = (client: ClientCompany) => {
-    setCurrentClient(client);
-    setLastImport(null);
+  // Reseta estados efêmeros ao trocar de cliente.
+  const [lastClientId, setLastClientId] = useState(clientId);
+  if (lastClientId !== clientId) {
+    setLastClientId(clientId);
     setSelected(null);
-  };
+    setLastImport(null);
+  }
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const visible = useMemo(
+    () => (filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter)),
+    [transactions, filter]
+  );
+  const approvable = useMemo(
+    () => transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId).length,
+    [transactions]
+  );
 
   const handleOFXParsed = async (result: OFXParseResult) => {
     try {
@@ -283,147 +336,211 @@ export default function ConciliacaoPage() {
         customPattern: customPattern.trim() || undefined,
       });
       setSelected(null);
-      setToast(
-        propagated > 0
-          ? `Lançamento conciliado · ${propagated} semelhante(s) auto-classificado(s)`
-          : 'Lançamento conciliado'
-      );
+      setToast(propagated > 0 ? `Conciliado · ${propagated} semelhante(s) classificado(s)` : 'Lançamento conciliado');
     } catch {
       /* erro exposto pelo hook */
     }
   };
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(t);
-  }, [toast]);
+  const handleApproveAll = async () => {
+    try {
+      const n = await approveAutoClassified();
+      if (n > 0) setToast(`${n} lançamento(s) aprovado(s)`);
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#fbfbfd] dark:bg-black">
-      <Navbar
-        currentClient={currentClient ?? undefined}
-        clients={clients}
-        onSelectClient={handleSelectClient}
-      />
+    <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+      {/* Cabeçalho editorial */}
+      <header className="space-y-1.5">
+        <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
+        <h1 className="text-[28px] sm:text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+          Conciliação bancária
+        </h1>
+        <p className="text-[14px] text-stone-500 max-w-xl">
+          Importe extratos e classifique lançamentos. Cada classificação memorizada ensina o sistema —{' '}
+          <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
+        </p>
+      </header>
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-            Conciliação Bancária
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Aprendizado contínuo ativo para{' '}
-            <span className="font-semibold text-zinc-700 dark:text-zinc-300">{currentClient?.name}</span>
-            {' · '}
-            {rules.length} regra(s) memorizada(s)
-          </p>
+      {/* Métricas */}
+      <section
+        aria-label="Resumo"
+        className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+      >
+        <Metric
+          label="Lançamentos"
+          value={String(metrics.total)}
+          caption={`${metrics.pending} pendente(s)`}
+        />
+        <Metric label="Conciliado" value={`${metrics.reconciledPercent}%`} tone="accent" progress={metrics.reconciledPercent} />
+        <Metric label="Entradas" value={formatCurrency(metrics.credits)} tone="positive" caption="Créditos" />
+        <Metric label="Saídas" value={formatCurrency(metrics.debits)} tone="negative" caption="Débitos" />
+      </section>
+
+      <OFXDropzone onParsed={handleOFXParsed} isLoading={isSaving} />
+
+      {(lastImport || error) && (
+        <div className="space-y-2 animate-fade-in">
+          {error && (
+            <p className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200/60 text-[13px] text-rose-700">{error}</p>
+          )}
+          {lastImport && (
+            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 border border-black/[0.06] text-[13px] text-stone-600">
+              <span>
+                <span className="font-mono tabular-nums font-medium text-stone-900">{lastImport.added}</span> importados ·{' '}
+                <span className="font-mono tabular-nums font-medium text-[#0071E3]">{lastImport.autoClassified}</span> auto-classificados
+                {lastImport.duplicates > 0 && (
+                  <>
+                    {' · '}
+                    <span className="font-mono tabular-nums">{lastImport.duplicates}</span> duplicado(s) ignorado(s)
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => setLastImport(null)}
+                aria-label="Dispensar"
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 active:scale-[0.94] transition-all duration-150"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Lançamentos */}
+      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+          <div role="tablist" className="inline-flex p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={`px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-all duration-150 active:scale-[0.97] ${
+                  filter === f.value
+                    ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                    : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            disabled={approvable === 0 || isSaving}
+            onClick={() => void handleApproveAll()}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
+          >
+            <CheckCheck className="w-4 h-4" strokeWidth={2} />
+            Aprovar todos os auto-classificados
+            <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable}</span>
+          </button>
         </div>
 
-        {/* Métricas */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            label="Lançamentos"
-            value={String(metrics.total)}
-            icon={<Layers className="w-5 h-5" />}
-            accent="bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-          />
-          <MetricCard
-            label="Conciliado"
-            value={`${metrics.reconciledPercent}%`}
-            icon={<Percent className="w-5 h-5" />}
-            accent="bg-blue-50 text-[#0071E3] dark:bg-blue-950/40"
-          />
-          <MetricCard
-            label="Entradas"
-            value={formatCurrency(metrics.credits)}
-            icon={<ArrowUpRight className="w-5 h-5" />}
-            accent="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40"
-          />
-          <MetricCard
-            label="Saídas"
-            value={formatCurrency(metrics.debits)}
-            icon={<ArrowDownLeft className="w-5 h-5" />}
-            accent="bg-rose-50 text-rose-600 dark:bg-rose-950/40"
-          />
-        </section>
-
-        {error && (
-          <div className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200/60 text-sm text-rose-700">
-            {error}
+        {isLoading ? (
+          <div className="divide-y divide-black/[0.04]">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-14 px-5 flex items-center gap-4">
+                <div className="h-3 w-16 rounded bg-black/[0.05] animate-pulse" />
+                <div className="h-3 flex-1 rounded bg-black/[0.05] animate-pulse" />
+                <div className="h-3 w-20 rounded bg-black/[0.05] animate-pulse" />
+              </div>
+            ))}
           </div>
-        )}
-
-        {lastImport && (
-          <div className="px-4 py-3 rounded-2xl bg-blue-50/70 border border-blue-200/60 flex items-center justify-between gap-4 text-xs text-zinc-700">
-            <span>
-              <b className="text-[#0071E3]">{lastImport.added}</b> novos lançamentos ·{' '}
-              <b className="text-[#0071E3]">{lastImport.autoClassified}</b> auto-classificados
-              {lastImport.duplicates > 0 && (
-                <span className="text-amber-700"> · {lastImport.duplicates} duplicidade(s) ignorada(s)</span>
-              )}
-            </span>
-            <button onClick={() => setLastImport(null)} className="font-medium text-[#0071E3]">
-              Fechar
-            </button>
+        ) : visible.length === 0 ? (
+          <div className="px-6 py-16 text-center">
+            <p className="text-[15px] font-medium tracking-tight text-stone-800 dark:text-stone-200">
+              {transactions.length === 0 ? 'Nenhum lançamento ainda' : 'Nada por aqui'}
+            </p>
+            <p className="mt-1 text-[13px] text-stone-500">
+              {transactions.length === 0 ? 'Importe um extrato OFX para começar.' : 'Nenhum lançamento neste filtro.'}
+            </p>
           </div>
-        )}
-
-        <OFXDropzone onParsed={handleOFXParsed} isLoading={isLoading || isSaving} />
-
-        {/* Lista de lançamentos */}
-        <section className="rounded-3xl bg-white dark:bg-zinc-900 border border-black/[0.06] dark:border-white/[0.08] overflow-hidden">
-          <div className="px-5 py-4 flex items-center justify-between border-b border-black/[0.04] dark:border-white/[0.06]">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">Lançamentos</h2>
-            <span className="text-xs text-zinc-500">
-              {metrics.pending} pendente(s) · {metrics.autoClassified} auto · {metrics.reconciled} conciliado(s)
-            </span>
-          </div>
-
-          {isLoading ? (
-            <p className="p-8 text-center text-sm text-zinc-400">Carregando…</p>
-          ) : transactions.length === 0 ? (
-            <p className="p-8 text-center text-sm text-zinc-400">Importe um extrato OFX para começar.</p>
-          ) : (
-            <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
-              {transactions.map((t) => {
-                const clickable = t.status !== 'RECONCILED';
-                return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      disabled={!clickable}
-                      onClick={() => setSelected(t)}
-                      className="w-full px-5 py-3 flex items-center gap-4 text-left enabled:hover:bg-zinc-50 dark:enabled:hover:bg-zinc-800/50 transition-colors"
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
+                  <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-24">Data</th>
+                  <th scope="col" className="font-medium px-3 py-2.5">Descrição</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell">Conta</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 w-28">Status</th>
+                  <th scope="col" className="font-medium pl-3 pr-5 py-2.5 text-right w-36">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((t) => {
+                  const actionable = t.status !== 'RECONCILED';
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={actionable ? () => setSelected(t) : undefined}
+                      onKeyDown={
+                        actionable
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setSelected(t);
+                              }
+                            }
+                          : undefined
+                      }
+                      tabIndex={actionable ? 0 : undefined}
+                      className={`border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 transition-colors duration-100 ${
+                        actionable
+                          ? 'cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-blue-50/50'
+                          : ''
+                      }`}
                     >
-                      <span className="text-xs text-zinc-400 w-20 shrink-0">{formatDateBR(t.date)}</span>
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm text-zinc-900 dark:text-white truncate">{t.memo}</span>
+                      <td className="pl-5 pr-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
+                        {formatDateBR(t.date)}
+                      </td>
+                      <td className="px-3 py-3 max-w-0 w-full">
+                        <p className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 truncate">{t.memo}</p>
                         {t.accountName && (
-                          <span className="block text-[11px] text-zinc-400 truncate">
-                            {t.accountCode} · {t.accountName}
-                          </span>
+                          <p className="md:hidden text-[12px] text-stone-400 truncate">{t.accountName}</p>
                         )}
-                      </span>
-                      <StatusBadge status={t.status} />
-                      <span
-                        className={`text-sm font-semibold tabular-nums w-28 text-right shrink-0 ${
-                          t.amount < 0 ? 'text-rose-600' : 'text-emerald-600'
+                      </td>
+                      <td className="px-3 py-3 hidden md:table-cell max-w-[240px]">
+                        {t.accountName ? (
+                          <p className="text-[13px] text-stone-600 dark:text-stone-400 truncate">
+                            <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{t.accountCode}</span>
+                            {t.accountName}
+                          </p>
+                        ) : (
+                          <span className="text-[13px] text-stone-300 dark:text-stone-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3">
+                        <StatusBadge status={t.status} />
+                      </td>
+                      <td
+                        className={`pl-3 pr-5 py-3 text-right font-mono tabular-nums text-[13px] whitespace-nowrap ${
+                          t.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-400'
                         }`}
                       >
                         {formatCurrency(t.amount)}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      </main>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {selected && (
-        <ReconcileSheet
+        <ClassifySheet
           key={selected.id}
           transaction={selected}
           accounts={accounts}
@@ -434,10 +551,13 @@ export default function ConciliacaoPage() {
       )}
 
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-zinc-900/90 text-white text-xs shadow-lg backdrop-blur">
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-[13px] tracking-tight shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in"
+        >
           {toast}
         </div>
       )}
-    </div>
+    </main>
   );
 }
