@@ -18,6 +18,7 @@ import {
   getRules,
   getTransactions,
   saveRule,
+  resetTransactionToPending,
   saveTransactionSplits,
   saveTransactionsBatch,
   updateTransactionClassification,
@@ -143,6 +144,8 @@ export interface UseReconciliationReturn {
    * das linhas não for exatamente o valor do lançamento.
    */
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
+  /** Volta o lançamento para PENDING, limpando conta, rateio e vínculo com regra. */
+  unreconcileTransaction: (transactionId: string) => Promise<void>;
   /** Confirma em lote todos os lançamentos auto-classificados. Retorna a quantidade aprovada. */
   approveAutoClassified: () => Promise<number>;
   reload: () => Promise<void>;
@@ -386,10 +389,18 @@ export function useReconciliation({
           )
         : [];
 
+      // Reclassificação: reaproveita a regra que originou o lançamento (ou uma com o
+      // mesmo termo) e a atualiza para a nova conta, em vez de criar uma duplicata.
+      const existingRule = pattern
+        ? (rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId) ??
+          rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === pattern))
+        : undefined;
+
       setIsSaving(true);
       setError(null);
       try {
         let rule: ClassificationRule | null = null;
+        let ruleIsNew = false;
 
         if (firestoreEnabled()) {
           const batch = writeBatch(db);
@@ -399,15 +410,23 @@ export function useReconciliation({
             accountCode,
             accountName,
             reconciledAt: now,
-            // Conta única desfaz um rateio anterior.
+            // Conta única sobrescreve um rateio anterior.
             isSplit: false,
             splits: deleteField(),
           });
 
           let ruleId: string | undefined;
-          if (pattern) {
+          if (pattern && existingRule) {
+            ruleId = existingRule.id;
+            batch.set(
+              doc(db, RULES, existingRule.id),
+              { pattern, accountId, accountCode, accountName, updatedAt: now },
+              { merge: true }
+            );
+          } else if (pattern) {
             const ruleRef = doc(collection(db, RULES));
             ruleId = ruleRef.id;
+            ruleIsNew = true;
             batch.set(ruleRef, {
               clientId,
               pattern,
@@ -417,6 +436,9 @@ export function useReconciliation({
               createdAt: serverTimestamp(),
             });
           }
+          batch.update(doc(db, TRANSACTIONS, transactionId), {
+            matchedRuleId: ruleId ?? deleteField(),
+          });
           // A transação + regra + até 498 similares cabem no primeiro batch;
           // o excedente segue em batches adicionais.
           const head = similar.slice(0, BATCH_LIMIT - 2);
@@ -441,12 +463,17 @@ export function useReconciliation({
           );
 
           if (ruleId) {
-            rule = { id: ruleId, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
+            rule = existingRule
+              ? { ...existingRule, pattern, accountId, accountCode, accountName, updatedAt: now }
+              : { id: ruleId, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
           }
         } else {
           await updateTransactionClassification(transactionId, accountId, accountCode, accountName, 'RECONCILED');
           if (pattern) {
-            rule = { id: `rule_${Date.now()}`, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
+            ruleIsNew = !existingRule;
+            rule = existingRule
+              ? { ...existingRule, pattern, accountId, accountCode, accountName, updatedAt: now }
+              : { id: `rule_${Date.now()}`, clientId, pattern, accountId, accountCode, accountName, createdAt: now, updatedAt: now };
             await saveRule(rule);
           }
           for (const t of similar) {
@@ -458,7 +485,17 @@ export function useReconciliation({
         setTransactions((prev) =>
           prev.map((t) => {
             if (t.id === transactionId) {
-              return { ...t, status: 'RECONCILED', accountId, accountCode, accountName, reconciledAt: now, isSplit: false, splits: undefined };
+              return {
+                ...t,
+                status: 'RECONCILED',
+                accountId,
+                accountCode,
+                accountName,
+                reconciledAt: now,
+                isSplit: false,
+                splits: undefined,
+                matchedRuleId: rule?.id,
+              };
             }
             if (similarIds.has(t.id)) {
               return { ...t, status: 'AUTO_CLASSIFIED', accountId, accountCode, accountName, matchedRuleId: rule?.id };
@@ -467,8 +504,8 @@ export function useReconciliation({
           })
         );
         if (rule) {
-          const created = rule;
-          setRules((prev) => [created, ...prev]);
+          const saved = rule;
+          setRules((prev) => (ruleIsNew ? [saved, ...prev] : prev.map((r) => (r.id === saved.id ? saved : r))));
         }
 
         return { rule, propagated: similar.length };
@@ -480,7 +517,37 @@ export function useReconciliation({
         setIsSaving(false);
       }
     },
-    [clientId, transactions, accountsById]
+    [clientId, transactions, rules, accountsById]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Desfazer conciliação                                                */
+  /* ------------------------------------------------------------------ */
+  const unreconcileTransaction = useCallback(
+    async (transactionId: string): Promise<void> => {
+      const target = transactions.find((t) => t.id === transactionId);
+      if (!target) throw new Error(`Lançamento ${transactionId} não encontrado.`);
+      setIsSaving(true);
+      setError(null);
+      try {
+        await resetTransactionToPending(transactionId);
+        setTransactions((prev) =>
+          prev.map((t) => {
+            if (t.id !== transactionId) return t;
+            const { accountId: _a, accountCode: _c, accountName: _n, matchedRuleId: _m, splits: _s, reconciledAt: _r, ...rest } = t;
+            void [_a, _c, _n, _m, _s, _r];
+            return { ...rest, status: 'PENDING', isSplit: false };
+          })
+        );
+      } catch (e) {
+        console.error('[useReconciliation] Falha ao desfazer conciliação:', e);
+        setError('Não foi possível desfazer a conciliação.');
+        throw e;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [transactions]
   );
 
   /* ------------------------------------------------------------------ */
@@ -613,6 +680,7 @@ export function useReconciliation({
     importTransactions,
     classifyTransaction,
     splitTransaction,
+    unreconcileTransaction,
     approveAutoClassified,
     reload,
   };

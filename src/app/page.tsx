@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
-import type { BankTransaction, ChartAccount, ReconciliationStatus } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ClassificationRule, ReconciliationStatus } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
-import { Check, CheckCheck, ChevronDown, Search, Split, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, Pencil, Search, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { IOSSwitch, PAGE, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
@@ -76,11 +76,35 @@ interface ClassifySheetProps {
   onClose: () => void;
   onConfirm: (accountId: string, learnRule: boolean, customPattern: string) => Promise<void>;
   onSplit: (drafts: SplitDraft[]) => Promise<void>;
+  onUnreconcile: () => Promise<void>;
+  /** Regras do cliente, para pré-carregar o termo da regra que originou o lançamento. */
+  rules: readonly ClassificationRule[];
 }
 
 type SheetMode = 'single' | 'split';
 
-function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, onSplit }: ClassifySheetProps) {
+function ClassifySheet({
+  transaction,
+  accounts,
+  isSaving,
+  onClose,
+  onConfirm,
+  onSplit,
+  onUnreconcile,
+  rules,
+}: ClassifySheetProps) {
+  const isEditing = transaction.status !== 'PENDING';
+  const sourceRule = transaction.matchedRuleId ? rules.find((r) => r.id === transaction.matchedRuleId) : undefined;
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const accountListRef = useRef<HTMLUListElement>(null);
+
+
+  useEffect(() => {
+    if (!confirmUndo) return;
+    const t = setTimeout(() => setConfirmUndo(false), 3500);
+    return () => clearTimeout(t);
+  }, [confirmUndo]);
+
   const [mode, setMode] = useState<SheetMode>(transaction.isSplit ? 'split' : 'single');
   const [drafts, setDrafts] = useState<SplitDraft[]>(() =>
     transaction.isSplit && transaction.splits?.length ? splitsToDrafts(transaction.splits) : [emptySplitDraft(), emptySplitDraft()]
@@ -88,10 +112,19 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
   const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
   const canSaveSplit = splitSummary.isBalanced && splitSummary.isComplete;
+
+  // Em edição, traz a conta atual para o centro da lista (inclusive ao voltar do modo rateio).
+  useEffect(() => {
+    const list = accountListRef.current;
+    const item = list?.querySelector<HTMLElement>('[aria-selected="true"]')?.closest('li');
+    // Rola só a lista (scrollIntoView rolaria também o sheet e a página).
+    if (list && item) list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
+  }, [mode]);
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
-  const [learnRule, setLearnRule] = useState(true);
-  const [customPattern, setCustomPattern] = useState(normalizePattern(transaction.memo));
+  // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
+  const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
+  const [customPattern, setCustomPattern] = useState(normalizePattern(sourceRule?.pattern ?? transaction.memo));
 
   const options = useMemo(() => {
     const term = normalizePattern(search);
@@ -130,9 +163,21 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
         <div className="flex items-start gap-3 px-6 pt-5 pb-4">
           <div className="flex-1 min-w-0">
             <h2 id="classify-title" className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-              Classificar lançamento
+              {isEditing ? 'Editar classificação' : 'Classificar lançamento'}
             </h2>
             <p className="mt-1 text-[13px] text-stone-500 truncate">{transaction.memo}</p>
+            {isEditing && (
+              <p className="mt-2 inline-flex items-center gap-1.5 max-w-full text-[12px] text-stone-500">
+                <StatusBadge status={transaction.status} />
+                <span className="truncate">
+                  {transaction.isSplit
+                    ? `Rateado em ${transaction.splits?.length ?? 0} contas`
+                    : transaction.accountName
+                      ? `${transaction.accountCode ?? ''} ${transaction.accountName}`
+                      : 'Sem conta'}
+                </span>
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -183,7 +228,7 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
                   className="w-full pl-10 pr-3 py-3 bg-transparent text-[14px] tracking-tight placeholder:text-stone-400 outline-none"
                 />
               </div>
-              <ul role="listbox" className="max-h-56 overflow-y-auto overscroll-contain scroll-smooth">
+              <ul ref={accountListRef} role="listbox" className="relative max-h-56 overflow-y-auto overscroll-contain">
                 {options.length === 0 && (
                   <li className="px-4 py-6 text-center text-[13px] text-stone-400">Nenhuma conta encontrada</li>
                 )}
@@ -200,7 +245,7 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
                           selected ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
                         }`}
                       >
-                        <span className="w-[72px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
+                        <span className="w-[96px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
                         <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-[#0071E3] font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
                           {a.name}
                         </span>
@@ -218,9 +263,13 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
             <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
               <span className="flex-1 min-w-0">
                 <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">
-                  Lembrar essa classificação
+                  {isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
                 </span>
-                <span className="block text-[12px] text-stone-500">Aplica a lançamentos semelhantes</span>
+                <span className="block text-[12px] text-stone-500">
+                  {sourceRule
+                    ? `A regra “${sourceRule.pattern}” passará a usar a nova conta`
+                    : 'Aplica a lançamentos semelhantes'}
+                </span>
               </span>
               <IOSSwitch id="learn-rule" checked={learnRule} onChange={setLearnRule} />
             </label>
@@ -258,7 +307,7 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
                 onClick={() => void onSplit(drafts)}
                 className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
               >
-                {isSaving ? 'Salvando…' : 'Salvar rateio'}
+                {isSaving ? 'Salvando…' : isEditing ? 'Salvar novo rateio' : 'Salvar rateio'}
               </button>
             </>
           ) : (
@@ -268,8 +317,27 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, on
             onClick={() => void onConfirm(accountId, learnRule, customPattern)}
             className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
           >
-            {isSaving ? 'Salvando…' : 'Conciliar'}
+            {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
           </button>
+          )}
+          {isEditing && (
+            <div className="mt-2 flex justify-center">
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => {
+                  if (confirmUndo) void onUnreconcile();
+                  else setConfirmUndo(true);
+                }}
+                className={`rounded-xl px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
+                  confirmUndo
+                    ? 'bg-rose-600 text-white shadow-[0_2px_10px_rgba(225,29,72,0.3)] animate-pop-in'
+                    : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                }`}
+              >
+                {confirmUndo ? 'Toque para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -310,6 +378,7 @@ export default function ConciliacaoPage() {
     importTransactions,
     classifyTransaction,
     splitTransaction,
+    unreconcileTransaction,
     approveAutoClassified,
   } = useReconciliation({ clientId, accounts });
 
@@ -360,6 +429,22 @@ export default function ConciliacaoPage() {
       return next;
     });
 
+  const handleUnreconcile = async () => {
+    if (!selected) return;
+    try {
+      await unreconcileTransaction(selected.id);
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(selected.id);
+        return next;
+      });
+      setSelected(null);
+      setToast('Conciliação desfeita · lançamento voltou para Pendente');
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
+
   const handleSplit = async (drafts: SplitDraft[]) => {
     if (!selected) return;
     try {
@@ -380,7 +465,8 @@ export default function ConciliacaoPage() {
         customPattern: customPattern.trim() || undefined,
       });
       setSelected(null);
-      setToast(propagated > 0 ? `Conciliado · ${propagated} semelhante(s) classificado(s)` : 'Lançamento conciliado');
+      const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
+      setToast(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -523,8 +609,6 @@ export default function ConciliacaoPage() {
               </thead>
               <tbody>
                 {visible.map((t) => {
-                  // Rateios podem ser reabertos para revisão; demais conciliados ficam travados.
-                  const actionable = t.status !== 'RECONCILED' || Boolean(t.isSplit);
                   const splitCount = t.isSplit ? (t.splits?.length ?? 0) : 0;
                   const isExpanded = expanded.has(t.id);
                   const splitBadge = splitCount > 0 && (
@@ -548,23 +632,16 @@ export default function ConciliacaoPage() {
                   return (
                     <React.Fragment key={t.id}>
                     <tr
-                      onClick={actionable ? () => setSelected(t) : undefined}
-                      onKeyDown={
-                        actionable
-                          ? (e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                setSelected(t);
-                              }
-                            }
-                          : undefined
-                      }
-                      tabIndex={actionable ? 0 : undefined}
-                      className={`border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 transition-colors duration-100 ${
-                        actionable
-                          ? 'cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-blue-50/50'
-                          : ''
-                      }`}
+                      // Todo lançamento abre o sheet: pendentes para classificar, os demais para editar/desfazer.
+                      onClick={() => setSelected(t)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelected(t);
+                        }
+                      }}
+                      tabIndex={0}
+                      className="group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-blue-50/50"
                     >
                       <td className="pl-5 pr-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
                         {formatDateBR(t.date)}
@@ -591,7 +668,15 @@ export default function ConciliacaoPage() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <StatusBadge status={t.status} />
+                        <span className="inline-flex items-center gap-1.5">
+                          <StatusBadge status={t.status} />
+                          {t.status !== 'PENDING' && (
+                            <Pencil
+                              aria-hidden
+                              className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
+                            />
+                          )}
+                        </span>
                       </td>
                       <td
                         className={`pl-3 pr-5 py-3 text-right font-mono tabular-nums text-[13px] whitespace-nowrap ${
@@ -640,6 +725,8 @@ export default function ConciliacaoPage() {
           onClose={() => setSelected(null)}
           onConfirm={handleConfirm}
           onSplit={handleSplit}
+          onUnreconcile={handleUnreconcile}
+          rules={rules}
         />
       )}
 

@@ -399,6 +399,35 @@ export async function updateTransactionClassification(
 }
 
 /**
+ * Desfaz a conciliação: volta o lançamento para PENDING e remove conta, rateio,
+ * vínculo com regra e data de conciliação.
+ */
+export async function resetTransactionToPending(transactionId: string): Promise<void> {
+  if (isFirebaseConfigured() && db) {
+    await updateDoc(doc(db, 'transactions', transactionId), {
+      status: 'PENDING',
+      isSplit: false,
+      accountId: deleteField(),
+      accountCode: deleteField(),
+      accountName: deleteField(),
+      matchedRuleId: deleteField(),
+      splits: deleteField(),
+      reconciledAt: deleteField(),
+    });
+  }
+  const current = getLocalData<BankTransaction[]>(STORAGE_KEYS.TRANSACTIONS, []);
+  setLocalData(
+    STORAGE_KEYS.TRANSACTIONS,
+    current.map((t) => {
+      if (t.id !== transactionId) return t;
+      const { accountId: _a, accountCode: _c, accountName: _n, matchedRuleId: _m, splits: _s, reconciledAt: _r, ...rest } = t;
+      void [_a, _c, _n, _m, _s, _r];
+      return { ...rest, status: 'PENDING' as const, isSplit: false };
+    })
+  );
+}
+
+/**
  * Grava o desdobramento (rateio) de um lançamento: status RECONCILED, `isSplit = true`
  * e a lista de `splits`. A conta única é removida, pois o rateio a substitui.
  */
