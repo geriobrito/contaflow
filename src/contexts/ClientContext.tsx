@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ClientCompany } from '@/types/firestore';
-import { getClients } from '@/lib/services/data-service';
+import { deleteClient, getClients } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 
 const STORAGE_KEY = 'contaflow_active_client';
@@ -13,6 +13,8 @@ export interface ClientContextType {
   isLoading: boolean;
   selectClient: (client: ClientCompany) => void;
   refreshClients: () => Promise<ClientCompany[]>;
+  /** Exclui o cliente (em cascata). Se for o ativo, ativa o próximo disponível ou nenhum. */
+  removeClient: (clientId: string) => Promise<void>;
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
@@ -62,6 +64,24 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const removeClient = useCallback(
+    async (clientId: string): Promise<void> => {
+      await deleteClient(clientId);
+      const list = await getClients();
+      const keep = currentId !== clientId && list.some((c) => c.id === currentId);
+      const next = keep ? currentId : (list[0]?.id ?? null);
+      setClients(list);
+      setCurrentId(next);
+      try {
+        if (next) localStorage.setItem(STORAGE_KEY, next);
+        else localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* armazenamento indisponível */
+      }
+    },
+    [currentId]
+  );
+
   const value = useMemo<ClientContextType>(
     () => ({
       clients,
@@ -69,8 +89,9 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       selectClient,
       refreshClients,
+      removeClient,
     }),
-    [clients, currentId, isLoading, selectClient, refreshClients]
+    [clients, currentId, isLoading, selectClient, refreshClients, removeClient]
   );
 
   return <ClientContext.Provider value={value}>{children}</ClientContext.Provider>;

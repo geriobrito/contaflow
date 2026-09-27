@@ -1,39 +1,105 @@
 import type { AccountType, BankTransaction, ChartAccount, DREGroup } from '@/types/firestore';
 
 /* =========================================================================
-   Estrutura editorial da DRE
+   Grupos canônicos (ITG 1000) e compatibilidade com dados legados
+   ========================================================================= */
+
+export type DRESectionKey =
+  | 'GROSS_REVENUE'
+  | 'DEDUCTIONS'
+  | 'COSTS'
+  | 'OPERATING_EXPENSES'
+  | 'FINANCIAL_INCOME'
+  | 'FINANCIAL_EXPENSES'
+  | 'OTHER_INCOME'
+  | 'OTHER_EXPENSES'
+  | 'INCOME_TAXES';
+
+/** Grupos de natureza credora (aumentam o resultado); os demais são devedores. */
+const CREDIT_NATURE: ReadonlySet<DRESectionKey> = new Set(['GROSS_REVENUE', 'FINANCIAL_INCOME', 'OTHER_INCOME']);
+
+const LEGACY: Partial<Record<DREGroup, DRESectionKey>> = {
+  RECEITA_BRUTA: 'GROSS_REVENUE',
+  DEDUCOES_RECEITA: 'DEDUCTIONS',
+  CUSTOS: 'COSTS',
+  DESPESAS_OPERACIONAIS: 'OPERATING_EXPENSES',
+  DESPESAS_ADMINISTRATIVAS: 'OPERATING_EXPENSES',
+  DESPESAS_COMERCIAIS: 'OPERATING_EXPENSES',
+  DESPESAS_FINANCEIRAS: 'FINANCIAL_EXPENSES',
+  RECEITAS_FINANCEIRAS: 'FINANCIAL_INCOME',
+  IMPOSTOS_LUCRO: 'INCOME_TAXES',
+};
+
+const CANONICAL: ReadonlySet<string> = new Set<DRESectionKey>([
+  'GROSS_REVENUE',
+  'DEDUCTIONS',
+  'COSTS',
+  'OPERATING_EXPENSES',
+  'FINANCIAL_INCOME',
+  'FINANCIAL_EXPENSES',
+  'OTHER_INCOME',
+  'OTHER_EXPENSES',
+  'INCOME_TAXES',
+]);
+
+const REVENUE_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA']);
+const COST_TYPES: ReadonlySet<AccountType> = new Set(['COST', 'CUSTO']);
+const EXPENSE_TYPES: ReadonlySet<AccountType> = new Set(['EXPENSE', 'DESPESA']);
+
+/**
+ * Resolve o grupo da DRE de uma conta: `dreGroup` canônico → mapeamento legado →
+ * natureza da conta. Contas patrimoniais (ativo, passivo, PL) retornam null.
+ */
+export function resolveDREGroup(account: ChartAccount): DRESectionKey | null {
+  const isRevenue = REVENUE_TYPES.has(account.type);
+  const isResult = isRevenue || COST_TYPES.has(account.type) || EXPENSE_TYPES.has(account.type);
+  if (!isResult) return null;
+
+  const group = account.dreGroup;
+  if (group && CANONICAL.has(group)) return group as DRESectionKey;
+  if (group && LEGACY[group]) return LEGACY[group] ?? null;
+  if (group === 'OUTRAS_RECEITAS_DESPESAS') return isRevenue ? 'OTHER_INCOME' : 'OTHER_EXPENSES';
+
+  if (isRevenue) return account.isContra ? 'DEDUCTIONS' : 'GROSS_REVENUE';
+  if (COST_TYPES.has(account.type)) return 'COSTS';
+  return 'OPERATING_EXPENSES';
+}
+
+/* =========================================================================
+   Estrutura do demonstrativo
    ========================================================================= */
 
 export interface DREAccountLine {
   accountId: string;
   code: string;
   name: string;
-  /** Valor positivo = aumenta a linha do grupo (receita ou despesa, conforme o grupo). */
+  /** Valor na natureza do grupo: receita positiva em grupos credores, despesa positiva em devedores. */
   value: number;
   count: number;
 }
 
-export interface DREExpenseGroup {
-  id: string;
-  title: string;
-  /** Total do grupo como dedução do resultado (positivo reduz o lucro). */
-  total: number;
+export interface DRESection {
+  key: DRESectionKey;
   lines: DREAccountLine[];
+  total: number;
 }
 
 export interface DREStatement {
+  sections: Record<DRESectionKey, DRESection>;
   grossRevenue: number;
-  revenueLines: DREAccountLine[];
   deductions: number;
-  deductionLines: DREAccountLine[];
   netRevenue: number;
-  expenseGroups: DREExpenseGroup[];
-  totalExpenses: number;
+  costs: number;
+  grossProfit: number;
+  operatingExpenses: number;
+  financialResult: number;
+  otherResult: number;
+  incomeTaxes: number;
   netResult: number;
-  /** Margem líquida sobre a receita líquida (0–100), ou null sem receita. */
+  /** Margem líquida sobre a receita líquida (%), ou null sem receita. */
   netMargin: number | null;
   reconciledCount: number;
-  /** Lançamentos auto-classificados no período ainda não aprovados (fora da DRE). */
+  /** Lançamentos auto-classificados no período, ainda fora da DRE até aprovação. */
   awaitingApproval: number;
 }
 
@@ -42,37 +108,12 @@ export interface DateRange {
   end: string; // YYYY-MM-DD
 }
 
-const REVENUE_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA']);
-const COST_TYPES: ReadonlySet<AccountType> = new Set(['COST', 'CUSTO']);
-const EXPENSE_TYPES: ReadonlySet<AccountType> = new Set(['EXPENSE', 'DESPESA']);
-
-/** Ordem e títulos dos grupos de custos e despesas operacionais. */
-const EXPENSE_GROUPS: readonly { id: string; title: string; match: (a: ChartAccount) => boolean }[] = [
-  { id: 'custos', title: 'Custos dos serviços e mercadorias', match: (a) => COST_TYPES.has(a.type) || a.dreGroup === 'CUSTOS' },
-  { id: 'adm', title: 'Despesas administrativas', match: (a) => a.dreGroup === 'DESPESAS_ADMINISTRATIVAS' },
-  { id: 'com', title: 'Despesas comerciais', match: (a) => a.dreGroup === 'DESPESAS_COMERCIAIS' },
-  {
-    id: 'fin',
-    title: 'Resultado financeiro',
-    match: (a) => a.dreGroup === 'DESPESAS_FINANCEIRAS' || a.dreGroup === 'RECEITAS_FINANCEIRAS',
-  },
-  { id: 'ir', title: 'IRPJ e CSLL', match: (a) => a.dreGroup === 'IMPOSTOS_LUCRO' },
-  { id: 'outras', title: 'Outras despesas operacionais', match: (a) => EXPENSE_TYPES.has(a.type) },
-];
-
-const isDeduction = (a: ChartAccount): boolean => a.dreGroup === 'DEDUCOES_RECEITA';
-const isGrossRevenue = (a: ChartAccount): boolean =>
-  REVENUE_TYPES.has(a.type) && a.dreGroup !== 'RECEITAS_FINANCEIRAS' && !isDeduction(a);
-
-const FINANCIAL_INCOME: DREGroup = 'RECEITAS_FINANCEIRAS';
-
-function sortLines(lines: Map<string, DREAccountLine>): DREAccountLine[] {
-  return [...lines.values()].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
-}
-
 /**
  * Monta a DRE a partir dos lançamentos CONCILIADOS no período.
- * Auto-classificados não aprovados ficam fora e são apenas contabilizados em `awaitingApproval`.
+ *
+ * Sinal: o extrato traz créditos positivos e débitos negativos. Em grupos credores
+ * (receitas) o valor entra como está; em grupos devedores (deduções, custos, despesas)
+ * entra invertido. Assim, um estorno lançado numa conta de despesa reduz a despesa.
  */
 export function buildDRE(
   transactions: readonly BankTransaction[],
@@ -80,67 +121,62 @@ export function buildDRE(
   range: DateRange
 ): DREStatement {
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
-  const inRange = (t: BankTransaction) => t.date >= range.start && t.date <= range.end;
-
-  const revenue = new Map<string, DREAccountLine>();
-  const deductions = new Map<string, DREAccountLine>();
-  const groups = new Map<string, Map<string, DREAccountLine>>();
+  const buckets = new Map<DRESectionKey, Map<string, DREAccountLine>>();
 
   let reconciledCount = 0;
   let awaitingApproval = 0;
 
-  const add = (bucket: Map<string, DREAccountLine>, acc: ChartAccount, value: number) => {
-    const line = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
-    line.value += value;
-    line.count += 1;
-    bucket.set(acc.id, line);
-  };
-
   for (const t of transactions) {
-    if (!inRange(t)) continue;
+    if (t.date < range.start || t.date > range.end) continue;
     if (t.status === 'AUTO_CLASSIFIED') awaitingApproval++;
     if (t.status !== 'RECONCILED' || !t.accountId) continue;
+
     const acc = byId.get(t.accountId);
-    if (!acc) continue;
+    const key = acc ? resolveDREGroup(acc) : null;
+    if (!acc || !key) continue; // conta removida ou patrimonial: não transita pela DRE
     reconciledCount++;
 
-    const magnitude = Math.abs(t.amount);
-
-    if (isDeduction(acc)) {
-      add(deductions, acc, magnitude);
-    } else if (isGrossRevenue(acc)) {
-      add(revenue, acc, magnitude);
-    } else {
-      const group = EXPENSE_GROUPS.find((g) => g.match(acc));
-      if (!group) continue; // Ativo/Passivo não transitam pela DRE
-      const bucket = groups.get(group.id) ?? new Map<string, DREAccountLine>();
-      // Receitas financeiras reduzem o grupo "Resultado financeiro".
-      add(bucket, acc, acc.dreGroup === FINANCIAL_INCOME ? -magnitude : magnitude);
-      groups.set(group.id, bucket);
-    }
+    const bucket = buckets.get(key) ?? new Map<string, DREAccountLine>();
+    const line = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
+    line.value += CREDIT_NATURE.has(key) ? t.amount : -t.amount;
+    line.count += 1;
+    bucket.set(acc.id, line);
+    buckets.set(key, bucket);
   }
 
-  const revenueLines = sortLines(revenue);
-  const deductionLines = sortLines(deductions);
-  const grossRevenue = revenueLines.reduce((s, l) => s + l.value, 0);
-  const totalDeductions = deductionLines.reduce((s, l) => s + l.value, 0);
-  const netRevenue = grossRevenue - totalDeductions;
+  const section = (key: DRESectionKey): DRESection => {
+    const lines = [...(buckets.get(key)?.values() ?? [])].sort((a, b) =>
+      a.code.localeCompare(b.code, undefined, { numeric: true })
+    );
+    return { key, lines, total: lines.reduce((sum, l) => sum + l.value, 0) };
+  };
 
-  const expenseGroups: DREExpenseGroup[] = EXPENSE_GROUPS.filter((g) => groups.has(g.id)).map((g) => {
-    const lines = sortLines(groups.get(g.id) ?? new Map());
-    return { id: g.id, title: g.title, lines, total: lines.reduce((s, l) => s + l.value, 0) };
-  });
-  const totalExpenses = expenseGroups.reduce((s, g) => s + g.total, 0);
-  const netResult = netRevenue - totalExpenses;
+  const sections = Object.fromEntries(
+    [...CANONICAL].map((k) => [k, section(k as DRESectionKey)])
+  ) as Record<DRESectionKey, DRESection>;
+
+  const grossRevenue = sections.GROSS_REVENUE.total;
+  const deductions = sections.DEDUCTIONS.total;
+  const netRevenue = grossRevenue - deductions;
+  const costs = sections.COSTS.total;
+  const grossProfit = netRevenue - costs;
+  const operatingExpenses = sections.OPERATING_EXPENSES.total;
+  const financialResult = sections.FINANCIAL_INCOME.total - sections.FINANCIAL_EXPENSES.total;
+  const otherResult = sections.OTHER_INCOME.total - sections.OTHER_EXPENSES.total;
+  const incomeTaxes = sections.INCOME_TAXES.total;
+  const netResult = grossProfit - operatingExpenses + financialResult + otherResult - incomeTaxes;
 
   return {
+    sections,
     grossRevenue,
-    revenueLines,
-    deductions: totalDeductions,
-    deductionLines,
+    deductions,
     netRevenue,
-    expenseGroups,
-    totalExpenses,
+    costs,
+    grossProfit,
+    operatingExpenses,
+    financialResult,
+    otherResult,
+    incomeTaxes,
     netResult,
     netMargin: netRevenue > 0 ? (netResult / netRevenue) * 100 : null,
     reconciledCount,

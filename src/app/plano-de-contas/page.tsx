@@ -25,6 +25,7 @@ const TYPE_LABEL: Record<AccountType, string> = {
   ASSET: 'Ativo',
   ATIVO: 'Ativo',
   LIABILITY: 'Passivo',
+  EQUITY: 'Patrimônio líquido',
   PASSIVO: 'Passivo',
   COST: 'Custo',
   CUSTO: 'Custo',
@@ -35,16 +36,25 @@ const TYPE_LABEL: Record<AccountType, string> = {
 };
 
 const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
-  { value: 'RECEITA_BRUTA', label: 'Receita bruta' },
-  { value: 'DEDUCOES_RECEITA', label: 'Deduções da receita' },
-  { value: 'CUSTOS', label: 'Custos' },
-  { value: 'DESPESAS_ADMINISTRATIVAS', label: 'Despesas administrativas' },
-  { value: 'DESPESAS_COMERCIAIS', label: 'Despesas comerciais' },
-  { value: 'DESPESAS_OPERACIONAIS', label: 'Outras despesas operacionais' },
-  { value: 'DESPESAS_FINANCEIRAS', label: 'Despesas financeiras' },
-  { value: 'RECEITAS_FINANCEIRAS', label: 'Receitas financeiras' },
-  { value: 'IMPOSTOS_LUCRO', label: 'IRPJ e CSLL' },
+  { value: 'GROSS_REVENUE', label: 'Receita operacional bruta' },
+  { value: 'DEDUCTIONS', label: 'Deduções da receita bruta' },
+  { value: 'COSTS', label: 'Custos das vendas' },
+  { value: 'OPERATING_EXPENSES', label: 'Despesas operacionais' },
+  { value: 'FINANCIAL_INCOME', label: 'Receitas financeiras' },
+  { value: 'FINANCIAL_EXPENSES', label: 'Despesas financeiras' },
+  { value: 'OTHER_INCOME', label: 'Outras receitas operacionais' },
+  { value: 'OTHER_EXPENSES', label: 'Outras despesas operacionais' },
+  { value: 'INCOME_TAXES', label: 'IRPJ e CSLL' },
 ];
+
+/** Grupo da DRE sugerido para uma nova conta: o do pai ou o das contas irmãs. */
+function inheritedDREGroup(parent: ChartAccount | undefined, accounts: readonly ChartAccount[]): DREGroup | '' {
+  if (!parent) return '';
+  if (parent.dreGroup) return parent.dreGroup;
+  const sibling = accounts.find((a) => a.parentId === parent.id && a.dreGroup) ??
+    accounts.find((a) => a.code.startsWith(`${parent.code}.`) && a.dreGroup);
+  return sibling?.dreGroup ?? '';
+}
 
 const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA', 'EXPENSE', 'DESPESA', 'COST', 'CUSTO']);
 
@@ -177,9 +187,14 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
         </span>
 
         {depth === 0 && <span className="hidden sm:inline text-[11px] text-stone-400">{TYPE_LABEL[account.type]}</span>}
-        {!synthetic && account.clientId !== 'global' && (
+        {account.isContra && (
+          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+            Redutora
+          </span>
+        )}
+        {!synthetic && account.clientId === 'global' && (
           <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-[#0071E3] border border-blue-200/60">
-            Cliente
+            Compartilhada
           </span>
         )}
         {!synthetic && !hasChildren && (
@@ -225,7 +240,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
   const [parentId, setParentId] = useState<string>(initialParent?.id ?? '');
   const [code, setCode] = useState(() => suggestCode(initialParent, accounts));
   const [name, setName] = useState('');
-  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(initialParent?.dreGroup ?? '');
+  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(() => inheritedDREGroup(initialParent, accounts));
   const [saving, setSaving] = useState(false);
 
   const parent = parents.find((p) => p.id === parentId);
@@ -243,7 +258,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
     const p = parents.find((x) => x.id === id);
     setParentId(id);
     setCode(suggestCode(p, accounts));
-    setDreGroup(p?.dreGroup ?? '');
+    setDreGroup(inheritedDREGroup(p, accounts));
   };
 
   const submit = async () => {
@@ -383,9 +398,9 @@ export default function PlanoDeContasPage() {
     try {
       const created = await applyDefaultChartTemplate(clientId);
       await load(clientId);
-      setNotice(created > 0 ? `${created} contas do modelo padrão adicionadas.` : 'O plano já contém todas as contas do modelo padrão.');
+      setNotice(created > 0 ? `${created} contas do plano ITG 1000 adicionadas.` : 'O plano já contém todas as contas da ITG 1000.');
     } catch {
-      setNotice('Não foi possível aplicar o modelo padrão.');
+      setNotice('Não foi possível aplicar o plano ITG 1000.');
     } finally {
       setApplying(false);
     }
@@ -408,7 +423,7 @@ export default function PlanoDeContasPage() {
             {isEmpty && (
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.secondary}>
                 <Wand2 className="w-4 h-4" strokeWidth={1.75} />
-                {applying ? 'Aplicando…' : 'Aplicar modelo padrão CFC/SPED'}
+                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (CFC 1.418/2012)'}
               </button>
             )}
             <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId} className={BUTTON.primary}>
@@ -440,11 +455,11 @@ export default function PlanoDeContasPage() {
         ) : isEmpty ? (
           <EmptyState
             title="Plano de contas vazio"
-            description="Comece pelo modelo padrão com as contas mais usadas em escritórios contábeis."
+            description="Aplique o modelo simplificado para ME/EPP da ITG 1000 (Resolução CFC nº 1.418/2012), já amarrado à DRE."
             action={
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.accent}>
                 <Wand2 className="w-4 h-4" />
-                {applying ? 'Aplicando…' : 'Aplicar modelo padrão CFC/SPED'}
+                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (CFC 1.418/2012)'}
               </button>
             }
           />

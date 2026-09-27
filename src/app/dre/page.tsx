@@ -67,6 +67,48 @@ function Row({ label, value, variant = 'line' }: { label: string; value: number;
   );
 }
 
+interface SectionProps {
+  id: string;
+  label: string;
+  value: number;
+  parts: { lines: DREAccountLine[]; sign: 1 | -1 }[];
+  open: boolean;
+  onToggle: (id: string) => void;
+}
+
+/** Linha de grupo da DRE, recolhível, com o detalhamento por conta analítica. */
+function Section({ id, label, value, parts, open, onToggle }: SectionProps) {
+  const hasLines = parts.some((p) => p.lines.length > 0);
+  return (
+    <div className="print-avoid-break">
+      <button
+        type="button"
+        onClick={() => hasLines && onToggle(id)}
+        aria-expanded={hasLines ? open : undefined}
+        disabled={!hasLines}
+        className="w-full flex items-baseline gap-3 pl-3 pr-5 py-3 text-left enabled:hover:bg-black/[0.02] dark:enabled:hover:bg-white/[0.03] transition-colors"
+      >
+        <ChevronDown
+          className={`w-3.5 h-3.5 self-center shrink-0 text-stone-400 transition-transform duration-200 print:invisible ${
+            hasLines ? '' : 'invisible'
+          } ${open ? '' : '-rotate-90'}`}
+        />
+        <span className="flex-1 min-w-0 text-[14px] font-medium tracking-tight text-stone-800 dark:text-stone-200">{label}</span>
+        <span className="w-36 text-right text-[14px] text-stone-900 dark:text-stone-100">
+          <Amount value={value} />
+        </span>
+      </button>
+      {hasLines && (
+        <div className={open ? '' : 'hidden print:block'}>
+          {parts.map((p, i) => (
+            <AccountRows key={i} lines={p.lines} sign={p.sign} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DREPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
@@ -137,6 +179,7 @@ export default function DREPage() {
   }[tone];
 
   const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  const isOpen = (id: string) => !collapsed[id];
   const periodLabel =
     mode === 'year' ? String(year) : mode === 'quarter' ? `${quarter}º trimestre de ${year}` : `${MONTHS[month - 1]}/${year}`;
 
@@ -260,47 +303,72 @@ export default function DREPage() {
           <EmptyState title="Sem lançamentos conciliados" description="Não há movimentação conciliada neste período." />
         ) : (
           <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-            <div className="print-avoid-break">
-              <Row label="Receita operacional bruta" value={dre.grossRevenue} />
-              <AccountRows lines={dre.revenueLines} sign={1} />
-            </div>
-
-            <div className="print-avoid-break">
-              <Row label="(−) Deduções e abatimentos" value={-dre.deductions} />
-              <AccountRows lines={dre.deductionLines} sign={-1} />
-            </div>
-
+            <Section
+              id="rob"
+              label="Receita operacional bruta"
+              value={dre.grossRevenue}
+              parts={[{ lines: dre.sections.GROSS_REVENUE.lines, sign: 1 }]}
+              open={isOpen('rob')}
+              onToggle={toggle}
+            />
+            <Section
+              id="ded"
+              label="(−) Deduções da receita bruta"
+              value={-dre.deductions}
+              parts={[{ lines: dre.sections.DEDUCTIONS.lines, sign: -1 }]}
+              open={isOpen('ded')}
+              onToggle={toggle}
+            />
             <Row label="(=) Receita operacional líquida" value={dre.netRevenue} variant="subtotal" />
-
-            <div>
-              <Row label="(−) Custos e despesas operacionais" value={-dre.totalExpenses} />
-              {dre.expenseGroups.map((g) => {
-                const open = !collapsed[g.id];
-                return (
-                  <div key={g.id} className="print-avoid-break">
-                    <button
-                      type="button"
-                      onClick={() => toggle(g.id)}
-                      aria-expanded={open}
-                      className="w-full flex items-baseline gap-3 px-5 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-3.5 h-3.5 self-center shrink-0 text-stone-400 transition-transform duration-200 print:hidden ${
-                          open ? '' : '-rotate-90'
-                        }`}
-                      />
-                      <span className="flex-1 min-w-0 text-[13px] font-medium text-stone-700 dark:text-stone-300 truncate">{g.title}</span>
-                      <span className="w-36 text-right text-[13px] text-stone-700 dark:text-stone-300">
-                        <Amount value={-g.total} />
-                      </span>
-                    </button>
-                    <div className={open ? '' : 'hidden print:block'}>
-                      <AccountRows lines={g.lines} sign={-1} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            <Section
+              id="cus"
+              label="(−) Custos das vendas"
+              value={-dre.costs}
+              parts={[{ lines: dre.sections.COSTS.lines, sign: -1 }]}
+              open={isOpen('cus')}
+              onToggle={toggle}
+            />
+            <Row label="(=) Lucro bruto" value={dre.grossProfit} variant="subtotal" />
+            <Section
+              id="dop"
+              label="(−) Despesas operacionais"
+              value={-dre.operatingExpenses}
+              parts={[{ lines: dre.sections.OPERATING_EXPENSES.lines, sign: -1 }]}
+              open={isOpen('dop')}
+              onToggle={toggle}
+            />
+            <Section
+              id="fin"
+              label="(+/−) Resultado financeiro líquido"
+              value={dre.financialResult}
+              parts={[
+                { lines: dre.sections.FINANCIAL_INCOME.lines, sign: 1 },
+                { lines: dre.sections.FINANCIAL_EXPENSES.lines, sign: -1 },
+              ]}
+              open={isOpen('fin')}
+              onToggle={toggle}
+            />
+            <Section
+              id="out"
+              label="(+/−) Outras receitas e despesas operacionais"
+              value={dre.otherResult}
+              parts={[
+                { lines: dre.sections.OTHER_INCOME.lines, sign: 1 },
+                { lines: dre.sections.OTHER_EXPENSES.lines, sign: -1 },
+              ]}
+              open={isOpen('out')}
+              onToggle={toggle}
+            />
+            {dre.sections.INCOME_TAXES.lines.length > 0 && (
+              <Section
+                id="ir"
+                label="(−) IRPJ e CSLL"
+                value={-dre.incomeTaxes}
+                parts={[{ lines: dre.sections.INCOME_TAXES.lines, sign: -1 }]}
+                open={isOpen('ir')}
+                onToggle={toggle}
+              />
+            )}
 
             <div
               className={`flex items-baseline gap-3 px-5 py-4 ${
