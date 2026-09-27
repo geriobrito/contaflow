@@ -1,262 +1,340 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import type { BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
+import { deleteRule, getAccounts, getRules, getTransactions, saveRule } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
-import { ClassificationRule, ChartAccount } from '@/types/firestore';
-import { getRules, saveRule, getAccounts } from '@/lib/services/data-service';
-import { BrainCircuit, Plus, Search, Trash2, Sparkles, Check, X } from 'lucide-react';
+import { normalizePattern } from '@/hooks/useReconciliation';
+import { formatDateBR } from '@/lib/utils/formatters';
+import { BUTTON, ConfirmButton, EmptyState, INPUT, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+
+/** Lançamentos afetados: vinculados à regra ou cujo histórico contém o padrão. */
+function countAffected(rule: ClassificationRule, transactions: readonly BankTransaction[]): number {
+  const pattern = normalizePattern(rule.pattern);
+  if (!pattern) return 0;
+  return transactions.filter((t) => t.matchedRuleId === rule.id || normalizePattern(t.memo).includes(pattern)).length;
+}
+
+/* =========================================================================
+   Linha editável
+   ========================================================================= */
+
+interface RuleRowProps {
+  rule: ClassificationRule;
+  account: ChartAccount | undefined;
+  affected: number;
+  isDuplicate: (pattern: string, exceptId: string) => boolean;
+  onSave: (rule: ClassificationRule, pattern: string) => Promise<void>;
+  onDelete: (rule: ClassificationRule) => Promise<void>;
+}
+
+function RuleRow({ rule, account, affected, isDuplicate, onSave, onDelete }: RuleRowProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(rule.pattern);
+
+  const normalized = normalizePattern(draft);
+  const error = !normalized ? 'Informe um termo.' : isDuplicate(normalized, rule.id) ? 'Termo já cadastrado.' : null;
+
+  const commit = async () => {
+    if (error) return;
+    await onSave(rule, normalized);
+    setEditing(false);
+  };
+
+  return (
+    <tr className="group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0">
+      <td className="pl-5 pr-3 py-3 align-middle">
+        {editing ? (
+          <div className="space-y-1">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void commit();
+                if (e.key === 'Escape') {
+                  setDraft(rule.pattern);
+                  setEditing(false);
+                }
+              }}
+              aria-invalid={Boolean(error)}
+              className={`${INPUT} h-9 font-mono text-[13px]`}
+            />
+            {error && <p className="text-[11px] text-rose-600">{error}</p>}
+          </div>
+        ) : (
+          <span className="inline-flex max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
+            {rule.pattern}
+          </span>
+        )}
+      </td>
+      <td className="px-3 py-3 max-w-0 w-full">
+        <p className="text-[13px] text-stone-800 dark:text-stone-200 truncate">
+          <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{account?.code ?? rule.accountCode ?? '—'}</span>
+          {account?.name ?? rule.accountName ?? 'Conta removida'}
+        </p>
+      </td>
+      <td className="px-3 py-3 hidden md:table-cell font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
+        {rule.createdAt ? formatDateBR(rule.createdAt.slice(0, 10)) : '—'}
+      </td>
+      <td className="px-3 py-3 text-right font-mono tabular-nums text-[13px] text-stone-600 dark:text-stone-400 whitespace-nowrap">
+        {affected}
+      </td>
+      <td className="pl-3 pr-4 py-3">
+        <div className="flex items-center justify-end gap-1">
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void commit()}
+                disabled={Boolean(error)}
+                aria-label="Salvar termo"
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-[#0071E3] text-white disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
+              >
+                <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(rule.pattern);
+                  setEditing(false);
+                }}
+                aria-label="Cancelar edição"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label={`Editar termo ${rule.pattern}`}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/[0.05] sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+              <ConfirmButton
+                ariaLabel={`Excluir regra ${rule.pattern}`}
+                label={<Trash2 className="w-3.5 h-3.5" />}
+                confirmLabel="Excluir"
+                onConfirm={() => onDelete(rule)}
+              />
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/* =========================================================================
+   Página
+   ========================================================================= */
 
 export default function RegrasPage() {
-  const [rules, setRules] = useState<ClassificationRule[]>([]);
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const [searchTerm, setSearchTerm] = useState('');
 
-  // Modal nova regra
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [rules, setRules] = useState<ClassificationRule[]>([]);
+  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+
   const [newPattern, setNewPattern] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
-  const [newMatchType, setNewMatchType] = useState<'CONTAINS' | 'STARTS_WITH' | 'EXACT'>('CONTAINS');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  const apply = useCallback(
+    (id: string, [r, a, t]: [ClassificationRule[], ChartAccount[], BankTransaction[]]) => {
+      setRules(r);
+      setAccounts(a);
+      setTransactions(t);
+      setLoadedFor(id);
+    },
+    []
+  );
+  const fetchAll = (id: string) => Promise.all([getRules(id), getAccounts(id), getTransactions(id)]);
+  const load = async (id: string) => apply(id, await fetchAll(id));
 
   useEffect(() => {
     if (!clientId) return;
-    Promise.all([getRules(clientId), getAccounts(clientId)]).then(([loadedRules, loadedAccounts]) => {
-      setRules(loadedRules);
-      setAccounts(loadedAccounts);
-    });
-  }, [clientId]);
-
-  const handleCreateRule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const acc = accounts.find((a) => a.id === newAccountId);
-    if (!newPattern || !acc) return;
-
-    const rule: ClassificationRule = {
-      id: `rule-${Date.now()}`,
-      clientId: currentClient?.id || 'global',
-      pattern: newPattern.toUpperCase().trim(),
-      matchType: newMatchType,
-      accountId: acc.id,
-      accountCode: acc.code,
-      accountName: acc.name,
-      confidence: 95,
-      usageCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    let active = true;
+    Promise.all([getRules(clientId), getAccounts(clientId), getTransactions(clientId)])
+      .then((data) => active && apply(clientId, data))
+      .catch((e) => console.error('Erro ao carregar regras:', e));
+    return () => {
+      active = false;
     };
+  }, [clientId, apply]);
 
-    await saveRule(rule);
-    const refreshed = await getRules(currentClient?.id);
-    setRules(refreshed);
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
+  const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
 
-    setIsModalOpen(false);
-    setNewPattern('');
-    setNewAccountId('');
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return rules
+      .map((rule) => ({ rule, account: accountsById.get(rule.accountId), affected: countAffected(rule, transactions) }))
+      .filter(
+        ({ rule, account }) =>
+          !term ||
+          rule.pattern.toLowerCase().includes(term) ||
+          (account?.name ?? rule.accountName ?? '').toLowerCase().includes(term) ||
+          (account?.code ?? rule.accountCode ?? '').includes(term)
+      )
+      .sort((a, b) => b.affected - a.affected || a.rule.pattern.localeCompare(b.rule.pattern));
+  }, [rules, accountsById, transactions, search]);
+
+  const isDuplicate = useCallback(
+    (pattern: string, exceptId: string) => rules.some((r) => r.id !== exceptId && normalizePattern(r.pattern) === pattern),
+    [rules]
+  );
+
+  const isLoading = Boolean(clientId) && loadedFor !== clientId;
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientId) return;
+    const pattern = normalizePattern(newPattern);
+    const account = accountsById.get(newAccountId);
+    if (!pattern || !account) {
+      setAddError('Informe o termo e a conta de destino.');
+      return;
+    }
+    if (isDuplicate(pattern, '')) {
+      setAddError('Já existe uma regra com esse termo.');
+      return;
+    }
+    setAdding(true);
+    setAddError(null);
+    const now = new Date().toISOString();
+    try {
+      await saveRule({
+        id: `rule-${Date.now()}`,
+        clientId,
+        pattern,
+        accountId: account.id,
+        accountCode: account.code,
+        accountName: account.name,
+        matchType: 'CONTAINS',
+        createdAt: now,
+        updatedAt: now,
+      });
+      setNewPattern('');
+      await load(clientId);
+    } finally {
+      setAdding(false);
+    }
   };
 
-  const filteredRules = rules.filter((r) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      r.pattern.toLowerCase().includes(term) ||
-      (r.accountName?.toLowerCase().includes(term) ?? false) ||
-      (r.accountCode?.includes(term) ?? false)
-    );
-  });
+  const handleSave = async (rule: ClassificationRule, pattern: string) => {
+    await saveRule({ ...rule, pattern, updatedAt: new Date().toISOString() });
+    if (clientId) await load(clientId);
+  };
+
+  const handleDelete = async (rule: ClassificationRule) => {
+    await deleteRule(rule.id);
+    setRules((prev) => prev.filter((r) => r.id !== rule.id));
+  };
 
   return (
-    <div className="flex flex-col">
+    <main className="max-w-5xl mx-auto px-4 sm:px-8 py-8 sm:py-12 space-y-8">
+      <PageHeader
+        eyebrow={currentClient?.name}
+        title="Regras de aprendizado"
+        description={
+          <>
+            Termos memorizados que classificam lançamentos automaticamente na importação.{' '}
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
+          </>
+        }
+      />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-sm">
-              <BrainCircuit className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                Motor de Aprendizado Contínuo
-              </h1>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Padrões inteligentes reconhecidos automaticamente para auto-classificar lançamentos de extrato
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="ios-button inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white shadow-sm"
+      {/* Adição rápida */}
+      <form onSubmit={handleAdd} className={`${SURFACE} rounded-[22px] p-4 sm:p-5 space-y-3`}>
+        <p className="text-[13px] font-medium text-stone-700 dark:text-stone-300">Nova regra</p>
+        <div className="flex flex-col md:flex-row gap-2.5">
+          <input
+            value={newPattern}
+            onChange={(e) => setNewPattern(e.target.value)}
+            placeholder="Termo, ex.: uber"
+            aria-label="Termo"
+            className={`${INPUT} md:w-64 font-mono text-[13px]`}
+          />
+          <select
+            value={newAccountId}
+            onChange={(e) => setNewAccountId(e.target.value)}
+            aria-label="Conta de destino"
+            className={`${INPUT} flex-1 min-w-0 ${newAccountId ? '' : 'text-stone-400'}`}
           >
-            <Plus className="w-4 h-4" />
-            <span>Adicionar Padrão Manual</span>
+            <option value="">Conta de destino…</option>
+            {analytic.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.code} · {a.name}
+              </option>
+            ))}
+          </select>
+          <button type="submit" disabled={adding || !clientId} className={`${BUTTON.primary} h-11 md:px-5`}>
+            <Plus className="w-4 h-4" strokeWidth={2} />
+            {adding ? 'Adicionando…' : 'Adicionar'}
           </button>
         </div>
+        {addError && <p className="text-[12px] text-rose-600 animate-fade-in">{addError}</p>}
+      </form>
 
-        {/* Search Bar */}
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filtrar por termo do MEMO, conta ou código..."
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-2xl border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-purple-500/20 shadow-sm"
+      <SearchField value={search} onChange={setSearch} placeholder="Buscar por termo ou conta" />
+
+      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+        {isLoading ? (
+          <div className="p-5 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={rules.length === 0 ? 'Nenhuma regra ainda' : 'Nenhuma regra encontrada'}
+            description={
+              rules.length === 0
+                ? 'Adicione acima ou marque “Lembrar essa classificação” ao conciliar um lançamento.'
+                : `Nada corresponde a “${search}”.`
+            }
           />
-        </div>
-
-        {/* Rules Table */}
-        <div className="ios-card rounded-3xl overflow-hidden border border-black/[0.06] dark:border-white/[0.08] shadow-sm">
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-zinc-50/70 dark:bg-zinc-800/40 text-[11px] font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-                  <th className="py-3 px-4">Padrão Reconhecido (Termo)</th>
-                  <th className="py-3 px-4">Tipo de Correspondência</th>
-                  <th className="py-3 px-4">Conta Contábil de Destino</th>
-                  <th className="py-3 px-4 text-center">Assertividade</th>
-                  <th className="py-3 px-4 text-center">Vezes Aplicado</th>
-                  <th className="py-3 px-4">Escopo</th>
+                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
+                  <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-56">Termo</th>
+                  <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell w-28">Criada em</th>
+                  <th scope="col" className="font-medium px-3 py-2.5 text-right w-24">Afetados</th>
+                  <th scope="col" className="pl-3 pr-4 py-2.5 w-24">
+                    <span className="sr-only">Ações</span>
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04] text-xs">
-                {filteredRules.map((rule) => (
-                  <tr
+              <tbody>
+                {rows.map(({ rule, account, affected }) => (
+                  <RuleRow
                     key={rule.id}
-                    className="hover:bg-black/[0.015] dark:hover:bg-white/[0.02] transition-colors"
-                  >
-                    <td className="py-3.5 px-4">
-                      <span className="font-mono font-semibold px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-700">
-                        {rule.pattern}
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-zinc-600 dark:text-zinc-400">
-                      {rule.matchType === 'CONTAINS' && 'Contém no texto'}
-                      {rule.matchType === 'STARTS_WITH' && 'Inicia com'}
-                      {rule.matchType === 'EXACT' && 'Exatamente igual'}
-                      {rule.matchType === 'REGEX' && 'Expressão Regular'}
-                    </td>
-
-                    <td className="py-3.5 px-4">
-                      <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                        <span className="font-semibold text-blue-600 dark:text-blue-400">
-                          {rule.accountCode}
-                        </span>{' '}
-                        - {rule.accountName}
-                      </div>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200">
-                        <Sparkles className="w-2.5 h-2.5" />
-                        {rule.confidence}%
-                      </span>
-                    </td>
-
-                    <td className="py-3.5 px-4 text-center font-semibold text-zinc-700 dark:text-zinc-300">
-                      {rule.usageCount}
-                    </td>
-
-                    <td className="py-3.5 px-4 text-[11px] text-zinc-400">
-                      {rule.clientId === 'global' ? 'Padrão Global' : 'Empresa Atual'}
-                    </td>
-                  </tr>
+                    rule={rule}
+                    account={account}
+                    affected={affected}
+                    isDuplicate={isDuplicate}
+                    onSave={handleSave}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      </main>
-
-      {/* Modal Nova Regra */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-3xl ios-card p-6 shadow-2xl bg-white dark:bg-zinc-900 border border-black/[0.08] dark:border-white/[0.1]">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06] dark:border-white/[0.08]">
-              <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                Nova Regra de Auto-Classificação
-              </h3>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-black/[0.04]"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateRule} className="mt-4 space-y-3.5 text-xs">
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Padrão do MEMO (em caixa alta)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newPattern}
-                  onChange={(e) => setNewPattern(e.target.value.toUpperCase())}
-                  placeholder="Ex: POSTO IPIRANGA, IFOOD, NETFLIX"
-                  className="w-full font-mono uppercase px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white focus:ring-2 focus:ring-purple-500/20"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Tipo de Comparação
-                </label>
-                <select
-                  value={newMatchType}
-                  onChange={(e) => setNewMatchType(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                >
-                  <option value="CONTAINS">Contém o texto (Recomendado)</option>
-                  <option value="STARTS_WITH">Inicia com o texto</option>
-                  <option value="EXACT">Exatamente igual</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="font-semibold text-zinc-700 dark:text-zinc-300 block mb-1">
-                  Conta Contábil de Destino
-                </label>
-                <select
-                  required
-                  value={newAccountId}
-                  onChange={(e) => setNewAccountId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white"
-                >
-                  <option value="">Selecione a conta analítica...</option>
-                  {accounts
-                    .filter((a) => a.nature === 'ANALYTIC')
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.code} - {a.name} ({a.type})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="ios-button px-4 py-2 rounded-xl text-zinc-600 dark:text-zinc-400"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="ios-button px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-medium shadow-sm flex items-center gap-1.5"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Salvar Regra</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </section>
+    </main>
   );
 }

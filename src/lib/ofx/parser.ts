@@ -38,7 +38,7 @@ export function parseOFXAmount(amountStr: string): number {
  */
 export function cleanOFXMemo(memoStr: string): string {
   if (!memoStr) return 'LANÇAMENTO SEM DESCRIÇÃO';
-  let cleaned = memoStr
+  const cleaned = memoStr
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
@@ -165,7 +165,7 @@ export function parseOFXString(rawContent: string): OFXParseResult {
 
     // Valor da transação
     const trnAmtMatch = trnBlock.match(/<TRNAMT>([^<\r\n]+)/i);
-    let amount = trnAmtMatch ? parseOFXAmount(trnAmtMatch[1]) : 0;
+    const amount = trnAmtMatch ? parseOFXAmount(trnAmtMatch[1]) : 0;
 
     // Se o valor for negativo, é débito; se for positivo, é crédito (padronização bancária)
     if (amount < 0 && type === 'OTHER') {

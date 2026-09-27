@@ -296,7 +296,7 @@ export function Sidebar() {
   return (
     <>
       {/* Barra superior mobile */}
-      <header className="lg:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 backdrop-blur-xl bg-[#F9F9F8]/80 dark:bg-stone-950/80 border-b border-black/[0.05] dark:border-white/[0.06]">
+      <header className="lg:hidden print:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 backdrop-blur-xl bg-[#F9F9F8]/80 dark:bg-stone-950/80 border-b border-black/[0.05] dark:border-white/[0.06]">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
@@ -310,7 +310,7 @@ export function Sidebar() {
 
       {/* Desktop */}
       <aside
-        className={`hidden lg:block sticky top-0 h-screen shrink-0 p-3 transition-[width] duration-200 ease-out ${
+        className={`hidden lg:block print:hidden sticky top-0 h-screen shrink-0 p-3 transition-[width] duration-200 ease-out ${
           collapsed ? 'w-[84px]' : 'w-[272px]'
         }`}
       >

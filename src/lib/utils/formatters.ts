@@ -38,3 +38,34 @@ export function formatCNPJ(cnpj: string): string {
 export function cleanDigits(value: string): string {
   return value.replace(/\D/g, '');
 }
+
+/**
+ * Valida CNPJ pelos dígitos verificadores (módulo 11).
+ */
+export function isValidCNPJ(value: string): boolean {
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+  const calc = (length: number): number => {
+    let sum = 0;
+    let weight = length - 7;
+    for (let i = 0; i < length; i++) {
+      sum += Number(digits[i]) * weight--;
+      if (weight < 2) weight = 9;
+    }
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  return calc(12) === Number(digits[12]) && calc(13) === Number(digits[13]);
+}
+
+/**
+ * Máscara progressiva de CNPJ enquanto o usuário digita.
+ */
+export function maskCNPJ(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 14);
+  return d
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2');
+}
