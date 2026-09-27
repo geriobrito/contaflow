@@ -7,6 +7,10 @@ import { Search, X } from 'lucide-react';
    Tokens de superfície e controles
    ========================================================================= */
 
+/** Container fluido das páginas: ocupa o espaço útil ao lado da sidebar, com teto para monitores ultrawide. */
+export const PAGE =
+  'w-full max-w-[1680px] mx-auto px-4 sm:px-6 md:px-10 lg:px-12 py-8 sm:py-10 space-y-8';
+
 export const SURFACE =
   'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
 
@@ -42,7 +46,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
         <h1 className="text-[28px] sm:text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
           {title}
         </h1>
-        {description && <p className="text-[14px] text-stone-500 max-w-xl">{description}</p>}
+        {description && <p className="text-[14px] text-stone-500 max-w-2xl">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2 print:hidden">{actions}</div>}
     </header>
