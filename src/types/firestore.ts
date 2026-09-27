@@ -39,7 +39,7 @@ export type AccountType =
   | 'CUSTO';
 
 /**
- * Grupos da DRE (ITG 1000 — Resolução CFC nº 1.418/2012).
+ * Grupos da DRE (ITG 1000, CFC 15/12/2022 — NBC TG 1002, Anexo 11).
  * Os valores em português são legados e continuam aceitos pelo `buildDRE`.
  */
 export type DREGroup =

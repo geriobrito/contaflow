@@ -161,7 +161,7 @@ export async function getAccounts(clientId?: string): Promise<ChartAccount[]> {
 }
 
 /**
- * Aplica o Plano de Contas Simplificado da ITG 1000 (Resolução CFC nº 1.418/2012)
+ * Aplica o Plano de Contas da ITG 1000 (CFC, 15/12/2022 — NBC TG 1002, Anexo 11)
  * como contas próprias do cliente. Códigos já existentes no escopo do cliente são
  * preservados. Retorna quantas contas foram criadas.
  */

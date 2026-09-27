@@ -423,7 +423,7 @@ export default function PlanoDeContasPage() {
             {isEmpty && (
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.secondary}>
                 <Wand2 className="w-4 h-4" strokeWidth={1.75} />
-                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (CFC 1.418/2012)'}
+                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (2022)'}
               </button>
             )}
             <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId} className={BUTTON.primary}>
@@ -455,11 +455,11 @@ export default function PlanoDeContasPage() {
         ) : isEmpty ? (
           <EmptyState
             title="Plano de contas vazio"
-            description="Aplique o modelo simplificado para ME/EPP da ITG 1000 (Resolução CFC nº 1.418/2012), já amarrado à DRE."
+            description="Aplique o modelo para microentidades da ITG 1000 (CFC, 15/12/2022 — NBC TG 1002, Anexo 11), já amarrado à DRE."
             action={
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.accent}>
                 <Wand2 className="w-4 h-4" />
-                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (CFC 1.418/2012)'}
+                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (2022)'}
               </button>
             }
           />
