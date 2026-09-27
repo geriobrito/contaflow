@@ -14,6 +14,7 @@ interface OFXDropzoneProps {
 export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = false }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,11 +24,15 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
       return;
     }
     setErrorMessage(null);
+    setWarnings([]);
     setActiveFileName(file.name);
     try {
       const parsed = await parseOFXFile(file);
+      setWarnings(parsed.warnings.filter((w) => !w.startsWith('Transação sem FITID')));
       if (parsed.transactions.length === 0) {
-        setErrorMessage('Nenhuma transação encontrada no arquivo.');
+        setErrorMessage(
+          parsed.hasErrors ? 'Nenhum lançamento do arquivo pôde ser lido (datas ou valores inválidos).' : 'Nenhuma transação encontrada no arquivo.'
+        );
         return;
       }
       onParsed(parsed, file.name);
@@ -39,6 +44,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
   const handleLoadSample = () => {
     const name = 'extrato_modelo.ofx';
     setErrorMessage(null);
+    setWarnings([]);
     setActiveFileName(name);
     onParsed(parseOFXString(SAMPLE_BRAZILIAN_OFX), name);
   };
@@ -126,6 +132,18 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           {errorMessage}
         </p>
+      )}
+      {warnings.length > 0 && (
+        <details className="px-1 text-[12px] text-amber-700 dark:text-amber-400 animate-fade-in">
+          <summary className="cursor-pointer select-none">
+            {warnings.length} aviso(s) na leitura do arquivo
+          </summary>
+          <ul className="mt-1 ml-4 list-disc space-y-0.5">
+            {warnings.slice(0, 20).map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );

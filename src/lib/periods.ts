@@ -6,6 +6,14 @@
  * reabertura explícita (auditada). A mesma regra é aplicada em `firestore.rules`.
  */
 
+/** Data de calendário real no formato YYYY-MM-DD (rejeita 2025-02-30, 29/03/2025 etc.). */
+export function isISODate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [y, m, d] = value.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 /** Competência (YYYY-MM) de uma data YYYY-MM-DD. */
 export const monthOf = (date: string): string => date.slice(0, 7);
 
