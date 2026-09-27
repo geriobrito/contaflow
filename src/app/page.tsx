@@ -7,9 +7,11 @@ import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { normalizePattern, useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
-import { Check, CheckCheck, Search, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronDown, Search, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { IOSSwitch, PAGE, SURFACE } from '@/components/ui/primitives';
+import { IOSSwitch, PAGE, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
+import { splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
 
 /* =========================================================================
    Primitivos visuais
@@ -73,9 +75,19 @@ interface ClassifySheetProps {
   isSaving: boolean;
   onClose: () => void;
   onConfirm: (accountId: string, learnRule: boolean, customPattern: string) => Promise<void>;
+  onSplit: (drafts: SplitDraft[]) => Promise<void>;
 }
 
-function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: ClassifySheetProps) {
+type SheetMode = 'single' | 'split';
+
+function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm, onSplit }: ClassifySheetProps) {
+  const [mode, setMode] = useState<SheetMode>(transaction.isSplit ? 'split' : 'single');
+  const [drafts, setDrafts] = useState<SplitDraft[]>(() =>
+    transaction.isSplit && transaction.splits?.length ? splitsToDrafts(transaction.splits) : [emptySplitDraft(), emptySplitDraft()]
+  );
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
+  const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
+  const canSaveSplit = splitSummary.isBalanced && splitSummary.isComplete;
   const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
   const [learnRule, setLearnRule] = useState(true);
@@ -108,7 +120,7 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: 
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className="relative w-full sm:max-w-[440px] max-h-[92vh] flex flex-col rounded-t-[28px] sm:rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in"
+        className={`relative w-full ${mode === 'split' ? 'sm:max-w-[640px]' : 'sm:max-w-[440px]'} max-h-[92vh] flex flex-col transition-[max-width] duration-200 rounded-t-[28px] sm:rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
         <div className="sm:hidden flex justify-center pt-2">
           <span className="w-9 h-[5px] rounded-full bg-black/15 dark:bg-white/20" />
@@ -139,6 +151,23 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: 
           </span>
         </div>
 
+        <div className="px-6 pb-4">
+          <SegmentedControl
+            ariaLabel="Modo de classificação"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'single', label: 'Conta única' },
+              { value: 'split', label: 'Classificar com rateio / desdobrar' },
+            ]}
+          />
+        </div>
+
+        {mode === 'split' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6">
+            <SplitEditor transactionAmount={transaction.amount} accounts={accounts} drafts={drafts} onChange={setDrafts} />
+          </div>
+        ) : (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 space-y-5">
           {/* Plano de contas */}
           <section className="space-y-2">
@@ -211,8 +240,28 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: 
             )}
           </section>
         </div>
+        )}
 
         <div className="px-6 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          {mode === 'split' ? (
+            <>
+              {!canSaveSplit && (
+                <p className="mb-2 text-center text-[12px] text-stone-500">
+                  {!splitSummary.isBalanced
+                    ? 'A soma das linhas deve ser igual ao valor do lançamento.'
+                    : splitSummary.errors[0]}
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={!canSaveSplit || isSaving}
+                onClick={() => void onSplit(drafts)}
+                className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
+              >
+                {isSaving ? 'Salvando…' : 'Salvar rateio'}
+              </button>
+            </>
+          ) : (
           <button
             type="button"
             disabled={!accountId || isSaving}
@@ -221,6 +270,7 @@ function ClassifySheet({ transaction, accounts, isSaving, onClose, onConfirm }: 
           >
             {isSaving ? 'Salvando…' : 'Conciliar'}
           </button>
+          )}
         </div>
       </div>
     </div>
@@ -259,6 +309,7 @@ export default function ConciliacaoPage() {
     error,
     importTransactions,
     classifyTransaction,
+    splitTransaction,
     approveAutoClassified,
   } = useReconciliation({ clientId, accounts });
 
@@ -295,6 +346,27 @@ export default function ConciliacaoPage() {
   const handleOFXParsed = async (result: OFXParseResult) => {
     try {
       setLastImport(await importTransactions(result.transactions));
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
+
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleExpanded = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const handleSplit = async (drafts: SplitDraft[]) => {
+    if (!selected) return;
+    try {
+      await splitTransaction(selected.id, drafts);
+      setExpanded((prev) => new Set(prev).add(selected.id));
+      setSelected(null);
+      setToast(`Lançamento rateado em ${drafts.length} contas`);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -451,10 +523,31 @@ export default function ConciliacaoPage() {
               </thead>
               <tbody>
                 {visible.map((t) => {
-                  const actionable = t.status !== 'RECONCILED';
+                  // Rateios podem ser reabertos para revisão; demais conciliados ficam travados.
+                  const actionable = t.status !== 'RECONCILED' || Boolean(t.isSplit);
+                  const splitCount = t.isSplit ? (t.splits?.length ?? 0) : 0;
+                  const isExpanded = expanded.has(t.id);
+                  const splitBadge = splitCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleExpanded(t.id);
+                      }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      aria-expanded={isExpanded}
+                      aria-controls={`split-${t.id}`}
+                      title={t.splits?.map((sp) => `${sp.accountCode ?? ''} ${sp.accountName ?? ''}: ${formatCurrency(sp.amount)}`).join('\n')}
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 hover:bg-violet-100 active:scale-[0.97] transition-all duration-150"
+                    >
+                      <Split className="w-3 h-3" strokeWidth={2} />
+                      Rateado em {splitCount} contas
+                      <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                  );
                   return (
+                    <React.Fragment key={t.id}>
                     <tr
-                      key={t.id}
                       onClick={actionable ? () => setSelected(t) : undefined}
                       onKeyDown={
                         actionable
@@ -483,9 +576,12 @@ export default function ConciliacaoPage() {
                         {t.accountName && (
                           <p className="md:hidden text-[12px] text-stone-400 truncate">{t.accountName}</p>
                         )}
+                        {splitBadge && <div className="md:hidden mt-1">{splitBadge}</div>}
                       </td>
                       <td className="px-3 py-3 hidden md:table-cell max-w-[240px] xl:max-w-[380px]">
-                        {t.accountName ? (
+                        {splitBadge ? (
+                          splitBadge
+                        ) : t.accountName ? (
                           <p className="text-[13px] text-stone-600 dark:text-stone-400 truncate">
                             <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{t.accountCode}</span>
                             {t.accountName}
@@ -505,6 +601,28 @@ export default function ConciliacaoPage() {
                         {formatCurrency(t.amount)}
                       </td>
                     </tr>
+                    {splitCount > 0 && isExpanded && (
+                      <tr id={`split-${t.id}`} className="border-b border-black/[0.04] dark:border-white/[0.05] bg-stone-900/[0.015] dark:bg-white/[0.02]">
+                        <td />
+                        <td colSpan={4} className="px-3 pb-3 pt-1 pr-5">
+                          <ul className="rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white/70 dark:bg-stone-900/40 divide-y divide-black/[0.04] dark:divide-white/[0.05] animate-fade-in">
+                            {t.splits?.map((sp) => (
+                              <li key={sp.id} className="flex items-baseline gap-3 px-4 py-2 text-[13px]">
+                                <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{sp.accountCode}</span>
+                                <span className="flex-1 min-w-0 truncate text-stone-700 dark:text-stone-300">
+                                  {sp.accountName}
+                                  {sp.memo && <span className="ml-2 text-stone-400">· {sp.memo}</span>}
+                                </span>
+                                <span className="font-mono tabular-nums text-stone-900 dark:text-stone-100 whitespace-nowrap">
+                                  {formatCurrency(sp.amount)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -521,6 +639,7 @@ export default function ConciliacaoPage() {
           isSaving={isSaving}
           onClose={() => setSelected(null)}
           onConfirm={handleConfirm}
+          onSplit={handleSplit}
         />
       )}
 
