@@ -77,6 +77,18 @@ export interface ImportResult {
   outOfRange: number;
 }
 
+/** Resultado da checagem prévia de duplicidade (nada é gravado). */
+export interface PreImportCheck {
+  /** Todos os lançamentos do arquivo já estão no banco: a importação deve ser bloqueada. */
+  isFullDuplicate: boolean;
+  /** Parte já existe (extratos com dias sobrepostos): pedir confirmação antes de gravar. */
+  isPartialOverlap: boolean;
+  /** Lançamentos distintos no arquivo (FITIDs repetidos no próprio arquivo contam uma vez). */
+  totalInFile: number;
+  alreadyImportedCount: number;
+  newTransactions: ImportableTransaction[];
+}
+
 export interface ClassifyOptions {
   learnRule?: boolean;
   customPattern?: string;
@@ -116,6 +128,8 @@ export interface UseReconciliationReturn {
   isLoading: boolean;
   isSaving: boolean;
   error: string | null;
+  /** Verifica quais lançamentos do arquivo já existem, sem gravar nada. */
+  checkImport: (items: readonly ImportableTransaction[]) => Promise<PreImportCheck>;
   importTransactions: (items: readonly ImportableTransaction[], meta?: StatementMeta) => Promise<ImportResult>;
   classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
@@ -232,6 +246,32 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   /* ------------------------------------------------------------------ */
   /* Importação: deduplicação, auto-classificação e conferência de saldo */
   /* ------------------------------------------------------------------ */
+  const checkImport = useCallback(
+    async (items: readonly ImportableTransaction[]): Promise<PreImportCheck> => {
+      if (!clientId) throw new Error('Selecione um cliente antes de importar.');
+      const unique = new Map<string, ImportableTransaction>();
+      items.forEach((t) => unique.set(buildTransactionId(clientId, t.fitid), t));
+      setError(null);
+      let existing: Set<string>;
+      try {
+        existing = await getRepository().findExistingTransactionIds(clientId, [...unique.keys()]);
+      } catch (e) {
+        setError(`Falha ao verificar duplicidade do extrato (${describe(e)}).`);
+        throw e;
+      }
+      const newTransactions = [...unique].filter(([id]) => !existing.has(id)).map(([, t]) => t);
+      const alreadyImportedCount = unique.size - newTransactions.length;
+      return {
+        isFullDuplicate: unique.size > 0 && newTransactions.length === 0,
+        isPartialOverlap: alreadyImportedCount > 0 && newTransactions.length > 0,
+        totalInFile: unique.size,
+        alreadyImportedCount,
+        newTransactions,
+      };
+    },
+    [clientId]
+  );
+
   const importTransactions = useCallback(
     (items: readonly ImportableTransaction[], rawMeta: StatementMeta = {}): Promise<ImportResult> => {
       if (!clientId) return Promise.reject(new Error('Selecione um cliente antes de importar.'));
@@ -521,6 +561,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     isLoading,
     isSaving,
     error,
+    checkImport,
     importTransactions,
     classifyTransaction,
     splitTransaction,

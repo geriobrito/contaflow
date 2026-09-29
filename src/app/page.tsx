@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
 import type { BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
@@ -15,6 +15,7 @@ import type { SplitDraft } from '@/lib/splits';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
+import { DuplicateImportModal, type DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
 import { BalanceCheckBadge, StatementPanel } from '@/components/conciliacao/StatementPanel';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 
@@ -116,6 +117,7 @@ export default function ConciliacaoPage() {
     isLoading,
     isSaving,
     error,
+    checkImport,
     importTransactions,
     classifyTransaction,
     splitTransaction,
@@ -177,23 +179,63 @@ export default function ConciliacaoPage() {
     [transactions, lockedMonths]
   );
 
+  /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
+  const [duplicate, setDuplicate] = useState<{ info: DuplicateImportInfo; result: OFXParseResult; fileName: string } | null>(null);
+
+  const runImport = async (result: OFXParseResult, fileName: string) => {
+    const imported = await importTransactions(result.transactions, {
+      fileName,
+      account: result.account,
+      startDate: result.startDate,
+      endDate: result.endDate,
+      ledgerBalance: result.ledgerBalance,
+    });
+    setLastImport(imported);
+    setStatementsKey((k) => k + 1);
+    // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
+    if (imported.latestDate && range && (imported.latestDate < range.start || imported.latestDate > range.end)) {
+      jumpTo(imported.latestDate);
+    }
+  };
+
+  /** Checa duplicidade antes de gravar: bloqueia o extrato repetido e confirma a sobreposição parcial. */
   const handleOFXParsed = async (result: OFXParseResult, fileName: string) => {
     try {
-      const imported = await importTransactions(result.transactions, {
-        fileName,
-        account: result.account,
-        startDate: result.startDate,
-        endDate: result.endDate,
-        ledgerBalance: result.ledgerBalance,
-      });
-      setLastImport(imported);
-      setStatementsKey((k) => k + 1);
-      // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
-      if (imported.latestDate && range && (imported.latestDate < range.start || imported.latestDate > range.end)) {
-        jumpTo(imported.latestDate);
+      const check = await checkImport(result.transactions);
+      if (check.isFullDuplicate || check.isPartialOverlap) {
+        setDuplicate({
+          result,
+          fileName,
+          info: {
+            kind: check.isFullDuplicate ? 'full' : 'partial',
+            fileName,
+            clientName: currentClient?.tradeName || currentClient?.name || 'selecionada',
+            startDate: result.startDate,
+            endDate: result.endDate,
+            totalInFile: check.totalInFile,
+            alreadyImportedCount: check.alreadyImportedCount,
+            newCount: check.newTransactions.length,
+          },
+        });
+        return;
       }
+      await runImport(result, fileName);
     } catch {
       /* erro exposto pelo hook */
+    }
+  };
+
+  const closeDuplicate = useCallback(() => setDuplicate(null), []);
+
+  const confirmImportNew = async () => {
+    if (!duplicate) return;
+    try {
+      // A importação grava só os lançamentos inexistentes (a deduplicação é refeita no momento da gravação).
+      await runImport(duplicate.result, duplicate.fileName);
+    } catch {
+      /* erro exposto pelo hook */
+    } finally {
+      setDuplicate(null);
     }
   };
 
@@ -310,6 +352,14 @@ export default function ConciliacaoPage() {
       </section>
 
       <OFXDropzone onParsed={handleOFXParsed} isLoading={isSaving} />
+      {duplicate && (
+        <DuplicateImportModal
+          info={duplicate.info}
+          busy={isSaving}
+          onClose={closeDuplicate}
+          onImportNew={() => void confirmImportNew()}
+        />
+      )}
 
       {(lastImport || error) && (
         <div className="space-y-2 animate-fade-in">
