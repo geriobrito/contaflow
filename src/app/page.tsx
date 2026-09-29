@@ -2,13 +2,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
-import type { BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
-import { getAccounts, getLatestTransactionDate } from '@/lib/services/data-service';
+import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
-import { AlertTriangle, CheckCheck, ChevronDown, Lock, Pencil, Split, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, CheckCheck, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { PAGE, SURFACE } from '@/components/ui/primitives';
 import type { SplitDraft } from '@/lib/splits';
@@ -18,6 +18,9 @@ import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
 import { DuplicateImportModal, type DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
 import { BalanceCheckBadge, StatementPanel } from '@/components/conciliacao/StatementPanel';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
+import { TransferPanel } from '@/components/conciliacao/TransferPanel';
+import { findTransferPairs, type TransferPair } from '@/lib/transfers';
+import { ensureTransitAccount } from '@/lib/services/accounting-service';
 
 /* =========================================================================
    Métricas
@@ -128,6 +131,8 @@ export default function ConciliacaoPage() {
     closeMonth,
     reopenMonth,
     loadAudit,
+    reconcileTransfers,
+    askClient,
   } = useReconciliation({ clientId, accounts, range });
   const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
   const [statementsKey, setStatementsKey] = useState(0);
@@ -138,6 +143,34 @@ export default function ConciliacaoPage() {
       .then(setAccounts)
       .catch((e) => console.error('Erro ao carregar plano de contas:', e));
   }, [clientId]);
+
+  // Contas bancárias (nomes nas transferências); recarrega após cada importação.
+  const [banks, setBanks] = useState<BankAccount[]>([]);
+  useEffect(() => {
+    if (!clientId) return;
+    let active = true;
+    getRepository()
+      .listBankAccounts(clientId)
+      .then((b) => active && setBanks(b))
+      .catch((e) => console.error('Erro ao carregar contas bancárias:', e));
+    return () => {
+      active = false;
+    };
+  }, [clientId, statementsKey]);
+
+  const transferPairs = useMemo(() => findTransferPairs(transactions, { lockedMonths }), [transactions, lockedMonths]);
+
+  const handleTransfers = async (pairs: readonly TransferPair[]) => {
+    if (!clientId) return;
+    try {
+      const { account, created } = await ensureTransitAccount(clientId, accounts);
+      if (created) setAccounts((prev) => [...prev, account]);
+      const n = await reconcileTransfers(pairs, account);
+      setToast(`${n} transferência(s) conciliada(s) em ${account.code} ${account.name}${created ? ' (conta criada no plano)' : ''}`);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Não foi possível conciliar as transferências');
+    }
+  };
 
   // Reseta estados efêmeros ao trocar de cliente.
   const [lastClientId, setLastClientId] = useState(clientId);
@@ -408,6 +441,8 @@ export default function ConciliacaoPage() {
 
       {clientId && <StatementPanel clientId={clientId} refreshKey={statementsKey} />}
 
+      <TransferPanel pairs={transferPairs} banks={banks} busy={isSaving} onReconcile={handleTransfers} />
+
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
@@ -536,6 +571,12 @@ export default function ConciliacaoPage() {
                       <td className="px-3 py-3">
                         <span className="inline-flex items-center gap-1.5">
                           <StatusBadge status={t.status} />
+                          {t.transferPairId && (
+                            <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600" />
+                          )}
+                          {t.clientQuery?.status === 'OPEN' && (
+                            <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600" />
+                          )}
                           {isMonthLocked(t.date, lockedMonths) && (
                             <Lock aria-label="Competência fechada" className="w-3 h-3 text-stone-400" />
                           )}
@@ -629,6 +670,15 @@ export default function ConciliacaoPage() {
           rules={rules}
           lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
           loadAudit={() => loadAudit(selected.id)}
+          onAskClient={async (question) => {
+            try {
+              await askClient(selected.id, question);
+              setSelected(null);
+              setToast(question.trim() ? 'Pergunta registrada · veja em Pendências do cliente' : 'Pergunta removida');
+            } catch {
+              /* erro exposto pelo hook */
+            }
+          }}
         />
       )}
 

@@ -19,7 +19,9 @@ import { useClient } from '@/contexts/ClientContext';
 import { buildDRE, type DREAccountLine } from '@/lib/dre/build';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import type { DREExportContext } from '@/lib/export/dre-rows';
-import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { DRECompareTable } from '@/components/dre/DRECompareTable';
+import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
 
 /** Receita bruta do período, base da análise vertical (% s/ receita bruta). */
 const GrossRevenueContext = createContext(0);
@@ -213,7 +215,29 @@ export default function DREPage() {
     };
   }, [clientId, ready, range]);
 
+  // 3) DRE comparativa: mês a mês ou contra o mesmo período do ano anterior.
+  const [view, setView] = useState<'simple' | 'monthly' | 'yoy'>('simple');
+  const [withAccounts, setWithAccounts] = useState(false);
+  const prevRange = useMemo(() => previousYearRange(range), [range]);
+  const [prevTxs, setPrevTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
+  const prevKey = `${clientId}|${prevRange.start}|${prevRange.end}`;
+  useEffect(() => {
+    if (!clientId || !ready || view !== 'yoy') return;
+    let active = true;
+    getTransactions(clientId, prevRange)
+      .then((list) => active && setPrevTxs({ key: `${clientId}|${prevRange.start}|${prevRange.end}`, list }))
+      .catch((e: unknown) => active && setLoadError(e instanceof Error ? e.message : 'Falha ao carregar o ano anterior.'));
+    return () => {
+      active = false;
+    };
+  }, [clientId, ready, view, prevRange]);
+
   const dre = useMemo(() => buildDRE(transactions, accounts, range), [transactions, accounts, range]);
+  const months = useMemo(() => (view === 'monthly' ? monthlyColumns(transactions, accounts, range) : []), [view, transactions, accounts, range]);
+  const prevDre = useMemo(
+    () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange) : null),
+    [prevTxs, prevKey, accounts, prevRange]
+  );
 
   const isLoading = Boolean(clientId) && loadedKey !== periodKey && !loadError;
   const profit = dre.netResult >= 0;
@@ -337,8 +361,20 @@ export default function DREPage() {
         }
       />
 
-      {/* Seletor de período */}
-      <PeriodPicker period={period} />
+      {/* Seletor de período e visão */}
+      <div className="flex flex-wrap items-center gap-3 print:hidden">
+        <PeriodPicker period={period} />
+        <SegmentedControl
+          ariaLabel="Visão da DRE"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'simple', label: 'Simples' },
+            { value: 'monthly', label: 'Mês a mês' },
+            { value: 'yoy', label: 'vs. ano anterior' },
+          ]}
+        />
+      </div>
       {Boolean(clientId) && lockStatus.total > 0 && (
         <p className="-mt-4 text-[12px] text-stone-500 print:hidden">
           <Lock className="inline w-3 h-3 -mt-0.5 mr-1" />
@@ -406,6 +442,36 @@ export default function DREPage() {
         </p>
       )}
 
+      {view !== 'simple' && (
+        <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+          <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06]">
+            <h2 className="flex-1 text-[14px] font-semibold tracking-tight">
+              {view === 'monthly' ? `Mês a mês · ${periodLabel}` : `${periodLabel} vs. mesmo período de ${prevRange.start.slice(0, 4)}`}
+            </h2>
+            <label className="flex items-center gap-2 text-[12px] text-stone-500 print:hidden">
+              <input type="checkbox" checked={withAccounts} onChange={(e) => setWithAccounts(e.target.checked)} /> Detalhar contas
+            </label>
+          </div>
+          {isLoading || (view === 'yoy' && !prevDre) ? (
+            <p className="px-5 py-10 text-center text-[13px] text-stone-400">Carregando…</p>
+          ) : view === 'monthly' && months.length < 2 ? (
+            <p className="px-5 py-10 text-center text-[13px] text-stone-500">Selecione Trimestre ou Ano para comparar os meses.</p>
+          ) : view === 'monthly' ? (
+            <DRECompareTable mode="monthly" columns={months} total={{ label: 'Total', statement: dre }} withAccounts={withAccounts} />
+          ) : (
+            <DRECompareTable
+              mode="yoy"
+              columns={[
+                { label: periodLabel, statement: dre },
+                { label: `${formatDateBR(prevRange.start)} – ${formatDateBR(prevRange.end)}`, statement: prevDre! },
+              ]}
+              withAccounts={withAccounts}
+            />
+          )}
+        </section>
+      )}
+
+      {view === 'simple' && (
       <GrossRevenueContext.Provider value={dre.grossRevenue}>
       {/* Demonstrativo */}
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
@@ -509,6 +575,7 @@ export default function DREPage() {
         )}
       </section>
       </GrossRevenueContext.Provider>
+      )}
 
       <p className="text-[12px] text-stone-400">
         Baseado em <span className="font-mono tabular-nums">{dre.reconciledCount}</span> lançamento(s) conciliado(s). Valores entre

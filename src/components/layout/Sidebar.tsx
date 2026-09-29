@@ -19,6 +19,9 @@ import {
   type LucideIcon,
   History,
   Landmark,
+  MessageCircleQuestion,
+  Scale,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -32,9 +35,12 @@ interface NavItem {
 
 const NAV_ITEMS: readonly NavItem[] = [
   { href: '/', label: 'Conciliação', icon: ArrowLeftRight },
+  { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion },
+  { href: '/contas', label: 'Contas e Extratos', icon: Wallet },
   { href: '/plano-de-contas', label: 'Plano de Contas', icon: BookOpen },
   { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
   { href: '/dre', label: 'DRE', icon: LineChart },
+  { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
   { href: '/clientes', label: 'Clientes', icon: Building2 },
   { href: '/auditoria', label: 'Auditoria', icon: History },
   { href: '/escritorio', label: 'Escritório', icon: Landmark },

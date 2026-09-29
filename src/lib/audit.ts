@@ -71,6 +71,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   AUTO_CLASSIFY: 'Classificação automática',
   PERIOD_CLOSE: 'Fechou a competência',
   PERIOD_REOPEN: 'Reabriu a competência',
+  TRANSFER: 'Conciliou transferência entre contas',
+  BATCH_DELETE: 'Excluiu extrato importado',
 };
 
 /** Descrição curta de um estado de classificação. */

@@ -5,13 +5,17 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sparkles } from 'lucide-react';
 
+/** Rotas abertas sem login (o cliente responde às pendências pelo link). */
+const PUBLIC_ROUTES = new Set(['/responder']);
+
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { loading, isAuthenticated } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const isPublic = PUBLIC_ROUTES.has(pathname);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !isPublic) {
       // Se não autenticado e rota privada
       if (!isAuthenticated && pathname !== '/login') {
         router.replace('/login');
@@ -21,7 +25,9 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
         router.replace('/');
       }
     }
-  }, [isAuthenticated, loading, pathname, router]);
+  }, [isAuthenticated, loading, pathname, router, isPublic]);
+
+  if (isPublic) return <>{children}</>;
 
   // Spinner refinado no padrão Apple enquanto checa autenticação
   if (loading) {

@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
   where,
   writeBatch,
   type DocumentData,
@@ -18,7 +19,10 @@ import {
 } from 'firebase/firestore';
 import type {
   AuditEntry,
+  BankAccount,
   BankTransaction,
+  ClientRequest,
+  ClientRequestFile,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
@@ -38,6 +42,9 @@ export const COL = {
   batches: 'import_batches',
   locks: 'period_locks',
   audit: 'audit_log',
+  bankAccounts: 'bank_accounts',
+  requests: 'client_requests',
+  requestFiles: 'client_request_files',
 } as const;
 
 /** Limites do Firestore. */
@@ -118,10 +125,37 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   async function deleteByClient(name: string, clientId: string) {
     const snap = await getDocs(scoped(name, where('clientId', '==', clientId)));
-    await run(snap.docs.map((d) => single((b) => b.delete(d.ref))));
+    // Lançamentos: agrupados por competência (as regras consultam o fechamento de cada mês).
+    const monthOfDoc = (data: DocumentData) =>
+      name === COL.transactions && typeof data.date === 'string' ? monthOf(data.date) : undefined;
+    await run(snap.docs.map((d) => single((b) => b.delete(d.ref), monthOfDoc(d.data()))));
   }
 
   const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), stamp(entry));
+
+  /** Grupos de um ChangeSet: cada patch vai junto da sua auditoria, ordenados por competência. */
+  function changeGroups({ patches, rules = [], audits }: ChangeSet): Group[] {
+    const groups: Group[] = rules.map((rule) => single((b) => b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true })));
+    const auditByTx = new Map<string, AuditEntry[]>();
+    const loose: AuditEntry[] = [];
+    for (const a of audits) {
+      if (a.transactionId) auditByTx.set(a.transactionId, [...(auditByTx.get(a.transactionId) ?? []), a]);
+      else loose.push(a);
+    }
+    for (const p of [...patches].sort((a, b) => a.date.localeCompare(b.date))) {
+      const update: DocumentData = { ...clean(p.set) };
+      for (const f of p.remove ?? []) update[f] = deleteField();
+      groups.push({
+        month: monthOf(p.date),
+        writes: [(b) => b.update(doc(db, COL.transactions, p.id), update), ...(auditByTx.get(p.id) ?? []).map(auditWrite)],
+      });
+      auditByTx.delete(p.id);
+    }
+    for (const a of [...loose, ...[...auditByTx.values()].flat()]) groups.push(single(auditWrite(a)));
+    return groups;
+  }
+
+  const txFrom = (d: { id: string; data: () => DocumentData }) => ({ ...(d.data() as BankTransaction), id: d.id });
 
   return {
     mode: 'firestore',
@@ -146,8 +180,9 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
     async deleteClient(clientId) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
-      // A trilha de auditoria é preservada (imutável por regra).
-      for (const name of [COL.transactions, COL.rules, COL.accounts, COL.batches, COL.locks]) {
+      // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro:
+      // lançamentos de competência fechada não podem ser excluídos.
+      for (const name of [COL.locks, COL.transactions, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(doc(db, COL.clients, clientId));
@@ -219,26 +254,16 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       if (batch) await setDoc(doc(db, COL.batches, batch.id), stamp(batch));
     },
 
-    async commitChanges({ patches, rules = [], audits }: ChangeSet) {
-      const groups: Group[] = rules.map((rule) => single((b) => b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true })));
-      const auditByTx = new Map<string, AuditEntry[]>();
-      const loose: AuditEntry[] = [];
-      for (const a of audits) {
-        if (a.transactionId) auditByTx.set(a.transactionId, [...(auditByTx.get(a.transactionId) ?? []), a]);
-        else loose.push(a);
-      }
-      // Ordena por competência para reduzir o número de lotes; cada patch vai junto da sua auditoria.
-      for (const p of [...patches].sort((a, b) => a.date.localeCompare(b.date))) {
-        const update: DocumentData = { ...clean(p.set) };
-        for (const f of p.remove ?? []) update[f] = deleteField();
-        groups.push({
-          month: monthOf(p.date),
-          writes: [(b) => b.update(doc(db, COL.transactions, p.id), update), ...(auditByTx.get(p.id) ?? []).map(auditWrite)],
-        });
-        auditByTx.delete(p.id);
-      }
-      for (const a of [...loose, ...[...auditByTx.values()].flat()]) groups.push(single(auditWrite(a)));
-      await run(groups);
+    async commitChanges(changes: ChangeSet) {
+      await run(changeGroups(changes));
+    },
+    async getTransaction(id) {
+      const snap = await getDoc(doc(db, COL.transactions, id));
+      return snap.exists() ? txFrom(snap) : null;
+    },
+    async listOpenQueries(clientId) {
+      const snap = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('clientQuery.status', '==', 'OPEN')));
+      return snap.docs.map(txFrom).sort((a, b) => b.date.localeCompare(a.date));
     },
 
     /* ── Extratos ─────────────────────────────────────────────────────── */
@@ -248,6 +273,33 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
     async saveImportBatch(batch) {
       await setDoc(doc(db, COL.batches, batch.id), stamp(batch), { merge: true });
+    },
+    async listBatchTransactions(batch) {
+      const found = new Map<string, BankTransaction>();
+      const byBatch = await getDocs(scoped(COL.transactions, where('clientId', '==', batch.clientId), where('importBatchId', '==', batch.id)));
+      byBatch.docs.forEach((d) => found.set(d.id, txFrom(d)));
+      // Extratos importados antes do vínculo explícito: mesma data/hora de gravação do lote.
+      const legacy = await getDocs(scoped(COL.transactions, where('clientId', '==', batch.clientId), where('createdAt', '==', batch.importedAt)));
+      legacy.docs.map(txFrom).filter((t) => !t.importBatchId).forEach((t) => found.set(t.id, t));
+      return [...found.values()].sort((a, b) => a.date.localeCompare(b.date));
+    },
+    async deleteImportBatch(batch, transactions, changes) {
+      const groups = changeGroups(changes);
+      for (const t of [...transactions].sort((a, b) => a.date.localeCompare(b.date))) {
+        groups.push(single((b) => b.delete(doc(db, COL.transactions, t.id)), monthOf(t.date)));
+      }
+      groups.push(single((b) => b.delete(doc(db, COL.batches, batch.id))));
+      await run(groups);
+    },
+
+    /* ── Contas bancárias ─────────────────────────────────────────────── */
+    async listBankAccounts(clientId) {
+      const snap = await getDocs(scoped(COL.bankAccounts, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as BankAccount), id: d.id }));
+    },
+    async saveBankAccount(account) {
+      // Substitui o documento: vínculo ou saldo inicial removidos somem de fato.
+      await setDoc(doc(db, COL.bankAccounts, account.id), stamp(account));
     },
 
     /* ── Fechamento de período ────────────────────────────────────────── */
@@ -276,6 +328,31 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       constraints.push(orderBy('at', 'desc'), limit(options.limit ?? 200));
       const snap = await getDocs(scoped(COL.audit, ...constraints));
       return snap.docs.map((d) => ({ ...(d.data() as AuditEntry), id: d.id }));
+    },
+
+    /* ── Pendências com o cliente ─────────────────────────────────────── */
+    async listClientRequests(clientId) {
+      const snap = await getDocs(scoped(COL.requests, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as ClientRequest), id: d.id })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+    async saveClientRequest(request) {
+      await setDoc(doc(db, COL.requests, request.id), stamp(request));
+    },
+    async getClientRequestFile(fileId) {
+      const snap = await getDoc(doc(db, COL.requestFiles, fileId));
+      return snap.exists() ? ({ ...(snap.data() as ClientRequestFile), id: snap.id }) : null;
+    },
+
+    /* Acesso público pelo link: sem orgId de sessão; as regras validam pelo token. */
+    async getPublicClientRequest(token) {
+      const snap = await getDoc(doc(db, COL.requests, token));
+      return snap.exists() ? ({ ...(snap.data() as ClientRequest), id: snap.id }) : null;
+    },
+    async answerPublicClientRequest(token, items, respondedAt) {
+      await updateDoc(doc(db, COL.requests, token), { items: items.map((i) => clean(i)), respondedAt });
+    },
+    async uploadPublicClientRequestFile(file) {
+      await setDoc(doc(db, COL.requestFiles, file.id), clean(file));
     },
   };
 }

@@ -1,6 +1,10 @@
 import type {
   AuditEntry,
+  BankAccount,
   BankTransaction,
+  ClientRequest,
+  ClientRequestFile,
+  ClientRequestItem,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
@@ -79,10 +83,25 @@ export interface DataRepository {
   insertTransactions(transactions: readonly BankTransaction[], batch?: ImportBatch): Promise<void>;
   /** Grava lançamentos alterados, regras e auditoria juntos. */
   commitChanges(changes: ChangeSet): Promise<void>;
+  /** Um lançamento pelo id (ex.: a outra perna de uma transferência), ou null. */
+  getTransaction(id: string): Promise<BankTransaction | null>;
+  /** Lançamentos com pergunta ao cliente em aberto. */
+  listOpenQueries(clientId: string): Promise<BankTransaction[]>;
 
   /* Extratos importados */
   listImportBatches(clientId: string): Promise<ImportBatch[]>;
   saveImportBatch(batch: ImportBatch): Promise<void>;
+  /** Lançamentos gravados por um extrato (por `importBatchId`; extratos antigos, pela data de gravação). */
+  listBatchTransactions(batch: ImportBatch): Promise<BankTransaction[]>;
+  /**
+   * Exclui um extrato: seus lançamentos e o registro do lote, com as alterações
+   * decorrentes (ex.: pares de transferência desfeitos) e a auditoria, juntos.
+   */
+  deleteImportBatch(batch: ImportBatch, transactions: readonly Pick<BankTransaction, 'id' | 'date'>[], changes: ChangeSet): Promise<void>;
+
+  /* Contas bancárias */
+  listBankAccounts(clientId: string): Promise<BankAccount[]>;
+  saveBankAccount(account: BankAccount): Promise<void>;
 
   /* Fechamento de período */
   listPeriodLocks(clientId: string): Promise<PeriodLock[]>;
@@ -91,4 +110,14 @@ export interface DataRepository {
 
   /* Auditoria */
   listAudit(clientId: string, options?: { transactionId?: string; limit?: number }): Promise<AuditEntry[]>;
+
+  /* Pendências com o cliente (escritório) */
+  listClientRequests(clientId: string): Promise<ClientRequest[]>;
+  saveClientRequest(request: ClientRequest): Promise<void>;
+  getClientRequestFile(fileId: string): Promise<ClientRequestFile | null>;
+
+  /* Pendências com o cliente (acesso público pelo link, sem login) */
+  getPublicClientRequest(token: string): Promise<ClientRequest | null>;
+  answerPublicClientRequest(token: string, items: readonly ClientRequestItem[], respondedAt: string): Promise<void>;
+  uploadPublicClientRequestFile(file: ClientRequestFile): Promise<void>;
 }
