@@ -171,7 +171,7 @@ describe('repositório da aplicação sob as regras', () => {
     expect((await repo.listClients()).map((c) => c.id).sort()).toEqual(['c2', 'cA']);
 
     await repo.insertAccounts(buildITG1000Chart('c2', '2025-01-01'));
-    expect(await repo.listAccounts('c2')).toHaveLength(139);
+    expect(await repo.listAccounts('c2')).toHaveLength(140);
 
     await repo.insertTransactions([tx('c2_1', 'c2', ORG_A, '2025-01-15'), tx('c2_2', 'c2', ORG_A, '2025-02-15')], {
       id: 'b1',
@@ -379,5 +379,146 @@ describe('escritório e responsável técnico', () => {
     expect(await repo.getOrgSettings()).toBeNull();
     await repo.saveOrgSettings(settings(ORG_A));
     expect(await repo.getOrgSettings()).toMatchObject({ accountantCrc: 'SP-123456/O-5' });
+  });
+});
+
+describe('contas bancárias', () => {
+  const account = (orgId = ORG_A, clientId = 'cA') => ({
+    id: `${clientId}_0341-1-2`,
+    orgId,
+    clientId,
+    accountKey: '0341-1-2',
+    nickname: 'Itaú',
+    createdAt: 'T',
+    updatedAt: 'T',
+  });
+
+  it('cadastra, vincula e lê só no próprio escritório; a chave do extrato é imutável', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveBankAccount({ ...account(), ledgerAccountId: 'x', openingBalance: 10, openingDate: '2024-12-31' });
+    expect(await repo.listBankAccounts('cA')).toMatchObject([{ nickname: 'Itaú', openingBalance: 10 }]);
+    // Salvar sem o vínculo remove o vínculo (documento substituído).
+    await repo.saveBankAccount(account());
+    expect((await repo.listBankAccounts('cA'))[0].ledgerAccountId).toBeUndefined();
+    await assertFails(updateDoc(doc(asUser('alice'), `bank_accounts/cA_0341-1-2`), { accountKey: 'outra' }));
+    await assertFails(getDoc(doc(asUser('bob'), `bank_accounts/cA_0341-1-2`)));
+    await assertFails(setDoc(doc(asUser('bob'), 'bank_accounts/cA_x'), account(ORG_B)));
+  });
+});
+
+describe('exclusão de extrato importado', () => {
+  const batch = { id: 'bX', clientId: 'cA', fileName: 'x.ofx', fileSize: 0, totalTransactions: 2, importedCount: 2, duplicateCount: 0, autoClassifiedCount: 0, totalDebit: 0, totalCredit: 0, importedAt: 'IMPORT-T' };
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'import_batches/bX'), { ...batch, orgId: ORG_A });
+      await setDoc(doc(db, 'transactions/cA_n1'), { ...tx('cA_n1', 'cA', ORG_A, '2025-05-02'), importBatchId: 'bX' });
+      // Extrato antigo, sem importBatchId: identificado pela data/hora de gravação.
+      await setDoc(doc(db, 'transactions/cA_n2'), { ...tx('cA_n2', 'cA', ORG_A, '2025-06-03'), createdAt: 'IMPORT-T' });
+    });
+  });
+
+  it('lista os lançamentos do lote e exclui tudo com auditoria', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const txs = await repo.listBatchTransactions(batch);
+    expect(txs.map((t) => t.id)).toEqual(['cA_n1', 'cA_n2']);
+    await repo.deleteImportBatch(batch, txs, {
+      patches: [],
+      audits: [{ id: 'au-del', clientId: 'cA', action: 'BATCH_DELETE', actorUid: 'alice', at: 'T', note: 'x.ofx' }],
+    });
+    expect((await repo.listTransactions('cA')).map((t) => t.id)).toEqual(['cA_1']);
+    expect(await repo.listImportBatches('cA')).toEqual([]);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['BATCH_DELETE']);
+  });
+
+  it('não exclui lançamentos de competência fechada', async () => {
+    const db = asUser('alice');
+    await setDoc(doc(db, 'period_locks/cA_2025-05'), { id: 'cA_2025-05', orgId: ORG_A, clientId: 'cA', month: '2025-05', lockedAt: 'T', lockedByUid: 'alice' });
+    await assertFails(deleteDoc(doc(db, 'transactions/cA_n1')));
+    await assertSucceeds(deleteDoc(doc(db, 'transactions/cA_n2')));
+  });
+
+  it('excluir a empresa remove também fechamentos e lançamentos de meses fechados', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await setDoc(doc(asUser('alice'), 'period_locks/cA_2025-05'), { id: 'cA_2025-05', orgId: ORG_A, clientId: 'cA', month: '2025-05', lockedAt: 'T', lockedByUid: 'alice' });
+    await repo.deleteClient('cA');
+    expect(await repo.listTransactions('cA')).toEqual([]);
+    expect(await repo.listPeriodLocks('cA')).toEqual([]);
+  });
+});
+
+describe('pendências com o cliente (link público)', () => {
+  const TOKEN = 'a'.repeat(32);
+  const request = (overrides: Record<string, unknown> = {}) => ({
+    id: TOKEN,
+    orgId: ORG_A,
+    clientId: 'cA',
+    clientName: 'Empresa cA',
+    items: [{ transactionId: 'cA_1', date: '2025-03-10', memo: 'PIX', amount: -100, question: 'O que é?' }],
+    status: 'OPEN',
+    createdAt: 'T',
+    createdByUid: 'alice',
+    expiresAtMs: Date.now() + 86_400_000,
+    ...overrides,
+  });
+  const file = (overrides: Record<string, unknown> = {}) => ({
+    id: 'f1',
+    orgId: ORG_A,
+    clientId: 'cA',
+    requestId: TOKEN,
+    transactionId: 'cA_1',
+    name: 'nota.pdf',
+    type: 'application/pdf',
+    bytes: 10,
+    data: 'aGVsbG8=',
+    uploadedAt: 'T',
+    ...overrides,
+  });
+
+  it('o escritório cria o link; token curto, outro escritório ou link fechado são recusados', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveClientRequest(request() as never);
+    expect((await repo.listClientRequests('cA')).map((r) => r.id)).toEqual([TOKEN]);
+    await assertFails(setDoc(doc(asUser('alice'), 'client_requests/curto'), request({ id: 'curto' })));
+    await assertFails(setDoc(doc(asUser('bob'), `client_requests/${'b'.repeat(32)}`), request({ id: 'b'.repeat(32) })));
+    await assertFails(getDocs(query(collection(asUser('bob'), 'client_requests'), where('orgId', '==', ORG_A))));
+  });
+
+  it('sem login: lê pelo token e responde; não lista, não altera outros campos', async () => {
+    await createFirestoreRepository(asUser('alice'), () => ORG_A).saveClientRequest(request() as never);
+    const pub = createFirestoreRepository(anon(), () => {
+      throw new Error('sem sessão');
+    });
+    const got = await pub.getPublicClientRequest(TOKEN);
+    expect(got?.items[0].question).toBe('O que é?');
+    await pub.answerPublicClientRequest(TOKEN, [{ ...got!.items[0], answer: 'Pagamento de fornecedor', answeredAt: 'T2' }], 'T2');
+    expect((await pub.getPublicClientRequest(TOKEN))?.items[0].answer).toBe('Pagamento de fornecedor');
+
+    await assertFails(getDocs(collection(anon(), 'client_requests')));
+    await assertFails(updateDoc(doc(anon(), `client_requests/${TOKEN}`), { status: 'CLOSED' }));
+    await assertFails(updateDoc(doc(anon(), `client_requests/${TOKEN}`), { expiresAtMs: Date.now() + 9e9 }));
+    await assertFails(updateDoc(doc(anon(), `client_requests/${TOKEN}`), { items: [] }));
+  });
+
+  it('link encerrado ou vencido não aceita respostas nem arquivos', async () => {
+    const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await admin.saveClientRequest(request({ expiresAtMs: Date.now() - 1000 }) as never);
+    await assertFails(updateDoc(doc(anon(), `client_requests/${TOKEN}`), { respondedAt: 'T' }));
+    await assertFails(setDoc(doc(anon(), 'client_request_files/f1'), file()));
+    await admin.saveClientRequest(request({ status: 'CLOSED' }) as never);
+    await assertFails(updateDoc(doc(anon(), `client_requests/${TOKEN}`), { respondedAt: 'T' }));
+  });
+
+  it('comprovantes: o cliente envia pelo link; só o escritório lê', async () => {
+    const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await admin.saveClientRequest(request() as never);
+    await assertSucceeds(setDoc(doc(anon(), 'client_request_files/f1'), file()));
+    await assertFails(setDoc(doc(anon(), 'client_request_files/f2'), file({ id: 'f2', orgId: ORG_B })));
+    await assertFails(setDoc(doc(anon(), 'client_request_files/f3'), file({ id: 'f3', bytes: 2_000_000 })));
+    await assertFails(setDoc(doc(anon(), 'client_request_files/f4'), file({ id: 'f4', requestId: 'z'.repeat(32) })));
+    await assertFails(getDoc(doc(anon(), 'client_request_files/f1')));
+    await assertFails(getDoc(doc(asUser('bob'), 'client_request_files/f1')));
+    expect((await admin.getClientRequestFile('f1'))?.name).toBe('nota.pdf');
   });
 });

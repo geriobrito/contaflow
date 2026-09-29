@@ -14,7 +14,7 @@ const FILTERS: readonly { value: Filter; label: string }[] = [
   { value: 'ALL', label: 'Tudo' },
   { value: 'MANUAL', label: 'Classificações' },
   { value: 'AUTO', label: 'Automáticas' },
-  { value: 'PERIOD', label: 'Fechamentos' },
+  { value: 'PERIOD', label: 'Fechamentos e extratos' },
 ];
 
 const GROUP: Record<AuditAction, Filter> = {
@@ -26,6 +26,8 @@ const GROUP: Record<AuditAction, Filter> = {
   AUTO_CLASSIFY: 'AUTO',
   PERIOD_CLOSE: 'PERIOD',
   PERIOD_REOPEN: 'PERIOD',
+  TRANSFER: 'MANUAL',
+  BATCH_DELETE: 'PERIOD',
 };
 
 const LIMIT = 300;

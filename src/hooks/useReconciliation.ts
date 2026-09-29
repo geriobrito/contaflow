@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRepository } from '@/lib/services/data-service';
 import { applyRuleToPending, checkStatementBalance, closeMonth, reopenMonth } from '@/lib/services/reconciliation-service';
+import { ensureBankAccount, partnerResetChange } from '@/lib/services/accounting-service';
 import { getActor } from '@/lib/data/scope';
 import type { DateRange } from '@/lib/data/repository';
 import type { OFXRawTransaction } from '@/lib/ofx/types';
@@ -15,9 +16,12 @@ import { accountKeyOf, findCoverageGaps, outOfRangeDates, type CoverageGap } fro
 import {
   approveTransition,
   classifyTransition,
+  queryTransition,
   resetTransition,
   splitTransition,
+  transferTransition,
 } from '@/lib/transitions';
+import type { TransferPair } from '@/lib/transfers';
 import type {
   AuditEntry,
   BalanceCheck,
@@ -138,6 +142,11 @@ export interface UseReconciliationReturn {
   closeMonth: (month: string) => Promise<void>;
   reopenMonth: (month: string, reason: string) => Promise<void>;
   loadAudit: (transactionId: string) => Promise<AuditEntry[]>;
+  /** Concilia pares de transferência entre contas próprias na conta transitória. */
+  reconcileTransfers: (pairs: readonly TransferPair[], transit: ChartAccount) => Promise<number>;
+  /** Marca (ou remove, com pergunta vazia) uma pergunta ao cliente sobre o lançamento. */
+  askClient: (transactionId: string, question: string) => Promise<void>;
+  resolveClientQuery: (transactionId: string) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -294,6 +303,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         const [activeRules, batches] = await Promise.all([repo.listRules(clientId), repo.listImportBatches(clientId)]);
         const classifiable = activeRules.filter((r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC');
         const now = new Date().toISOString();
+        const batchId = `batch_${Date.now()}`;
 
         const fresh: BankTransaction[] = [];
         for (const [id, raw] of uniqueInFile) {
@@ -310,6 +320,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
             memo: raw.memo,
             status: rule ? 'AUTO_CLASSIFIED' : 'PENDING',
             createdAt: now,
+            importBatchId: batchId,
             ...(accountKey ? { accountKey } : {}),
           };
           if (rule) {
@@ -324,7 +335,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         // Registro do extrato + conferência do saldo final contra o extrato anterior.
         const ledger = meta.ledgerBalance;
         const batch: ImportBatch = {
-          id: `batch_${Date.now()}`,
+          id: batchId,
           clientId,
           fileName: meta.fileName ?? 'extrato.ofx',
           fileSize: 0,
@@ -348,6 +359,10 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         batch.balanceCheck = await checkStatementBalance({ clientId, batch, batches, pendingInsert: fresh });
 
         await repo.insertTransactions(fresh, batch);
+        // Cadastro da conta bancária do extrato (vínculo contábil e saldo inicial sugeridos).
+        if (accountKey && meta.account) {
+          await ensureBankAccount({ clientId, accountKey, account: meta.account, accounts, batches: [...batches, batch] });
+        }
 
         setRules(activeRules);
         const visible = fresh.filter((t) => inRange(t.date, range));
@@ -364,7 +379,14 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         };
       });
     },
-    [clientId, accountsById, mutate, range]
+    [clientId, accounts, accountsById, mutate, range]
+  );
+
+  /** Reclassificar, ratear ou desfazer uma perna de transferência desfaz também a outra. */
+  const partnerChange = useCallback(
+    (target: BankTransaction, now: string) =>
+      partnerResetChange(target, transactions, lockedMonths, now, 'Par de transferência desfeito junto com a outra perna'),
+    [transactions, lockedMonths]
   );
 
   /* ------------------------------------------------------------------ */
@@ -402,12 +424,16 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
           : null;
 
         const { patch, after } = classifyTransition(target, ref, rule?.id ?? null, now);
+        const partner = await partnerChange(target, now);
         await getRepository().commitChanges({
-          patches: [patch],
+          patches: [patch, ...(partner ? [partner.patch] : [])],
           rules: rule ? [rule] : [],
-          audits: [transactionAudit(classifyAction(target), actor, target, after, now, rule ? { ruleId: rule.id } : {})],
+          audits: [
+            transactionAudit(classifyAction(target), actor, target, after, now, rule ? { ruleId: rule.id } : {}),
+            ...(partner ? [partner.audit] : []),
+          ],
         });
-        replaceLoaded([after]);
+        replaceLoaded([after, ...(partner ? [partner.after] : [])]);
 
         let propagated: BankTransaction[] = [];
         if (rule) {
@@ -427,7 +453,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         }
         return { rule, propagated: propagated.length };
       }),
-    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded]
+    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
   );
 
   /* ------------------------------------------------------------------ */
@@ -440,13 +466,14 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         assertOpen(target);
         const { patch, after } = resetTransition(target);
         const now = new Date().toISOString();
+        const partner = await partnerChange(target, now);
         await getRepository().commitChanges({
-          patches: [patch],
-          audits: [transactionAudit('UNRECONCILE', getActor(), target, after, now)],
+          patches: [patch, ...(partner ? [partner.patch] : [])],
+          audits: [transactionAudit('UNRECONCILE', getActor(), target, after, now), ...(partner ? [partner.audit] : [])],
         });
-        replaceLoaded([after]);
+        replaceLoaded([after, ...(partner ? [partner.after] : [])]);
       }),
-    [mutate, findLoaded, assertOpen, replaceLoaded]
+    [mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
   );
 
   /* ------------------------------------------------------------------ */
@@ -462,13 +489,84 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         if (!summary.isBalanced) throw new Error('A soma do rateio difere do valor do lançamento.');
         const now = new Date().toISOString();
         const { patch, after } = splitTransition(target, draftsToSplits(target, drafts, accountsById), now);
+        const partner = await partnerChange(target, now);
         await getRepository().commitChanges({
-          patches: [patch],
-          audits: [transactionAudit('SPLIT', getActor(), target, after, now)],
+          patches: [patch, ...(partner ? [partner.patch] : [])],
+          audits: [transactionAudit('SPLIT', getActor(), target, after, now), ...(partner ? [partner.audit] : [])],
         });
+        replaceLoaded([after, ...(partner ? [partner.after] : [])]);
+      }),
+    [accountsById, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Transferências entre contas próprias                                */
+  /* ------------------------------------------------------------------ */
+  const reconcileTransfers = useCallback(
+    (pairs: readonly TransferPair[], transit: ChartAccount): Promise<number> =>
+      mutate('Não foi possível conciliar as transferências', async () => {
+        if (transit.nature !== 'ANALYTIC') throw new Error(`A conta ${transit.code} é sintética.`);
+        const ref = { accountId: transit.id, accountCode: transit.code, accountName: transit.name };
+        const actor = getActor();
+        const now = new Date().toISOString();
+        const moves = pairs.flatMap((p) => {
+          assertOpen(p.out);
+          assertOpen(p.in);
+          return [
+            { tx: p.out, ...transferTransition(p.out, ref, p.in.id, now) },
+            { tx: p.in, ...transferTransition(p.in, ref, p.out.id, now) },
+          ];
+        });
+        if (!moves.length) return 0;
+        await getRepository().commitChanges({
+          patches: moves.map((m) => m.patch),
+          audits: moves.map((m) => transactionAudit('TRANSFER', actor, m.tx, m.after, now)),
+        });
+        replaceLoaded(moves.map((m) => m.after));
+        return pairs.length;
+      }),
+    [mutate, assertOpen, replaceLoaded]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Pendências com o cliente                                            */
+  /* ------------------------------------------------------------------ */
+  const askClient = useCallback(
+    (transactionId: string, question: string): Promise<void> =>
+      mutate('Não foi possível registrar a pergunta ao cliente', async () => {
+        const target = findLoaded(transactionId);
+        assertOpen(target);
+        const actor = getActor();
+        const text = question.trim();
+        const { patch, after } = queryTransition(
+          target,
+          text
+            ? {
+                question: text,
+                status: 'OPEN',
+                askedAt: new Date().toISOString(),
+                askedByUid: actor.uid,
+                ...(actor.email ? { askedByEmail: actor.email } : {}),
+              }
+            : undefined
+        );
+        await getRepository().commitChanges({ patches: [patch], audits: [] });
         replaceLoaded([after]);
       }),
-    [accountsById, mutate, findLoaded, assertOpen, replaceLoaded]
+    [mutate, findLoaded, assertOpen, replaceLoaded]
+  );
+
+  const resolveClientQuery = useCallback(
+    (transactionId: string): Promise<void> =>
+      mutate('Não foi possível concluir a pendência', async () => {
+        const target = findLoaded(transactionId);
+        if (!target.clientQuery) return;
+        assertOpen(target);
+        const { patch, after } = queryTransition(target, { ...target.clientQuery, status: 'RESOLVED', resolvedAt: new Date().toISOString() });
+        await getRepository().commitChanges({ patches: [patch], audits: [] });
+        replaceLoaded([after]);
+      }),
+    [mutate, findLoaded, assertOpen, replaceLoaded]
   );
 
   /* ------------------------------------------------------------------ */
@@ -570,6 +668,9 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     closeMonth: closeMonthCb,
     reopenMonth: reopenMonthCb,
     loadAudit,
+    reconcileTransfers,
+    askClient,
+    resolveClientQuery,
     reload,
   };
 }

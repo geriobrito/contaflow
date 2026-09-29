@@ -7,7 +7,8 @@ import type { AccountRef, TransactionPatch } from '@/lib/data/repository';
  */
 
 type Field = keyof BankTransaction;
-const CLASSIFICATION_FIELDS: readonly Field[] = ['accountId', 'accountCode', 'accountName', 'matchedRuleId', 'splits'];
+// `transferPairId` faz parte da classificação: reclassificar ou desfazer uma perna desfaz o par.
+const CLASSIFICATION_FIELDS: readonly Field[] = ['accountId', 'accountCode', 'accountName', 'matchedRuleId', 'splits', 'transferPairId'];
 
 /** Aplica um patch em memória (mesma semântica do banco: `set` sobrescreve, `remove` apaga). */
 export function applyPatch(tx: BankTransaction, patch: TransactionPatch): BankTransaction {
@@ -45,6 +46,21 @@ export const splitTransition = (tx: BankTransaction, splits: readonly Transactio
 /** Desfazer: volta para PENDING e limpa conta, rateio, regra e data de conciliação. */
 export const resetTransition = (tx: BankTransaction) =>
   make(tx, { status: 'PENDING', isSplit: false }, [...CLASSIFICATION_FIELDS, 'reconciledAt']);
+
+/**
+ * Perna de transferência entre contas próprias: vai para a conta transitória
+ * (numerário em trânsito) e aponta para a outra perna. As duas pernas zeram a transitória.
+ */
+export const transferTransition = (tx: BankTransaction, transit: AccountRef, partnerId: string, now: string) =>
+  make(
+    tx,
+    { status: 'RECONCILED', ...transit, transferPairId: partnerId, reconciledAt: now, isSplit: false },
+    CLASSIFICATION_FIELDS
+  );
+
+/** Pergunta ao cliente (não altera a classificação). */
+export const queryTransition = (tx: BankTransaction, query: BankTransaction['clientQuery']) =>
+  query ? make(tx, { clientQuery: query }, []) : make(tx, {}, ['clientQuery']);
 
 /** Aprovação de auto-classificado: mantém a conta e marca como conciliado. */
 export const approveTransition = (tx: BankTransaction, now: string) => make(tx, { status: 'RECONCILED', reconciledAt: now }, []);

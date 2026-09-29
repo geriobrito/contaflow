@@ -19,7 +19,12 @@ rules_version = '2';
 //   6. Trilha de auditoria (audit_log) é somente-inclusão: ninguém edita nem apaga, e o
 //      registro precisa ser do próprio usuário autenticado (actorUid == auth.uid).
 //   7. Competência fechada (period_locks/{clientId}_{YYYY-MM}) congela os lançamentos
-//      daquele mês: nenhuma alteração até a reabertura (que também é auditada).
+//      daquele mês: nenhuma alteração nem exclusão até a reabertura (também auditada).
+//   8. Pendências com o cliente (client_requests/{token}): o token aleatório de 128 bits
+//      é a credencial do link. Sem login, quem tem o link lê aquele documento e grava
+//      apenas as respostas, enquanto o link estiver aberto e dentro da validade; ninguém
+//      lista a coleção. Comprovantes (client_request_files) só são criados para um link
+//      aberto e só o escritório os lê.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -94,7 +99,9 @@ service cloud.firestore {
     }
 
     match /transactions/{docId} {
-      allow read, delete: if isMine(resource.data);
+      allow read: if isMine(resource.data);
+      // Excluir (ex.: extrato importado por engano) só em competência aberta.
+      allow delete: if isMine(resource.data) && monthOpen(resource.data);
       // Importar em mês fechado é permitido (entra como pendente/auto e não altera a DRE).
       allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
       // Nenhuma alteração em competência fechada; data e valor são imutáveis.
@@ -107,6 +114,51 @@ service cloud.firestore {
       allow read, delete: if isMine(resource.data);
       allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    // ── Contas bancárias do cliente ──────────────────────────────────────
+    match /bank_accounts/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId') && unchanged('accountKey');
+    }
+
+    // ── Pendências com o cliente ─────────────────────────────────────────
+    function requestOpen(req) {
+      return req.status == 'OPEN' && request.time.toMillis() < req.expiresAtMs;
+    }
+
+    match /client_requests/{token} {
+      // O token é a credencial: leitura direta por id liberada; listagem só para o escritório.
+      allow get: if true;
+      allow list, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && token.size() >= 32
+        && request.resource.data.status == 'OPEN'
+        && request.resource.data.expiresAtMs is int;
+      allow update: if (isMine(resource.data) && unchanged('orgId') && unchanged('clientId'))
+        || (requestOpen(resource.data)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'respondedAt'])
+            && request.resource.data.items is list
+            && request.resource.data.items.size() == resource.data.items.size());
+    }
+
+    match /client_request_files/{fileId} {
+      function parentRequest() {
+        return get(/databases/$(database)/documents/client_requests/$(request.resource.data.requestId)).data;
+      }
+      allow get, list, delete: if isMine(resource.data);
+      allow create: if request.resource.data.requestId is string
+        && exists(/databases/$(database)/documents/client_requests/$(request.resource.data.requestId))
+        && requestOpen(parentRequest())
+        && request.resource.data.orgId == parentRequest().orgId
+        && request.resource.data.clientId == parentRequest().clientId
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 1000000
+        && request.resource.data.bytes is int
+        && request.resource.data.bytes <= 750000;
+      allow update: if false;
     }
 
     // ── Fechamento de competência ────────────────────────────────────────

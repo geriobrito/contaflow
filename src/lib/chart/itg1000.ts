@@ -29,6 +29,8 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '1.1.1.01', name: 'Caixa' },
   { code: '1.1.1.02', name: 'Bancos Conta Movimento' },
   { code: '1.1.1.03', name: 'Aplicações Financeiras de Liquidez Imediata' },
+  // Conta transitória: as duas pernas de uma transferência entre contas próprias se anulam aqui.
+  { code: '1.1.1.04', name: 'Transferências entre Contas (Numerário em Trânsito)' },
   { code: '1.1.2', name: 'Créditos' },
   { code: '1.1.2.01', name: 'Clientes' },
   { code: '1.1.2.02', name: '(-) Perdas Estimadas com Créditos de Liquidação Duvidosa', contra: true },

@@ -6,10 +6,10 @@ const chart = buildITG1000Chart('c', '2025-01-01T00:00:00.000Z');
 const byCode = new Map(chart.map((a) => [a.code, a] as const));
 
 describe('Plano de contas ITG 1000 (2022)', () => {
-  it('tem 139 contas, 100 analíticas, códigos únicos e IDs determinísticos', () => {
+  it('tem 140 contas, 101 analíticas, códigos únicos e IDs determinísticos', () => {
     expect(chart).toHaveLength(ITG1000_ACCOUNT_COUNT);
-    expect(chart).toHaveLength(139);
-    expect(chart.filter((a) => a.nature === 'ANALYTIC')).toHaveLength(100);
+    expect(chart).toHaveLength(140);
+    expect(chart.filter((a) => a.nature === 'ANALYTIC')).toHaveLength(101);
     expect(new Set(chart.map((a) => a.code)).size).toBe(chart.length);
     expect(buildITG1000Chart('c').map((a) => a.id)).toEqual(chart.map((a) => a.id));
   });

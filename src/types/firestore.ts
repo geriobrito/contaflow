@@ -138,7 +138,23 @@ export interface BankTransaction {
   /** Lançamento desdobrado em várias contas; quando true, `splits` substitui `accountId`. */
   isSplit?: boolean;
   splits?: TransactionSplit[];
+  /** Transferência entre contas próprias: id do lançamento da outra perna (conciliados juntos). */
+  transferPairId?: string;
+  /** Pergunta ao cliente sobre este lançamento ("o que é este Pix?"). */
+  clientQuery?: ClientQuery;
   createdAt: string;
+}
+
+export type ClientQueryStatus = 'OPEN' | 'RESOLVED';
+
+/** Pendência com o cliente vinculada a um lançamento. As respostas ficam em `client_requests`. */
+export interface ClientQuery {
+  question: string;
+  status: ClientQueryStatus;
+  askedAt: string;
+  askedByUid: string;
+  askedByEmail?: string;
+  resolvedAt?: string;
 }
 
 export type RuleMatchType = 'CONTAINS' | 'STARTS_WITH' | 'EXACT' | 'REGEX';
@@ -238,7 +254,9 @@ export type AuditAction =
   | 'APPROVE'
   | 'AUTO_CLASSIFY'
   | 'PERIOD_CLOSE'
-  | 'PERIOD_REOPEN';
+  | 'PERIOD_REOPEN'
+  | 'TRANSFER'
+  | 'BATCH_DELETE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -309,4 +327,91 @@ export interface BalanceCheck {
   previousBatchId?: string;
   previousLedgerDate?: string;
   movement?: number;
+}
+
+/* =========================================================================
+   Contas bancárias, pendências com o cliente
+   ========================================================================= */
+
+/**
+ * Conta bancária de um cliente (coleção `bank_accounts`, id `${clientId}_${accountKey}`).
+ * Liga a conta do extrato (banco-agência-conta do OFX) a uma conta analítica do plano,
+ * contrapartida bancária de todos os lançamentos dela no balancete e no balanço.
+ */
+export interface BankAccount {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  /** Chave do extrato (`accountKeyOf`): banco-agência-conta. */
+  accountKey: string;
+  bankId?: string;
+  branchId?: string;
+  accountNumber?: string;
+  bankName?: string;
+  /** Nome amigável (ex.: "Itaú movimento"). */
+  nickname: string;
+  /** Conta do plano (ativo, analítica) que representa este banco na contabilidade. */
+  ledgerAccountId?: string;
+  ledgerAccountCode?: string;
+  ledgerAccountName?: string;
+  /** Saldo no fim do dia `openingDate`; os lançamentos posteriores somam a partir dele. */
+  openingBalance?: number;
+  openingDate?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientRequestFileRef {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+}
+
+export interface ClientRequestItem {
+  transactionId: string;
+  date: string;
+  memo: string;
+  amount: number;
+  question: string;
+  answer?: string;
+  answeredAt?: string;
+  files?: ClientRequestFileRef[];
+}
+
+export type ClientRequestStatus = 'OPEN' | 'CLOSED';
+
+/**
+ * Lista de perguntas enviada ao cliente (coleção `client_requests`). O id é um token
+ * aleatório de 128 bits: quem tem o link lê e responde, sem login; ninguém lista.
+ */
+export interface ClientRequest {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  clientName: string;
+  officeName?: string;
+  items: ClientRequestItem[];
+  status: ClientRequestStatus;
+  createdAt: string;
+  createdByUid: string;
+  /** Validade do link (epoch ms), comparada com `request.time` nas regras. */
+  expiresAtMs: number;
+  respondedAt?: string;
+}
+
+/** Comprovante enviado pelo cliente (coleção `client_request_files`, conteúdo em base64). */
+export interface ClientRequestFile {
+  id: string;
+  orgId: string;
+  clientId: string;
+  requestId: string;
+  transactionId: string;
+  name: string;
+  type: string;
+  /** Tamanho do arquivo original em bytes. */
+  bytes: number;
+  /** Conteúdo em base64 (sem o prefixo data:). */
+  data: string;
+  uploadedAt: string;
 }

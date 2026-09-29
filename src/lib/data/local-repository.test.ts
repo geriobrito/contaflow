@@ -120,4 +120,44 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect(await repo.listTransactions('c2')).toHaveLength(1);
     await expect(repo.deleteClient('global')).rejects.toThrow();
   });
+
+  it('extrato: lançamentos pelo lote (ou pela data de gravação, nos antigos) e exclusão com alterações', async () => {
+    const batch = { id: 'bt', clientId: 'c1', fileName: 'x.ofx', fileSize: 0, totalTransactions: 2, importedCount: 2, duplicateCount: 0, autoClassifiedCount: 0, totalDebit: 0, totalCredit: 0, importedAt: 'T0' };
+    await repo.insertTransactions(
+      [tx('n1', '2025-04-01', { importBatchId: 'bt', transferPairId: 'a' }), tx('n2', '2025-04-02', { createdAt: 'T0' }), tx('n3', '2025-04-03', { createdAt: 'T0', importBatchId: 'outro' })],
+      batch
+    );
+    const txs = await repo.listBatchTransactions(batch);
+    expect(txs.map((t) => t.id)).toEqual(['n1', 'n2']);
+    await repo.deleteImportBatch(batch, txs, {
+      patches: [{ id: 'a', date: '2025-01-10', set: { status: 'PENDING' }, remove: ['transferPairId'] }],
+      audits: [{ id: 'del', clientId: 'c1', action: 'BATCH_DELETE', actorUid: 'u', at: 'T' }],
+    });
+    expect((await repo.listTransactions('c1')).map((t) => t.id).sort()).toEqual(['a', 'b', 'n3']);
+    expect(await repo.listImportBatches('c1')).toEqual([]);
+    expect((await repo.listAudit('c1')).map((a) => a.action)).toEqual(['BATCH_DELETE']);
+    expect(await repo.getTransaction('n1')).toBeNull();
+  });
+
+  it('contas bancárias: substitui o cadastro (vínculo removido some)', async () => {
+    const bank = { id: 'c1_k', clientId: 'c1', accountKey: 'k', nickname: 'Itaú', ledgerAccountId: 'x', createdAt: '', updatedAt: '' };
+    await repo.saveBankAccount(bank);
+    await repo.saveBankAccount({ ...bank, ledgerAccountId: undefined });
+    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: undefined, orgId: LOCAL_ORG_ID }]);
+  });
+
+  it('pendências: perguntas abertas e link público com validade', async () => {
+    await repo.commitChanges({ patches: [{ id: 'a', date: '2025-01-10', set: { clientQuery: { question: 'O que é?', status: 'OPEN', askedAt: 'T', askedByUid: 'u' } } }], audits: [] });
+    expect((await repo.listOpenQueries('c1')).map((t) => t.id)).toEqual(['a']);
+    const req = { id: 't'.repeat(32), clientId: 'c1', clientName: 'A', items: [{ transactionId: 'a', date: '2025-01-10', memo: 'm', amount: -10, question: 'O que é?' }], status: 'OPEN' as const, createdAt: 'T', createdByUid: 'u', expiresAtMs: Date.now() + 60_000 };
+    await repo.saveClientRequest(req);
+    await repo.answerPublicClientRequest(req.id, [{ ...req.items[0], answer: 'Fornecedor' }], 'T2');
+    expect((await repo.getPublicClientRequest(req.id))?.items[0].answer).toBe('Fornecedor');
+    await expect(repo.answerPublicClientRequest(req.id, [], 'T3')).rejects.toThrow();
+    await repo.saveClientRequest({ ...req, status: 'CLOSED' });
+    await expect(repo.answerPublicClientRequest(req.id, req.items, 'T4')).rejects.toThrow(/não aceita/);
+    await expect(
+      repo.uploadPublicClientRequestFile({ id: 'f', orgId: 'local', clientId: 'c1', requestId: req.id, transactionId: 'a', name: 'n', type: 'application/pdf', bytes: 1, data: 'x', uploadedAt: 'T' })
+    ).rejects.toThrow();
+  });
 });

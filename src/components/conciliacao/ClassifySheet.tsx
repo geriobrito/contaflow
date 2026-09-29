@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Lock, Search, X } from 'lucide-react';
+import { ArrowLeftRight, Check, Lock, MessageCircleQuestion, Search, X } from 'lucide-react';
 import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { normalizePattern } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -29,9 +29,15 @@ interface ClassifySheetProps {
   lockedMonthLabel?: string | null;
   /** Carrega a trilha de auditoria do lançamento. */
   loadAudit: () => Promise<AuditEntry[]>;
+  /** Registra (texto) ou remove (vazio) a pergunta ao cliente. Sem a prop, a aba não aparece. */
+  onAskClient?: (question: string) => Promise<void>;
 }
 
-type SheetMode = 'single' | 'split' | 'history';
+type SheetMode = 'single' | 'split' | 'ask' | 'history';
+
+/** Pergunta sugerida: data, valor e histórico, para o cliente reconhecer o lançamento. */
+const defaultQuestion = (t: BankTransaction) =>
+  `O que é o lançamento de ${formatCurrency(Math.abs(t.amount))} em ${formatDateBR(t.date)} (“${t.memo}”)? Se tiver, anexe a nota ou o comprovante.`;
 
 const MATCH_OPTIONS: readonly { value: RuleMatchType; label: string }[] = [
   { value: 'CONTAINS', label: 'Contém' },
@@ -50,6 +56,7 @@ export function ClassifySheet({
   rules,
   lockedMonthLabel,
   loadAudit,
+  onAskClient,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -65,6 +72,8 @@ export function ClassifySheet({
   }, [confirmUndo]);
 
   const [mode, setMode] = useState<SheetMode>(locked ? 'history' : transaction.isSplit ? 'split' : 'single');
+  const openQuery = transaction.clientQuery?.status === 'OPEN' ? transaction.clientQuery : undefined;
+  const [question, setQuestion] = useState(openQuery?.question ?? defaultQuestion(transaction));
   const [audit, setAudit] = useState<AuditEntry[] | null>(null);
   const [auditError, setAuditError] = useState<string | null>(null);
   // Carrega a trilha na primeira vez que a aba Histórico é aberta.
@@ -181,6 +190,19 @@ export function ClassifySheet({
           </div>
         )}
 
+        {transaction.transferPairId && (
+          <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 text-[12px] text-sky-800 dark:text-sky-300">
+            <ArrowLeftRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>Transferência entre contas próprias. Reclassificar, ratear ou desfazer este lançamento volta a outra perna para pendente.</span>
+          </div>
+        )}
+        {openQuery && mode !== 'ask' && (
+          <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 text-[12px] text-amber-800 dark:text-amber-300">
+            <MessageCircleQuestion className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>Aguardando o cliente: “{openQuery.question}”</span>
+          </div>
+        )}
+
         <div className="px-6 pb-4 overflow-x-auto">
           <SegmentedControl
             ariaLabel="Modo de classificação"
@@ -192,6 +214,7 @@ export function ClassifySheet({
                 : [
                     { value: 'single' as const, label: 'Conta única' },
                     { value: 'split' as const, label: 'Rateio / desdobrar' },
+                    ...(onAskClient ? [{ value: 'ask' as const, label: 'Perguntar ao cliente' }] : []),
                   ]),
               { value: 'history', label: 'Histórico' },
             ]}
@@ -206,6 +229,28 @@ export function ClassifySheet({
               <p className="py-6 text-center text-[13px] text-stone-400">Carregando histórico…</p>
             ) : (
               <AuditTimeline entries={audit} emptyText="Nenhuma alteração registrada para este lançamento." />
+            )}
+          </div>
+        ) : mode === 'ask' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2 space-y-3">
+            <p className="text-[13px] text-stone-600 dark:text-stone-300">
+              A pergunta entra na lista de <b>Pendências do cliente</b>, de onde você gera um link para o cliente responder e anexar
+              comprovantes, sem precisar de login.
+            </p>
+            <label className="block space-y-1.5">
+              <span className="block text-[12px] font-medium text-stone-500 px-0.5">Pergunta</span>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                rows={4}
+                maxLength={500}
+                className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+              />
+            </label>
+            {openQuery && (
+              <p className="text-[12px] text-stone-400">
+                Perguntado por {openQuery.askedByEmail ?? openQuery.askedByUid} em {formatDateBR(openQuery.askedAt.slice(0, 10))}.
+              </p>
             )}
           </div>
         ) : mode === 'split' ? (
@@ -308,6 +353,22 @@ export function ClassifySheet({
             >
               Fechar
             </button>
+          ) : mode === 'ask' ? (
+            <div className="space-y-2">
+              <button
+                type="button"
+                disabled={!question.trim() || isSaving}
+                onClick={() => void onAskClient?.(question)}
+                className="w-full h-12 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-[15px] font-medium tracking-tight disabled:opacity-40 active:scale-[0.98] transition-all duration-150"
+              >
+                {isSaving ? 'Salvando…' : openQuery ? 'Atualizar pergunta' : 'Enviar para pendências do cliente'}
+              </button>
+              {openQuery && (
+                <button type="button" disabled={isSaving} onClick={() => void onAskClient?.('')} className="w-full text-[13px] text-stone-500 hover:text-rose-600">
+                  Remover pergunta
+                </button>
+              )}
+            </div>
           ) : mode === 'split' ? (
             <>
               {!canSaveSplit && (
@@ -336,7 +397,7 @@ export function ClassifySheet({
             {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
           </button>
           )}
-          {isEditing && !locked && mode !== 'history' && (
+          {isEditing && !locked && (mode === 'single' || mode === 'split') && (
             <div className="mt-2 flex justify-center">
               <button
                 type="button"

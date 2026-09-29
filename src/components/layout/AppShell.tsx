@@ -6,7 +6,7 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { useClient } from '@/contexts/ClientContext';
 
 /** Rotas públicas renderizadas sem a moldura da aplicação. */
-const BARE_ROUTES = new Set(['/login']);
+const BARE_ROUTES = new Set(['/login', '/responder']);
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
