@@ -46,6 +46,7 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 - O representante legal (nome e CPF) fica em cada cliente. Os dois preenchem as assinaturas da DRE em PDF e Excel.
 - Regras de aprendizado respeitam `matchType` (contém, começa com, exato). Quando várias casam, vence a mais restritiva, depois o termo mais longo, depois a mais recente. Criar ou aplicar uma regra classifica também os pendentes já gravados, em todos os meses abertos.
 - Cada importação de OFX guarda o saldo final (`LEDGERBAL`) em `import_batches` e o confere com o saldo do extrato anterior da mesma conta mais a movimentação gravada no intervalo. A tela de Conciliação alerta divergências e lacunas de datas entre extratos.
+- **Codificação do OFX**: o arquivo é lido como bytes e decodificado como UTF-8 estrito (Nubank, PagBank…) com fallback para Windows-1252 (bancos antigos), em `src/lib/ofx/encoding.ts`. Históricos que já chegam com texto quebrado (`transferÃªncia`) são reparados na leitura. Importações antigas, feitas quando UTF-8 era lido como Latin-1, são corrigidas em **Contas e Extratos → Corrigir acentuação** (históricos e termos das regras; competências fechadas ficam para depois da reabertura; a correção é registrada na auditoria).
 
 ### Contas bancárias, balanço e pendências com o cliente
 

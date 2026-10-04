@@ -4,6 +4,7 @@ import React from 'react';
 import { ArrowRight, Lock, LockOpen } from 'lucide-react';
 import type { AuditEntry } from '@/types/firestore';
 import { AUDIT_LABEL, describeSnapshot } from '@/lib/audit';
+import { repairMojibake } from '@/lib/ofx/encoding';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -53,7 +54,7 @@ export function AuditTimeline({ entries, showTransaction = false, emptyText = 'N
             {showTransaction && e.transactionId && (
               <p className="mt-0.5 text-[12px] text-stone-600 dark:text-stone-400 truncate">
                 <span className="font-mono tabular-nums text-stone-400">{e.transactionDate ? formatDateBR(e.transactionDate) : ''}</span>{' '}
-                {e.transactionMemo}
+                {e.transactionMemo ? repairMojibake(e.transactionMemo) : e.transactionMemo}
                 {e.transactionAmount !== undefined && (
                   <span className="font-mono tabular-nums"> · {formatCurrency(e.transactionAmount)}</span>
                 )}

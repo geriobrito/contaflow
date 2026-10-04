@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Link2, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, ImportBatch, PeriodLock } from '@/types/firestore';
+import { AlertTriangle, CheckCircle2, Link2, Pencil, Plus, Trash2, Type, Wallet } from 'lucide-react';
+import type { BankAccount, BankTransaction, ChartAccount, ClassificationRule, ImportBatch, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { bankBalanceAt, bankLedgerCandidates, suggestOpening } from '@/lib/bank-accounts';
 import {
   BANKS_PARENT_CODE,
+  applyTextRepair,
   createBankSubaccounts,
   deleteImportBatch,
   ensureBankAccount,
@@ -15,6 +16,7 @@ import {
   type BatchDeletionPreview,
 } from '@/lib/services/accounting-service';
 import { formatMonth } from '@/lib/periods';
+import { planTextRepair } from '@/lib/text-repair';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
@@ -29,6 +31,7 @@ interface Data {
   batches: ImportBatch[];
   transactions: BankTransaction[];
   locks: PeriodLock[];
+  rules: ClassificationRule[];
 }
 
 /* =========================================================================
@@ -298,14 +301,15 @@ export default function ContasPage() {
 
   const load = useCallback(async (id: string) => {
     const repo = getRepository();
-    const [accounts, banks, batches, transactions, locks] = await Promise.all([
+    const [accounts, banks, batches, transactions, locks, rules] = await Promise.all([
       repo.listAccounts(id),
       repo.listBankAccounts(id),
       repo.listImportBatches(id),
       repo.listTransactions(id),
       repo.listPeriodLocks(id),
+      repo.listRules(id),
     ]);
-    setData({ accounts, banks, batches, transactions, locks });
+    setData({ accounts, banks, batches, transactions, locks, rules });
     setLoadedFor(id);
     setError(null);
   }, []);
@@ -360,6 +364,27 @@ export default function ContasPage() {
       await refresh('Conta bancária cadastrada');
     } catch (e) {
       setError(describe(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const textPlan = useMemo(
+    () => (current && clientId ? planTextRepair(current.transactions, current.rules, clientId, lockedMonths) : null),
+    [current, clientId, lockedMonths]
+  );
+
+  const repairText = async () => {
+    if (!clientId || !textPlan) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const done = await applyTextRepair(clientId, textPlan);
+      await refresh(
+        `Acentuação corrigida · ${done.memos} histórico(s), ${done.rules} regra(s)${done.removedRules ? `, ${done.removedRules} regra(s) duplicada(s) removida(s)` : ''}`
+      );
+    } catch (e) {
+      setError(`Não foi possível corrigir (${describe(e)}).`);
     } finally {
       setBusy(false);
     }
@@ -482,6 +507,48 @@ export default function ContasPage() {
           </p>
         )}
       </section>
+
+      {/* Correção de acentuação de importações antigas */}
+      {textPlan && textPlan.total > 0 && (
+        <section className={`${SURFACE} rounded-[22px] p-5 space-y-3 border-amber-200/70`} aria-label="Correção de acentuação">
+          <div className="flex flex-wrap items-start gap-3">
+            <span className="w-9 h-9 shrink-0 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-700 flex items-center justify-center">
+              <Type className="w-4 h-4" />
+            </span>
+            <div className="flex-1 min-w-[260px] space-y-1">
+              <h2 className="text-[15px] font-semibold tracking-tight">Acentuação quebrada em importações antigas</h2>
+              <p className="text-[13px] text-stone-600 dark:text-stone-300">
+                {textPlan.memos.length + textPlan.lockedMemos.length} histórico(s) e {textPlan.rules.length + textPlan.duplicateRuleIds.length} regra(s) vieram de arquivos
+                UTF-8 lidos como Latin-1 (ex.: “transferÃªncia”, “â€¢â€¢â€¢”). Novas importações já saem corretas; esta correção ajusta o que já está salvo,
+                mantém as classificações e atualiza o termo das regras para continuarem casando.
+              </p>
+              {(textPlan.memos[0] || textPlan.rules[0]) && (
+                <p className="font-mono text-[11px] text-stone-500 break-words">
+                  {(textPlan.memos[0] ?? textPlan.rules[0]!).before.slice(0, 70)} → {(textPlan.memos[0]?.after ?? textPlan.rules[0]!.after).slice(0, 70)}
+                </p>
+              )}
+              {textPlan.lockedMemos.length > 0 && (
+                <p className="text-[12px] text-amber-700">
+                  {textPlan.lockedMemos.length} histórico(s) estão em competência fechada e só serão corrigidos depois de reabri-la.
+                </p>
+              )}
+              {textPlan.duplicateRuleIds.length > 0 && (
+                <p className="text-[12px] text-stone-500">
+                  {textPlan.duplicateRuleIds.length} regra(s) ficarão idênticas a outra (mesmo termo, tipo e conta) e serão removidas, mantendo a mais recente.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={busy || (!textPlan.memos.length && !textPlan.rules.length && !textPlan.duplicateRuleIds.length)}
+              onClick={() => void repairText()}
+              className={BUTTON.accent}
+            >
+              {busy ? 'Corrigindo…' : 'Corrigir acentuação'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Histórico de importações */}
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>

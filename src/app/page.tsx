@@ -19,6 +19,8 @@ import { DuplicateImportModal, type DuplicateImportInfo } from '@/components/ui/
 import { BalanceCheckBadge, StatementPanel } from '@/components/conciliacao/StatementPanel';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { TransferPanel } from '@/components/conciliacao/TransferPanel';
+import Link from 'next/link';
+import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs, type TransferPair } from '@/lib/transfers';
 import { ensureTransitAccount } from '@/lib/services/accounting-service';
 
@@ -157,6 +159,9 @@ export default function ConciliacaoPage() {
       active = false;
     };
   }, [clientId, statementsKey]);
+
+  // Históricos de importações antigas com acentuação quebrada: a correção fica em Contas e Extratos.
+  const hasBrokenText = useMemo(() => transactions.some((t) => hasMojibake(t.memo)), [transactions]);
 
   const transferPairs = useMemo(() => findTransferPairs(transactions, { lockedMonths }), [transactions, lockedMonths]);
 
@@ -440,6 +445,16 @@ export default function ConciliacaoPage() {
       )}
 
       {clientId && <StatementPanel clientId={clientId} refreshKey={statementsKey} />}
+
+      {hasBrokenText && (
+        <p role="status" className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200/60 text-[13px] text-amber-800">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Alguns históricos estão com acentuação quebrada (ex.: “transferÃªncia”) por importações antigas.{' '}
+            <Link href="/contas" className="font-medium underline">Corrigir em Contas e Extratos</Link>
+          </span>
+        </p>
+      )}
 
       <TransferPanel pairs={transferPairs} banks={banks} busy={isSaving} onReconcile={handleTransfers} />
 

@@ -256,7 +256,8 @@ export type AuditAction =
   | 'PERIOD_CLOSE'
   | 'PERIOD_REOPEN'
   | 'TRANSFER'
-  | 'BATCH_DELETE';
+  | 'BATCH_DELETE'
+  | 'MEMO_REPAIR';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {

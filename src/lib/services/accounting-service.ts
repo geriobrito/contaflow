@@ -16,6 +16,7 @@ import { resetTransition } from '@/lib/transitions';
 import { bankAccountId, defaultNickname, nextChildCode, suggestOpening } from '@/lib/bank-accounts';
 import { findTransitAccount, TRANSIT_ACCOUNT } from '@/lib/transfers';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
+import type { TextRepairPlan } from '@/lib/text-repair';
 
 /* =========================================================================
    Contas bancárias
@@ -285,3 +286,46 @@ export async function closeClientRequest(request: ClientRequest): Promise<Client
 
 /** Link público de resposta. */
 export const requestLink = (origin: string, token: string) => `${origin}/responder?t=${token}`;
+
+/* =========================================================================
+   Correção de acentuação (UTF-8 lido como Latin-1 em importações antigas)
+   ========================================================================= */
+
+/**
+ * Aplica o plano de `planTextRepair`: corrige o histórico dos lançamentos (só data e valor
+ * são imutáveis nas regras, então a competência aberta aceita a alteração), o termo das
+ * regras e remove regras que ficaram duplicadas. Competências fechadas não são tocadas.
+ * A correção é registrada na auditoria (a trilha antiga é imutável e não é reescrita).
+ */
+export async function applyTextRepair(clientId: string, plan: TextRepairPlan): Promise<{ memos: number; rules: number; removedRules: number }> {
+  if (!plan.memos.length && !plan.rules.length && !plan.duplicateRuleIds.length) return { memos: 0, rules: 0, removedRules: 0 };
+  const repo = getRepository();
+  const actor = getActor();
+  const now = new Date().toISOString();
+  const note = [
+    `${plan.memos.length} histórico(s) e ${plan.rules.length} regra(s) corrigidos`,
+    plan.duplicateRuleIds.length ? `${plan.duplicateRuleIds.length} regra(s) duplicada(s) removida(s)` : '',
+    plan.lockedMemos.length ? `${plan.lockedMemos.length} em competência fechada mantido(s)` : '',
+    plan.memos[0] ? `ex.: “${plan.memos[0].before.slice(0, 60)}” → “${plan.memos[0].after.slice(0, 60)}”` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  await repo.commitChanges({
+    patches: plan.memos.map((m) => ({ id: m.id, date: m.date, set: { memo: m.after } })),
+    rules: plan.rules.map((r) => ({ ...r.rule, pattern: r.after, updatedAt: now })),
+    audits: [
+      {
+        id: newAuditId(),
+        clientId,
+        action: 'MEMO_REPAIR',
+        actorUid: actor.uid,
+        ...(actor.email ? { actorEmail: actor.email } : {}),
+        at: now,
+        note,
+      },
+    ],
+  });
+  for (const id of plan.duplicateRuleIds) await repo.deleteRule(id);
+  return { memos: plan.memos.length, rules: plan.rules.length, removedRules: plan.duplicateRuleIds.length };
+}

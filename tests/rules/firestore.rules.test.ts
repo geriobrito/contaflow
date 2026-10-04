@@ -522,3 +522,15 @@ describe('pendências com o cliente (link público)', () => {
     expect((await admin.getClientRequestFile('f1'))?.name).toBe('nota.pdf');
   });
 });
+
+describe('correção de acentuação dos históricos', () => {
+  it('altera o histórico em mês aberto, não em mês fechado, e mantém data e valor', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.commitChanges({ patches: [{ id: 'cA_1', date: '2025-03-10', set: { memo: 'Transferência recebida' } }], audits: [] });
+    expect((await repo.listTransactions('cA'))[0].memo).toBe('Transferência recebida');
+
+    await setDoc(doc(asUser('alice'), 'period_locks/cA_2025-03'), { id: 'cA_2025-03', orgId: ORG_A, clientId: 'cA', month: '2025-03', lockedAt: 'T', lockedByUid: 'alice' });
+    await expect(repo.commitChanges({ patches: [{ id: 'cA_1', date: '2025-03-10', set: { memo: 'outra' } }], audits: [] })).rejects.toThrow();
+    await assertFails(updateDoc(doc(asUser('alice'), 'transactions/cA_1'), { memo: 'x', amount: -1 }));
+  });
+});
