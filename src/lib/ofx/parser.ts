@@ -1,4 +1,5 @@
 import { OFXParseResult, OFXRawTransaction, OFXAccountInfo } from './types';
+import { decodeOFXBytes, repairMojibake } from './encoding';
 
 import { isISODate } from '@/lib/periods';
 
@@ -89,7 +90,8 @@ export function cleanOFXMemo(memoStr: string): string {
     .replace(/&apos;/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
-  return cleaned || 'LANÇAMENTO';
+  // Rede de segurança: texto que já chega com UTF-8 lido como Latin-1 ("transferÃªncia").
+  return repairMojibake(cleaned) || 'LANÇAMENTO';
 }
 
 /**
@@ -299,25 +301,14 @@ export function parseOFXString(rawContent: string): OFXParseResult {
  * Detecta automaticamente codificação (UTF-8 ou ISO-8859-1 comum em bancos legados)
  */
 export async function parseOFXFile(file: File): Promise<OFXParseResult> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const text = e.target?.result as string;
-        const result = parseOFXString(text);
-        resolve(result);
-      } catch (err) {
-        reject(err);
-      }
-    };
-
-    reader.onerror = () => {
-      reject(new Error('Erro ao ler arquivo OFX do disco.'));
-    };
-
-    // Lê como ISO-8859-1 (Latin1) ou UTF-8
-    // Tenta como ISO-8859-1 para preservar acentuações bancárias brasileiras
-    reader.readAsText(file, 'ISO-8859-1');
-  });
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(await file.arrayBuffer());
+  } catch {
+    throw new Error('Erro ao ler arquivo OFX do disco.');
+  }
+  // UTF-8 (Nubank, PagBank…) ou Windows-1252 (bancos antigos), detectado pelo conteúdo.
+  const { text, encoding } = decodeOFXBytes(bytes);
+  // `encoding` informa como o arquivo foi realmente lido (o cabeçalho OFX costuma mentir).
+  return { ...parseOFXString(text), encoding };
 }

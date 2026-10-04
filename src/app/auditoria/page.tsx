@@ -28,6 +28,7 @@ const GROUP: Record<AuditAction, Filter> = {
   PERIOD_REOPEN: 'PERIOD',
   TRANSFER: 'MANUAL',
   BATCH_DELETE: 'PERIOD',
+  MEMO_REPAIR: 'PERIOD',
 };
 
 const LIMIT = 300;
