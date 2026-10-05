@@ -21,6 +21,13 @@ describe('contas bancárias', () => {
     expect(suggestOpening([], 'k')).toBeNull();
   });
 
+  it('não sugere saldo inicial a partir de saldo posterior ao fim do extrato', () => {
+    const after = { accountKey: 'k', startDate: '2026-09-01', endDate: '2026-09-30', ledgerDate: '2026-10-05', ledgerBalance: 778.68, fileNet: -393.1 };
+    expect(suggestOpening([after], 'k')).toBeNull();
+    const ok = { accountKey: 'k', startDate: '2026-10-01', endDate: '2026-10-31', ledgerDate: '2026-10-31', ledgerBalance: 900, fileNet: 100 };
+    expect(suggestOpening([after, ok], 'k')).toEqual({ openingBalance: 800, openingDate: '2026-09-30' });
+  });
+
   it('saldo na data = saldo inicial + movimentação posterior', () => {
     const t = (date: string, amount: number, accountKey = 'k') => ({ date, amount, accountKey }) as BankTransaction;
     const txs = [t('2024-12-31', 999), t('2025-01-05', 100), t('2025-01-20', -30), t('2025-01-10', 5, 'outra')];

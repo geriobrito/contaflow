@@ -73,7 +73,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   PERIOD_REOPEN: 'Reabriu a competência',
   TRANSFER: 'Conciliou transferência entre contas',
   BATCH_DELETE: 'Excluiu extrato importado',
-  MEMO_REPAIR: 'Corrigiu acentuação dos históricos',
+  MEMO_REPAIR: 'Atualizou descrições dos lançamentos',
 };
 
 /** Descrição curta de um estado de classificação. */

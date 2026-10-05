@@ -316,7 +316,8 @@ export interface OrgSettings {
   updatedByUid?: string;
 }
 
-export type BalanceCheckStatus = 'OK' | 'MISMATCH' | 'BASELINE' | 'NO_LEDGER';
+/** AFTER_PERIOD: o saldo é de uma data posterior ao fim do extrato e não pode ser conferido só com o arquivo. */
+export type BalanceCheckStatus = 'OK' | 'MISMATCH' | 'BASELINE' | 'NO_LEDGER' | 'AFTER_PERIOD';
 
 /** Conferência do saldo final do extrato (LEDGERBAL) contra a movimentação. */
 export interface BalanceCheck {

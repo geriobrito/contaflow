@@ -21,11 +21,19 @@ export function defaultNickname(meta: Pick<BankAccount, 'bankName' | 'bankId' | 
  * banco menos a movimentação do arquivo, no dia anterior ao início do extrato.
  */
 export function suggestOpening(
-  batches: readonly Pick<ImportBatch, 'accountKey' | 'startDate' | 'ledgerBalance' | 'fileNet'>[],
+  batches: readonly Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate' | 'ledgerDate' | 'ledgerBalance' | 'fileNet'>[],
   accountKey: string
 ): { openingBalance: number; openingDate: string } | null {
   const first = batches
-    .filter((b) => b.accountKey === accountKey && b.startDate && b.ledgerBalance !== undefined && b.fileNet !== undefined)
+    .filter(
+      (b) =>
+        b.accountKey === accountKey &&
+        b.startDate &&
+        b.ledgerBalance !== undefined &&
+        b.fileNet !== undefined &&
+        // Saldo de data posterior ao fim do extrato inclui lançamentos que não estão no arquivo.
+        !(b.endDate && b.ledgerDate && b.ledgerDate > b.endDate)
+    )
     .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0];
   if (!first?.startDate || first.ledgerBalance === undefined || first.fileNet === undefined) return null;
   return { openingBalance: round2(first.ledgerBalance - first.fileNet), openingDate: addDays(first.startDate, -1) };

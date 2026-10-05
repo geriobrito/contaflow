@@ -35,12 +35,18 @@ export function computeBalanceCheck(args: {
   reported?: number;
   previous?: Pick<ImportBatch, 'id' | 'ledgerBalance' | 'ledgerDate'>;
   movement: number;
+  /**
+   * O saldo é de uma data depois do fim do extrato (ex.: InfinitePay informa o saldo do dia da
+   * geração do arquivo). Lançamentos entre as duas datas não estão no arquivo; não dá para conferir.
+   */
+  afterPeriod?: boolean;
 }): BalanceCheck {
   const { reported, previous, movement } = args;
   if (reported === undefined || Number.isNaN(reported)) return { status: 'NO_LEDGER' };
   if (!previous || previous.ledgerBalance === undefined || !previous.ledgerDate) {
     return { status: 'BASELINE', reported: round2(reported), movement: round2(movement) };
   }
+  if (args.afterPeriod) return { status: 'AFTER_PERIOD', reported: round2(reported), previousBatchId: previous.id, previousLedgerDate: previous.ledgerDate };
   const expected = round2(previous.ledgerBalance + movement);
   const difference = round2(reported - expected);
   return {

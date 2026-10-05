@@ -14,6 +14,8 @@ export interface DuplicateImportInfo {
   totalInFile: number;
   alreadyImportedCount: number;
   newCount: number;
+  /** Descrições já importadas que o arquivo traz diferentes (ex.: agora com o favorecido). */
+  memoUpdateCount: number;
 }
 
 interface DuplicateImportModalProps {
@@ -23,13 +25,15 @@ interface DuplicateImportModalProps {
   onClose: () => void;
   /** Só na sobreposição parcial: importa apenas os lançamentos novos. */
   onImportNew?: () => void;
+  /** Atualiza a descrição dos lançamentos já importados, sem importar nada novo. */
+  onUpdateMemos?: () => void;
 }
 
 /**
  * Alerta de extrato já importado (bloqueio total) ou com dias sobrepostos (confirmação
  * para importar apenas os lançamentos novos). Nada é gravado enquanto o diálogo está aberto.
  */
-export function DuplicateImportModal({ info, busy = false, onClose, onImportNew }: DuplicateImportModalProps) {
+export function DuplicateImportModal({ info, busy = false, onClose, onImportNew, onUpdateMemos }: DuplicateImportModalProps) {
   const titleId = useId();
   const descId = useId();
   const primaryRef = useRef<HTMLButtonElement>(null);
@@ -103,16 +107,36 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew 
           </div>
         </dl>
 
+        {info.memoUpdateCount > 0 && (
+          <p className="mt-4 text-[13px] leading-relaxed text-stone-600 dark:text-stone-300">
+            Neste arquivo, <b className="font-semibold text-stone-900 dark:text-stone-100">{info.memoUpdateCount}</b> lançamento(s) já importado(s) têm uma
+            descrição mais completa do que a gravada. Você pode atualizá-las sem perder as classificações.
+          </p>
+        )}
+
         <div className={`mt-6 flex gap-2.5 ${full ? 'justify-center' : ''}`}>
           {full ? (
-            <button
-              ref={primaryRef}
-              type="button"
-              onClick={onClose}
-              className="bg-[#0071E3] hover:bg-[#0077ED] text-white font-medium rounded-xl py-2.5 px-6 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#0071E3]/25"
-            >
-              Entendi
-            </button>
+            <>
+              {info.memoUpdateCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={busy}
+                  className="rounded-xl py-2.5 px-5 font-medium text-stone-700 dark:text-stone-200 bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.08] disabled:opacity-40 transition-all active:scale-[0.98]"
+                >
+                  Entendi
+                </button>
+              )}
+              <button
+                ref={primaryRef}
+                type="button"
+                disabled={busy}
+                onClick={info.memoUpdateCount > 0 ? onUpdateMemos : onClose}
+                className="bg-[#0071E3] hover:bg-[#0077ED] text-white font-medium rounded-xl py-2.5 px-6 disabled:opacity-50 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#0071E3]/25"
+              >
+                {info.memoUpdateCount > 0 ? (busy ? 'Atualizando…' : `Atualizar ${info.memoUpdateCount} descrições`) : 'Entendi'}
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -135,6 +159,16 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew 
             </>
           )}
         </div>
+        {!full && info.memoUpdateCount > 0 && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onUpdateMemos}
+            className="mt-3 w-full text-center text-[13px] font-medium text-[#0071E3] hover:underline disabled:opacity-40"
+          >
+            Só atualizar {info.memoUpdateCount} descrições já importadas
+          </button>
+        )}
       </div>
     </div>,
     document.body

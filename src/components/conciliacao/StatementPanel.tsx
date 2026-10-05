@@ -24,6 +24,16 @@ export function BalanceCheckBadge({ check }: { check?: BalanceCheck }) {
       </span>
     );
   }
+  if (check.status === 'AFTER_PERIOD') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-[11px] text-stone-500"
+        title="O saldo informado é de uma data depois do fim do extrato; os lançamentos entre as duas datas não estão neste arquivo. Ele serve de referência para o próximo extrato."
+      >
+        <CircleDashed className="w-3 h-3" /> Saldo após o período
+      </span>
+    );
+  }
   if (check.status === 'OK') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">

@@ -7,7 +7,7 @@ import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { useReconciliation, type ImportResult } from '@/hooks/useReconciliation';
+import { useReconciliation, type ImportResult, type MemoUpdate } from '@/hooks/useReconciliation';
 import { AlertTriangle, ArrowLeftRight, CheckCheck, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { PAGE, SURFACE } from '@/components/ui/primitives';
@@ -123,6 +123,7 @@ export default function ConciliacaoPage() {
     isSaving,
     error,
     checkImport,
+    updateMemos,
     importTransactions,
     classifyTransaction,
     splitTransaction,
@@ -218,7 +219,12 @@ export default function ConciliacaoPage() {
   );
 
   /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
-  const [duplicate, setDuplicate] = useState<{ info: DuplicateImportInfo; result: OFXParseResult; fileName: string } | null>(null);
+  const [duplicate, setDuplicate] = useState<{
+    info: DuplicateImportInfo;
+    result: OFXParseResult;
+    fileName: string;
+    memoUpdates: MemoUpdate[];
+  } | null>(null);
 
   const runImport = async (result: OFXParseResult, fileName: string) => {
     const imported = await importTransactions(result.transactions, {
@@ -253,7 +259,9 @@ export default function ConciliacaoPage() {
             totalInFile: check.totalInFile,
             alreadyImportedCount: check.alreadyImportedCount,
             newCount: check.newTransactions.length,
+            memoUpdateCount: check.memoUpdates.length,
           },
+          memoUpdates: check.memoUpdates,
         });
         return;
       }
@@ -264,6 +272,21 @@ export default function ConciliacaoPage() {
   };
 
   const closeDuplicate = useCallback(() => setDuplicate(null), []);
+
+  const confirmUpdateMemos = async () => {
+    if (!duplicate) return;
+    try {
+      const { updated, skipped } = await updateMemos(duplicate.memoUpdates, duplicate.fileName);
+      setToast(
+        skipped > 0
+          ? `${updated} descrição(ões) atualizada(s) · ${skipped} em competência fechada mantida(s)`
+          : `${updated} descrição(ões) atualizada(s)`
+      );
+      setDuplicate(null);
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
 
   const confirmImportNew = async () => {
     if (!duplicate) return;
@@ -396,6 +419,7 @@ export default function ConciliacaoPage() {
           busy={isSaving}
           onClose={closeDuplicate}
           onImportNew={() => void confirmImportNew()}
+          onUpdateMemos={() => void confirmUpdateMemos()}
         />
       )}
 

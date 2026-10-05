@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeOFXAmount, normalizeOFXDate, parseOFXAmount, parseOFXDate, parseOFXString } from '@/lib/ofx/parser';
+import { describeTransaction, normalizeOFXAmount, normalizeOFXDate, parseOFXAmount, parseOFXDate, parseOFXString } from '@/lib/ofx/parser';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
 
 const wrap = (transactions: string) => `OFXHEADER:100
@@ -157,5 +157,35 @@ CHARSET:1252
     expect(r.ledgerBalance).toEqual({ amount: 3327.7, date: undefined });
     expect(r.warnings.some((w) => w.includes('IOF') && w.includes('32/13/2025'))).toBe(true);
     expect(r.warnings.some((w) => w.includes('DTASOF'))).toBe(true);
+  });
+});
+
+describe('NAME + MEMO (InfinitePay)', () => {
+  it('junta o favorecido (NAME) ao rótulo genérico (MEMO)', () => {
+    const r = parseOFXString(
+      wrap(`<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20250110<TRNAMT>-406.37<FITID>N1<NAME>Pix WMS SUPERMERCADOS DO BRASIL LTDA<MEMO>Enviado<CHECKNUM>0</STMTTRN>
+<STMTTRN><TRNTYPE>CREDIT<DTPOSTED>20250111<TRNAMT>58.11<FITID>N2<NAME>Vendas<MEMO>Depósito InfinitePay<CHECKNUM>0</STMTTRN>
+<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20250112<TRNAMT>-5<FITID>N3<NAME>Pix ROGERIO SILVA P BRITO                   <MEMO>Enviado</STMTTRN>`)
+    );
+    expect(r.transactions.map((t) => t.memo)).toEqual([
+      'Pix WMS SUPERMERCADOS DO BRASIL LTDA - Enviado',
+      'Vendas - Depósito InfinitePay',
+      'Pix ROGERIO SILVA P BRITO - Enviado',
+    ]);
+  });
+
+  it('não repete quando um texto contém o outro, e usa o que existir', () => {
+    expect(describeTransaction('PADARIA CENTRAL', 'PADARIA CENTRAL')).toBe('PADARIA CENTRAL');
+    expect(describeTransaction('PADARIA', 'COMPRA PADARIA CENTRAL 12/03')).toBe('COMPRA PADARIA CENTRAL 12/03');
+    expect(describeTransaction('Pix JOAO SILVA', 'Pix')).toBe('Pix JOAO SILVA');
+    expect(describeTransaction(undefined, 'só memo')).toBe('só memo');
+    expect(describeTransaction('só nome', '  ')).toBe('só nome');
+    expect(describeTransaction('A &amp; B', 'Enviado')).toBe('A & B - Enviado');
+  });
+
+  it('o FITID sintético continua derivado do MEMO (a mesma linha gera o mesmo ID com ou sem NAME)', () => {
+    const id = (inner: string) => parseOFXString(wrap(`<STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20250110<TRNAMT>-10.00${inner}</STMTTRN>`)).transactions[0].fitid;
+    expect(id('<NAME>X<MEMO>Enviado')).toBe(id('<MEMO>Enviado'));
+    expect(id('<MEMO>Enviado')).toMatch(/^GEN_20250110_-10\.00_.+_1$/);
   });
 });

@@ -102,7 +102,7 @@ export async function reopenMonth(lock: PeriodLock, reason: string): Promise<voi
  */
 export async function checkStatementBalance(args: {
   clientId: string;
-  batch: Pick<ImportBatch, 'accountKey' | 'ledgerBalance' | 'ledgerDate'>;
+  batch: Pick<ImportBatch, 'accountKey' | 'ledgerBalance' | 'ledgerDate' | 'endDate'>;
   batches: readonly ImportBatch[];
   /** Lançamentos recém-importados ainda não gravados (entram na movimentação). */
   pendingInsert?: readonly BankTransaction[];
@@ -122,5 +122,6 @@ export async function checkStatementBalance(args: {
     (sum, t) => sum + t.amount,
     0
   );
-  return computeBalanceCheck({ reported: batch.ledgerBalance, previous, movement });
+  const afterPeriod = Boolean(batch.endDate && batch.ledgerDate > batch.endDate);
+  return computeBalanceCheck({ reported: batch.ledgerBalance, previous, movement, afterPeriod });
 }
