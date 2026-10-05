@@ -5,7 +5,7 @@ import { getRepository } from '@/lib/services/data-service';
 import { applyRuleToPending, checkStatementBalance, closeMonth, reopenMonth } from '@/lib/services/reconciliation-service';
 import { ensureBankAccount, partnerResetChange } from '@/lib/services/accounting-service';
 import { getActor } from '@/lib/data/scope';
-import type { DateRange } from '@/lib/data/repository';
+import type { AccountRef, DateRange } from '@/lib/data/repository';
 import type { OFXRawTransaction } from '@/lib/ofx/types';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
@@ -109,6 +109,13 @@ export interface ClassifyOptions {
   matchType?: RuleMatchType;
 }
 
+export interface ClassifyManyResult extends ClassifyResult {
+  /** Lançamentos classificados. */
+  classified: number;
+  /** Ignorados: competência fechada ou perna de transferência. */
+  skipped: number;
+}
+
 export interface ClassifyResult {
   /** Regra criada ou atualizada, quando `learnRule` estiver ativo. */
   rule: ClassificationRule | null;
@@ -148,6 +155,8 @@ export interface UseReconciliationReturn {
   updateMemos: (updates: readonly MemoUpdate[], fileName: string) => Promise<{ updated: number; skipped: number }>;
   importTransactions: (items: readonly ImportableTransaction[], meta?: StatementMeta) => Promise<ImportResult>;
   classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
+  /** Classifica vários lançamentos na mesma conta (ex.: todos de um favorecido), criando uma única regra. */
+  classifyMany: (transactionIds: readonly string[], accountId: string, options?: ClassifyOptions) => Promise<ClassifyManyResult>;
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
   unreconcileTransaction: (transactionId: string) => Promise<void>;
   approveAutoClassified: () => Promise<number>;
@@ -253,6 +262,21 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
       }
     },
     [lockedMonths]
+  );
+
+  /** Regra a criar/atualizar: reaproveita a de origem ou outra com o mesmo termo e tipo, em vez de duplicar. */
+  const buildLearnedRule = useCallback(
+    (args: { pattern: string; matchType: RuleMatchType; ref: AccountRef; now: string; preferRuleId?: string }) => {
+      if (!clientId || !args.pattern) return { rule: null, existingRule: undefined };
+      const existingRule =
+        rules.find((r) => args.preferRuleId && r.id === args.preferRuleId && r.clientId === clientId) ??
+        rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === args.pattern && (r.matchType ?? 'CONTAINS') === args.matchType);
+      const rule: ClassificationRule = existingRule
+        ? { ...existingRule, pattern: args.pattern, matchType: args.matchType, ...args.ref, updatedAt: args.now }
+        : { id: `rule_${Date.now()}`, clientId, pattern: args.pattern, matchType: args.matchType, ...args.ref, createdAt: args.now, updatedAt: args.now };
+      return { rule, existingRule };
+    },
+    [clientId, rules]
   );
 
   const findLoaded = useCallback(
@@ -473,17 +497,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         const matchType = options.matchType ?? 'CONTAINS';
 
         // Reclassificação: atualiza a regra de origem (ou uma com o mesmo termo e tipo) em vez de duplicar.
-        const existingRule = pattern
-          ? (rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId) ??
-            rules.find(
-              (r) => r.clientId === clientId && normalizePattern(r.pattern) === pattern && (r.matchType ?? 'CONTAINS') === matchType
-            ))
-          : undefined;
-        const rule: ClassificationRule | null = pattern
-          ? existingRule
-            ? { ...existingRule, pattern, matchType, ...ref, updatedAt: now }
-            : { id: `rule_${Date.now()}`, clientId, pattern, matchType, ...ref, createdAt: now, updatedAt: now }
-          : null;
+        const { rule, existingRule } = buildLearnedRule({ pattern, matchType, ref, now, preferRuleId: target.matchedRuleId });
 
         const { patch, after } = classifyTransition(target, ref, rule?.id ?? null, now);
         const partner = await partnerChange(target, now);
@@ -515,7 +529,60 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         }
         return { rule, propagated: propagated.length };
       }),
-    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
+    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange, buildLearnedRule]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Classificação em lote (todos os lançamentos de um favorecido)       */
+  /* ------------------------------------------------------------------ */
+  const classifyMany = useCallback(
+    (transactionIds: readonly string[], accountId: string, options: ClassifyOptions = {}): Promise<ClassifyManyResult> =>
+      mutate('Não foi possível classificar os lançamentos', async () => {
+        if (!clientId) throw new Error('Nenhum cliente selecionado.');
+        const account = accountsById.get(accountId);
+        if (account && account.nature !== 'ANALYTIC') {
+          throw new Error(`A conta ${account.code} é sintética e não pode receber lançamentos.`);
+        }
+        const loaded = transactionIds.map(findLoaded);
+        // Competência fechada e pernas de transferência (que arrastariam a outra perna) ficam de fora.
+        const targets = loaded.filter((t) => !isMonthLocked(t.date, lockedMonths) && !t.transferPairId);
+        const skipped = loaded.length - targets.length;
+        if (!targets.length) return { rule: null, propagated: 0, classified: 0, skipped };
+
+        const actor = getActor();
+        const ref = { accountId, accountCode: account?.code ?? '', accountName: account?.name ?? '' };
+        const now = new Date().toISOString();
+        const pattern = options.learnRule ? normalizePattern(options.customPattern ?? '') : '';
+        const matchType = options.matchType ?? 'CONTAINS';
+        const { rule, existingRule } = buildLearnedRule({ pattern, matchType, ref, now });
+
+        const moves = targets.map((tx) => ({ tx, ...classifyTransition(tx, ref, rule?.id ?? null, now) }));
+        await getRepository().commitChanges({
+          patches: moves.map((m) => m.patch),
+          rules: rule ? [rule] : [],
+          audits: moves.map((m) => transactionAudit(classifyAction(m.tx), actor, m.tx, m.after, now, rule ? { ruleId: rule.id } : {})),
+        });
+        replaceLoaded(moves.map((m) => m.after));
+
+        let propagated: BankTransaction[] = [];
+        if (rule) {
+          const nextRules = existingRule ? rules.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...rules];
+          setRules(nextRules);
+          // Pendentes de outros períodos (e do mesmo) que a regra vence também são classificados.
+          propagated = await applyRuleToPending({
+            clientId,
+            rule,
+            rules: nextRules,
+            accountsById,
+            lockedMonths,
+            exclude: new Set(moves.map((m) => m.tx.id)),
+            now,
+          });
+          replaceLoaded(propagated);
+        }
+        return { rule, propagated: propagated.length, classified: moves.length, skipped };
+      }),
+    [clientId, accountsById, lockedMonths, mutate, findLoaded, replaceLoaded, buildLearnedRule, rules]
   );
 
   /* ------------------------------------------------------------------ */
@@ -725,6 +792,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     updateMemos,
     importTransactions,
     classifyTransaction,
+    classifyMany,
     splitTransaction,
     unreconcileTransaction,
     approveAutoClassified,

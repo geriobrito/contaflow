@@ -154,6 +154,7 @@ export default function PendenciasPage() {
   };
 
   const loaded = recon.transactions;
+  const memoPool = useMemo(() => recon.transactions.map((t) => t.memo), [recon.transactions]);
   const selectedLoaded = selected ? (loaded.find((t) => t.id === selected.id) ?? null) : null;
 
   return (
@@ -292,6 +293,7 @@ export default function PendenciasPage() {
             }
           }}
           rules={rules}
+          memoPool={memoPool}
           lockedMonthLabel={isMonthLocked(selectedLoaded.date, lockedMonths) ? formatMonth(monthOf(selectedLoaded.date)) : null}
           loadAudit={() => loadAudit(selectedLoaded.id)}
         />
