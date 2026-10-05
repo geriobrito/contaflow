@@ -95,6 +95,26 @@ export function cleanOFXMemo(memoStr: string): string {
 }
 
 /**
+ * Descrição do lançamento a partir de NAME (quem pagou/recebeu) e MEMO (o que foi).
+ *
+ * Alguns bancos (ex.: InfinitePay) mandam o favorecido em NAME e só um rótulo genérico em
+ * MEMO ("Enviado", "Recebido", "Depósito InfinitePay"); usar só o MEMO deixa dezenas de
+ * lançamentos iguais na tela. Se um texto contém o outro, vale o mais completo; senão,
+ * "NAME - MEMO" (favorecido primeiro, que é o que identifica o lançamento).
+ */
+export function describeTransaction(rawName?: string, rawMemo?: string): string {
+  const name = rawName?.trim() ? cleanOFXMemo(rawName) : '';
+  const memo = rawMemo?.trim() ? cleanOFXMemo(rawMemo) : '';
+  if (!name) return memo;
+  if (!memo) return name;
+  const a = name.toLowerCase();
+  const b = memo.toLowerCase();
+  if (a === b || a.includes(b)) return name;
+  if (b.includes(a)) return memo;
+  return `${name} - ${memo}`;
+}
+
+/**
  * Parser de OFX de alta performance e compatível tanto com Node.js quanto com Navegador (Client-side)
  * Suporta OFX 1.x (SGML) e OFX 2.x (XML) de bancos como Itaú, Bradesco, Santander, BB, Nubank, Inter, etc.
  */
@@ -256,8 +276,7 @@ export function parseOFXString(rawContent: string): OFXParseResult {
     // MEMO ou NAME (descrição do lançamento)
     const memoMatch = trnBlock.match(/<MEMO>([^<\r\n]+)/i);
     const nameMatch = trnBlock.match(/<NAME>([^<\r\n]+)/i);
-    const rawMemo = memoMatch ? memoMatch[1] : (nameMatch ? nameMatch[1] : '');
-    const memo = cleanOFXMemo(rawMemo);
+    const memo = cleanOFXMemo(describeTransaction(nameMatch?.[1], memoMatch?.[1]));
 
     // Check number / Documento
     const checkNumMatch = trnBlock.match(/<CHECKNUM>([^<\r\n]+)/i);

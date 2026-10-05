@@ -432,6 +432,8 @@ export default function ContasPage() {
                     .sort((x, y) => (y.ledgerDate ?? '').localeCompare(x.ledgerDate ?? ''))[0];
                   const bookAtLast = last?.ledgerDate ? bankBalanceAt(b, current.transactions, last.ledgerDate) : null;
                   const matches = last && bookAtLast !== null && Math.abs(bookAtLast - (last.ledgerBalance ?? 0)) < 0.005;
+                  // Saldo de data posterior ao fim do extrato: há lançamentos entre as datas fora do arquivo.
+                  const comparable = !(last?.endDate && last.ledgerDate && last.ledgerDate > last.endDate);
                   return (
                     <tr key={b.id} className="border-b border-black/[0.04] last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-3">
@@ -465,11 +467,20 @@ export default function ContasPage() {
                         {last ? (
                           <>
                             {formatCurrency(last.ledgerBalance ?? 0)}
-                            <span className={`flex items-center justify-end gap-1 text-[11px] font-sans ${matches ? 'text-emerald-700' : 'text-rose-700'}`}>
-                              {matches ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                              {formatDateBR(last.ledgerDate)} ·{' '}
-                              {matches ? 'confere' : `contábil ${formatCurrency(bookAtLast ?? 0)}`}
-                            </span>
+                            {comparable ? (
+                              <span className={`flex items-center justify-end gap-1 text-[11px] font-sans ${matches ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                {matches ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                {formatDateBR(last.ledgerDate)} ·{' '}
+                                {matches ? 'confere' : `contábil ${formatCurrency(bookAtLast ?? 0)}`}
+                              </span>
+                            ) : (
+                              <span
+                                className="block text-[11px] font-sans text-stone-500"
+                                title="O saldo é de uma data depois do fim do extrato; os lançamentos entre as duas datas não estão no arquivo."
+                              >
+                                {formatDateBR(last.ledgerDate)} · após o período do extrato
+                              </span>
+                            )}
                           </>
                         ) : (
                           '—'

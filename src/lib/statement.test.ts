@@ -18,6 +18,13 @@ describe('addDays', () => {
 });
 
 describe('computeBalanceCheck', () => {
+  it('saldo de data posterior ao fim do extrato não é conferido (AFTER_PERIOD)', () => {
+    const previous = { id: 'p', ledgerBalance: 1000, ledgerDate: '2025-02-28' };
+    expect(computeBalanceCheck({ reported: 778.68, previous, movement: -393.1, afterPeriod: true })).toMatchObject({ status: 'AFTER_PERIOD', reported: 778.68 });
+    // Sem extrato anterior continua sendo a referência inicial.
+    expect(computeBalanceCheck({ reported: 778.68, movement: 0, afterPeriod: true }).status).toBe('BASELINE');
+  });
+
   const previous = { id: 'b1', ledgerBalance: 1000, ledgerDate: '2025-01-31' };
 
   it('OK quando saldo anterior + movimentação = saldo informado', () => {

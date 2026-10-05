@@ -10,7 +10,7 @@ import type { OFXRawTransaction } from '@/lib/ofx/types';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { buildTransactionId, findMatchingRule, normalizePattern } from '@/lib/reconciliation';
-import { classifyAction, transactionAudit } from '@/lib/audit';
+import { classifyAction, newAuditId, transactionAudit } from '@/lib/audit';
 import { formatMonth, isISODate, isMonthLocked, monthOf } from '@/lib/periods';
 import { accountKeyOf, findCoverageGaps, outOfRangeDates, type CoverageGap } from '@/lib/statement';
 import {
@@ -81,6 +81,14 @@ export interface ImportResult {
   outOfRange: number;
 }
 
+/** Lançamento já importado cuja descrição no arquivo é diferente (mais completa ou corrigida). */
+export interface MemoUpdate {
+  id: string;
+  date: string;
+  before: string;
+  after: string;
+}
+
 /** Resultado da checagem prévia de duplicidade (nada é gravado). */
 export interface PreImportCheck {
   /** Todos os lançamentos do arquivo já estão no banco: a importação deve ser bloqueada. */
@@ -91,6 +99,8 @@ export interface PreImportCheck {
   totalInFile: number;
   alreadyImportedCount: number;
   newTransactions: ImportableTransaction[];
+  /** Descrições dos lançamentos já importados que o arquivo traz diferentes. */
+  memoUpdates: MemoUpdate[];
 }
 
 export interface ClassifyOptions {
@@ -134,6 +144,8 @@ export interface UseReconciliationReturn {
   error: string | null;
   /** Verifica quais lançamentos do arquivo já existem, sem gravar nada. */
   checkImport: (items: readonly ImportableTransaction[]) => Promise<PreImportCheck>;
+  /** Atualiza a descrição de lançamentos já importados (competências fechadas são puladas). */
+  updateMemos: (updates: readonly MemoUpdate[], fileName: string) => Promise<{ updated: number; skipped: number }>;
   importTransactions: (items: readonly ImportableTransaction[], meta?: StatementMeta) => Promise<ImportResult>;
   classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
@@ -270,15 +282,65 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
       }
       const newTransactions = [...unique].filter(([id]) => !existing.has(id)).map(([, t]) => t);
       const alreadyImportedCount = unique.size - newTransactions.length;
+
+      // Extrato reimportado com descrições melhores (ex.: agora lê o NAME do OFX): oferece atualizar.
+      const memoUpdates: MemoUpdate[] = [];
+      if (existing.size > 0) {
+        const dates = [...unique.values()].map((t) => t.date).filter(isISODate).sort();
+        if (dates.length) {
+          try {
+            const stored = new Map(
+              (await getRepository().listTransactions(clientId, { start: dates[0], end: dates[dates.length - 1] })).map((t) => [t.id, t] as const)
+            );
+            for (const [id, item] of unique) {
+              const current = stored.get(id);
+              if (current && current.memo !== item.memo) memoUpdates.push({ id, date: current.date, before: current.memo, after: item.memo });
+            }
+          } catch (e) {
+            setError(`Falha ao comparar as descrições do extrato (${describe(e)}).`);
+            throw e;
+          }
+        }
+      }
       return {
         isFullDuplicate: unique.size > 0 && newTransactions.length === 0,
         isPartialOverlap: alreadyImportedCount > 0 && newTransactions.length > 0,
         totalInFile: unique.size,
         alreadyImportedCount,
         newTransactions,
+        memoUpdates,
       };
     },
     [clientId]
+  );
+
+  const updateMemos = useCallback(
+    (updates: readonly MemoUpdate[], fileName: string): Promise<{ updated: number; skipped: number }> =>
+      mutate('Não foi possível atualizar as descrições', async () => {
+        if (!clientId) throw new Error('Nenhum cliente selecionado.');
+        const open = updates.filter((u) => !isMonthLocked(u.date, lockedMonths));
+        if (!open.length) return { updated: 0, skipped: updates.length };
+        const actor = getActor();
+        const now = new Date().toISOString();
+        await getRepository().commitChanges({
+          patches: open.map((u) => ({ id: u.id, date: u.date, set: { memo: u.after } })),
+          audits: [
+            {
+              id: newAuditId(),
+              clientId,
+              action: 'MEMO_REPAIR',
+              actorUid: actor.uid,
+              ...(actor.email ? { actorEmail: actor.email } : {}),
+              at: now,
+              note: `${open.length} descrição(ões) atualizada(s) pelo extrato ${fileName} · ex.: “${open[0].before.slice(0, 50)}” → “${open[0].after.slice(0, 70)}”`,
+            },
+          ],
+        });
+        const byId = new Map(open.map((u) => [u.id, u.after] as const));
+        setTransactions((prev) => prev.map((t) => (byId.has(t.id) ? { ...t, memo: byId.get(t.id)! } : t)));
+        return { updated: open.length, skipped: updates.length - open.length };
+      }),
+    [clientId, lockedMonths, mutate]
   );
 
   const importTransactions = useCallback(
@@ -660,6 +722,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     isSaving,
     error,
     checkImport,
+    updateMemos,
     importTransactions,
     classifyTransaction,
     splitTransaction,
