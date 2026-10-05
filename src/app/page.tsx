@@ -96,7 +96,7 @@ export default function ConciliacaoPage() {
   // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
   // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
   const period = usePeriod('month');
-  const { jumpTo } = period;
+  const { jumpTo, setMode } = period;
   const [positionedFor, setPositionedFor] = useState<string | null>(null);
   useEffect(() => {
     if (!clientId) return;
@@ -104,7 +104,15 @@ export default function ConciliacaoPage() {
     getLatestTransactionDate(clientId)
       .then((latest) => {
         if (!active) return;
-        if (latest) jumpTo(latest);
+        // Links do painel: /?mes=AAAA-MM[&filtro=PENDING|AUTO_CLASSIFIED] abrem o mês (e o filtro) pedidos.
+        const params = new URLSearchParams(window.location.search);
+        const mes = params.get('mes');
+        const filtro = params.get('filtro');
+        if (mes && /^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+          setMode('month');
+          jumpTo(`${mes}-01`);
+          if (filtro === 'PENDING' || filtro === 'AUTO_CLASSIFIED') setFilter(filtro);
+        } else if (latest) jumpTo(latest);
         setPositionedFor(clientId);
       })
       .catch((e) => {
@@ -114,7 +122,7 @@ export default function ConciliacaoPage() {
     return () => {
       active = false;
     };
-  }, [clientId, jumpTo]);
+  }, [clientId, jumpTo, setMode]);
   const range = clientId && positionedFor === clientId ? period.range : null;
 
   const {

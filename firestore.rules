@@ -123,6 +123,17 @@ service cloud.firestore {
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId') && unchanged('accountKey');
     }
 
+    // ── Saldos de abertura (um documento por cliente, id = clientId) ─────
+    match /opening_balances/{docId} {
+      // Ler um cliente que ainda não tem saldos (documento inexistente) é permitido ao próprio escritório.
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId;
+      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
     // ── Pendências com o cliente ─────────────────────────────────────────
     function requestOpen(req) {
       return req.status == 'OPEN' && request.time.toMillis() < req.expiresAtMs;

@@ -74,6 +74,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   TRANSFER: 'Conciliou transferência entre contas',
   BATCH_DELETE: 'Excluiu extrato importado',
   MEMO_REPAIR: 'Atualizou descrições dos lançamentos',
+  OPENING_SAVE: 'Atualizou os saldos de abertura',
 };
 
 /** Descrição curta de um estado de classificação. */

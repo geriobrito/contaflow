@@ -1,4 +1,4 @@
-import type { AccountType, BankAccount, BankTransaction, ChartAccount } from '@/types/firestore';
+import type { AccountType, BankAccount, BankTransaction, ChartAccount, OpeningBalances } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
 
 /**
@@ -27,7 +27,7 @@ type VirtualId = (typeof VIRTUAL)[keyof typeof VIRTUAL];
 export const VIRTUAL_LABEL: Record<VirtualId, string> = {
   [VIRTUAL.BANK_UNLINKED]: 'Bancos sem vínculo contábil',
   [VIRTUAL.SUSPENSE]: 'Lançamentos a classificar',
-  [VIRTUAL.OPENING]: 'Saldos de abertura dos bancos (a detalhar)',
+  [VIRTUAL.OPENING]: 'Saldos de abertura (a detalhar)',
   [VIRTUAL.PRIOR_RESULTS]: 'Resultados de exercícios anteriores',
   [VIRTUAL.CURRENT_RESULT]: 'Resultado do exercício',
 };
@@ -65,13 +65,23 @@ const VIRTUAL_KIND: Record<VirtualId, AccountKind> = {
 export const isVirtual = (id: string): id is VirtualId => id in VIRTUAL_LABEL;
 
 /**
+ * Sinal da partida de um saldo de abertura informado no lado natural da conta:
+ * +1 débito, -1 crédito. Ativo é devedor; passivo e PL, credores; retificadoras invertem.
+ */
+export function openingSign(account: Pick<ChartAccount, 'type' | 'isContra'>): 1 | -1 {
+  const debitNature = accountKind(account) === 'ASSET';
+  return debitNature !== Boolean(account.isContra) ? 1 : -1;
+}
+
+/**
  * Partidas de todos os lançamentos (e dos saldos iniciais dos bancos) até `until`.
  */
 export function buildPostings(
   transactions: readonly BankTransaction[],
   bankAccounts: readonly BankAccount[],
   accounts: readonly ChartAccount[],
-  until?: string
+  until?: string,
+  openings?: OpeningBalances | null
 ): Posting[] {
   const known = new Set(accounts.map((a) => a.id));
   const ledgerByKey = new Map(
@@ -84,6 +94,19 @@ export function buildPostings(
     const bank = ledgerByKey.get(b.accountKey) ?? VIRTUAL.BANK_UNLINKED;
     out.push({ accountId: bank, date: b.openingDate, value: b.openingBalance });
     out.push({ accountId: VIRTUAL.OPENING, date: b.openingDate, value: -b.openingBalance });
+  }
+
+  // Saldos de abertura das demais contas patrimoniais; a contrapartida é a conta virtual de abertura,
+  // que zera quando ativo = passivo + PL na data de abertura.
+  if (openings && (!until || openings.date <= until)) {
+    const byId = new Map(accounts.map((a) => [a.id, a] as const));
+    for (const e of openings.entries) {
+      const acc = byId.get(e.accountId);
+      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
+      const value = openingSign(acc) * e.amount;
+      out.push({ accountId: acc.id, date: openings.date, value });
+      out.push({ accountId: VIRTUAL.OPENING, date: openings.date, value: -value });
+    }
   }
 
   for (const t of transactions) {

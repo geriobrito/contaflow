@@ -22,7 +22,7 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       // Se autenticado e tentando acessar login
       else if (isAuthenticated && pathname === '/login') {
-        router.replace('/');
+        router.replace('/painel');
       }
     }
   }, [isAuthenticated, loading, pathname, router, isPublic]);

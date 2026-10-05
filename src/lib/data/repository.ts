@@ -9,6 +9,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  OpeningBalances,
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
@@ -98,6 +99,11 @@ export interface DataRepository {
    * decorrentes (ex.: pares de transferência desfeitos) e a auditoria, juntos.
    */
   deleteImportBatch(batch: ImportBatch, transactions: readonly Pick<BankTransaction, 'id' | 'date'>[], changes: ChangeSet): Promise<void>;
+
+  /* Saldos de abertura (contas patrimoniais que não são bancos) */
+  getOpeningBalances(clientId: string): Promise<OpeningBalances | null>;
+  /** Grava os saldos de abertura e o registro de auditoria juntos. */
+  saveOpeningBalances(balances: OpeningBalances, audit: AuditEntry): Promise<void>;
 
   /* Contas bancárias */
   listBankAccounts(clientId: string): Promise<BankAccount[]>;

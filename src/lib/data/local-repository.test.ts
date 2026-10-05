@@ -160,4 +160,16 @@ describe('repositório local (modo único, sem Firestore)', () => {
       repo.uploadPublicClientRequestFile({ id: 'f', orgId: 'local', clientId: 'c1', requestId: req.id, transactionId: 'a', name: 'n', type: 'application/pdf', bytes: 1, data: 'x', uploadedAt: 'T' })
     ).rejects.toThrow();
   });
+
+  it('saldos de abertura: um por cliente, com auditoria; excluir o cliente apaga os saldos', async () => {
+    await repo.saveClient({ id: 'c1', name: 'A', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
+    const audit = (id: string) => ({ id, clientId: 'c1', action: 'OPENING_SAVE' as const, actorUid: 'u', at: 'T' });
+    expect(await repo.getOpeningBalances('c1')).toBeNull();
+    await repo.saveOpeningBalances({ id: 'c1', clientId: 'c1', date: '2024-12-31', entries: [{ accountId: 'x', amount: 10 }], updatedAt: 'T' }, audit('a1'));
+    await repo.saveOpeningBalances({ id: 'c1', clientId: 'c1', date: '2024-12-31', entries: [{ accountId: 'x', amount: 20 }], updatedAt: 'T2' }, audit('a2'));
+    expect((await repo.getOpeningBalances('c1'))?.entries).toEqual([{ accountId: 'x', amount: 20 }]);
+    expect((await repo.listAudit('c1')).map((a) => a.id).sort()).toEqual(['a1', 'a2']);
+    await repo.deleteClient('c1');
+    expect(await repo.getOpeningBalances('c1')).toBeNull();
+  });
 });
