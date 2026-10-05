@@ -17,6 +17,8 @@ import {
 import { isMonthLocked } from '@/lib/periods';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
+import { assessRuleTerm, type TermAssessment } from '@/lib/payee';
 
 /** Tipos oferecidos na interface (REGEX existente continua funcionando e sendo exibido). */
 const MATCH_OPTIONS: readonly RuleMatchType[] = ['CONTAINS', 'STARTS_WITH', 'EXACT'];
@@ -57,6 +59,10 @@ interface RuleRowProps {
   pending: number;
   conflicts: readonly RuleConflict[];
   rulesById: ReadonlyMap<string, ClassificationRule>;
+  /** Avaliação do termo atual da regra (genérico/amplo) contra os lançamentos do cliente. */
+  assessment: TermAssessment;
+  /** Descrições dos lançamentos do cliente, para avaliar o termo em edição. */
+  memos: readonly string[];
   isDuplicate: (key: string, exceptId: string) => boolean;
   onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
@@ -64,17 +70,28 @@ interface RuleRowProps {
   applying: boolean;
 }
 
-function RuleRow({ rule, account, affected, pending, conflicts, rulesById, isDuplicate, onSave, onDelete, onApply, applying }: RuleRowProps) {
+function RuleRow({ rule, account, affected, pending, conflicts, rulesById, assessment, memos, isDuplicate, onSave, onDelete, onApply, applying }: RuleRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(rule.pattern);
   const [draftType, setDraftType] = useState<RuleMatchType>(rule.matchType ?? 'CONTAINS');
 
   const normalized = draftType === 'REGEX' ? draft.trim() : normalizePattern(draft);
+  const draftAssessment = useMemo(
+    () => (editing ? assessRuleTerm({ pattern: normalized, matchType: draftType }, memos) : assessment),
+    [editing, normalized, draftType, memos, assessment]
+  );
+  const [ackKey, setAckKey] = useState('');
+  const draftKey = `${draftType}|${normalized}`;
+  const acknowledged = ackKey === draftKey;
+  // Editar para um termo genérico exige "Criar mesmo assim"; manter o termo atual não.
+  const needsAck = draftAssessment.level === 'generic' && draftKey !== `${rule.matchType ?? 'CONTAINS'}|${rule.pattern}` && !acknowledged;
   const error = !normalized
     ? 'Informe um termo.'
     : isDuplicate(ruleKey(normalized, draftType), rule.id)
       ? 'Já existe regra com esse termo e tipo.'
-      : null;
+      : needsAck
+        ? 'Termo genérico: marque “Criar mesmo assim” para salvar.'
+        : null;
 
   const cancel = () => {
     setDraft(rule.pattern);
@@ -109,7 +126,13 @@ function RuleRow({ rule, account, affected, pending, conflicts, rulesById, isDup
               className={`${INPUT} h-9 font-mono text-[13px]`}
             />
             <MatchTypeSelect value={draftType} onChange={setDraftType} className="h-9 text-[12px]" />
-            {error && <p className="text-[11px] text-rose-600">{error}</p>}
+            <TermWarning
+              assessment={draftAssessment}
+              acknowledged={acknowledged}
+              onAcknowledged={(v) => setAckKey(v ? draftKey : '')}
+              className="mt-1"
+            />
+            {error && !needsAck && <p className="text-[11px] text-rose-600">{error}</p>}
           </div>
         ) : (
           <div className="min-w-0 space-y-1">
@@ -117,6 +140,20 @@ function RuleRow({ rule, account, affected, pending, conflicts, rulesById, isDup
             <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>
+            {assessment.level !== 'ok' && (
+              <p
+                title={assessment.reasons.join('\n')}
+                className={`flex items-start gap-1 text-[11px] leading-snug ${
+                  assessment.level === 'generic' ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'
+                }`}
+              >
+                <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
+                <span>
+                  {assessment.level === 'generic' ? 'Termo genérico' : 'Termo amplo'}
+                  {assessment.matchCount > 0 && ` · casa com ${assessment.matchCount} lançamento(s) de ${assessment.payeeCount} favorecido(s)`}
+                </span>
+              </p>
+            )}
             {conflicts.map((c) => {
               const winner = rulesById.get(c.winnerId);
               return (
@@ -264,11 +301,24 @@ export default function RegrasPage() {
   );
   const conflictCount = conflicts.size;
 
+  const memos = useMemo(() => transactions.map((t) => t.memo), [transactions]);
+
+  // Termo da nova regra: avisa se é genérico ("enviado") ou casa com muitos favorecidos.
+  const newTerm = newType === 'REGEX' ? newPattern.trim() : normalizePattern(newPattern);
+  const newAssessment = useMemo(
+    () => (newTerm ? assessRuleTerm({ pattern: newTerm, matchType: newType }, memos) : null),
+    [newTerm, newType, memos]
+  );
+  const [newAckKey, setNewAckKey] = useState('');
+  const newKey = `${newType}|${newTerm}`;
+  const newBlocked = newAssessment?.level === 'generic' && newAckKey !== newKey;
+
   const rows = useMemo(() => {
     const term = search.trim().toLowerCase();
     return rules
       .map((rule) => ({
         rule,
+        assessment: assessRuleTerm(rule, memos),
         account: accountsById.get(rule.accountId),
         affected: countAffected(rule, transactions),
         pending: pendingWonByRule(openPending, rules, rule).length,
@@ -281,7 +331,7 @@ export default function RegrasPage() {
           (account?.code ?? rule.accountCode ?? '').includes(term)
       )
       .sort((a, b) => b.affected - a.affected || a.rule.pattern.localeCompare(b.rule.pattern));
-  }, [rules, accountsById, transactions, openPending, search]);
+  }, [rules, accountsById, transactions, openPending, search, memos]);
 
   const isDuplicate = useCallback(
     (key: string, exceptId: string) =>
@@ -320,6 +370,10 @@ export default function RegrasPage() {
     const account = accountsById.get(newAccountId);
     if (!pattern || !account) {
       setAddError('Informe o termo e a conta de destino.');
+      return;
+    }
+    if (newBlocked) {
+      setAddError('Termo genérico: marque “Criar mesmo assim” para salvar.');
       return;
     }
     if (isDuplicate(ruleKey(pattern, newType), '')) {
@@ -428,6 +482,14 @@ export default function RegrasPage() {
             {adding ? 'Adicionando…' : 'Adicionar'}
           </button>
         </div>
+        {newAssessment && (
+          <TermWarning
+            assessment={newAssessment}
+            acknowledged={newAckKey === newKey}
+            onAcknowledged={(v) => setNewAckKey(v ? newKey : '')}
+            className="mt-0"
+          />
+        )}
         {addError && <p className="text-[12px] text-rose-600 animate-fade-in">{addError}</p>}
         {notice && (
           <p role="status" className="text-[12px] text-emerald-700 animate-fade-in">
@@ -474,10 +536,12 @@ export default function RegrasPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ rule, account, affected, pending }) => (
+                {rows.map(({ rule, account, affected, pending, assessment }) => (
                   <RuleRow
                     key={rule.id}
                     rule={rule}
+                    assessment={assessment}
+                    memos={memos}
                     account={account}
                     affected={affected}
                     pending={pending}

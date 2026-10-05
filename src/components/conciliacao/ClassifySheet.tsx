@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftRight, Check, Lock, MessageCircleQuestion, Search, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ArrowLeftRight, Lock, MessageCircleQuestion, X } from 'lucide-react';
 import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { normalizePattern } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { IOSSwitch, SegmentedControl } from '@/components/ui/primitives';
+import { SegmentedControl } from '@/components/ui/primitives';
+import { AccountPicker } from '@/components/conciliacao/AccountPicker';
+import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
+import { assessRuleTerm, suggestRuleTerm } from '@/lib/payee';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
@@ -29,6 +32,8 @@ interface ClassifySheetProps {
   lockedMonthLabel?: string | null;
   /** Carrega a trilha de auditoria do lançamento. */
   loadAudit: () => Promise<AuditEntry[]>;
+  /** Descrições dos lançamentos carregados, para avaliar se o termo da regra é genérico ou amplo. */
+  memoPool?: readonly string[];
   /** Registra (texto) ou remove (vazio) a pergunta ao cliente. Sem a prop, a aba não aparece. */
   onAskClient?: (question: string) => Promise<void>;
 }
@@ -39,11 +44,6 @@ type SheetMode = 'single' | 'split' | 'ask' | 'history';
 const defaultQuestion = (t: BankTransaction) =>
   `O que é o lançamento de ${formatCurrency(Math.abs(t.amount))} em ${formatDateBR(t.date)} (“${t.memo}”)? Se tiver, anexe a nota ou o comprovante.`;
 
-const MATCH_OPTIONS: readonly { value: RuleMatchType; label: string }[] = [
-  { value: 'CONTAINS', label: 'Contém' },
-  { value: 'STARTS_WITH', label: 'Começa com' },
-  { value: 'EXACT', label: 'É exatamente' },
-];
 
 export function ClassifySheet({
   transaction,
@@ -57,12 +57,12 @@ export function ClassifySheet({
   lockedMonthLabel,
   loadAudit,
   onAskClient,
+  memoPool = [],
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
   const sourceRule = transaction.matchedRuleId ? rules.find((r) => r.id === transaction.matchedRuleId) : undefined;
   const [confirmUndo, setConfirmUndo] = useState(false);
-  const accountListRef = useRef<HTMLUListElement>(null);
 
 
   useEffect(() => {
@@ -94,28 +94,23 @@ export function ClassifySheet({
   const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
   const canSaveSplit = splitSummary.isBalanced && splitSummary.isComplete;
 
-  // Em edição, traz a conta atual para o centro da lista (inclusive ao voltar do modo rateio).
-  useEffect(() => {
-    const list = accountListRef.current;
-    const item = list?.querySelector<HTMLElement>('[aria-selected="true"]')?.closest('li');
-    // Rola só a lista (scrollIntoView rolaria também o sheet e a página).
-    if (list && item) list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
-  }, [mode]);
-  const [search, setSearch] = useState('');
   const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
   // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
   const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
-  const [customPattern, setCustomPattern] = useState(normalizePattern(sourceRule?.pattern ?? transaction.memo));
+  // Termo sugerido: o favorecido (sem "Pix" nem "- Enviado"); ao editar, o termo da regra de origem.
+  const suggestedTerm = suggestRuleTerm(transaction.memo);
+  const [customPattern, setCustomPattern] = useState(sourceRule?.pattern ?? suggestedTerm);
   const [matchType, setMatchType] = useState<RuleMatchType>(
     sourceRule?.matchType && sourceRule.matchType !== 'REGEX' ? sourceRule.matchType : 'CONTAINS'
   );
 
-  const options = useMemo(() => {
-    const term = normalizePattern(search);
-    return accounts
-      .filter((a) => a.nature === 'ANALYTIC')
-      .filter((a) => !term || `${a.code} ${a.name}`.toLowerCase().includes(term));
-  }, [accounts, search]);
+  const assessment = useMemo(
+    () => assessRuleTerm({ pattern: customPattern, matchType }, memoPool),
+    [customPattern, matchType, memoPool]
+  );
+  const [acknowledged, setAcknowledged] = useState(false);
+  // Termo genérico só é salvo depois de "Criar mesmo assim".
+  const ruleBlocked = learnRule && assessment.level === 'generic' && !acknowledged;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -262,85 +257,31 @@ export function ClassifySheet({
           {/* Plano de contas */}
           <section className="space-y-2">
             <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-            <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
-              <div className="relative border-b border-black/[0.04] dark:border-white/[0.06]">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
-                <input
-                  autoFocus
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar por código ou nome"
-                  className="w-full pl-10 pr-3 py-3 bg-transparent text-[14px] tracking-tight placeholder:text-stone-400 outline-none"
-                />
-              </div>
-              <ul ref={accountListRef} role="listbox" className="relative max-h-56 overflow-y-auto overscroll-contain">
-                {options.length === 0 && (
-                  <li className="px-4 py-6 text-center text-[13px] text-stone-400">Nenhuma conta encontrada</li>
-                )}
-                {options.map((a) => {
-                  const selected = a.id === accountId;
-                  return (
-                    <li key={a.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-0">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={selected}
-                        onClick={() => setAccountId(a.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${
-                          selected ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
-                        }`}
-                      >
-                        <span className="w-[96px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
-                        <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-[#0071E3] font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
-                          {a.name}
-                        </span>
-                        {selected && <Check className="w-4 h-4 text-[#0071E3] shrink-0" strokeWidth={2.5} />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
           </section>
 
           {/* Aprendizado */}
-          <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
-            <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
-              <span className="flex-1 min-w-0">
-                <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">
-                  {isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
-                </span>
-                <span className="block text-[12px] text-stone-500">
-                  {sourceRule
-                    ? `A regra “${sourceRule.pattern}” passará a usar a nova conta`
-                    : 'Aplica a lançamentos semelhantes'}
-                </span>
-              </span>
-              <IOSSwitch id="learn-rule" checked={learnRule} onChange={setLearnRule} />
-            </label>
-            {learnRule && (
-              <div className="border-t border-black/[0.04] dark:border-white/[0.06] px-4 py-3 animate-fade-in">
-                <label htmlFor="pattern" className="block text-[12px] text-stone-500 mb-1">
-                  Termo a memorizar
-                </label>
-                <input
-                  id="pattern"
-                  value={customPattern}
-                  onChange={(e) => setCustomPattern(e.target.value)}
-                  placeholder="ex.: uber, aws, tarifa"
-                  className="w-full bg-transparent font-mono text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
-                />
-                <div className="mt-2.5 overflow-x-auto">
-                  <SegmentedControl ariaLabel="Tipo de comparação" value={matchType} onChange={setMatchType} options={MATCH_OPTIONS} />
-                </div>
-                {matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) && (
-                  <p className="mt-1.5 text-[11px] text-amber-700">
-                    Com “É exatamente”, a regra só casa históricos idênticos ao termo — este lançamento não casaria.
-                  </p>
-                )}
-              </div>
-            )}
-          </section>
+          <RuleLearnPanel
+            checked={learnRule}
+            onChecked={setLearnRule}
+            title={isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
+            subtitle={sourceRule ? `A regra “${sourceRule.pattern}” passará a usar a nova conta` : 'Aplica a lançamentos semelhantes'}
+            term={customPattern}
+            onTerm={setCustomPattern}
+            matchType={matchType}
+            onMatchType={setMatchType}
+            assessment={assessment}
+            acknowledged={acknowledged}
+            onAcknowledged={setAcknowledged}
+            suggestion={suggestedTerm}
+            note={
+              matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
+                <p className="mt-1.5 text-[11px] text-amber-700">
+                  Com “É exatamente”, a regra só casa históricos idênticos ao termo — este lançamento não casaria.
+                </p>
+              ) : null
+            }
+          />
         </div>
         )}
 
@@ -390,7 +331,7 @@ export function ClassifySheet({
           ) : (
           <button
             type="button"
-            disabled={!accountId || isSaving}
+            disabled={!accountId || isSaving || ruleBlocked}
             onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType)}
             className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
           >

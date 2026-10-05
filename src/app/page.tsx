@@ -7,12 +7,14 @@ import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { useReconciliation, type ImportResult, type MemoUpdate } from '@/hooks/useReconciliation';
+import { useReconciliation, type ClassifyOptions, type ImportResult, type MemoUpdate } from '@/hooks/useReconciliation';
 import { AlertTriangle, ArrowLeftRight, CheckCheck, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { PAGE, SURFACE } from '@/components/ui/primitives';
+import { PAGE, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import type { SplitDraft } from '@/lib/splits';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
+import { GroupClassifySheet, PayeeGroupList } from '@/components/conciliacao/PayeeGroups';
+import { groupByPayee, type PayeeGroup } from '@/lib/payee';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
 import { DuplicateImportModal, type DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
@@ -126,6 +128,7 @@ export default function ConciliacaoPage() {
     updateMemos,
     importTransactions,
     classifyTransaction,
+    classifyMany,
     splitTransaction,
     unreconcileTransaction,
     approveAutoClassified,
@@ -196,6 +199,29 @@ export default function ConciliacaoPage() {
     () => (filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter)),
     [transactions, filter]
   );
+
+  // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
+  const [view, setView] = useState<'list' | 'payee'>('list');
+  const [groupSheet, setGroupSheet] = useState<PayeeGroup | null>(null);
+  const payeeGroups = useMemo(
+    () => groupByPayee(transactions.filter((t) => t.status === 'PENDING' && !t.transferPairId && !isMonthLocked(t.date, lockedMonths))),
+    [transactions, lockedMonths]
+  );
+  const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
+
+  const handleGroupConfirm = async (ids: string[], accountId: string, options: ClassifyOptions) => {
+    try {
+      const r = await classifyMany(ids, accountId, options);
+      setGroupSheet(null);
+      const parts = [`${r.classified} lançamento(s) classificado(s)`];
+      if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
+      if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
+      if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s) (mês fechado ou transferência)`);
+      setToast(parts.join(' · '));
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
 
   // Paginação da tabela (volta à 1ª página ao trocar filtro, período ou cliente).
   const [page, setPage] = useState(0);
@@ -485,7 +511,17 @@ export default function ConciliacaoPage() {
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
-          <div role="tablist" className="inline-flex p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start">
+          <div className="flex flex-wrap items-center gap-3">
+          <SegmentedControl
+            ariaLabel="Visão dos lançamentos"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'list', label: 'Lista' },
+              { value: 'payee', label: 'Por favorecido' },
+            ]}
+          />
+          <div role="tablist" className={`${view === 'list' ? 'inline-flex' : 'hidden'} p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}>
             {FILTERS.map((f) => (
               <button
                 key={f.value}
@@ -503,6 +539,7 @@ export default function ConciliacaoPage() {
               </button>
             ))}
           </div>
+          </div>
 
           <button
             type="button"
@@ -516,7 +553,9 @@ export default function ConciliacaoPage() {
           </button>
         </div>
 
-        {isLoading ? (
+        {view === 'payee' && !isLoading ? (
+          <PayeeGroupList groups={payeeGroups} onOpen={setGroupSheet} />
+        ) : isLoading ? (
           <div className="divide-y divide-black/[0.04]">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-14 px-5 flex items-center gap-4">
@@ -707,6 +746,7 @@ export default function ConciliacaoPage() {
           onSplit={handleSplit}
           onUnreconcile={handleUnreconcile}
           rules={rules}
+          memoPool={memoPool}
           lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
           loadAudit={() => loadAudit(selected.id)}
           onAskClient={async (question) => {
@@ -718,6 +758,18 @@ export default function ConciliacaoPage() {
               /* erro exposto pelo hook */
             }
           }}
+        />
+      )}
+
+      {groupSheet && (
+        <GroupClassifySheet
+          key={groupSheet.id}
+          group={groupSheet}
+          accounts={accounts}
+          pool={transactions}
+          isSaving={isSaving}
+          onClose={() => setGroupSheet(null)}
+          onConfirm={handleGroupConfirm}
         />
       )}
 
