@@ -27,6 +27,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  OpeningBalances,
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
@@ -43,6 +44,7 @@ export const COL = {
   locks: 'period_locks',
   audit: 'audit_log',
   bankAccounts: 'bank_accounts',
+  openings: 'opening_balances',
   requests: 'client_requests',
   requestFiles: 'client_request_files',
 } as const;
@@ -182,7 +184,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
       // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro:
       // lançamentos de competência fechada não podem ser excluídos.
-      for (const name of [COL.locks, COL.transactions, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.locks, COL.transactions, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(doc(db, COL.clients, clientId));
@@ -290,6 +292,18 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       }
       groups.push(single((b) => b.delete(doc(db, COL.batches, batch.id))));
       await run(groups);
+    },
+
+    /* ── Saldos de abertura ───────────────────────────────────────────── */
+    async getOpeningBalances(clientId) {
+      const snap = await getDoc(doc(db, COL.openings, clientId));
+      return snap.exists() ? ({ ...(snap.data() as OpeningBalances), id: snap.id }) : null;
+    },
+    async saveOpeningBalances(balances, audit) {
+      const b = writeBatch(db);
+      b.set(doc(db, COL.openings, balances.clientId), stamp({ ...balances, id: balances.clientId }));
+      b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      await b.commit();
     },
 
     /* ── Contas bancárias ─────────────────────────────────────────────── */

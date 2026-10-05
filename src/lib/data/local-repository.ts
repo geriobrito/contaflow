@@ -8,6 +8,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  OpeningBalances,
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
@@ -30,6 +31,7 @@ export const LOCAL_KEYS = {
   audit: 'contaflow_audit_log',
   org: 'contaflow_org',
   bankAccounts: 'contaflow_bank_accounts',
+  openings: 'contaflow_opening_balances',
   requests: 'contaflow_client_requests',
   requestFiles: 'contaflow_client_request_files',
 } as const;
@@ -119,6 +121,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.batches,
         LOCAL_KEYS.locks,
         LOCAL_KEYS.bankAccounts,
+        LOCAL_KEYS.openings,
         LOCAL_KEYS.requests,
         LOCAL_KEYS.requestFiles,
       ]) {
@@ -215,6 +218,15 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         read<BankTransaction>(LOCAL_KEYS.transactions).filter((t) => !gone.has(t.id))
       );
       remove<ImportBatch>(LOCAL_KEYS.batches, batch.id);
+    },
+
+    async getOpeningBalances(clientId) {
+      return read<OpeningBalances>(LOCAL_KEYS.openings).find((o) => o.clientId === clientId) ?? null;
+    },
+    async saveOpeningBalances(balances, audit) {
+      const others = read<OpeningBalances>(LOCAL_KEYS.openings).filter((o) => o.clientId !== balances.clientId);
+      write(LOCAL_KEYS.openings, [...others, stamp({ ...balances, id: balances.clientId })]);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
 
     async listBankAccounts(clientId) {

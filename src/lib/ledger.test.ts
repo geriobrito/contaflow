@@ -117,3 +117,48 @@ describe('partidas dobradas a partir do extrato', () => {
     expect(p.filter((x) => x.accountId === id('1.1.1.02')).map((x) => x.value)).toEqual([100]);
   });
 });
+
+describe('saldos de abertura das demais contas', () => {
+  const opening = (entries: [string, number][], date = '2024-12-31') => ({
+    id: 'c',
+    clientId: 'c',
+    date,
+    entries: entries.map(([code, amount]) => ({ accountId: id(code), amount })),
+    updatedAt: '',
+  });
+  const banks = [bank('itau', '1.1.1.02', [1000, '2024-12-31'])];
+
+  it('cada lado no sentido natural; retificadora reduz; fecha quando ativo = passivo + PL', () => {
+    const o = opening([
+      ['1.1.2.01', 500], // clientes (D)
+      ['1.2.3.03', 4000], // máquinas (D)
+      ['1.2.3.07', 1000], // (-) depreciação acumulada (contra, ativo → crédito)
+      ['2.1.2.01', 800], // fornecedores (C)
+      ['2.3.1.01', 3700], // capital (C)
+    ]);
+    const postings = buildPostings([], banks, chart, undefined, o);
+    expect(postings.reduce((s, p) => s + p.value, 0)).toBeCloseTo(0);
+    const bs = buildBalanceSheet(postings, chart, '2025-01-31');
+    // ativo: 1000 banco + 500 + 4000 − 1000 = 4500; passivo 800; PL 3700
+    expect(bs.totalAssets).toBe(4500);
+    expect(bs.totalLiabilities).toBe(800);
+    expect(bs.totalEquity).toBe(3700);
+    expect(bs.difference).toBe(0);
+    expect(bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)).toBeUndefined();
+    expect(bs.assets.find((l) => l.code === '1.2.3.07')?.value).toBe(-1000);
+  });
+
+  it('o que falta detalhar fica em "Saldos de abertura (a detalhar)"', () => {
+    const bs = buildBalanceSheet(buildPostings([], banks, chart, undefined, opening([['1.1.2.01', 500], ['2.3.1.01', 1000]])), chart, '2025-01-31');
+    expect(bs.totalAssets).toBe(1500);
+    expect(bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)?.value).toBe(500);
+    expect(bs.difference).toBe(0);
+  });
+
+  it('respeita a data e ignora contas de resultado e desconhecidas', () => {
+    const o = opening([['1.1.2.01', 500], ['3.1.1.01', 999]], '2025-03-31');
+    expect(buildPostings([], [], chart, '2025-02-28', o)).toEqual([]);
+    const p = buildPostings([], [], chart, '2025-03-31', { ...o, entries: [...o.entries, { accountId: 'inexistente', amount: 5 }] });
+    expect(p.map((x) => x.accountId).sort()).toEqual([VIRTUAL.OPENING, id('1.1.2.01')].sort());
+  });
+});

@@ -2,11 +2,11 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Printer } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, OrgSettings } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances, OrgSettings } from '@/types/firestore';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { buildBalanceSheet, buildPostings, buildTrialBalance, type BalanceSheetLine } from '@/lib/ledger';
+import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type BalanceSheetLine } from '@/lib/ledger';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 
@@ -52,7 +52,7 @@ export default function BalancoPage() {
   const { range, jumpTo } = period;
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
-  const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null } | null>(null);
+  const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null; openings: OpeningBalances | null } | null>(null);
   const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -62,11 +62,11 @@ export default function BalancoPage() {
     if (!clientId) return;
     let active = true;
     const repo = getRepository();
-    Promise.all([repo.listAccounts(clientId), repo.listBankAccounts(clientId), repo.getOrgSettings(), getLatestTransactionDate(clientId)])
-      .then(([accounts, banks, org, latest]) => {
+    Promise.all([repo.listAccounts(clientId), repo.listBankAccounts(clientId), repo.getOrgSettings(), getLatestTransactionDate(clientId), repo.getOpeningBalances(clientId)])
+      .then(([accounts, banks, org, latest, openings]) => {
         if (!active) return;
         if (latest) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org });
+        setStatic({ id: clientId, accounts, banks, org, openings });
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));
     return () => {
@@ -92,11 +92,12 @@ export default function BalancoPage() {
   const loading = !ready || txs?.key !== key;
   const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
   const banks = useMemo(() => static_?.banks ?? [], [static_]);
-  const postings = useMemo(() => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end)), [loading, txs, banks, accounts, range.end]);
+  const postings = useMemo(() => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings)), [loading, txs, banks, accounts, range.end, static_?.openings]);
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const tb = useMemo(() => buildTrialBalance(postings, accounts, range), [postings, accounts, range]);
   const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
 
+  const openingGap = bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)?.value ?? 0;
   const missingOpening = banks.filter((b) => b.openingBalance === undefined);
   const unlinked = banks.filter((b) => !b.ledgerAccountId);
   const hasData = postings.length > 0;
@@ -172,6 +173,15 @@ export default function BalancoPage() {
             <p className="flex items-start gap-2 text-[13px] text-amber-700">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               {formatCurrency(Math.abs(bs.suspense))} em lançamentos ainda não conciliados até {formatDateBR(range.end)} aparecem como “Lançamentos a classificar”. Concilie-os para um balanço definitivo.
+            </p>
+          )}
+          {openingGap !== 0 && (
+            <p className="flex items-start gap-2 text-[13px] text-amber-700">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                Há {formatCurrency(Math.abs(openingGap))} em “Saldos de abertura (a detalhar)”: os saldos de abertura de clientes, fornecedores, capital etc. ainda não
+                fecham com os dos bancos. <a href="/abertura" className="font-medium underline">Completar saldos de abertura</a>
+              </span>
             </p>
           )}
           {unlinked.length > 0 && (

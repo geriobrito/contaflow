@@ -257,7 +257,8 @@ export type AuditAction =
   | 'PERIOD_REOPEN'
   | 'TRANSFER'
   | 'BATCH_DELETE'
-  | 'MEMO_REPAIR';
+  | 'MEMO_REPAIR'
+  | 'OPENING_SAVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -416,4 +417,33 @@ export interface ClientRequestFile {
   /** Conteúdo em base64 (sem o prefixo data:). */
   data: string;
   uploadedAt: string;
+}
+
+/* =========================================================================
+   Saldos de abertura
+   ========================================================================= */
+
+/** Saldo de abertura de uma conta patrimonial, no lado natural dela (ativo devedor, passivo e PL credor). */
+export interface OpeningEntry {
+  accountId: string;
+  accountCode?: string;
+  accountName?: string;
+  /** Valor positivo; contas retificadoras (isContra) reduzem o grupo. */
+  amount: number;
+}
+
+/**
+ * Saldos de abertura do cliente (coleção `opening_balances`, id = clientId): posição em `date`
+ * das contas patrimoniais que não são bancos (clientes, fornecedores, estoque, imobilizado,
+ * capital…). Os bancos têm o saldo inicial em `bank_accounts`.
+ */
+export interface OpeningBalances {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  /** Data do saldo (YYYY-MM-DD), normalmente o último dia do exercício anterior. */
+  date: string;
+  entries: OpeningEntry[];
+  updatedAt: string;
+  updatedByUid?: string;
 }

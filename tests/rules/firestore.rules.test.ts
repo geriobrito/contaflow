@@ -534,3 +534,38 @@ describe('correção de acentuação dos históricos', () => {
     await assertFails(updateDoc(doc(asUser('alice'), 'transactions/cA_1'), { memo: 'x', amount: -1 }));
   });
 });
+
+describe('saldos de abertura', () => {
+  const opening = (clientId = 'cA', orgId = ORG_A) => ({ id: clientId, orgId, clientId, date: '2024-12-31', entries: [{ accountId: 'x', amount: 10 }], updatedAt: 'T' });
+  const audit = { id: 'au-op', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: 'T' } as const;
+
+  it('grava com auditoria, atualiza, e isola entre escritórios; o id é o cliente', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveOpeningBalances(opening() as never, audit);
+    expect((await repo.getOpeningBalances('cA'))?.entries).toHaveLength(1);
+    await repo.saveOpeningBalances({ ...opening(), entries: [] } as never, { ...audit, id: 'au-op2' });
+    expect((await repo.getOpeningBalances('cA'))?.entries).toEqual([]);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['OPENING_SAVE', 'OPENING_SAVE']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'opening_balances/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'opening_balances/cA'), opening('cA', ORG_B)));
+    await assertFails(setDoc(doc(asUser('alice'), 'opening_balances/outro'), opening())); // id ≠ clientId
+    await assertFails(updateDoc(doc(asUser('alice'), 'opening_balances/cA'), { clientId: 'cB' }));
+  });
+
+  it('excluir a empresa remove os saldos de abertura', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveOpeningBalances(opening() as never, audit);
+    await repo.deleteClient('cA');
+    // Sem a empresa não há mais o que ler pelas regras: confere direto no banco.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'opening_balances/cA'))).exists()).toBe(false);
+    });
+  });
+
+  it('empresa sem saldos informados: ler devolve vazio, não erro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getOpeningBalances('cA')).toBeNull();
+    await assertFails(getDoc(doc(asUser('bob'), 'opening_balances/cA'))); // cliente de outro escritório
+  });
+});
