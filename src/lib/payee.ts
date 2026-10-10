@@ -1,5 +1,5 @@
 import type { BankTransaction, ClassificationRule, RuleMatchType } from '@/types/firestore';
-import { matchesRule, normalizePattern } from '@/lib/reconciliation';
+import { matchesRule } from '@/lib/reconciliation';
 
 /**
  * Favorecido (quem pagou ou recebeu) de uma descrição de extrato, agrupamento de lançamentos
@@ -95,9 +95,45 @@ export function extractPayee(memo: string): string | null {
   return null;
 }
 
-/** Termo sugerido para uma regra: o favorecido (sem "Pix", sem "- Enviado"); sem favorecido, a descrição toda. */
+const collapseSpaces = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * Termo sugerido para uma regra de favorecido: o favorecido (sem "Pix", sem "- Enviado"); sem
+ * favorecido, a descrição toda. Mantém a grafia original — a comparação das regras já ignora
+ * maiúsculas/minúsculas (`matchesRule`) e o termo é normalizado ao salvar.
+ */
 export function suggestRuleTerm(memo: string): string {
-  return normalizePattern(extractPayee(memo) ?? memo);
+  return collapseSpaces(extractPayee(memo) ?? memo);
+}
+
+/**
+ * Termo sugerido para um lançamento: a descrição como aparece na lista
+ * ("Pix recebido - Marcelya Luyza Sales De Assis"), do início até o favorecido e os descritores
+ * logo depois dele ("- Enviado"). Corta só o que costuma variar ou poluir: CPF/CNPJ e dados
+ * bancários ("- •••.975.291-•• - COOP… Agência: 810 Conta: 16754-4").
+ *
+ * O resultado é sempre um trecho inicial da descrição, então a regra casa o próprio lançamento.
+ * Sem favorecido, devolve a descrição inteira; se houver documento antes do favorecido, o favorecido.
+ */
+export function suggestMemoTerm(memo: string): string {
+  const segments = memo
+    .split(/\s+-\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const kept: string[] = [];
+  let payeeFound = false;
+  for (const segment of segments) {
+    if (isNoise(segment)) {
+      if (!payeeFound) return suggestRuleTerm(memo);
+      break;
+    }
+    const cleaned = cleanPayee(segment);
+    const isDescriptor = !cleaned || DESCRIPTORS.has(textKey(cleaned));
+    if (payeeFound && !isDescriptor) break; // segundo nome/complemento: fica de fora
+    kept.push(segment);
+    if (!isDescriptor) payeeFound = true;
+  }
+  return payeeFound ? collapseSpaces(kept.join(' - ')) : collapseSpaces(memo);
 }
 
 /** Chave do favorecido para agrupar (sem favorecido, a própria descrição). */

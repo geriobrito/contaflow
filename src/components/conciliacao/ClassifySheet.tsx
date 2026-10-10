@@ -8,7 +8,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SegmentedControl } from '@/components/ui/primitives';
 import { AccountPicker } from '@/components/conciliacao/AccountPicker';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
-import { assessRuleTerm, suggestRuleTerm } from '@/lib/payee';
+import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
@@ -97,8 +97,10 @@ export function ClassifySheet({
   const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
   // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
   const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
-  // Termo sugerido: o favorecido (sem "Pix" nem "- Enviado"); ao editar, o termo da regra de origem.
-  const suggestedTerm = suggestRuleTerm(transaction.memo);
+  // Termo sugerido: a descrição como aparece na lista ("Pix recebido - Fulano"), sem CPF/dados bancários;
+  // ao editar, o termo da regra de origem. O favorecido sozinho fica disponível como atalho.
+  const suggestedTerm = suggestMemoTerm(transaction.memo);
+  const payeeTerm = suggestRuleTerm(transaction.memo);
   const [customPattern, setCustomPattern] = useState(sourceRule?.pattern ?? suggestedTerm);
   const [matchType, setMatchType] = useState<RuleMatchType>(
     sourceRule?.matchType && sourceRule.matchType !== 'REGEX' ? sourceRule.matchType : 'CONTAINS'
@@ -273,7 +275,8 @@ export function ClassifySheet({
             assessment={assessment}
             acknowledged={acknowledged}
             onAcknowledged={setAcknowledged}
-            suggestion={suggestedTerm}
+            suggestion={payeeTerm}
+            memoSuggestion={suggestedTerm}
             note={
               matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
                 <p className="mt-1.5 text-[11px] text-amber-700">

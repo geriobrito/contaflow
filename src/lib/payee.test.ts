@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BankTransaction } from '@/types/firestore';
-import { assessRuleTerm, extractPayee, groupByPayee, payeeKey, suggestRuleTerm } from '@/lib/payee';
+import { assessRuleTerm, extractPayee, groupByPayee, payeeKey, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
+import { matchesRule } from '@/lib/reconciliation';
 
 const tx = (id: string, memo: string, amount: number, date = '2025-03-10'): BankTransaction => ({
   id, clientId: 'c', fitid: id, date, amount, type: amount < 0 ? 'DEBIT' : 'CREDIT', memo, status: 'PENDING', createdAt: '',
@@ -38,10 +39,40 @@ describe('extractPayee (descrições reais dos extratos)', () => {
     expect(extractPayee(memo)).toBe(expected);
   });
 
-  it('termo sugerido: favorecido em minúsculas; sem favorecido, a descrição inteira', () => {
-    expect(suggestRuleTerm('Pix WMS SUPERMERCADOS DO BRASIL LTDA - Enviado')).toBe('wms supermercados do brasil ltda');
-    expect(suggestRuleTerm('Pagamento de fatura')).toBe('pagamento de fatura');
-    expect(suggestRuleTerm('Vendas - Depósito InfinitePay')).toBe('vendas');
+  it('termo do favorecido: grafia original; sem favorecido, a descrição inteira', () => {
+    expect(suggestRuleTerm('Pix WMS SUPERMERCADOS DO BRASIL LTDA - Enviado')).toBe('WMS SUPERMERCADOS DO BRASIL LTDA');
+    expect(suggestRuleTerm('Pagamento de fatura')).toBe('Pagamento de fatura');
+    expect(suggestRuleTerm('Vendas - Depósito InfinitePay')).toBe('Vendas');
+  });
+
+  describe('suggestMemoTerm (termo a memorizar de um lançamento)', () => {
+    const memoCases: [string, string][] = [
+      ['Pix recebido - Marcelya Luyza Sales De Assis', 'Pix recebido - Marcelya Luyza Sales De Assis'],
+      ['Pix WMS SUPERMERCADOS DO BRASIL LTDA - Enviado', 'Pix WMS SUPERMERCADOS DO BRASIL LTDA - Enviado'],
+      ['QR Code Pix enviado - Shpp Brasil Instituicao De Pag', 'QR Code Pix enviado - Shpp Brasil Instituicao De Pag'],
+      ['Pagamento de boleto efetuado - Claro', 'Pagamento de boleto efetuado - Claro'],
+      ['Pagamento de fatura', 'Pagamento de fatura'],
+      ['UBER *TRIP   SAO PAULO BR', 'UBER *TRIP SAO PAULO BR'],
+      // CPF/CNPJ e dados bancários ficam de fora
+      [
+        'Transferência recebida pelo Pix - VALQUIRIA LIMA SOUTO - •••.975.291-•• - COOP SICREDI OURO VERDE MT Agência: 810 Conta: 16754-4',
+        'Transferência recebida pelo Pix - VALQUIRIA LIMA SOUTO',
+      ],
+      [
+        'Estorno - Transferência enviada pelo Pix - Bella Modas - 31.207.209/0001-54 - ITAÚ UNIBANCO S.A. (0341) Agência: 4416 Conta: 44085-9',
+        'Estorno - Transferência enviada pelo Pix - Bella Modas',
+      ],
+      ['Vendas - Depósito InfinitePay', 'Vendas'],
+    ];
+    it.each(memoCases)('%s', (memo, expected) => {
+      expect(suggestMemoTerm(memo)).toBe(expected);
+    });
+
+    it('o termo sempre casa o próprio lançamento', () => {
+      for (const [memo] of memoCases) {
+        expect(matchesRule(memo, { pattern: suggestMemoTerm(memo), matchType: 'CONTAINS' })).toBe(true);
+      }
+    });
   });
 
   it('variações do mesmo favorecido têm a mesma chave', () => {
@@ -69,7 +100,7 @@ describe('groupByPayee', () => {
       ['ROGERIO SILVA', 'IN', 1, 1000],
       ['ROGERIO SILVA', 'OUT', 1, -150],
     ]);
-    expect(groups[0].term).toBe('wms supermercados do brasil ltda');
+    expect(groups[0].term).toBe('WMS SUPERMERCADOS DO BRASIL LTDA');
     expect(groups[0].transactions.map((t) => t.id)).toEqual(['1', '2', '3']);
   });
 });

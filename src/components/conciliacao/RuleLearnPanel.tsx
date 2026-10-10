@@ -12,6 +12,9 @@ export const MATCH_OPTIONS: readonly { value: RuleMatchType; label: string }[] =
   { value: 'EXACT', label: 'É exatamente' },
 ];
 
+/** Mesmo termo para a regra (a comparação ignora maiúsculas e espaços extras). */
+const sameTerm = (a: string, b: string) => a.toLowerCase().replace(/\s+/g, ' ').trim() === b.toLowerCase().replace(/\s+/g, ' ').trim();
+
 interface RuleLearnPanelProps {
   checked: boolean;
   onChecked: (v: boolean) => void;
@@ -30,6 +33,8 @@ interface RuleLearnPanelProps {
   note?: React.ReactNode;
   /** Sugestão de termo (favorecido), para voltar a ela com um toque. */
   suggestion?: string;
+  /** Sugestão pela descrição do lançamento (como aparece na lista). */
+  memoSuggestion?: string;
 }
 
 /** Bloco "Lembrar essa classificação": termo, tipo de comparação e avisos de termo genérico ou amplo. */
@@ -47,6 +52,7 @@ export function RuleLearnPanel({
   onAcknowledged,
   note,
   suggestion,
+  memoSuggestion,
 }: RuleLearnPanelProps) {
   return (
     <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
@@ -70,9 +76,14 @@ export function RuleLearnPanel({
             aria-invalid={assessment.level === 'generic'}
             className="w-full bg-transparent font-mono text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
           />
-          {suggestion && suggestion !== term && (
-            <button type="button" onClick={() => onTerm(suggestion)} className="mt-1 text-[11px] text-[#0071E3] hover:underline">
-              Usar o favorecido: {suggestion}
+          {memoSuggestion && !sameTerm(memoSuggestion, term) && (
+            <button type="button" onClick={() => onTerm(memoSuggestion)} className="mt-1 mr-3 text-[11px] text-[#0071E3] hover:underline text-left">
+              Usar a descrição: {memoSuggestion}
+            </button>
+          )}
+          {suggestion && !sameTerm(suggestion, term) && !(memoSuggestion && sameTerm(suggestion, memoSuggestion)) && (
+            <button type="button" onClick={() => onTerm(suggestion)} className="mt-1 text-[11px] text-[#0071E3] hover:underline text-left">
+              Usar só o favorecido: {suggestion}
             </button>
           )}
           <div className="mt-2.5 overflow-x-auto">

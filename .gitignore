@@ -27,6 +27,8 @@
 .env.test.local
 .env.production.local
 !.env.example
+service-account.json
+
 
 # Firebase & Cloud Credentials
 serviceAccountKey*.json
