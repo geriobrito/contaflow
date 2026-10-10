@@ -1,8 +1,8 @@
 import { jsPDF } from 'jspdf';
-import { autoTable, type UserOptions } from 'jspdf-autotable';
+import { autoTable } from 'jspdf-autotable';
 import type { ClientCompany } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import type { BalanceSheet, BalanceSheetLine, TrialBalance, TrialBalanceRow } from '@/lib/ledger';
+import type { BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -54,7 +54,7 @@ function sanitizeFileName(name: string): string {
 /**
  * Adiciona o rodapé de paginação elegante em todas as páginas do documento.
  */
-function addPageFooters(doc: jsPDF, title: string, clientName: string, orientation: 'portrait' | 'landscape') {
+function addPageFooters(doc: jsPDF, title: string, clientName: string) {
   const totalPages = doc.getNumberOfPages();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -340,7 +340,7 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   }
 
   renderSignatures(doc, nextY, issuedAt, ctx.signatories, 'portrait');
-  addPageFooters(doc, 'BALANÇO PATRIMONIAL', ctx.client.name, 'portrait');
+  addPageFooters(doc, 'BALANÇO PATRIMONIAL', ctx.client.name);
 }
 
 /* =========================================================================
@@ -486,7 +486,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y + 40;
 
   // Legenda de rodapé explicativa
-  let nextY = finalY + 4;
+  const nextY = finalY + 4;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...MUTED);
@@ -497,7 +497,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   );
 
   renderSignatures(doc, nextY + 2, issuedAt, ctx.signatories, 'landscape');
-  addPageFooters(doc, 'BALANCETE DE VERIFICAÇÃO', ctx.client.name, 'landscape');
+  addPageFooters(doc, 'BALANCETE DE VERIFICAÇÃO', ctx.client.name);
 }
 
 /* =========================================================================
