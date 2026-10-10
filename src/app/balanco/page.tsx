@@ -286,47 +286,100 @@ export default function BalancoPage() {
           </section>
         </div>
       ) : (
-        <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+        <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
           <div className="flex items-center justify-end px-5 py-2.5 border-b border-black/[0.04] print:hidden">
             <label className="flex items-center gap-2 text-[12px] text-stone-500">
               <input type="checkbox" checked={showSynthetic} onChange={(e) => setShowSynthetic(e.target.checked)} /> Mostrar contas sintéticas
             </label>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
+          <div className="overflow-x-auto print:overflow-visible">
+            <table className="w-full text-left print-fit-table">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04]">
-                  <th className="font-medium pl-5 pr-3 py-2.5 w-32">Código</th>
-                  <th className="font-medium px-3 py-2.5">Conta</th>
-                  <th className="font-medium px-3 py-2.5 text-right">Saldo anterior</th>
-                  <th className="font-medium px-3 py-2.5 text-right">Débitos</th>
-                  <th className="font-medium px-3 py-2.5 text-right">Créditos</th>
-                  <th className="font-medium pl-3 pr-5 py-2.5 text-right">Saldo atual</th>
+                <tr className="text-[11px] print:text-[9.5px] uppercase tracking-wider text-stone-400 print:text-stone-700 border-b border-black/[0.04] print:border-b-2 print:border-black/40">
+                  <th className="font-medium pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
+                  <th className="font-medium px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
+                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
+                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Débitos</th>
+                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Créditos</th>
+                  <th className="font-medium pl-3 pr-5 py-2.5 text-right print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</th>
                 </tr>
               </thead>
               <tbody>
                 {tbRows.map((r) => (
-                  <tr key={r.accountId} className={`border-b border-black/[0.03] last:border-0 text-[13px] ${r.synthetic ? 'font-medium text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400'}`}>
-                    <td className="pl-5 pr-3 py-1.5 font-mono tabular-nums text-[12px] text-stone-400">{r.code}</td>
-                    <td className="px-3 py-1.5" style={{ paddingLeft: `${12 + Math.max(0, r.level - 1) * 12}px` }}>{r.name}</td>
-                    <td className="px-3 py-1.5 text-right font-mono tabular-nums whitespace-nowrap">{dc(r.previous)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono tabular-nums whitespace-nowrap">{r.debits ? formatCurrency(r.debits) : '—'}</td>
-                    <td className="px-3 py-1.5 text-right font-mono tabular-nums whitespace-nowrap">{r.credits ? formatCurrency(r.credits) : '—'}</td>
-                    <td className="pl-3 pr-5 py-1.5 text-right font-mono tabular-nums whitespace-nowrap">{dc(r.final)}</td>
+                  <tr
+                    key={r.accountId}
+                    className={`border-b border-black/[0.03] print:border-black/[0.06] last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid ${
+                      r.synthetic ? 'font-medium text-stone-900 dark:text-stone-100 print:font-semibold print:text-black' : 'text-stone-600 dark:text-stone-400 print:text-stone-800'
+                    }`}
+                  >
+                    <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-400 print:text-stone-600 whitespace-nowrap">
+                      {r.code}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-1.5 print:py-1 leading-snug">
+                      <span
+                        className="inline-block"
+                        style={{ paddingLeft: `${Math.max(0, r.level - 1) * 7}px` }}
+                      >
+                        {r.name}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
+                      {dc(r.previous)}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
+                      {r.debits ? formatCurrency(r.debits) : '—'}
+                    </td>
+                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
+                      {r.credits ? formatCurrency(r.credits) : '—'}
+                    </td>
+                    <td className="pl-3 pr-5 py-1.5 print:pl-1 print:pr-1.5 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
+                      {dc(r.final)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-black/[0.08] text-[13px] font-semibold">
-                  <td className="pl-5 pr-3 py-2.5" />
-                  <td className="px-3 py-2.5">Totais (contas analíticas)</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{dc(tb.totals.previous)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.debits)}</td>
-                  <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.credits)}</td>
-                  <td className="pl-3 pr-5 py-2.5 text-right font-mono tabular-nums">{dc(tb.totals.final)}</td>
+                <tr className="border-t border-black/[0.08] print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
+                  <td className="pl-5 pr-3 py-2.5 print:pl-1.5 print:pr-1 print:py-1.5" />
+                  <td className="px-3 py-2.5 print:px-1.5 print:py-1.5">Totais (contas analíticas)</td>
+                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.previous)}</td>
+                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.debits)}</td>
+                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.credits)}</td>
+                  <td className="pl-3 pr-5 py-2.5 print:pl-1 print:pr-1.5 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.final)}</td>
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </section>
+      )}
+
+      {/* Assinaturas contábeis oficiais para impressão (Balanço e Balancete) */}
+      {hasData && (
+        <section aria-label="Assinaturas contábeis" className="hidden print:block pt-8 print-avoid-break">
+          <div className="text-[9px] text-stone-500 mb-6 text-center">
+            NBC TG 1002 / ITG 1000 — Relatório emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
+          </div>
+          <div className="grid grid-cols-2 gap-8 pt-4">
+            <div className="text-center">
+              <div className="border-t border-stone-800 pt-1.5 w-64 mx-auto">
+                <p className="text-[10px] font-semibold text-stone-900 uppercase">
+                  {currentClient?.legalRepresentativeName || currentClient?.name || 'Representante Legal'}
+                </p>
+                <p className="text-[9px] text-stone-600">
+                  {currentClient?.legalRepresentativeCpf ? `CPF: ${currentClient.legalRepresentativeCpf}` : 'Representante Legal'}
+                </p>
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="border-t border-stone-800 pt-1.5 w-64 mx-auto">
+                <p className="text-[10px] font-semibold text-stone-900 uppercase">
+                  {static_?.org?.accountantName || 'Contador Responsável'}
+                </p>
+                <p className="text-[9px] text-stone-600">
+                  {static_?.org?.accountantCrc ? `CRC: ${static_.org.accountantCrc}` : 'Contador'}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
       )}

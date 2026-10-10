@@ -15,9 +15,7 @@ const SECTION_FILL: [number, number, number] = [238, 238, 236];
 const SUBTOTAL_FILL: [number, number, number] = [242, 242, 240];
 const GRAND_TOTAL_FILL: [number, number, number] = [228, 228, 226];
 
-const MARGIN_X = 14; // mm
-const PAGE_BOTTOM_PORTRAIT = 278; // mm
-const PAGE_BOTTOM_LANDSCAPE = 194; // mm
+const MARGIN_X = 12; // mm (permite acomodar as 6 colunas do Balancete com folga perfeita em A4 Retrato)
 
 export interface LedgerPdfExportContext {
   client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
@@ -84,11 +82,10 @@ function renderSignatures(
   doc: jsPDF,
   startY: number,
   issuedAt: Date,
-  signatories: LedgerPdfExportContext['signatories'],
-  orientation: 'portrait' | 'landscape'
+  signatories: LedgerPdfExportContext['signatories']
 ) {
   const pageWidth = doc.internal.pageSize.getWidth();
-  const pageBottom = orientation === 'portrait' ? PAGE_BOTTOM_PORTRAIT : PAGE_BOTTOM_LANDSCAPE;
+  const pageBottom = doc.internal.pageSize.getHeight() - 18;
   const BLOCK_HEIGHT = 46;
 
   let y = startY + 8;
@@ -339,7 +336,7 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     nextY += 2;
   }
 
-  renderSignatures(doc, nextY, issuedAt, ctx.signatories, 'portrait');
+  renderSignatures(doc, nextY, issuedAt, ctx.signatories);
   addPageFooters(doc, 'BALANÇO PATRIMONIAL', ctx.client.name);
 }
 
@@ -396,7 +393,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   doc.setLineWidth(0.4);
   doc.line(MARGIN_X, y, pageWidth - MARGIN_X, y);
 
-  /* ── Tabela de 6 colunas perfeitamente calibrada em Paisagem (269mm úteis) ── */
+  /* ── Tabela de 6 colunas perfeitamente calibrada em A4 Retrato (186mm úteis) ── */
   const bodyRows = rows.map((r) => [
     r.code,
     r.name,
@@ -420,33 +417,33 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
 
   autoTable(doc, {
     startY: y + 2,
-    margin: { left: MARGIN_X, right: MARGIN_X, bottom: 16 },
+    margin: { left: MARGIN_X, right: MARGIN_X, bottom: 18 },
     theme: 'plain',
     head: [['Código', 'Conta', 'Saldo Anterior', 'Débitos', 'Créditos', 'Saldo Atual']],
     body: bodyRows,
     styles: {
       font: 'helvetica',
-      fontSize: 8,
+      fontSize: 7.2,
       textColor: INK,
-      cellPadding: { top: 1.4, bottom: 1.4, left: 2, right: 2 },
+      cellPadding: { top: 1.2, bottom: 1.2, left: 1.5, right: 1.5 },
       lineColor: RULE,
       overflow: 'linebreak',
     },
     headStyles: {
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 7.5,
       textColor: MUTED,
       fillColor: HEADER_FILL,
       lineWidth: { bottom: 0.35 },
       lineColor: INK,
     },
     columnStyles: {
-      0: { cellWidth: 26, halign: 'left', font: 'courier' },
+      0: { cellWidth: 23, halign: 'left', font: 'helvetica' },
       1: { cellWidth: 'auto', halign: 'left' },
-      2: { cellWidth: 36, halign: 'right' },
-      3: { cellWidth: 36, halign: 'right' },
-      4: { cellWidth: 36, halign: 'right' },
-      5: { cellWidth: 36, halign: 'right' },
+      2: { cellWidth: 27, halign: 'right' },
+      3: { cellWidth: 27, halign: 'right' },
+      4: { cellWidth: 27, halign: 'right' },
+      5: { cellWidth: 27, halign: 'right' },
     },
     didParseCell: (data) => {
       if (data.section === 'head') {
@@ -457,11 +454,11 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
 
       if (data.row.index === totalRowIndex) {
         data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fontSize = 8.5;
+        data.cell.styles.fontSize = 8;
         data.cell.styles.fillColor = GRAND_TOTAL_FILL;
         data.cell.styles.lineWidth = { top: 0.35, bottom: 0.7 };
         data.cell.styles.lineColor = INK;
-        data.cell.styles.cellPadding = { top: 2.2, bottom: 2.2, left: 2, right: 2 };
+        data.cell.styles.cellPadding = { top: 1.8, bottom: 1.8, left: 1.5, right: 1.5 };
         return;
       }
 
@@ -477,8 +474,8 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
       }
 
       if (data.column.index === 1) {
-        const indent = Math.max(0, row.level - 1) * 3;
-        data.cell.styles.cellPadding = { top: 1.3, bottom: 1.3, left: 2 + indent, right: 2 };
+        const indent = Math.max(0, row.level - 1) * 2.2;
+        data.cell.styles.cellPadding = { top: 1.2, bottom: 1.2, left: 1.5 + indent, right: 1.5 };
       }
     },
   });
@@ -496,7 +493,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     nextY
   );
 
-  renderSignatures(doc, nextY + 2, issuedAt, ctx.signatories, 'landscape');
+  renderSignatures(doc, nextY + 2, issuedAt, ctx.signatories);
   addPageFooters(doc, 'BALANCETE DE VERIFICAÇÃO', ctx.client.name);
 }
 
@@ -507,16 +504,15 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
 /**
  * Gera o relatório contábil em PDF vetorial A4 de alta qualidade.
  * - Balanço Patrimonial: A4 Retrato (layout oficial NBC TG 1002 / ITG 1000).
- * - Balancete de Verificação: A4 Paisagem (6 colunas perfeitamente ajustadas).
+ * - Balancete de Verificação: A4 Retrato (padronizado no mesmo padrão do Balanço, sem cortes).
  */
 export function generateLedgerPdf(ctx: LedgerPdfExportContext): { blob: Blob; fileName: string } {
   const isBalanceSheet = ctx.documentType === 'bs';
-  const orientation = isBalanceSheet ? 'portrait' : 'landscape';
 
   const doc = new jsPDF({
     unit: 'mm',
     format: 'a4',
-    orientation,
+    orientation: 'portrait',
   });
 
   if (isBalanceSheet) {

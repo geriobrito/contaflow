@@ -139,8 +139,8 @@ body {
 /* Impressão / exportação PDF: papel branco, sem cromo de navegação */
 @media print {
   @page {
-    size: A4;
-    margin: 16mm 14mm;
+    size: A4 portrait;
+    margin: 10mm 10mm 12mm 10mm;
   }
   html,
   body {
@@ -154,5 +154,17 @@ body {
   }
   .print-avoid-break {
     break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* Garante que tabelas contábeis caibam perfeitamente na largura do papel A4 sem cortar colunas */
+  .print-fit-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+  .print-fit-table th,
+  .print-fit-table td {
+    box-sizing: border-box !important;
   }
 }

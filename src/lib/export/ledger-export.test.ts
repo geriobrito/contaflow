@@ -69,7 +69,7 @@ describe('generateLedgerPdf', () => {
     expect(res.fileName.endsWith('.pdf')).toBe(true);
   });
 
-  it('gera PDF oficial do Balancete de Verificação em formato A4 Paisagem', () => {
+  it('gera PDF oficial do Balancete de Verificação em formato A4 Retrato', () => {
     const res = generateLedgerPdf({
       client: mockClient,
       range: mockRange,
