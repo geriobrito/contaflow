@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Printer } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances, OrgSettings } from '@/types/firestore';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
@@ -56,6 +56,7 @@ export default function BalancoPage() {
   const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   // Plano, bancos e escritório; posiciona no mês do lançamento mais recente.
   useEffect(() => {
@@ -102,11 +103,44 @@ export default function BalancoPage() {
   const unlinked = banks.filter((b) => !b.ledgerAccountId);
   const hasData = postings.length > 0;
 
+  const exportPdf = async () => {
+    if (!currentClient) return;
+    setGeneratingPdf(true);
+    try {
+      const [{ generateLedgerPdf }, { downloadBlob }] = await Promise.all([
+        import('@/lib/export/ledger-pdf'),
+        import('@/lib/export/dre-rows'),
+      ]);
+      const org = static_?.org;
+      const file = generateLedgerPdf({
+        client: currentClient,
+        range,
+        balanceSheet: bs,
+        trialBalance: tb,
+        documentType: view,
+        showSynthetic,
+        issuedAt: new Date(),
+        signatories: {
+          legalRepresentative: { name: currentClient.legalRepresentativeName, cpf: currentClient.legalRepresentativeCpf },
+          accountant: org ? { name: org.accountantName, crc: org.accountantCrc } : undefined,
+        },
+      });
+      downloadBlob(file.blob, file.fileName);
+    } catch (e) {
+      setError(`Não foi possível gerar o PDF (${e instanceof Error ? e.message : 'erro'}).`);
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const exportExcel = async () => {
     if (!currentClient) return;
     setExporting(true);
     try {
-      const [{ generateLedgerExcel }, { downloadBlob }] = await Promise.all([import('@/lib/export/ledger-excel'), import('@/lib/export/dre-rows')]);
+      const [{ generateLedgerExcel }, { downloadBlob }] = await Promise.all([
+        import('@/lib/export/ledger-excel'),
+        import('@/lib/export/dre-rows'),
+      ]);
       const org = static_?.org;
       const file = await generateLedgerExcel({
         client: currentClient,
@@ -140,15 +174,37 @@ export default function BalancoPage() {
           )
         }
         actions={
-          <>
-            <button type="button" disabled={!hasData || exporting} onClick={() => void exportExcel()} className={BUTTON.secondary}>
-              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />}
-              Exportar Excel
+          <div role="group" aria-label="Exportar relatório contábil" className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!hasData || generatingPdf || exporting}
+              onClick={() => void exportPdf()}
+              className={BUTTON.primary}
+              title={`Gerar PDF oficial do ${view === 'bs' ? 'Balanço Patrimonial' : 'Balancete'}`}
+            >
+              {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" strokeWidth={1.75} />}
+              {generatingPdf ? 'Gerando…' : 'PDF Oficial'}
             </button>
-            <button type="button" onClick={() => window.print()} aria-label="Imprimir" title="Imprimir" className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/[0.05]">
+            <button
+              type="button"
+              disabled={!hasData || exporting || generatingPdf}
+              onClick={() => void exportExcel()}
+              className={BUTTON.secondary}
+              title="Exportar planilha Excel (.xlsx) com Balanço e Balancete"
+            >
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />}
+              {exporting ? 'Gerando…' : 'Exportar Excel'}
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              aria-label="Imprimir"
+              title="Imprimir"
+              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/[0.05]"
+            >
               <Printer className="w-4 h-4" strokeWidth={1.75} />
             </button>
-          </>
+          </div>
         }
       />
 
