@@ -7,6 +7,7 @@ import { getLatestTransactionDate, getRepository } from '@/lib/services/data-ser
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type BalanceSheetLine } from '@/lib/ledger';
+import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 
@@ -97,6 +98,17 @@ export default function BalancoPage() {
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const tb = useMemo(() => buildTrialBalance(postings, accounts, range), [postings, accounts, range]);
   const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
+
+  const consistency = useMemo(() => {
+    if (loading || !txs) return null;
+    return checkAccountingConsistency({
+      transactions: txs.list,
+      accounts,
+      banks,
+      date: range.end,
+      openings: static_?.openings,
+    });
+  }, [loading, txs, accounts, banks, range.end, static_?.openings]);
 
   const openingGap = bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)?.value ?? 0;
   const missingOpening = banks.filter((b) => b.openingBalance === undefined);
@@ -262,6 +274,16 @@ export default function BalancoPage() {
                 ? 'Débitos = créditos'
                 : 'Débitos e créditos não conferem'}
           </p>
+          {consistency && (
+            <p className={`flex items-center gap-2 text-[13px] ${consistency.isConsistent ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {consistency.isConsistent ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+              {consistency.isConsistent
+                ? `Conferência DRE: O Resultado do Exercício no PL (${formatCurrency(consistency.balanceCurrentResult)}) confere exatamente com a DRE do exercício.`
+                : `Conferência DRE: Resultado no PL (${formatCurrency(consistency.balanceCurrentResult)}) difere da DRE (${formatCurrency(consistency.dreNetResult)}) em ${formatCurrency(Math.abs(consistency.difference))}${
+                    consistency.suspenseAmount !== 0 ? ` (${formatCurrency(Math.abs(consistency.suspenseAmount))} em lançamentos a classificar)` : ''
+                  }.`}
+            </p>
+          )}
         </div>
       )}
 

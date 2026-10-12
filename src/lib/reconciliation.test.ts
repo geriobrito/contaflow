@@ -58,6 +58,13 @@ describe('matchesRule (tipo de comparação)', () => {
 describe('resolução de conflito', () => {
   const memo = 'PIX RECEBIDO CLIENTE TECH CORP';
 
+  it('regra específica do cliente vence regra global mesmo com padrão mais curto', () => {
+    const globalRule = rule('global-longa', 'pix recebido cliente tech corp', { clientId: 'global' });
+    const clientRule = rule('cliente-curta', 'pix', { clientId: 'c1' });
+    expect(findMatchingRule(memo, [globalRule, clientRule])?.id).toBe('cliente-curta');
+    expect(findMatchingRule(memo, [clientRule, globalRule])?.id).toBe('cliente-curta');
+  });
+
   it('tipo mais restritivo vence, mesmo com padrão mais curto', () => {
     const rules = [rule('contem-longo', 'pix recebido cliente tech'), typed('comeca', 'pix', 'STARTS_WITH')];
     expect(findMatchingRule(memo, rules)?.id).toBe('comeca');

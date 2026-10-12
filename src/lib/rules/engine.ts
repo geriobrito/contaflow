@@ -41,8 +41,17 @@ export function matchTransactionWithRules(
     (r) => !clientId || r.clientId === clientId || r.clientId === 'global'
   );
 
-  // Ordenar regras: tamanho do pattern decrescente (mais específico primeiro) e depois por uso
+  // Ordenar regras:
+  // 1. Regra específica do cliente sempre tem precedência sobre regra global ('global')
+  // 2. Tamanho do pattern decrescente (mais específico primeiro)
+  // 3. Taxa de uso (usageCount)
   const sortedRules = [...applicableRules].sort((a, b) => {
+    const aIsClient = clientId ? a.clientId === clientId : a.clientId !== 'global';
+    const bIsClient = clientId ? b.clientId === clientId : b.clientId !== 'global';
+    if (aIsClient !== bIsClient) {
+      return aIsClient ? -1 : 1;
+    }
+
     if (b.pattern.length !== a.pattern.length) {
       return b.pattern.length - a.pattern.length;
     }

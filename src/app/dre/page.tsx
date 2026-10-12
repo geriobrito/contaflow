@@ -11,7 +11,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import type { BankTransaction, ChartAccount, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
 import { monthsBetween } from '@/lib/periods';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -22,6 +22,8 @@ import type { DREExportContext } from '@/lib/export/dre-rows';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { DRECompareTable } from '@/components/dre/DRECompareTable';
 import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
+import { checkAccountingConsistency } from '@/lib/dre/consistency';
+import { DREConsistencyCard } from '@/components/dre/DREConsistencyCard';
 
 /** Receita bruta do período, base da análise vertical (% s/ receita bruta). */
 const GrossRevenueContext = createContext(0);
@@ -168,20 +170,29 @@ export default function DREPage() {
     };
   }, [clientId, jumpTo]);
 
-  // Competências fechadas (selo de DRE definitiva) e dados do escritório (assinaturas).
+  // Competências fechadas (selo de DRE definitiva), dados do escritório e contas bancárias/abertura (consistência contábil).
   const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [org, setOrg] = useState<OrgSettings | null>(null);
+  const [banks, setBanks] = useState<BankAccount[]>([]);
+  const [openings, setOpenings] = useState<OpeningBalances | null>(null);
   useEffect(() => {
     if (!clientId) return;
     let active = true;
     const repo = getRepository();
-    Promise.all([repo.listPeriodLocks(clientId), repo.getOrgSettings()])
-      .then(([l, o]) => {
+    Promise.all([
+      repo.listPeriodLocks(clientId),
+      repo.getOrgSettings(),
+      repo.listBankAccounts(clientId),
+      repo.getOpeningBalances(clientId),
+    ])
+      .then(([l, o, b, op]) => {
         if (!active) return;
         setLocks(l);
         setOrg(o);
+        setBanks(b);
+        setOpenings(op);
       })
-      .catch((e: unknown) => console.error('Erro ao carregar fechamentos/escritório:', e));
+      .catch((e: unknown) => console.error('Erro ao carregar dados auxiliares da DRE:', e));
     return () => {
       active = false;
     };
@@ -192,14 +203,16 @@ export default function DREPage() {
     return { total: months.length, closed };
   }, [locks, range]);
 
-  // 2) Busca no banco apenas os lançamentos do período selecionado.
+  // 2) Busca no banco os lançamentos do exercício até a data final selecionada.
   const ready = Boolean(clientId) && positionedFor === clientId;
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const periodKey = `${clientId}|${range.start}|${range.end}`;
   useEffect(() => {
     if (!clientId || !ready) return;
     let active = true;
-    getTransactions(clientId, range)
+    const exerciseStart = `${range.end.slice(0, 4)}-01-01`;
+    const fetchStart = range.start < exerciseStart ? range.start : exerciseStart;
+    getTransactions(clientId, { start: fetchStart, end: range.end })
       .then((txs) => {
         if (!active) return;
         setTransactions(txs);
@@ -238,6 +251,17 @@ export default function DREPage() {
     () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange) : null),
     [prevTxs, prevKey, accounts, prevRange]
   );
+
+  const consistency = useMemo(() => {
+    if (!clientId || accounts.length === 0 || !ready) return null;
+    return checkAccountingConsistency({
+      transactions,
+      accounts,
+      banks,
+      date: range.end,
+      openings,
+    });
+  }, [clientId, accounts, ready, transactions, banks, range.end, openings]);
 
   const isLoading = Boolean(clientId) && loadedKey !== periodKey && !loadError;
   const profit = dre.netResult >= 0;
@@ -434,6 +458,12 @@ export default function DREPage() {
           </span>
         </div>
       </section>
+
+      {consistency && !isLoading && hasData && (
+        <div className="print:hidden">
+          <DREConsistencyCard consistency={consistency} date={range.end} />
+        </div>
+      )}
 
       {dre.awaitingApproval > 0 && (
         <p className="text-[13px] text-stone-500 print:hidden">

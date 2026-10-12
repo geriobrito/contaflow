@@ -42,12 +42,18 @@ export function matchesRule(memo: string, rule: Pick<ClassificationRule, 'patter
 
 /**
  * Ordem de precedência entre regras que casam o mesmo lançamento (resolução de conflito):
- *   1. tipo mais restritivo (exato > começa com > contém > regex);
- *   2. padrão mais longo (mais específico);
- *   3. regra mais recente (updatedAt/createdAt);
- *   4. id (desempate estável).
+ *   1. regra específica do cliente > regra modelo global ('global');
+ *   2. tipo mais restritivo (exato > começa com > contém > regex);
+ *   3. padrão mais longo (mais específico);
+ *   4. regra mais recente (updatedAt/createdAt);
+ *   5. id (desempate estável).
  */
 export function compareRules(a: ClassificationRule, b: ClassificationRule): number {
+  const aGlobal = a.clientId === 'global';
+  const bGlobal = b.clientId === 'global';
+  if (aGlobal !== bGlobal) {
+    return aGlobal ? 1 : -1;
+  }
   const byType = TYPE_RANK[b.matchType ?? 'CONTAINS'] - TYPE_RANK[a.matchType ?? 'CONTAINS'];
   if (byType) return byType;
   const byLength = normalizePattern(b.pattern).length - normalizePattern(a.pattern).length;
