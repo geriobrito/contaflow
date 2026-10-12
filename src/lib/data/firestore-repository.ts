@@ -252,8 +252,24 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return existing;
     },
     async insertTransactions(transactions, batch?: ImportBatch) {
-      await run(transactions.map((tx) => single((b) => b.set(doc(db, COL.transactions, tx.id), stamp(tx)))));
-      if (batch) await setDoc(doc(db, COL.batches, batch.id), stamp(batch));
+      if (batch) {
+        await setDoc(doc(db, COL.batches, batch.id), stamp({ ...batch, status: 'PROCESSING' }));
+      }
+      try {
+        await run(transactions.map((tx) => single((b) => b.set(doc(db, COL.transactions, tx.id), stamp(tx)))));
+        if (batch) {
+          await setDoc(doc(db, COL.batches, batch.id), stamp({ ...batch, status: 'COMPLETED' }), { merge: true });
+        }
+      } catch (err) {
+        if (batch) {
+          try {
+            await setDoc(doc(db, COL.batches, batch.id), stamp({ ...batch, status: 'FAILED' }), { merge: true });
+          } catch (innerErr) {
+            console.error('[insertTransactions] Falha ao marcar lote como FAILED:', innerErr);
+          }
+        }
+        throw err;
+      }
     },
 
     async commitChanges(changes: ChangeSet) {

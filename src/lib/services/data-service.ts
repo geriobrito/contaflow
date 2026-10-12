@@ -49,6 +49,7 @@ export const deleteClient = (clientId: string): Promise<void> => getRepository()
 export const getAccounts = (clientId: string): Promise<ChartAccount[]> => getRepository().listAccounts(clientId);
 export const saveAccount = (account: ChartAccount): Promise<void> => getRepository().saveAccount(account);
 export const deleteAccount = (accountId: string): Promise<void> => getRepository().deleteAccount(accountId);
+export { deleteChartAccount } from '@/lib/services/accounting-service';
 
 /**
  * Aplica o Plano de Contas da ITG 1000 (CFC, 15/12/2022 — NBC TG 1002, Anexo 11)

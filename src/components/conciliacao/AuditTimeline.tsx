@@ -33,13 +33,15 @@ export function AuditTimeline({ entries, showTransaction = false, emptyText = 'N
           <li key={e.id} className="relative pl-6">
             <span
               className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-[#F9F9F8] dark:border-stone-900 ${
-                e.action === 'UNRECONCILE' || e.action === 'PERIOD_REOPEN'
+                e.action === 'UNRECONCILE' || e.action === 'PERIOD_REOPEN' || e.action === 'ACCOUNT_DELETE'
                   ? 'bg-rose-400'
                   : e.action === 'AUTO_CLASSIFY'
                     ? 'bg-blue-400'
-                    : period
-                      ? 'bg-stone-700 dark:bg-stone-300'
-                      : 'bg-emerald-500'
+                    : e.action === 'QUERY_ASK' || e.action === 'QUERY_RESOLVE'
+                      ? 'bg-amber-400'
+                      : period
+                        ? 'bg-stone-700 dark:bg-stone-300'
+                        : 'bg-emerald-500'
               }`}
             />
             <p className="text-[13px] text-stone-900 dark:text-stone-100">

@@ -21,12 +21,13 @@ export function defaultNickname(meta: Pick<BankAccount, 'bankName' | 'bankId' | 
  * banco menos a movimentação do arquivo, no dia anterior ao início do extrato.
  */
 export function suggestOpening(
-  batches: readonly Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate' | 'ledgerDate' | 'ledgerBalance' | 'fileNet'>[],
+  batches: readonly (Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate' | 'ledgerDate' | 'ledgerBalance' | 'fileNet'> & { status?: string })[],
   accountKey: string
 ): { openingBalance: number; openingDate: string } | null {
   const first = batches
     .filter(
       (b) =>
+        (!b.status || b.status === 'COMPLETED') &&
         b.accountKey === accountKey &&
         b.startDate &&
         b.ledgerBalance !== undefined &&

@@ -600,7 +600,19 @@ export default function ContasPage() {
                         {b.importedCount}
                         {b.duplicateCount > 0 && <span className="text-stone-400"> · {b.duplicateCount} dup.</span>}
                       </td>
-                      <td className="px-3 py-2.5"><BalanceCheckBadge check={b.balanceCheck} /></td>
+                      <td className="px-3 py-2.5">
+                        {b.status === 'FAILED' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded-full border border-rose-200/60" title="A importação foi interrompida com erro. Exclua o lote para remover os lançamentos parciais.">
+                            <AlertTriangle className="w-3 h-3" /> Falha na importação
+                          </span>
+                        ) : b.status === 'PROCESSING' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200/60">
+                            Importando…
+                          </span>
+                        ) : (
+                          <BalanceCheckBadge check={b.balanceCheck} />
+                        )}
+                      </td>
                       <td className="pl-3 pr-5 py-2.5 text-right">
                         <button type="button" onClick={() => setDeleting(b)} aria-label={`Excluir extrato ${b.fileName}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 active:scale-[0.94] transition-all">
                           <Trash2 className="w-3.5 h-3.5" />

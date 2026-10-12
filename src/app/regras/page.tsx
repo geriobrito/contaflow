@@ -15,6 +15,7 @@ import {
   type RuleConflict,
 } from '@/lib/reconciliation';
 import { isMonthLocked } from '@/lib/periods';
+import { newRuleId } from '@/lib/utils/id';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
@@ -385,7 +386,7 @@ export default function RegrasPage() {
     setNotice(null);
     const now = new Date().toISOString();
     const rule: ClassificationRule = {
-      id: `rule-${Date.parse(now)}`,
+      id: newRuleId(),
       clientId,
       pattern,
       accountId: account.id,

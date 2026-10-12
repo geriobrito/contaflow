@@ -11,6 +11,18 @@
 
 export type OFXEncoding = 'utf-8' | 'windows-1252';
 
+/** Caracteres de Windows-1252 nos bytes 0x80–0x9F (o resto de 0x80–0xFF coincide com Latin-1). */
+const CP1252_HIGH: Readonly<Record<string, number>> = {
+  '€': 0x80, '‚': 0x82, 'ƒ': 0x83, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87, 'ˆ': 0x88,
+  '‰': 0x89, 'Š': 0x8a, '‹': 0x8b, 'Œ': 0x8c, 'Ž': 0x8e, '‘': 0x91, '’': 0x92, '“': 0x93,
+  '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '˜': 0x98, '™': 0x99, 'š': 0x9a, '›': 0x9b,
+  'œ': 0x9c, 'ž': 0x9e, 'Ÿ': 0x9f,
+};
+
+const BYTE_TO_CP1252: Readonly<Record<number, string>> = Object.fromEntries(
+  Object.entries(CP1252_HIGH).map(([k, v]) => [v, k])
+);
+
 /**
  * Decodifica os bytes de um OFX. Tenta UTF-8 em modo estrito: um arquivo Latin-1 com
  * acentos praticamente nunca é UTF-8 válido, então a falha identifica o Latin-1 com
@@ -23,21 +35,11 @@ export function decodeOFXBytes(bytes: Uint8Array): { text: string; encoding: OFX
     return { text: text.charCodeAt(0) === 0xfeff ? text.slice(1) : text, encoding: 'utf-8' };
   } catch {
     // Windows-1252 é o Latin-1 dos bancos brasileiros (inclui €, •, – e aspas curvas).
-    return { text: new TextDecoder('windows-1252').decode(bytes), encoding: 'windows-1252' };
+    const raw = new TextDecoder('windows-1252').decode(bytes);
+    const text = raw.replace(/[\x80-\x9F]/g, (ch) => BYTE_TO_CP1252[ch.charCodeAt(0)] ?? ch);
+    return { text, encoding: 'windows-1252' };
   }
 }
-
-/* =========================================================================
-   Reparo de mojibake
-   ========================================================================= */
-
-/** Caracteres de Windows-1252 nos bytes 0x80–0x9F (o resto de 0x80–0xFF coincide com Latin-1). */
-const CP1252_HIGH: Readonly<Record<string, number>> = {
-  '€': 0x80, '‚': 0x82, 'ƒ': 0x83, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87, 'ˆ': 0x88,
-  '‰': 0x89, 'Š': 0x8a, '‹': 0x8b, 'Œ': 0x8c, 'Ž': 0x8e, '‘': 0x91, '’': 0x92, '“': 0x93,
-  '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '˜': 0x98, '™': 0x99, 'š': 0x9a, '›': 0x9b,
-  'œ': 0x9c, 'ž': 0x9e, 'Ÿ': 0x9f,
-};
 
 /** Byte que o caractere teria numa leitura em Windows-1252, ou null. */
 function cp1252Byte(ch: string): number | null {

@@ -7,9 +7,14 @@ export interface Actor {
 }
 
 let seq = 0;
-/** ID único e ordenável por tempo para registros de auditoria. */
-export const newAuditId = (): string =>
-  `audit_${Date.now().toString(36)}_${(seq++).toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+/** ID único e ordenável por tempo para registros de auditoria, combinando timestamp e UUID. */
+export const newAuditId = (): string => {
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 10)
+      : Math.random().toString(36).slice(2, 8);
+  return `audit_${Date.now().toString(36)}_${(seq++).toString(36)}_${rand}`;
+};
 
 /** Fotografia do estado de classificação de um lançamento. */
 export function snapshotOf(tx: BankTransaction): ClassificationSnapshot {
@@ -75,6 +80,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   BATCH_DELETE: 'Excluiu extrato importado',
   MEMO_REPAIR: 'Atualizou descrições dos lançamentos',
   OPENING_SAVE: 'Atualizou os saldos de abertura',
+  ACCOUNT_DELETE: 'Excluiu conta do plano',
+  QUERY_ASK: 'Pergunta ao cliente',
+  QUERY_RESOLVE: 'Concluiu pendência com o cliente',
 };
 
 /** Descrição curta de um estado de classificação. */

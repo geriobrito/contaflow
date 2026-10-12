@@ -1,4 +1,5 @@
 import type { BankTransaction, ChartAccount, TransactionSplit } from '@/types/firestore';
+import { generateId } from '@/lib/utils/id';
 
 /** Valores monetários são comparados em centavos inteiros para evitar erro de ponto flutuante. */
 export const toCents = (value: number): number => Math.round(value * 100);
@@ -81,5 +82,4 @@ export function splitsToDrafts(splits: readonly TransactionSplit[]): SplitDraft[
   return splits.map((s) => ({ id: s.id, accountId: s.accountId, memo: s.memo, cents: Math.abs(toCents(s.amount)) }));
 }
 
-let seq = 0;
-export const newSplitId = (): string => `split_${Date.now().toString(36)}_${(seq++).toString(36)}`;
+export const newSplitId = (): string => generateId('split');

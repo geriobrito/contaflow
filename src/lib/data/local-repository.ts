@@ -179,8 +179,20 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       );
     },
     async insertTransactions(transactions, batch?: ImportBatch) {
-      write(LOCAL_KEYS.transactions, [...read<BankTransaction>(LOCAL_KEYS.transactions), ...transactions.map(stamp)]);
-      if (batch) write(LOCAL_KEYS.batches, [stamp(batch), ...read<ImportBatch>(LOCAL_KEYS.batches)]);
+      if (batch) {
+        upsert(LOCAL_KEYS.batches, stamp({ ...batch, status: 'PROCESSING' }));
+      }
+      try {
+        write(LOCAL_KEYS.transactions, [...read<BankTransaction>(LOCAL_KEYS.transactions), ...transactions.map(stamp)]);
+        if (batch) {
+          upsert(LOCAL_KEYS.batches, stamp({ ...batch, status: 'COMPLETED' }));
+        }
+      } catch (err) {
+        if (batch) {
+          upsert(LOCAL_KEYS.batches, stamp({ ...batch, status: 'FAILED' }));
+        }
+        throw err;
+      }
     },
 
     async commitChanges(changes: ChangeSet) {

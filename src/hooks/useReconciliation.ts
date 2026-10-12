@@ -11,6 +11,7 @@ import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { buildTransactionId, findMatchingRule, normalizePattern } from '@/lib/reconciliation';
 import { classifyAction, newAuditId, transactionAudit } from '@/lib/audit';
+import { newBatchId, newRuleId } from '@/lib/utils/id';
 import { formatMonth, isISODate, isMonthLocked, monthOf } from '@/lib/periods';
 import { accountKeyOf, findCoverageGaps, outOfRangeDates, type CoverageGap } from '@/lib/statement';
 import {
@@ -273,7 +274,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === args.pattern && (r.matchType ?? 'CONTAINS') === args.matchType);
       const rule: ClassificationRule = existingRule
         ? { ...existingRule, pattern: args.pattern, matchType: args.matchType, ...args.ref, updatedAt: args.now }
-        : { id: `rule_${Date.now()}`, clientId, pattern: args.pattern, matchType: args.matchType, ...args.ref, createdAt: args.now, updatedAt: args.now };
+        : { id: newRuleId(), clientId, pattern: args.pattern, matchType: args.matchType, ...args.ref, createdAt: args.now, updatedAt: args.now };
       return { rule, existingRule };
     },
     [clientId, rules]
@@ -389,7 +390,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         const [activeRules, batches] = await Promise.all([repo.listRules(clientId), repo.listImportBatches(clientId)]);
         const classifiable = activeRules.filter((r) => accountsById.get(r.accountId)?.nature !== 'SYNTHETIC');
         const now = new Date().toISOString();
-        const batchId = `batch_${Date.now()}`;
+        const batchId = newBatchId();
 
         const fresh: BankTransaction[] = [];
         for (const [id, raw] of uniqueInFile) {
@@ -423,6 +424,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         const batch: ImportBatch = {
           id: batchId,
           clientId,
+          status: 'COMPLETED',
           fileName: meta.fileName ?? 'extrato.ofx',
           fileSize: 0,
           totalTransactions: items.length,
@@ -667,19 +669,30 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         assertOpen(target);
         const actor = getActor();
         const text = question.trim();
+        const now = new Date().toISOString();
         const { patch, after } = queryTransition(
           target,
           text
             ? {
                 question: text,
                 status: 'OPEN',
-                askedAt: new Date().toISOString(),
+                askedAt: now,
                 askedByUid: actor.uid,
                 ...(actor.email ? { askedByEmail: actor.email } : {}),
               }
             : undefined
         );
-        await getRepository().commitChanges({ patches: [patch], audits: [] });
+        const audit = transactionAudit(
+          'QUERY_ASK',
+          actor,
+          target,
+          after,
+          now,
+          {
+            note: text ? `Pergunta enviada ao cliente: “${text}”` : 'Pergunta ao cliente removida',
+          }
+        );
+        await getRepository().commitChanges({ patches: [patch], audits: [audit] });
         replaceLoaded([after]);
       }),
     [mutate, findLoaded, assertOpen, replaceLoaded]
@@ -691,8 +704,20 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
         const target = findLoaded(transactionId);
         if (!target.clientQuery) return;
         assertOpen(target);
-        const { patch, after } = queryTransition(target, { ...target.clientQuery, status: 'RESOLVED', resolvedAt: new Date().toISOString() });
-        await getRepository().commitChanges({ patches: [patch], audits: [] });
+        const actor = getActor();
+        const now = new Date().toISOString();
+        const { patch, after } = queryTransition(target, { ...target.clientQuery, status: 'RESOLVED', resolvedAt: now });
+        const audit = transactionAudit(
+          'QUERY_RESOLVE',
+          actor,
+          target,
+          after,
+          now,
+          {
+            note: target.clientQuery.question ? `Pendência concluída · Pergunta: “${target.clientQuery.question}”` : 'Pendência concluída',
+          }
+        );
+        await getRepository().commitChanges({ patches: [patch], audits: [audit] });
         replaceLoaded([after]);
       }),
     [mutate, findLoaded, assertOpen, replaceLoaded]

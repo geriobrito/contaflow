@@ -7,7 +7,7 @@ import type {
   ClientRequest,
   ImportBatch,
 } from '@/types/firestore';
-import type { TransactionPatch } from '@/lib/data/repository';
+import type { DataRepository, TransactionPatch } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
 import { newAuditId, transactionAudit } from '@/lib/audit';
@@ -329,3 +329,80 @@ export async function applyTextRepair(clientId: string, plan: TextRepairPlan): P
   for (const id of plan.duplicateRuleIds) await repo.deleteRule(id);
   return { memos: plan.memos.length, rules: plan.rules.length, removedRules: plan.duplicateRuleIds.length };
 }
+
+/* =========================================================================
+   Exclusão segura de conta do plano de contas
+   ========================================================================= */
+
+/**
+ * Exclui uma conta do plano garantindo a integridade dos dados:
+ * - Bloqueia contas globais compartilhadas.
+ * - Bloqueia contas que possuem subcontas (filhas).
+ * - Bloqueia contas associadas a regras de classificação ativas.
+ * - Bloqueia contas vinculadas como conta contábil de bancos.
+ * - Bloqueia contas com saldo de abertura cadastrado.
+ * - Bloqueia contas que possuem lançamentos bancários (diretos ou em rateios).
+ * Registra a exclusão na trilha de auditoria.
+ */
+export async function deleteChartAccount(account: ChartAccount, repo: DataRepository = getRepository()): Promise<void> {
+  if (account.clientId === 'global') {
+    throw new Error('Contas globais do plano compartilhado não podem ser excluídas.');
+  }
+  const clientId = account.clientId;
+
+  // 1. Subcontas
+  const accounts = await repo.listAccounts(clientId);
+  const children = accounts.filter(
+    (a) => a.id !== account.id && (a.parentId === account.id || a.code.startsWith(`${account.code}.`))
+  );
+  if (children.length > 0) {
+    throw new Error(`A conta ${account.code} possui ${children.length} subconta(s) vinculada(s). Exclua ou mova as subcontas primeiro.`);
+  }
+
+  // 2. Regras de classificação
+  const rules = await repo.listRules(clientId);
+  const matchingRule = rules.find((r) => r.accountId === account.id);
+  if (matchingRule) {
+    throw new Error(`A conta ${account.code} está vinculada à regra "${matchingRule.pattern}". Exclua ou altere a regra primeiro.`);
+  }
+
+  // 3. Contas bancárias
+  const bankAccounts = await repo.listBankAccounts(clientId);
+  const matchingBank = bankAccounts.find((b) => b.ledgerAccountId === account.id);
+  if (matchingBank) {
+    throw new Error(`A conta ${account.code} está vinculada como conta contábil do banco "${matchingBank.nickname}". Altere o vínculo antes de excluir.`);
+  }
+
+  // 4. Saldos de abertura
+  const openings = await repo.getOpeningBalances(clientId);
+  const matchingOpening = openings?.entries.find((e) => e.accountId === account.id && Math.abs(e.amount) > 0.005);
+  if (matchingOpening) {
+    throw new Error(`A conta ${account.code} possui saldo de abertura cadastrado. Remova o saldo de abertura antes de excluir.`);
+  }
+
+  // 5. Lançamentos (conta direta ou splits)
+  const txs = await repo.listTransactions(clientId);
+  const linkedTxs = txs.filter((t) => t.accountId === account.id || t.splits?.some((s) => s.accountId === account.id));
+  if (linkedTxs.length > 0) {
+    throw new Error(
+      `A conta ${account.code} possui ${linkedTxs.length} lançamento(s) vinculado(s) na conciliação. Reclassifique ou desfaça os lançamentos antes de excluir a conta.`
+    );
+  }
+
+  // Exclusão e auditoria
+  const actor = getActor();
+  const now = new Date().toISOString();
+  const audit: AuditEntry = {
+    id: newAuditId(),
+    clientId,
+    action: 'ACCOUNT_DELETE',
+    actorUid: actor.uid,
+    ...(actor.email ? { actorEmail: actor.email } : {}),
+    at: now,
+    note: `Conta ${account.code} (${account.name}) excluída do plano de contas`,
+  };
+
+  await repo.deleteAccount(account.id);
+  await repo.commitChanges({ patches: [], audits: [audit] });
+}
+

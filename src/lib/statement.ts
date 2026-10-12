@@ -61,13 +61,20 @@ export function computeBalanceCheck(args: {
 }
 
 /** Extrato anterior da mesma conta: o de maior data de saldo, anterior à data informada. */
-export function previousStatement<T extends Pick<ImportBatch, 'accountKey' | 'ledgerDate' | 'ledgerBalance'>>(
+export function previousStatement<T extends Pick<ImportBatch, 'accountKey' | 'ledgerDate' | 'ledgerBalance'> & { status?: string }>(
   batches: readonly T[],
   accountKey: string,
   ledgerDate: string
 ): T | undefined {
   return batches
-    .filter((b) => b.accountKey === accountKey && isISODate(b.ledgerDate) && b.ledgerBalance !== undefined && b.ledgerDate < ledgerDate)
+    .filter(
+      (b) =>
+        (!b.status || b.status === 'COMPLETED') &&
+        b.accountKey === accountKey &&
+        isISODate(b.ledgerDate) &&
+        b.ledgerBalance !== undefined &&
+        b.ledgerDate < ledgerDate
+    )
     .sort((a, b) => (b.ledgerDate ?? '').localeCompare(a.ledgerDate ?? ''))[0];
 }
 
@@ -79,11 +86,11 @@ export interface CoverageGap {
 
 /** Dias sem extrato entre os períodos cobertos (DTSTART–DTEND) de cada conta. */
 export function findCoverageGaps(
-  batches: readonly Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate'>[]
+  batches: readonly (Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate'> & { status?: string })[]
 ): CoverageGap[] {
   const byAccount = new Map<string, { start: string; end: string }[]>();
   for (const b of batches) {
-    if (!b.accountKey || !isISODate(b.startDate) || !isISODate(b.endDate)) continue;
+    if ((b.status && b.status !== 'COMPLETED') || !b.accountKey || !isISODate(b.startDate) || !isISODate(b.endDate)) continue;
     const list = byAccount.get(b.accountKey) ?? [];
     list.push({ start: b.startDate, end: b.endDate });
     byAccount.set(b.accountKey, list);

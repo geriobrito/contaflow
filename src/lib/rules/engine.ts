@@ -1,4 +1,5 @@
 import { ClassificationRule, ChartAccount } from '@/types/firestore';
+import { newRuleId } from '@/lib/utils/id';
 
 /**
  * Normaliza um texto para comparação de regras (letras maiúsculas, sem acentos, sem pontuações supérfluas)
@@ -145,7 +146,7 @@ export function buildLearnedRule(
   }
 
   return {
-    id: `rule-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: newRuleId(),
     clientId,
     pattern: cleanPattern,
     matchType: 'CONTAINS',

@@ -30,6 +30,9 @@ const GROUP: Record<AuditAction, Filter> = {
   BATCH_DELETE: 'PERIOD',
   MEMO_REPAIR: 'PERIOD',
   OPENING_SAVE: 'PERIOD',
+  ACCOUNT_DELETE: 'PERIOD',
+  QUERY_ASK: 'MANUAL',
+  QUERY_RESOLVE: 'MANUAL',
 };
 
 const LIMIT = 300;

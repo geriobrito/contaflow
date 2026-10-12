@@ -6,6 +6,7 @@ import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
+import { newClientId } from '@/lib/utils/id';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
@@ -157,7 +158,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     setSaveError(null);
     const now = new Date().toISOString();
     const saved: ClientCompany = {
-      id: client?.id ?? `client-${Date.now()}`,
+      id: client?.id ?? newClientId(),
       name: name.trim(),
       tradeName: tradeName.trim() || undefined,
       cnpj: formatCNPJ(digits),

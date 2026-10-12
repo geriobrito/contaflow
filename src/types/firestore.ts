@@ -175,11 +175,15 @@ export interface ClassificationRule {
   updatedAt: string;
 }
 
+export type ImportBatchStatus = 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
 export interface ImportBatch {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
   id: string;
   clientId: string;
+  /** Status da gravação: PROCESSING durante o processo, COMPLETED ao finalizar, FAILED se falhar. */
+  status?: ImportBatchStatus;
   fileName: string;
   fileSize: number;
   bankId?: string;
@@ -258,7 +262,10 @@ export type AuditAction =
   | 'TRANSFER'
   | 'BATCH_DELETE'
   | 'MEMO_REPAIR'
-  | 'OPENING_SAVE';
+  | 'OPENING_SAVE'
+  | 'ACCOUNT_DELETE'
+  | 'QUERY_ASK'
+  | 'QUERY_RESOLVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {

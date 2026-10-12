@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Plus, Trash2, Wand2 } from 'lucide-react';
 import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
-import { applyDefaultChartTemplate, deleteAccount, getAccounts, saveAccount } from '@/lib/services/data-service';
+import { applyDefaultChartTemplate, deleteChartAccount, getAccounts, saveAccount } from '@/lib/services/data-service';
+import { newAccountId } from '@/lib/utils/id';
 import { useClient } from '@/contexts/ClientContext';
 import { resolveDREGroup } from '@/lib/dre/build';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
@@ -290,7 +291,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
     const now = new Date().toISOString();
     try {
       await saveAccount({
-        id: `acc-${Date.now()}`,
+        id: newAccountId(),
         clientId,
         code: trimmed,
         name: name.trim(),
@@ -417,10 +418,11 @@ export default function PlanoDeContasPage() {
 
   const handleDelete = async (account: ChartAccount) => {
     try {
-      await deleteAccount(account.id);
+      await deleteChartAccount(account);
       if (clientId) await load(clientId);
+      setNotice(`Conta ${account.code} (${account.name}) excluída com sucesso.`);
     } catch (e: unknown) {
-      setNotice(`Não foi possível excluir a conta ${account.code} (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setNotice(`Não foi possível excluir a conta ${account.code}: ${e instanceof Error ? e.message : 'erro desconhecido'}`);
     }
   };
 
