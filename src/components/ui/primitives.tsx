@@ -104,13 +104,15 @@ interface SearchFieldProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  inputRef?: React.Ref<HTMLInputElement>;
 }
 
-export function SearchField({ value, onChange, placeholder = 'Buscar', className = '' }: SearchFieldProps) {
+export function SearchField({ value, onChange, placeholder = 'Buscar', className = '', inputRef }: SearchFieldProps) {
   return (
     <div className={`relative ${className}`}>
       <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
       <input
+        ref={inputRef}
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}

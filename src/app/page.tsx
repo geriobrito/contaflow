@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
+import { OFXDropzone, type ParsedOFXItem } from '@/components/conciliacao/OFXDropzone';
 import type { BankAccount, BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { useReconciliation, type ClassifyOptions, type ImportResult, type MemoUpdate } from '@/hooks/useReconciliation';
+import { useReconciliation, type ClassifyOptions, type ImportResult, type MemoUpdate, type PreImportCheck } from '@/hooks/useReconciliation';
 import { AlertTriangle, ArrowLeftRight, CheckCheck, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split, X } from 'lucide-react';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { PAGE, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { PAGE, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import type { SplitDraft } from '@/lib/splits';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { GroupClassifySheet, PayeeGroupList } from '@/components/conciliacao/PayeeGroups';
@@ -25,6 +25,12 @@ import Link from 'next/link';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs, type TransferPair } from '@/lib/transfers';
 import { ensureTransitAccount } from '@/lib/services/accounting-service';
+import { matchTransaction } from '@/lib/utils/search';
+import { useTableKeyboard } from '@/hooks/useTableKeyboard';
+import { BulkActionBar } from '@/components/conciliacao/BulkActionBar';
+import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
+import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
+import { KeyboardHelpModal } from '@/components/conciliacao/KeyboardHelpModal';
 
 /* =========================================================================
    Métricas
@@ -90,6 +96,12 @@ export default function ConciliacaoPage() {
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [selected, setSelected] = useState<BankTransaction | null>(null);
   const [filter, setFilter] = useState<Filter>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [showBulkClassify, setShowBulkClassify] = useState(false);
+  const [showBulkAsk, setShowBulkAsk] = useState(false);
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [lastImport, setLastImport] = useState<ImportResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -203,10 +215,10 @@ export default function ConciliacaoPage() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const visible = useMemo(
-    () => (filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter)),
-    [transactions, filter]
-  );
+  const visible = useMemo(() => {
+    const byFilter = filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter);
+    return searchQuery.trim() ? byFilter.filter((t) => matchTransaction(t, searchQuery)) : byFilter;
+  }, [transactions, filter, searchQuery]);
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
   const [view, setView] = useState<'list' | 'payee'>('list');
@@ -231,9 +243,9 @@ export default function ConciliacaoPage() {
     }
   };
 
-  // Paginação da tabela (volta à 1ª página ao trocar filtro, período ou cliente).
+  // Paginação da tabela (volta à 1ª página ao trocar filtro, busca, período ou cliente).
   const [page, setPage] = useState(0);
-  const pageKey = `${clientId}|${filter}|${range?.start}|${range?.end}`;
+  const pageKey = `${clientId}|${filter}|${searchQuery}|${range?.start}|${range?.end}`;
   const [lastPageKey, setLastPageKey] = useState(pageKey);
   if (lastPageKey !== pageKey) {
     setLastPageKey(pageKey);
@@ -252,6 +264,93 @@ export default function ConciliacaoPage() {
     [transactions, lockedMonths]
   );
 
+  // Ações e seleção múltipla
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAllPage = useCallback(() => {
+    setSelectedIds((prev) => {
+      const allSelected = pageRows.length > 0 && pageRows.every((t) => prev.has(t.id));
+      const next = new Set(prev);
+      if (allSelected) {
+        pageRows.forEach((t) => next.delete(t.id));
+      } else {
+        pageRows.forEach((t) => next.add(t.id));
+      }
+      return next;
+    });
+  }, [pageRows]);
+
+  const selectedTransactions = useMemo(
+    () => transactions.filter((t) => selectedIds.has(t.id)),
+    [transactions, selectedIds]
+  );
+
+  const selectedDebits = useMemo(
+    () => selectedTransactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
+    [selectedTransactions]
+  );
+  const selectedCredits = useMemo(
+    () => selectedTransactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+    [selectedTransactions]
+  );
+
+  const canMatchTransfer = useMemo(() => {
+    if (selectedTransactions.length !== 2) return false;
+    const [a, b] = selectedTransactions;
+    return (
+      ((a.amount < 0 && b.amount > 0) || (a.amount > 0 && b.amount < 0)) &&
+      Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) < 0.01
+    );
+  }, [selectedTransactions]);
+
+  const handleBulkTransfer = async () => {
+    if (!canMatchTransfer || selectedTransactions.length !== 2) return;
+    const [a, b] = selectedTransactions;
+    const out = a.amount < 0 ? a : b;
+    const inTx = a.amount > 0 ? a : b;
+    await handleTransfers([{ out, in: inTx, days: 0, hinted: true }]);
+    setSelectedIds(new Set());
+  };
+
+  const handleConfirmBulkClassify = async (ids: string[], accountId: string, options: ClassifyOptions) => {
+    try {
+      const r = await classifyMany(ids, accountId, options);
+      setShowBulkClassify(false);
+      setSelectedIds(new Set());
+      const parts = [`${r.classified} lançamento(s) classificado(s)`];
+      if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
+      if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
+      if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s)`);
+      setToast(parts.join(' · '));
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
+
+  const handleConfirmBulkAsk = async (question: string) => {
+    try {
+      let count = 0;
+      for (const t of selectedTransactions) {
+        if (t.status === 'PENDING') {
+          await askClient(t.id, question);
+          count++;
+        }
+      }
+      setShowBulkAsk(false);
+      setSelectedIds(new Set());
+      setToast(`Pergunta enviada ao cliente para ${count} lançamento(s)`);
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
+
   /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
   const [duplicate, setDuplicate] = useState<{
     info: DuplicateImportInfo;
@@ -259,6 +358,35 @@ export default function ConciliacaoPage() {
     fileName: string;
     memoUpdates: MemoUpdate[];
   } | null>(null);
+
+  // Atalhos de teclado para conciliação rápida
+  const isAnyModalOpen = Boolean(
+    selected || groupSheet || duplicate || showBulkClassify || showBulkAsk || showKeyboardHelp
+  );
+
+  const { focusedIndex } = useTableKeyboard({
+    items: pageRows,
+    getId: (t) => t.id,
+    disabled: isAnyModalOpen,
+    onOpenClassify: (t) => setSelected(t),
+    onToggleSelect: (id) => toggleSelect(id),
+    onApprove: async (t) => {
+      if (t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths)) {
+        await classifyTransaction(t.id, t.accountId);
+        setToast('Lançamento auto-classificado aprovado');
+      }
+    },
+    onClearSelection: () => {
+      if (selectedIds.size > 0) setSelectedIds(new Set());
+      else if (searchQuery) setSearchQuery('');
+    },
+    onFocusSearch: () => {
+      searchInputRef.current?.focus();
+    },
+    onToggleHelp: () => {
+      setShowKeyboardHelp((prev) => !prev);
+    },
+  });
 
   const runImport = async (result: OFXParseResult, fileName: string) => {
     const imported = await importTransactions(result.transactions, {
@@ -302,6 +430,76 @@ export default function ConciliacaoPage() {
       await runImport(result, fileName);
     } catch {
       /* erro exposto pelo hook */
+    }
+  };
+
+  /** Importação consolidada de múltiplos arquivos OFX */
+  const handleOFXParsedBatch = async (items: ParsedOFXItem[]) => {
+    if (items.length === 0) return;
+    if (items.length === 1) {
+      await handleOFXParsed(items[0].result, items[0].fileName);
+      return;
+    }
+
+    let totalAdded = 0;
+    let totalAutoClassified = 0;
+    let totalDuplicates = 0;
+    let lastDate: string | null = null;
+    const duplicatesToConfirm: { item: ParsedOFXItem; check: PreImportCheck }[] = [];
+
+    for (const item of items) {
+      try {
+        const check = await checkImport(item.result.transactions);
+        if (check.isFullDuplicate || check.isPartialOverlap) {
+          duplicatesToConfirm.push({ item, check });
+        } else {
+          const imported = await importTransactions(item.result.transactions, {
+            fileName: item.fileName,
+            account: item.result.account,
+            startDate: item.result.startDate,
+            endDate: item.result.endDate,
+            ledgerBalance: item.result.ledgerBalance,
+          });
+          totalAdded += imported.added;
+          totalAutoClassified += imported.autoClassified;
+          totalDuplicates += imported.duplicates;
+          if (imported.latestDate) lastDate = imported.latestDate;
+        }
+      } catch (e) {
+        console.error(`Erro ao importar ${item.fileName}:`, e);
+      }
+    }
+
+    setStatementsKey((k) => k + 1);
+
+    const importedFilesCount = items.length - duplicatesToConfirm.length;
+    if (totalAdded > 0 || totalDuplicates > 0 || importedFilesCount > 0) {
+      setToast(
+        `${importedFilesCount} extrato(s) importado(s) · ${totalAdded} novos lançamentos · ${totalAutoClassified} auto-classificados · ${totalDuplicates} duplicados ignorados`
+      );
+      if (lastDate && range && (lastDate < range.start || lastDate > range.end)) {
+        jumpTo(lastDate);
+      }
+    }
+
+    if (duplicatesToConfirm.length > 0) {
+      const first = duplicatesToConfirm[0];
+      setDuplicate({
+        result: first.item.result,
+        fileName: first.item.fileName,
+        info: {
+          kind: first.check.isFullDuplicate ? 'full' : 'partial',
+          fileName: first.item.fileName,
+          clientName: currentClient?.tradeName || currentClient?.name || 'selecionada',
+          startDate: first.item.result.startDate,
+          endDate: first.item.result.endDate,
+          totalInFile: first.check.totalInFile,
+          alreadyImportedCount: first.check.alreadyImportedCount,
+          newCount: first.check.newTransactions.length,
+          memoUpdateCount: first.check.memoUpdates.length,
+        },
+        memoUpdates: first.check.memoUpdates,
+      });
     }
   };
 
@@ -446,7 +644,7 @@ export default function ConciliacaoPage() {
         <Metric label="Saídas" value={formatCurrency(metrics.debits)} tone="negative" caption="Débitos" />
       </section>
 
-      <OFXDropzone onParsed={handleOFXParsed} isLoading={isSaving} />
+      <OFXDropzone onParsed={handleOFXParsed} onParsedBatch={handleOFXParsedBatch} isLoading={isSaving} />
       {duplicate && (
         <DuplicateImportModal
           info={duplicate.info}
@@ -518,47 +716,70 @@ export default function ConciliacaoPage() {
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
           <div className="flex flex-wrap items-center gap-3">
-          <SegmentedControl
-            ariaLabel="Visão dos lançamentos"
-            value={view}
-            onChange={setView}
-            options={[
-              { value: 'list', label: 'Lista' },
-              { value: 'payee', label: 'Por favorecido' },
-            ]}
-          />
-          <div role="tablist" className={`${view === 'list' ? 'inline-flex' : 'hidden'} p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}>
-            {FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                role="tab"
-                aria-selected={filter === f.value}
-                onClick={() => setFilter(f.value)}
-                className={`px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-all duration-150 active:scale-[0.97] ${
-                  filter === f.value
-                    ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                    : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+            <SegmentedControl
+              ariaLabel="Visão dos lançamentos"
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'list', label: 'Lista' },
+                { value: 'payee', label: 'Por favorecido' },
+              ]}
+            />
+            <div role="tablist" className={`${view === 'list' ? 'inline-flex' : 'hidden'} p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}>
+              {FILTERS.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={`px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-all duration-150 active:scale-[0.97] ${
+                    filter === f.value
+                      ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
+                      : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <button
-            type="button"
-            disabled={approvable === 0 || isSaving}
-            onClick={() => void handleApproveAll()}
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
-          >
-            <CheckCheck className="w-4 h-4" strokeWidth={2} />
-            Aprovar todos os auto-classificados
-            <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {view === 'list' && (
+              <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
+                <SearchField
+                  inputRef={searchInputRef}
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Buscar histórico, valor, conta ou fitid (pressione /)"
+                  className="w-full sm:w-64 md:w-80"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKeyboardHelp(true)}
+                  title="Atalhos de teclado (?)"
+                  aria-label="Atalhos de teclado"
+                  className="hidden sm:inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] transition-colors"
+                >
+                  <kbd className="font-mono text-[12px] font-semibold">?</kbd>
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={approvable === 0 || isSaving}
+              onClick={() => void handleApproveAll()}
+              className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
+            >
+              <CheckCheck className="w-4 h-4" strokeWidth={2} />
+              Aprovar todos os auto-classificados
+              <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable}</span>
+            </button>
+          </div>
         </div>
 
         {view === 'payee' && !isLoading ? (
@@ -579,7 +800,7 @@ export default function ConciliacaoPage() {
               {transactions.length === 0 ? 'Nenhum lançamento ainda' : 'Nada por aqui'}
             </p>
             <p className="mt-1 text-[13px] text-stone-500">
-              {transactions.length === 0 ? 'Importe um extrato OFX para começar.' : 'Nenhum lançamento neste filtro.'}
+              {transactions.length === 0 ? 'Importe um extrato OFX para começar.' : 'Nenhum lançamento neste filtro ou busca.'}
             </p>
           </div>
         ) : (
@@ -587,7 +808,23 @@ export default function ConciliacaoPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
-                  <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-24">Data</th>
+                  <th scope="col" className="pl-5 pr-2 py-2.5 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Selecionar todos da página"
+                      checked={pageRows.length > 0 && pageRows.every((t) => selectedIds.has(t.id))}
+                      ref={(el) => {
+                        if (el) {
+                          const some = pageRows.some((t) => selectedIds.has(t.id));
+                          const all = pageRows.length > 0 && pageRows.every((t) => selectedIds.has(t.id));
+                          el.indeterminate = some && !all;
+                        }
+                      }}
+                      onChange={toggleSelectAllPage}
+                      className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                    />
+                  </th>
+                  <th scope="col" className="font-medium px-3 py-2.5 w-24">Data</th>
                   <th scope="col" className="font-medium px-3 py-2.5">Descrição</th>
                   <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell">Conta</th>
                   <th scope="col" className="font-medium px-3 py-2.5 w-28">Status</th>
@@ -595,9 +832,11 @@ export default function ConciliacaoPage() {
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map((t) => {
+                {pageRows.map((t, idx) => {
                   const splitCount = t.isSplit ? (t.splits?.length ?? 0) : 0;
                   const isExpanded = expanded.has(t.id);
+                  const isSelected = selectedIds.has(t.id);
+                  const isFocused = focusedIndex === idx;
                   const splitBadge = splitCount > 0 && (
                     <button
                       type="button"
@@ -619,7 +858,6 @@ export default function ConciliacaoPage() {
                   return (
                     <React.Fragment key={t.id}>
                     <tr
-                      // Todo lançamento abre o sheet: pendentes para classificar, os demais para editar/desfazer.
                       onClick={() => setSelected(t)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -628,9 +866,20 @@ export default function ConciliacaoPage() {
                         }
                       }}
                       tabIndex={0}
-                      className="group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-blue-50/50"
+                      className={`group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none ${
+                        isFocused ? 'ring-1 ring-inset ring-[#0071E3]/60 bg-blue-50/40 dark:bg-blue-950/20' : ''
+                      } ${isSelected ? 'bg-blue-50/60 dark:bg-blue-950/30' : ''}`}
                     >
-                      <td className="pl-5 pr-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
+                      <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSelect(t.id)}
+                          aria-label={`Selecionar lançamento ${t.memo}`}
+                          className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
                         {formatDateBR(t.date)}
                       </td>
                       <td className="px-3 py-3 max-w-0 w-full">
@@ -684,7 +933,7 @@ export default function ConciliacaoPage() {
                     </tr>
                     {splitCount > 0 && isExpanded && (
                       <tr id={`split-${t.id}`} className="border-b border-black/[0.04] dark:border-white/[0.05] bg-stone-900/[0.015] dark:bg-white/[0.02]">
-                        <td />
+                        <td colSpan={2} />
                         <td colSpan={4} className="px-3 pb-3 pt-1 pr-5">
                           <ul className="rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white/70 dark:bg-stone-900/40 divide-y divide-black/[0.04] dark:divide-white/[0.05] animate-fade-in">
                             {t.splits?.map((sp) => (
@@ -780,6 +1029,41 @@ export default function ConciliacaoPage() {
           onConfirm={handleGroupConfirm}
         />
       )}
+
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        totalDebits={selectedDebits}
+        totalCredits={selectedCredits}
+        canMatchTransfer={canMatchTransfer}
+        isSaving={isSaving}
+        onClassify={() => setShowBulkClassify(true)}
+        onAskClient={() => setShowBulkAsk(true)}
+        onMatchTransfer={() => void handleBulkTransfer()}
+        onClearSelection={() => setSelectedIds(new Set())}
+      />
+
+      <BulkClassifyModal
+        isOpen={showBulkClassify}
+        transactions={selectedTransactions}
+        accounts={accounts}
+        memoPool={memoPool}
+        isSaving={isSaving}
+        onClose={() => setShowBulkClassify(false)}
+        onConfirm={handleConfirmBulkClassify}
+      />
+
+      <BulkAskClientModal
+        isOpen={showBulkAsk}
+        transactions={selectedTransactions}
+        isSaving={isSaving}
+        onClose={() => setShowBulkAsk(false)}
+        onConfirm={handleConfirmBulkAsk}
+      />
+
+      <KeyboardHelpModal
+        isOpen={showKeyboardHelp}
+        onClose={() => setShowKeyboardHelp(false)}
+      />
 
       {toast && (
         <div

@@ -6,38 +6,101 @@ import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
 
+export interface ParsedOFXItem {
+  result: OFXParseResult;
+  fileName: string;
+}
+
 interface OFXDropzoneProps {
   onParsed: (result: OFXParseResult, fileName: string) => void;
+  onParsedBatch?: (items: ParsedOFXItem[]) => void;
   isLoading?: boolean;
 }
 
-export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = false }) => {
+export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatch, isLoading = false }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progressText, setProgressText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleProcessFile = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.ofx')) {
-      setErrorMessage('Envie um arquivo com extensão .ofx.');
+  const handleProcessFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    const ofxFiles = files.filter((f) => f.name.toLowerCase().endsWith('.ofx'));
+    if (ofxFiles.length === 0) {
+      setErrorMessage('Envie arquivo(s) com extensão .ofx.');
       return;
     }
+
     setErrorMessage(null);
     setWarnings([]);
-    setActiveFileName(file.name);
+    setIsProcessing(true);
+
+    const parsedItems: ParsedOFXItem[] = [];
+    const allWarnings: string[] = [];
+
+    if (files.length > ofxFiles.length) {
+      allWarnings.push(`${files.length - ofxFiles.length} arquivo(s) ignorado(s) por não ter(em) extensão .ofx.`);
+    }
+
     try {
-      const parsed = await parseOFXFile(file);
-      setWarnings(parsed.warnings.filter((w) => !w.startsWith('Transação sem FITID')));
-      if (parsed.transactions.length === 0) {
-        setErrorMessage(
-          parsed.hasErrors ? 'Nenhum lançamento do arquivo pôde ser lido (datas ou valores inválidos).' : 'Nenhuma transação encontrada no arquivo.'
+      for (let i = 0; i < ofxFiles.length; i++) {
+        const file = ofxFiles[i];
+        setProgressText(
+          ofxFiles.length > 1
+            ? `Processando arquivo ${i + 1} de ${ofxFiles.length}: ${file.name}...`
+            : `Lendo ${file.name}...`
         );
+
+        try {
+          const parsed = await parseOFXFile(file);
+          const filteredWarnings = parsed.warnings
+            .filter((w) => !w.startsWith('Transação sem FITID'))
+            .map((w) => `${file.name}: ${w}`);
+          allWarnings.push(...filteredWarnings);
+
+          if (parsed.transactions.length === 0) {
+            allWarnings.push(
+              parsed.hasErrors
+                ? `${file.name}: Nenhum lançamento pôde ser lido (datas ou valores inválidos).`
+                : `${file.name}: Nenhuma transação encontrada no arquivo.`
+            );
+          } else {
+            parsedItems.push({ result: parsed, fileName: file.name });
+          }
+        } catch (err: unknown) {
+          allWarnings.push(`${file.name}: ${err instanceof Error ? err.message : 'Falha ao processar arquivo.'}`);
+        }
+      }
+
+      setWarnings(allWarnings);
+
+      if (parsedItems.length === 0) {
+        setErrorMessage('Nenhum dos arquivos enviados contém lançamentos válidos.');
         return;
       }
-      onParsed(parsed, file.name);
-    } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Falha ao processar o arquivo OFX.');
+
+      setActiveFileName(
+        parsedItems.length === 1
+          ? parsedItems[0].fileName
+          : `${parsedItems.length} arquivos OFX lidos (${parsedItems.reduce((acc, it) => acc + it.result.transactions.length, 0)} lançamentos)`
+      );
+
+      if (onParsedBatch) {
+        onParsedBatch(parsedItems);
+      } else {
+        // Fallback para manipulador de arquivo único
+        for (const item of parsedItems) {
+          onParsed(item.result, item.fileName);
+        }
+      }
+    } finally {
+      setIsProcessing(false);
+      setProgressText(null);
     }
   };
 
@@ -46,32 +109,40 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
     setErrorMessage(null);
     setWarnings([]);
     setActiveFileName(name);
-    onParsed(parseOFXString(SAMPLE_BRAZILIAN_OFX), name);
+    const parsed = parseOFXString(SAMPLE_BRAZILIAN_OFX);
+    if (onParsedBatch) {
+      onParsedBatch([{ result: parsed, fileName: name }]);
+    } else {
+      onParsed(parsed, name);
+    }
   };
+
+  const busy = isLoading || isProcessing;
 
   return (
     <div className="space-y-2">
       <div
         role="button"
         tabIndex={0}
-        aria-label="Importar extrato OFX"
-        onClick={() => fileInputRef.current?.click()}
+        aria-label="Importar extratos OFX"
+        onClick={() => !busy && fileInputRef.current?.click()}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
+          if (!busy && (e.key === 'Enter' || e.key === ' ')) {
             e.preventDefault();
             fileInputRef.current?.click();
           }
         }}
         onDragOver={(e) => {
           e.preventDefault();
-          setIsDragging(true);
+          if (!busy) setIsDragging(true);
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
           setIsDragging(false);
-          const file = e.dataTransfer.files?.[0];
-          if (file) void handleProcessFile(file);
+          if (!busy && e.dataTransfer.files?.length) {
+            void handleProcessFiles(e.dataTransfer.files);
+          }
         }}
         className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 cursor-pointer border border-dashed transition-all duration-150 active:scale-[0.995] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/40 ${
           isDragging
@@ -83,10 +154,12 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
           ref={fileInputRef}
           type="file"
           accept=".ofx"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) void handleProcessFile(file);
+            if (e.target.files?.length) {
+              void handleProcessFiles(e.target.files);
+            }
             e.target.value = '';
           }}
         />
@@ -96,12 +169,14 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
             isDragging ? 'bg-[#0071E3] text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-200'
           }`}
         >
-          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin text-[#0071E3]" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
         </span>
 
         <span className="flex-1 min-w-0">
           <span className="block text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
-            {isDragging ? 'Solte para importar' : 'Importar extrato OFX'}
+            {isDragging
+              ? 'Solte os arquivos para importar'
+              : progressText || 'Importar extrato(s) OFX'}
           </span>
           <span className="flex items-center gap-1.5 text-[12px] text-stone-500 truncate">
             {activeFileName ? (
@@ -110,7 +185,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
                 <span className="truncate">{activeFileName}</span>
               </>
             ) : (
-              'Arraste o arquivo aqui ou clique para selecionar'
+              'Arraste um ou mais arquivos OFX aqui ou clique para selecionar'
             )}
           </span>
         </span>
@@ -136,10 +211,10 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, isLoading = 
       {warnings.length > 0 && (
         <details className="px-1 text-[12px] text-amber-700 dark:text-amber-400 animate-fade-in">
           <summary className="cursor-pointer select-none">
-            {warnings.length} aviso(s) na leitura do arquivo
+            {warnings.length} aviso(s) na leitura do(s) arquivo(s)
           </summary>
-          <ul className="mt-1 ml-4 list-disc space-y-0.5">
-            {warnings.slice(0, 20).map((w, i) => (
+          <ul className="mt-1 ml-4 list-disc space-y-0.5 max-h-36 overflow-y-auto">
+            {warnings.slice(0, 30).map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>
