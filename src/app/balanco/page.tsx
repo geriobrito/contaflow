@@ -89,7 +89,10 @@ export default function BalancoPage() {
       repo.getOrgSettings(),
       getLatestTransactionDate(clientId),
       repo.getOpeningBalances(clientId),
-      repo.listJournalEntries(clientId),
+      repo.listJournalEntries(clientId).catch((err: unknown) => {
+        console.warn('Aviso: Lançamentos manuais indisponíveis ou regras pendentes de publicação:', err);
+        return [];
+      }),
     ])
       .then(([accounts, banks, org, latest, openings, journalEntries]) => {
         if (!active) return;

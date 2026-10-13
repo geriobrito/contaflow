@@ -17,6 +17,7 @@ import {
   Bookmark,
   CheckCircle2,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
@@ -69,7 +70,7 @@ export default function LancamentosPage() {
   const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Estados de modal e filtros
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -88,7 +89,17 @@ export default function LancamentosPage() {
     Promise.all([
       repo.listAccounts(clientId),
       repo.listPeriodLocks(clientId),
-      repo.listJournalEntries(clientId),
+      repo.listJournalEntries(clientId).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes('Missing or insufficient permissions') || msg.includes('permission')) {
+          setError(
+            'Permissão insuficiente no Firestore: as regras de segurança para a coleção "journal_entries" precisam ser publicadas no Firebase Console (na aba Firestore Database > Regras). Siga as instruções para atualizar as regras do seu projeto.'
+          );
+        } else {
+          setError(msg);
+        }
+        return [];
+      }),
     ])
       .then(([accs, periodLocks, journalList]) => {
         if (!active) return;
@@ -99,8 +110,8 @@ export default function LancamentosPage() {
       })
       .catch((e: unknown) => {
         if (!active) return;
-        console.error('Erro ao carregar lançamentos contábeis:', e);
-        setError(e instanceof Error ? e.message : 'Falha ao carregar lançamentos.');
+        console.error('Erro ao carregar dados:', e);
+        setError(e instanceof Error ? e.message : 'Falha ao carregar dados.');
         setLoading(false);
       });
     return () => {
@@ -250,6 +261,18 @@ export default function LancamentosPage() {
           </div>
         }
       />
+
+      {error && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200 text-[13px] space-y-1">
+          <div className="font-semibold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Atenção: Configuração de Regras no Firebase</span>
+          </div>
+          <p className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">
+            {error}
+          </p>
+        </div>
+      )}
 
       {/* Seletor de Período */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

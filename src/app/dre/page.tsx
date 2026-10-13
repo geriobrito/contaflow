@@ -185,7 +185,10 @@ export default function DREPage() {
       repo.getOrgSettings(),
       repo.listBankAccounts(clientId),
       repo.getOpeningBalances(clientId),
-      repo.listJournalEntries(clientId),
+      repo.listJournalEntries(clientId).catch((err: unknown) => {
+        console.warn('Aviso: Lançamentos manuais indisponíveis ou regras pendentes de publicação:', err);
+        return [];
+      }),
     ])
       .then(([l, o, b, op, je]) => {
         if (!active) return;
