@@ -83,6 +83,9 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   ACCOUNT_DELETE: 'Excluiu conta do plano',
   QUERY_ASK: 'Pergunta ao cliente',
   QUERY_RESOLVE: 'Concluiu pendência com o cliente',
+  JOURNAL_CREATE: 'Incluiu lançamento manual no Diário',
+  JOURNAL_UPDATE: 'Alterou lançamento manual no Diário',
+  JOURNAL_DELETE: 'Excluiu lançamento manual no Diário',
 };
 
 /** Descrição curta de um estado de classificação. */

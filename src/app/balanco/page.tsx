@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances, OrgSettings } from '@/types/firestore';
+import Link from 'next/link';
+import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
+import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings } from '@/types/firestore';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -10,6 +11,7 @@ import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type Bala
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 
 type View = 'bs' | 'tb';
 
@@ -17,7 +19,17 @@ const money = (v: number) => (v < 0 ? `(${formatCurrency(-v)})` : formatCurrency
 /** Saldo de balancete com natureza: D (devedor) ou C (credor). */
 const dc = (v: number) => (Math.abs(v) < 0.005 ? '—' : `${formatCurrency(Math.abs(v))} ${v > 0 ? 'D' : 'C'}`);
 
-function Side({ title, lines, total }: { title: string; lines: BalanceSheetLine[]; total: number }) {
+function Side({
+  title,
+  lines,
+  total,
+  onSelectAccount,
+}: {
+  title: string;
+  lines: BalanceSheetLine[];
+  total: number;
+  onSelectAccount?: (accountId: string) => void;
+}) {
   return (
     <div className="print-avoid-break">
       <div className="flex items-baseline justify-between px-5 py-3 bg-black/[0.03] dark:bg-white/[0.04] border-b border-black/[0.05]">
@@ -31,9 +43,15 @@ function Side({ title, lines, total }: { title: string; lines: BalanceSheetLine[
           {lines.map((l) => (
             <li
               key={l.accountId}
-              className={`flex items-baseline gap-3 pl-5 pr-5 py-1.5 text-[13px] ${l.synthetic ? 'font-medium text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400'}`}
+              onClick={() => onSelectAccount?.(l.accountId)}
+              className={`flex items-baseline gap-3 pl-5 pr-5 py-1.5 text-[13px] transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] group ${
+                l.synthetic ? 'font-medium text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400'
+              }`}
+              title="Clique para abrir o Livro Razão desta conta"
             >
-              <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{l.code}</span>
+              <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200">
+                {l.code}
+              </span>
               <span className="flex-1 min-w-0 truncate" style={{ paddingLeft: `${Math.max(0, l.level - 1) * 12}px` }}>
                 {l.name}
               </span>
@@ -53,22 +71,30 @@ export default function BalancoPage() {
   const { range, jumpTo } = period;
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
-  const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null; openings: OpeningBalances | null } | null>(null);
+  const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null; openings: OpeningBalances | null; journalEntries: JournalEntry[] } | null>(null);
   const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [drawerAccountId, setDrawerAccountId] = useState<string | null>(null);
 
-  // Plano, bancos e escritório; posiciona no mês do lançamento mais recente.
+  // Plano, bancos, escritório e lançamentos manuais; posiciona no mês do lançamento mais recente.
   useEffect(() => {
     if (!clientId) return;
     let active = true;
     const repo = getRepository();
-    Promise.all([repo.listAccounts(clientId), repo.listBankAccounts(clientId), repo.getOrgSettings(), getLatestTransactionDate(clientId), repo.getOpeningBalances(clientId)])
-      .then(([accounts, banks, org, latest, openings]) => {
+    Promise.all([
+      repo.listAccounts(clientId),
+      repo.listBankAccounts(clientId),
+      repo.getOrgSettings(),
+      getLatestTransactionDate(clientId),
+      repo.getOpeningBalances(clientId),
+      repo.listJournalEntries(clientId),
+    ])
+      .then(([accounts, banks, org, latest, openings, journalEntries]) => {
         if (!active) return;
         if (latest) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings });
+        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries });
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));
     return () => {
@@ -94,7 +120,10 @@ export default function BalancoPage() {
   const loading = !ready || txs?.key !== key;
   const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
   const banks = useMemo(() => static_?.banks ?? [], [static_]);
-  const postings = useMemo(() => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings)), [loading, txs, banks, accounts, range.end, static_?.openings]);
+  const postings = useMemo(
+    () => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, static_?.journalEntries)),
+    [loading, txs, banks, accounts, range.end, static_?.openings, static_?.journalEntries]
+  );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const tb = useMemo(() => buildTrialBalance(postings, accounts, range), [postings, accounts, range]);
   const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
@@ -107,8 +136,9 @@ export default function BalancoPage() {
       banks,
       date: range.end,
       openings: static_?.openings,
+      journalEntries: static_?.journalEntries,
     });
-  }, [loading, txs, accounts, banks, range.end, static_?.openings]);
+  }, [loading, txs, accounts, banks, range.end, static_?.openings, static_?.journalEntries]);
 
   const openingGap = bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)?.value ?? 0;
   const missingOpening = banks.filter((b) => b.openingBalance === undefined);
@@ -220,17 +250,27 @@ export default function BalancoPage() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-3 print:hidden">
-        <SegmentedControl
-          ariaLabel="Demonstração"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'bs', label: 'Balanço patrimonial' },
-            { value: 'tb', label: 'Balancete' },
-          ]}
-        />
-        <PeriodPicker period={period} />
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center gap-3">
+          <SegmentedControl
+            ariaLabel="Demonstração"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'bs', label: 'Balanço patrimonial' },
+              { value: 'tb', label: 'Balancete' },
+            ]}
+          />
+          <PeriodPicker period={period} />
+        </div>
+        <Link
+          href="/razao"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 dark:text-stone-300 bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] rounded-lg transition-colors border border-black/[0.06] dark:border-white/[0.08]"
+          title="Abrir página dedicada do Livro Razão Analítico"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-stone-500" />
+          <span>Ficha do Livro Razão</span>
+        </Link>
       </div>
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
@@ -296,11 +336,11 @@ export default function BalancoPage() {
       ) : view === 'bs' ? (
         <div className="grid lg:grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Ativo" lines={bs.assets} total={bs.totalAssets} />
+            <Side title="Ativo" lines={bs.assets} total={bs.totalAssets} onSelectAccount={setDrawerAccountId} />
           </section>
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Passivo" lines={bs.liabilities} total={bs.totalLiabilities} />
-            <Side title="Patrimônio líquido" lines={bs.equity} total={bs.totalEquity} />
+            <Side title="Passivo" lines={bs.liabilities} total={bs.totalLiabilities} onSelectAccount={setDrawerAccountId} />
+            <Side title="Patrimônio líquido" lines={bs.equity} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
             <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/[0.08] text-[13px] font-semibold">
               <span>Total do passivo e do PL</span>
               <span className="font-mono tabular-nums">{money(bs.totalLiabilities + bs.totalEquity)}</span>
@@ -309,7 +349,11 @@ export default function BalancoPage() {
         </div>
       ) : (
         <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
-          <div className="flex items-center justify-end px-5 py-2.5 border-b border-black/[0.04] print:hidden">
+          <div className="flex items-center justify-between px-5 py-2.5 border-b border-black/[0.04] print:hidden">
+            <span className="text-[12px] text-stone-400 flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-stone-400" />
+              Clique em qualquer conta para abrir a ficha do Livro Razão
+            </span>
             <label className="flex items-center gap-2 text-[12px] text-stone-500">
               <input type="checkbox" checked={showSynthetic} onChange={(e) => setShowSynthetic(e.target.checked)} /> Mostrar contas sintéticas
             </label>
@@ -330,11 +374,13 @@ export default function BalancoPage() {
                 {tbRows.map((r) => (
                   <tr
                     key={r.accountId}
-                    className={`border-b border-black/[0.03] print:border-black/[0.06] last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid ${
+                    onClick={() => setDrawerAccountId(r.accountId)}
+                    className={`border-b border-black/[0.03] print:border-black/[0.06] last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors group ${
                       r.synthetic ? 'font-medium text-stone-900 dark:text-stone-100 print:font-semibold print:text-black' : 'text-stone-600 dark:text-stone-400 print:text-stone-800'
                     }`}
+                    title="Clique para abrir o Livro Razão desta conta"
                   >
-                    <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-400 print:text-stone-600 whitespace-nowrap">
+                    <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 print:text-stone-600 whitespace-nowrap">
                       {r.code}
                     </td>
                     <td className="px-3 py-1.5 print:px-1.5 print:py-1 leading-snug">
@@ -405,6 +451,20 @@ export default function BalancoPage() {
           </div>
         </section>
       )}
+
+      <AccountLedgerDrawer
+        isOpen={Boolean(drawerAccountId)}
+        onClose={() => setDrawerAccountId(null)}
+        accountId={drawerAccountId}
+        accounts={accounts}
+        bankAccounts={banks}
+        transactions={txs?.list ?? []}
+        journalEntries={static_?.journalEntries}
+        range={range}
+        openings={static_?.openings}
+        client={currentClient}
+        org={static_?.org}
+      />
     </main>
   );
 }

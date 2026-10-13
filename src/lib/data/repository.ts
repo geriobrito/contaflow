@@ -9,6 +9,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  JournalEntry,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
@@ -121,6 +122,11 @@ export interface DataRepository {
   listClientRequests(clientId: string): Promise<ClientRequest[]>;
   saveClientRequest(request: ClientRequest): Promise<void>;
   getClientRequestFile(fileId: string): Promise<ClientRequestFile | null>;
+
+  /* Lançamentos manuais de fechamento (Diário Avulso / Ajustes) */
+  listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]>;
+  saveJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void>;
+  deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void>;
 
   /* Pendências com o cliente (acesso público pelo link, sem login) */
   getPublicClientRequest(token: string): Promise<ClientRequest | null>;

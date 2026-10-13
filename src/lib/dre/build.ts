@@ -1,4 +1,4 @@
-import type { AccountType, BankTransaction, ChartAccount, DREGroup } from '@/types/firestore';
+import type { AccountType, BankTransaction, ChartAccount, DREGroup, JournalEntry } from '@/types/firestore';
 
 /* =========================================================================
    Grupos canônicos (ITG 1000) e compatibilidade com dados legados
@@ -118,7 +118,8 @@ export interface DateRange {
 export function buildDRE(
   transactions: readonly BankTransaction[],
   accounts: readonly ChartAccount[],
-  range: DateRange
+  range: DateRange,
+  journalEntries?: readonly JournalEntry[] | null
 ): DREStatement {
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
   const buckets = new Map<DRESectionKey, Map<string, DREAccountLine>>();
@@ -154,6 +155,30 @@ export function buildDRE(
       buckets.set(key, bucket);
     }
     if (counted) reconciledCount++;
+  }
+
+  // Lançamentos manuais de fechamento (partidas dobradas avulsas)
+  if (journalEntries) {
+    for (const j of journalEntries) {
+      if (j.date < range.start || j.date > range.end) continue;
+      let counted = false;
+      for (const line of j.lines) {
+        if (!line.amount) continue;
+        const acc = byId.get(line.accountId);
+        const key = acc ? resolveDREGroup(acc) : null;
+        if (!acc || !key) continue; // conta patrimonial: não transita pela DRE
+        counted = true;
+
+        const bucket = buckets.get(key) ?? new Map<string, DREAccountLine>();
+        const accLine = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
+        const delta = line.type === 'CREDIT' ? line.amount : -line.amount;
+        accLine.value += CREDIT_NATURE.has(key) ? delta : -delta;
+        accLine.count += 1;
+        bucket.set(acc.id, accLine);
+        buckets.set(key, bucket);
+      }
+      if (counted) reconciledCount++;
+    }
   }
 
   const section = (key: DRESectionKey): DRESection => {

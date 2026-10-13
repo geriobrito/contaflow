@@ -11,7 +11,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
 import { monthsBetween } from '@/lib/periods';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -175,6 +175,7 @@ export default function DREPage() {
   const [org, setOrg] = useState<OrgSettings | null>(null);
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [openings, setOpenings] = useState<OpeningBalances | null>(null);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   useEffect(() => {
     if (!clientId) return;
     let active = true;
@@ -184,13 +185,15 @@ export default function DREPage() {
       repo.getOrgSettings(),
       repo.listBankAccounts(clientId),
       repo.getOpeningBalances(clientId),
+      repo.listJournalEntries(clientId),
     ])
-      .then(([l, o, b, op]) => {
+      .then(([l, o, b, op, je]) => {
         if (!active) return;
         setLocks(l);
         setOrg(o);
         setBanks(b);
         setOpenings(op);
+        setJournalEntries(je);
       })
       .catch((e: unknown) => console.error('Erro ao carregar dados auxiliares da DRE:', e));
     return () => {
@@ -245,11 +248,14 @@ export default function DREPage() {
     };
   }, [clientId, ready, view, prevRange]);
 
-  const dre = useMemo(() => buildDRE(transactions, accounts, range), [transactions, accounts, range]);
-  const months = useMemo(() => (view === 'monthly' ? monthlyColumns(transactions, accounts, range) : []), [view, transactions, accounts, range]);
+  const dre = useMemo(() => buildDRE(transactions, accounts, range, journalEntries), [transactions, accounts, range, journalEntries]);
+  const months = useMemo(
+    () => (view === 'monthly' ? monthlyColumns(transactions, accounts, range, journalEntries) : []),
+    [view, transactions, accounts, range, journalEntries]
+  );
   const prevDre = useMemo(
-    () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange) : null),
-    [prevTxs, prevKey, accounts, prevRange]
+    () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange, journalEntries) : null),
+    [prevTxs, prevKey, accounts, prevRange, journalEntries]
   );
 
   const consistency = useMemo(() => {
@@ -260,8 +266,9 @@ export default function DREPage() {
       banks,
       date: range.end,
       openings,
+      journalEntries,
     });
-  }, [clientId, accounts, ready, transactions, banks, range.end, openings]);
+  }, [clientId, accounts, ready, transactions, banks, range.end, openings, journalEntries]);
 
   const isLoading = Boolean(clientId) && loadedKey !== periodKey && !loadError;
   const profit = dre.netResult >= 0;

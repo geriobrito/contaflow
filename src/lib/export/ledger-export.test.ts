@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateLedgerPdf } from '@/lib/export/ledger-pdf';
-import { generateLedgerExcel } from '@/lib/export/ledger-excel';
-import type { BalanceSheet, TrialBalance } from '@/lib/ledger';
+import { generateAccountLedgerExcel, generateLedgerExcel } from '@/lib/export/ledger-excel';
+import type { AccountLedger, BalanceSheet, TrialBalance } from '@/lib/ledger';
 
 const mockClient = {
   name: 'Empresa Teste Contabilidade Ltda',
@@ -103,4 +103,65 @@ describe('generateLedgerExcel', () => {
     expect(res.fileName).toContain('Balanco_Balancete');
     expect(res.fileName.endsWith('.xlsx')).toBe(true);
   });
+
+  it('gera arquivo Excel (.xlsx) para a ficha do Livro Razão Analítico de uma conta', async () => {
+    const mockLedger: AccountLedger = {
+      accountId: '2',
+      code: '1.1.01.001',
+      name: 'Caixa e Equivalentes',
+      kind: 'ASSET',
+      level: 4,
+      synthetic: false,
+      range: mockRange,
+      openingBalance: 30000,
+      openingNature: 'D',
+      entries: [
+        {
+          id: 'e1',
+          date: '2025-01-15',
+          documentId: 'FITID123',
+          memo: 'Recebimento de cliente',
+          contraAccountId: 'c1',
+          contraAccountCode: '1.1.2.01',
+          contraAccountName: 'Clientes a Receber',
+          debit: 25000,
+          credit: 0,
+          balance: 55000,
+          balanceNature: 'D',
+        },
+        {
+          id: 'e2',
+          date: '2025-02-10',
+          documentId: 'FITID124',
+          memo: 'Pagamento de fornecedor',
+          contraAccountId: 'c2',
+          contraAccountCode: '2.1.2.01',
+          contraAccountName: 'Fornecedores Nacionais',
+          debit: 0,
+          credit: 5000,
+          balance: 50000,
+          balanceNature: 'D',
+        },
+      ],
+      totals: {
+        debits: 25000,
+        credits: 5000,
+        netMovement: 20000,
+        closingBalance: 50000,
+        closingNature: 'D',
+      },
+    };
+
+    const res = await generateAccountLedgerExcel({
+      client: mockClient,
+      ledger: mockLedger,
+      signatories: mockSignatories,
+    });
+
+    expect(res.blob).toBeInstanceOf(Blob);
+    expect(res.blob.size).toBeGreaterThan(1000);
+    expect(res.fileName).toContain('Razao_Empresa_Teste_1.1.01.001');
+    expect(res.fileName.endsWith('.xlsx')).toBe(true);
+  });
 });
+

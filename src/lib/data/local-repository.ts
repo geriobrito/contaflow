@@ -8,11 +8,12 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  JournalEntry,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
 import { applyPatch } from '@/lib/transitions';
 
 /** Subconjunto de `Storage` usado — permite injetar um armazenamento em memória nos testes. */
@@ -34,6 +35,7 @@ export const LOCAL_KEYS = {
   openings: 'contaflow_opening_balances',
   requests: 'contaflow_client_requests',
   requestFiles: 'contaflow_client_request_files',
+  journalEntries: 'contaflow_journal_entries',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -280,6 +282,30 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     },
     async getClientRequestFile(fileId) {
       return read<ClientRequestFile>(LOCAL_KEYS.requestFiles).find((f) => f.id === fileId) ?? null;
+    },
+
+    /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
+    async listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]> {
+      return read<JournalEntry>(LOCAL_KEYS.journalEntries)
+        .filter((j) => j.clientId === clientId && (!range || (j.date >= range.start && j.date <= range.end)))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
+    },
+    async saveJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void> {
+      const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
+      const idx = list.findIndex((j) => j.id === entry.id);
+      const stamped = stamp(entry);
+      const next = idx >= 0 ? list.map((j, i) => (i === idx ? stamped : j)) : [...list, stamped];
+      write(LOCAL_KEYS.journalEntries, next);
+      if (audit) {
+        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      }
+    },
+    async deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void> {
+      const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
+      write(LOCAL_KEYS.journalEntries, list.filter((j) => j.id !== entryId));
+      if (audit) {
+        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      }
     },
 
     async getPublicClientRequest(token) {

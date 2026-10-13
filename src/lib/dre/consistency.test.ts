@@ -105,4 +105,44 @@ describe('checkAccountingConsistency (DRE vs. Balanço Patrimonial)', () => {
     expect(unlinkedIssue).toBeDefined();
     expect(result.unlinkedBanksCount).toBe(1);
   });
+
+  it('mantém 100% de consistência contábil ao incluir lançamentos manuais de fechamento (JournalEntry)', () => {
+    const transactions: BankTransaction[] = [
+      tx('t1', '2025-03-10', 1000, 'receita', 'RECONCILED'),
+    ];
+
+    const passivoConta: ChartAccount = acc('salarios_a_pagar', '2.1.01.001', 'Salários a Pagar', 'LIABILITY');
+    const allAccounts = [...accounts, passivoConta];
+
+    const journal: import('@/types/firestore').JournalEntry = {
+      id: 'j1',
+      clientId: 'c1',
+      entryNumber: 1,
+      date: '2025-03-31',
+      memo: 'Provisão de folha mensal',
+      category: 'PAYROLL',
+      lines: [
+        { id: 'l1', accountId: 'despesa', type: 'DEBIT', amount: 400, memo: 'Despesa' },
+        { id: 'l2', accountId: 'salarios_a_pagar', type: 'CREDIT', amount: 400, memo: 'Passivo' },
+      ],
+      totalAmount: 400,
+      createdAt: '',
+      updatedAt: '',
+      createdByUid: 'u1',
+    };
+
+    const result = checkAccountingConsistency({
+      transactions,
+      accounts: allAccounts,
+      banks,
+      date: '2025-03-31',
+      journalEntries: [journal],
+    });
+
+    expect(result.isConsistent).toBe(true);
+    expect(result.dreNetResult).toBe(600); // 1000 receita - 400 despesa provisionada
+    expect(result.balanceCurrentResult).toBe(600);
+    expect(result.difference).toBe(0);
+    expect(result.issues).toHaveLength(0);
+  });
 });

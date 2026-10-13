@@ -27,6 +27,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  JournalEntry,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
@@ -47,6 +48,7 @@ export const COL = {
   openings: 'opening_balances',
   requests: 'client_requests',
   requestFiles: 'client_request_files',
+  journalEntries: 'journal_entries',
 } as const;
 
 /** Limites do Firestore. */
@@ -371,6 +373,30 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     async getClientRequestFile(fileId) {
       const snap = await getDoc(doc(db, COL.requestFiles, fileId));
       return snap.exists() ? ({ ...(snap.data() as ClientRequestFile), id: snap.id }) : null;
+    },
+
+    /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
+    async listJournalEntries(clientId, range) {
+      const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
+      if (range) {
+        constraints.push(where('date', '>=', range.start), where('date', '<=', range.end));
+      }
+      const snap = await getDocs(scoped(COL.journalEntries, ...constraints));
+      return snap.docs
+        .map((d) => ({ ...(d.data() as JournalEntry), id: d.id }))
+        .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
+    },
+    async saveJournalEntry(entry, audit) {
+      const b = writeBatch(db);
+      b.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
+      if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      await b.commit();
+    },
+    async deleteJournalEntry(entryId, audit) {
+      const b = writeBatch(db);
+      b.delete(doc(db, COL.journalEntries, entryId));
+      if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      await b.commit();
     },
 
     /* Acesso público pelo link: sem orgId de sessão; as regras validam pelo token. */

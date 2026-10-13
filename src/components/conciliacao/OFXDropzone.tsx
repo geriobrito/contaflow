@@ -4,7 +4,10 @@ import React, { useRef, useState } from 'react';
 import { AlertCircle, FileText, Loader2, Upload } from 'lucide-react';
 import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
 import type { OFXParseResult } from '@/lib/ofx/types';
+import type { BankAccount } from '@/types/firestore';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
+import { CSVMappingModal } from '@/components/conciliacao/CSVMappingModal';
+import { readCSVFileContent } from '@/lib/csv/parser';
 
 export interface ParsedOFXItem {
   result: OFXParseResult;
@@ -15,15 +18,24 @@ interface OFXDropzoneProps {
   onParsed: (result: OFXParseResult, fileName: string) => void;
   onParsedBatch?: (items: ParsedOFXItem[]) => void;
   isLoading?: boolean;
+  bankAccounts?: readonly BankAccount[];
+  clientId?: string;
 }
 
-export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatch, isLoading = false }) => {
+export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
+  onParsed,
+  onParsedBatch,
+  isLoading = false,
+  bankAccounts = [],
+  clientId = '',
+}) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressText, setProgressText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
+  const [csvModalData, setCsvModalData] = useState<{ content: string; fileName: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProcessFiles = async (fileList: FileList | File[]) => {
@@ -31,21 +43,39 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatc
     if (files.length === 0) return;
 
     const ofxFiles = files.filter((f) => f.name.toLowerCase().endsWith('.ofx'));
-    if (ofxFiles.length === 0) {
-      setErrorMessage('Envie arquivo(s) com extensão .ofx.');
+    const csvFiles = files.filter((f) => {
+      const lower = f.name.toLowerCase();
+      return lower.endsWith('.csv') || lower.endsWith('.txt');
+    });
+
+    if (ofxFiles.length === 0 && csvFiles.length === 0) {
+      setErrorMessage('Envie arquivo(s) com extensão .ofx, .csv ou .txt.');
       return;
     }
 
     setErrorMessage(null);
     setWarnings([]);
+
+    // Se houver arquivo CSV / TXT, abre o modal interativo de mapeamento para o primeiro
+    if (csvFiles.length > 0) {
+      try {
+        const { text } = await readCSVFileContent(csvFiles[0]);
+        setCsvModalData({
+          content: text,
+          fileName: csvFiles[0].name,
+        });
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : 'Falha ao ler arquivo CSV.');
+      }
+      if (ofxFiles.length === 0) {
+        return;
+      }
+    }
+
     setIsProcessing(true);
 
     const parsedItems: ParsedOFXItem[] = [];
     const allWarnings: string[] = [];
-
-    if (files.length > ofxFiles.length) {
-      allWarnings.push(`${files.length - ofxFiles.length} arquivo(s) ignorado(s) por não ter(em) extensão .ofx.`);
-    }
 
     try {
       for (let i = 0; i < ofxFiles.length; i++) {
@@ -153,7 +183,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatc
         <input
           ref={fileInputRef}
           type="file"
-          accept=".ofx"
+          accept=".ofx,.csv,.txt"
           multiple
           className="hidden"
           onChange={(e) => {
@@ -176,7 +206,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatc
           <span className="block text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
             {isDragging
               ? 'Solte os arquivos para importar'
-              : progressText || 'Importar extrato(s) OFX'}
+              : progressText || 'Importar extratos (OFX, CSV ou Fatura de Cartão)'}
           </span>
           <span className="flex items-center gap-1.5 text-[12px] text-stone-500 truncate">
             {activeFileName ? (
@@ -185,7 +215,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatc
                 <span className="truncate">{activeFileName}</span>
               </>
             ) : (
-              'Arraste um ou mais arquivos OFX aqui ou clique para selecionar'
+              'Arraste arquivos OFX, CSV ou TXT aqui ou clique para selecionar'
             )}
           </span>
         </span>
@@ -219,6 +249,26 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({ onParsed, onParsedBatc
             ))}
           </ul>
         </details>
+      )}
+
+      {csvModalData && (
+        <CSVMappingModal
+          isOpen={Boolean(csvModalData)}
+          onClose={() => setCsvModalData(null)}
+          fileName={csvModalData.fileName}
+          fileContent={csvModalData.content}
+          bankAccounts={bankAccounts}
+          clientId={clientId}
+          onConfirm={(result, fName) => {
+            setCsvModalData(null);
+            setActiveFileName(fName);
+            if (onParsedBatch) {
+              onParsedBatch([{ result, fileName: fName }]);
+            } else {
+              onParsed(result, fName);
+            }
+          }}
+        />
       )}
     </div>
   );

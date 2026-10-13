@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { ClientCompany } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import type { BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
+import type { AccountLedger, BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -44,10 +44,19 @@ export interface LedgerExportContext {
   };
 }
 
+export interface SheetHeaderContext {
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  issuedAt?: Date;
+}
+
+export interface SignaturesContext {
+  signatories?: LedgerExportContext['signatories'];
+}
+
 /** Cabeçalho corporativo integrado no topo da planilha */
 function renderSheetHeader(
   ws: ExcelJS.Worksheet,
-  ctx: LedgerExportContext,
+  ctx: SheetHeaderContext,
   title: string,
   subtitle: string,
   numCols: number
@@ -97,7 +106,7 @@ function renderSheetHeader(
 /** Renderiza bloco formal de assinaturas */
 function renderSignatures(
   ws: ExcelJS.Worksheet,
-  ctx: LedgerExportContext,
+  ctx: SignaturesContext,
   startRow: number,
   leftColStart: number,
   leftColEnd: number,
@@ -433,5 +442,190 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
   return {
     blob: new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
     fileName: `Balanco_Balancete_${base || 'Cliente'}_${bs.date}.xlsx`,
+  };
+}
+
+/* =========================================================================
+   Livro Razão Analítico em Excel
+   ========================================================================= */
+
+export interface AccountLedgerExportContext {
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  ledger: AccountLedger;
+  issuedAt?: Date;
+  signatories?: {
+    legalRepresentative?: { name?: string; cpf?: string };
+    accountant?: { name?: string; crc?: string };
+  };
+}
+
+export async function generateAccountLedgerExcel(ctx: AccountLedgerExportContext): Promise<{ blob: Blob; fileName: string }> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'ContaFlow';
+  wb.created = ctx.issuedAt ?? new Date();
+
+  const ledger = ctx.ledger;
+  const sheetTitle = `Razão - ${ledger.code || 'Conta'}`;
+  const ws = wb.addWorksheet(sheetTitle.slice(0, 31), {
+    views: [{ showGridLines: true, state: 'frozen', ySplit: 7 }],
+    pageSetup: {
+      paperSize: 9, // A4
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+      margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+    },
+  });
+
+  const numCols = 8;
+  const startRow = renderSheetHeader(
+    ws,
+    {
+      client: ctx.client,
+      issuedAt: ctx.issuedAt,
+    },
+    `LIVRO RAZÃO ANALÍTICO · CONTA ${ledger.code} ${ledger.name.toUpperCase()}`,
+    `Período de ${formatDateBR(ledger.range.start)} a ${formatDateBR(ledger.range.end)}`,
+    numCols
+  );
+
+  let curRow = startRow;
+
+  // Cabeçalho das colunas
+  const headerRow = ws.getRow(curRow++);
+  headerRow.values = [
+    'Data',
+    'Documento / FITID',
+    'Histórico do Lançamento',
+    'Contrapartida Contábil',
+    'Débito (R$)',
+    'Crédito (R$)',
+    'Saldo Atual (R$)',
+    'Nat.',
+  ];
+  headerRow.height = 24;
+  headerRow.eachCell((cell, col) => {
+    cell.font = font({ bold: true, size: 9.5 });
+    cell.fill = SECTION_FILL;
+    cell.border = { top: THIN_BORDER, bottom: THIN_BORDER };
+    cell.alignment = {
+      horizontal: col === 1 ? 'center' : col === 2 ? 'center' : col === 3 || col === 4 ? 'left' : col === 8 ? 'center' : 'right',
+      vertical: 'middle',
+    };
+  });
+
+  // Linha 1: Saldo Anterior
+  const openRow = ws.getRow(curRow++);
+  openRow.values = [
+    formatDateBR(ledger.range.start),
+    '—',
+    'SALDO ANTERIOR TRANSPORTADO',
+    '—',
+    null,
+    null,
+    ledger.openingBalance,
+    ledger.openingNature,
+  ];
+  openRow.height = 19;
+  openRow.getCell(7).numFmt = CURRENCY_FORMAT;
+  openRow.eachCell((cell) => {
+    cell.font = font({ italic: true, bold: true, size: 9, color: { argb: 'FF555555' } });
+    cell.fill = SUBTOTAL_FILL;
+    cell.border = { bottom: THIN_BORDER };
+  });
+
+  // Linhas de lançamentos
+  for (const e of ledger.entries) {
+    const row = ws.getRow(curRow++);
+    row.values = [
+      formatDateBR(e.date),
+      e.documentId || '—',
+      e.memo,
+      e.contraAccountCode ? `${e.contraAccountCode} ${e.contraAccountName || ''}` : e.contraAccountName || '—',
+      e.debit > 0 ? e.debit : null,
+      e.credit > 0 ? e.credit : null,
+      e.balance,
+      e.balanceNature,
+    ];
+    row.height = 18;
+
+    row.getCell(5).numFmt = CURRENCY_FORMAT;
+    row.getCell(6).numFmt = CURRENCY_FORMAT;
+    row.getCell(7).numFmt = CURRENCY_FORMAT;
+
+    row.eachCell((cell, col) => {
+      cell.font = font({ size: 9 });
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFE5E5E5' } } };
+      cell.alignment = {
+        horizontal: col === 1 ? 'center' : col === 2 ? 'center' : col === 3 || col === 4 ? 'left' : col === 8 ? 'center' : 'right',
+        vertical: 'middle',
+      };
+    });
+  }
+
+  // Linha de Totais
+  const totRow = ws.getRow(curRow++);
+  totRow.values = [
+    '',
+    '',
+    `TOTAIS DO PERÍODO (${ledger.entries.length} partidas)`,
+    '',
+    ledger.totals.debits,
+    ledger.totals.credits,
+    ledger.totals.closingBalance,
+    ledger.totals.closingNature,
+  ];
+  totRow.height = 22;
+  totRow.getCell(5).numFmt = CURRENCY_FORMAT;
+  totRow.getCell(6).numFmt = CURRENCY_FORMAT;
+  totRow.getCell(7).numFmt = CURRENCY_FORMAT;
+
+  totRow.eachCell((cell, col) => {
+    cell.font = font({ bold: true, size: 9.5 });
+    cell.fill = GRAND_TOTAL_FILL;
+    cell.border = { top: THIN_BORDER, bottom: DOUBLE_BORDER };
+    cell.alignment = {
+      horizontal: col === 1 || col === 2 ? 'left' : col === 3 || col === 4 ? 'left' : col === 8 ? 'center' : 'right',
+      vertical: 'middle',
+    };
+  });
+
+  // Bloco de assinaturas
+  curRow += 2;
+  renderSignatures(
+    ws,
+    {
+      signatories: ctx.signatories,
+    },
+    curRow,
+    2,
+    4,
+    5,
+    7
+  );
+
+  // Larguras das colunas
+  ws.getColumn(1).width = 14; // Data
+  ws.getColumn(2).width = 20; // Documento
+  ws.getColumn(3).width = 46; // Histórico
+  ws.getColumn(4).width = 34; // Contrapartida
+  ws.getColumn(5).width = 18; // Débito
+  ws.getColumn(6).width = 18; // Crédito
+  ws.getColumn(7).width = 20; // Saldo Atual
+  ws.getColumn(8).width = 10; // Nat.
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const base = (ctx.client.tradeName || ctx.client.name)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  const accCodeClean = (ledger.code || 'Conta').replace(/[^0-9.]/g, '');
+
+  return {
+    blob: new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    fileName: `Razao_${base}_${accCodeClean || 'Conta'}_${ledger.range.start}_a_${ledger.range.end}.xlsx`,
   };
 }

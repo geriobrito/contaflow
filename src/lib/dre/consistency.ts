@@ -1,4 +1,4 @@
-import type { BankAccount, BankTransaction, ChartAccount, OpeningBalances } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
 import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet } from '@/lib/ledger';
 import { buildDRE, type DateRange, type DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';
@@ -50,6 +50,7 @@ export function checkAccountingConsistency({
   banks,
   date,
   openings = null,
+  journalEntries = null,
 }: {
   transactions: readonly BankTransaction[];
   accounts: readonly ChartAccount[];
@@ -57,17 +58,18 @@ export function checkAccountingConsistency({
   /** Data de corte da apuração (geralmente a data final do período visualizado). */
   date: string;
   openings?: OpeningBalances | null;
+  journalEntries?: readonly JournalEntry[] | null;
 }): ConsistencyCheck {
   const year = date.slice(0, 4);
   const exerciseStart = `${year}-01-01`;
   const exerciseRange: DateRange = { start: exerciseStart, end: date };
 
   // 1. DRE acumulada do exercício até a data de corte
-  const exerciseDRE = buildDRE(transactions, accounts, exerciseRange);
+  const exerciseDRE = buildDRE(transactions, accounts, exerciseRange, journalEntries);
   const dreNetResult = round2(exerciseDRE.netResult);
 
   // 2. Balanço Patrimonial em partidas dobradas até a data de corte
-  const postings = buildPostings(transactions, banks, accounts, date, openings);
+  const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries);
   const balanceSheet = buildBalanceSheet(postings, accounts, date);
 
   const currentResultLine = balanceSheet.equity.find((l) => l.accountId === VIRTUAL.CURRENT_RESULT);

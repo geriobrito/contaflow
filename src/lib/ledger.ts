@@ -1,4 +1,4 @@
-import type { AccountType, BankAccount, BankTransaction, ChartAccount, OpeningBalances } from '@/types/firestore';
+import type { AccountType, BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
 
 /**
@@ -81,7 +81,8 @@ export function buildPostings(
   bankAccounts: readonly BankAccount[],
   accounts: readonly ChartAccount[],
   until?: string,
-  openings?: OpeningBalances | null
+  openings?: OpeningBalances | null,
+  journalEntries?: readonly JournalEntry[] | null
 ): Posting[] {
   const known = new Set(accounts.map((a) => a.id));
   const ledgerByKey = new Map(
@@ -127,6 +128,20 @@ export function buildPostings(
       out.push({ accountId: known.has(c.accountId) ? c.accountId : VIRTUAL.SUSPENSE, date: t.date, value: -c.amount });
     }
   }
+
+  // Lançamentos manuais de fechamento (partidas dobradas avulsas)
+  if (journalEntries) {
+    for (const j of journalEntries) {
+      if (until && j.date > until) continue;
+      for (const line of j.lines) {
+        if (!line.amount) continue;
+        const targetAcc = known.has(line.accountId) ? line.accountId : VIRTUAL.SUSPENSE;
+        const value = line.type === 'DEBIT' ? line.amount : -line.amount;
+        out.push({ accountId: targetAcc, date: j.date, value });
+      }
+    }
+  }
+
   return out;
 }
 
@@ -361,3 +376,409 @@ export function buildBalanceSheet(postings: readonly Posting[], accounts: readon
 
 /** Contas patrimoniais (para validações de tela). */
 export const isPatrimonial = (a: Pick<ChartAccount, 'type'>) => PATRIMONIAL.has(a.type);
+
+/* =========================================================================
+   Livro Razão Analítico (Ficha de Conta com Saldo Progressivo)
+   ========================================================================= */
+
+export interface AccountLedgerEntry {
+  id: string;
+  date: string;
+  documentId?: string;
+  memo: string;
+  contraAccountId?: string;
+  contraAccountCode?: string;
+  contraAccountName?: string;
+  debit: number;
+  credit: number;
+  /** Saldo absoluto acumulado linha a linha */
+  balance: number;
+  /** Natureza do saldo acumulado: 'D' (devedor) ou 'C' (credor) */
+  balanceNature: 'D' | 'C';
+}
+
+export interface AccountLedger {
+  accountId: string;
+  code: string;
+  name: string;
+  kind: AccountKind;
+  level: number;
+  synthetic: boolean;
+  isContra?: boolean;
+  range: DateRange;
+  /** Saldo anterior do período (absoluto) */
+  openingBalance: number;
+  /** Natureza do saldo anterior: 'D' ou 'C' */
+  openingNature: 'D' | 'C';
+  entries: AccountLedgerEntry[];
+  totals: {
+    debits: number;
+    credits: number;
+    netMovement: number;
+    closingBalance: number;
+    closingNature: 'D' | 'C';
+  };
+}
+
+/**
+ * Retorna o lado natural esperado do saldo de uma conta ('D' devedora, 'C' credora).
+ * Ativo, Custos e Despesas são normalmente devedores (exceto contas retificadoras).
+ * Passivo, Patrimônio Líquido e Receitas são normalmente credores (exceto retificadoras).
+ */
+export function accountNaturalNature(
+  account: Pick<ChartAccount, 'type' | 'isContra'> | VirtualId
+): 'D' | 'C' {
+  if (typeof account === 'string') {
+    if (account === VIRTUAL.BANK_UNLINKED || account === VIRTUAL.SUSPENSE) return 'D';
+    return 'C';
+  }
+  const kind = accountKind(account);
+  if (kind === 'ASSET') return account.isContra ? 'C' : 'D';
+  if (kind === 'LIABILITY' || kind === 'EQUITY') return account.isContra ? 'D' : 'C';
+  if (account.type === 'REVENUE' || account.type === 'RECEITA') return 'C';
+  return 'D';
+}
+
+export interface BuildAccountLedgerOptions {
+  accountId: string;
+  accounts: readonly ChartAccount[];
+  bankAccounts: readonly BankAccount[];
+  transactions: readonly BankTransaction[];
+  range: DateRange;
+  openings?: OpeningBalances | null;
+  journalEntries?: readonly JournalEntry[] | null;
+}
+
+/**
+ * Gera a ficha do Livro Razão analítico de uma conta contábil específica ou virtual.
+ * Calcula o saldo anterior no corte inicial, detalha débitos e créditos com suas contrapartidas,
+ * e gera o saldo progressivo cumulativo linha a linha respeitando a natureza D/C da conta.
+ */
+export function buildAccountLedger({
+  accountId,
+  accounts,
+  bankAccounts,
+  transactions,
+  range,
+  openings,
+  journalEntries,
+}: BuildAccountLedgerOptions): AccountLedger {
+  const byId = new Map(accounts.map((a) => [a.id, a] as const));
+  const known = new Set(accounts.map((a) => a.id));
+  const ledgerByKey = new Map(
+    bankAccounts
+      .filter((b) => b.ledgerAccountId && known.has(b.ledgerAccountId))
+      .map((b) => [b.accountKey, b.ledgerAccountId!] as const)
+  );
+
+  const virtual = isVirtual(accountId);
+  const target = virtual ? null : byId.get(accountId);
+
+  const ancestors = ancestorsOf(accounts);
+  const parents = new Set([...ancestors.values()].flat());
+  const isSynth = target ? target.nature === 'SYNTHETIC' || parents.has(target.id) : false;
+
+  // Se a conta for sintética, agrega os movimentos dela e de todas as suas filhas analíticas.
+  const targetAccountIds = new Set<string>();
+  targetAccountIds.add(accountId);
+  if (isSynth && target) {
+    for (const [id, chain] of ancestors) {
+      if (chain.includes(target.id)) {
+        targetAccountIds.add(id);
+      }
+    }
+  }
+
+  const kind: AccountKind = virtual ? VIRTUAL_KIND[accountId as VirtualId] : target ? accountKind(target) : 'ASSET';
+  const orientation: 'D' | 'C' = virtual
+    ? accountNaturalNature(accountId as VirtualId)
+    : target
+      ? accountNaturalNature(target)
+      : 'D';
+
+  const exercise = yearStart(range.start);
+
+  // 1. Saldo anterior acumulado antes de range.start
+  const allPostings = buildPostings(transactions, bankAccounts, accounts, undefined, openings, journalEntries);
+  let previousSigned = 0;
+  for (const p of allPostings) {
+    if (!targetAccountIds.has(p.accountId)) continue;
+    if (p.date < range.start) {
+      const pKind = isVirtual(p.accountId) ? VIRTUAL_KIND[p.accountId as VirtualId] : byId.has(p.accountId) ? accountKind(byId.get(p.accountId)!) : 'ASSET';
+      if (pKind === 'RESULT' && p.date < exercise) {
+        // Resultado de exercícios anteriores não compõe saldo de resultado do ano atual
+      } else {
+        previousSigned += p.value;
+      }
+    }
+  }
+
+  const openingBalance = Math.abs(round2(previousSigned));
+  const openingNature: 'D' | 'C' =
+    orientation === 'D'
+      ? previousSigned >= 0 ? 'D' : 'C'
+      : previousSigned <= 0 ? 'C' : 'D';
+
+  // 2. Coleta de lançamentos individuais do período
+  interface RawEntry {
+    id: string;
+    date: string;
+    documentId?: string;
+    memo: string;
+    contraAccountId?: string;
+    contraAccountCode?: string;
+    contraAccountName?: string;
+    debit: number;
+    credit: number;
+  }
+  const rawEntries: RawEntry[] = [];
+
+  // 2.1. Saldo de abertura de contas bancárias no período
+  for (const b of bankAccounts) {
+    if (!b.openingBalance || !b.openingDate) continue;
+    if (b.openingDate >= range.start && b.openingDate <= range.end) {
+      const bankLedgerId = ledgerByKey.get(b.accountKey) ?? VIRTUAL.BANK_UNLINKED;
+      if (targetAccountIds.has(bankLedgerId)) {
+        rawEntries.push({
+          id: `opening_bank_${b.id}`,
+          date: b.openingDate,
+          documentId: 'SALDO_INI',
+          memo: `Saldo inicial (${b.nickname || b.accountNumber || 'Banco'})`,
+          contraAccountId: VIRTUAL.OPENING,
+          contraAccountCode: '',
+          contraAccountName: VIRTUAL_LABEL[VIRTUAL.OPENING],
+          debit: b.openingBalance > 0 ? b.openingBalance : 0,
+          credit: b.openingBalance < 0 ? -b.openingBalance : 0,
+        });
+      }
+      if (targetAccountIds.has(VIRTUAL.OPENING)) {
+        rawEntries.push({
+          id: `opening_bank_contra_${b.id}`,
+          date: b.openingDate,
+          documentId: 'SALDO_INI',
+          memo: `Contrapartida saldo inicial (${b.nickname || b.accountNumber || 'Banco'})`,
+          contraAccountId: bankLedgerId,
+          contraAccountCode: byId.get(bankLedgerId)?.code ?? '',
+          contraAccountName: byId.get(bankLedgerId)?.name ?? (b.nickname || 'Banco'),
+          debit: b.openingBalance < 0 ? -b.openingBalance : 0,
+          credit: b.openingBalance > 0 ? b.openingBalance : 0,
+        });
+      }
+    }
+  }
+
+  // 2.2. Saldos de abertura patrimoniais gerais
+  if (openings && openings.date >= range.start && openings.date <= range.end) {
+    for (const e of openings.entries) {
+      const acc = byId.get(e.accountId);
+      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
+      const val = openingSign(acc) * e.amount;
+      if (targetAccountIds.has(acc.id)) {
+        rawEntries.push({
+          id: `opening_entry_${acc.id}`,
+          date: openings.date,
+          documentId: 'ABERTURA',
+          memo: 'Saldo de abertura patrimonial',
+          contraAccountId: VIRTUAL.OPENING,
+          contraAccountCode: '',
+          contraAccountName: VIRTUAL_LABEL[VIRTUAL.OPENING],
+          debit: val > 0 ? val : 0,
+          credit: val < 0 ? -val : 0,
+        });
+      }
+      if (targetAccountIds.has(VIRTUAL.OPENING)) {
+        rawEntries.push({
+          id: `opening_entry_contra_${acc.id}`,
+          date: openings.date,
+          documentId: 'ABERTURA',
+          memo: `Contrapartida saldo de abertura — ${acc.name}`,
+          contraAccountId: acc.id,
+          contraAccountCode: acc.code,
+          contraAccountName: acc.name,
+          debit: val < 0 ? -val : 0,
+          credit: val > 0 ? val : 0,
+        });
+      }
+    }
+  }
+
+  // 2.3. Transações bancárias
+  for (const t of transactions) {
+    if (t.date < range.start || t.date > range.end) continue;
+    const openingDate = bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate;
+    if (openingDate && t.date <= openingDate) continue;
+
+    const bankLedgerId = (t.accountKey && ledgerByKey.get(t.accountKey)) || VIRTUAL.BANK_UNLINKED;
+    const bankAcc = byId.get(bankLedgerId);
+    const bankName = bankAcc?.name ?? (bankAccounts.find((b) => b.accountKey === t.accountKey)?.nickname || 'Conta bancária');
+    const bankCode = bankAcc?.code ?? '';
+
+    // Lado do Banco
+    if (targetAccountIds.has(bankLedgerId)) {
+      let contraId: string;
+      let contraCode = '';
+      let contraName = '';
+      if (t.status !== 'RECONCILED') {
+        contraId = VIRTUAL.SUSPENSE;
+        contraName = VIRTUAL_LABEL[VIRTUAL.SUSPENSE];
+      } else if (t.isSplit && t.splits && t.splits.length > 0) {
+        contraId = 'SPLIT';
+        contraName = `Desdobrado (${t.splits.length} contas)`;
+      } else {
+        contraId = t.accountId ?? VIRTUAL.SUSPENSE;
+        const cAcc = byId.get(contraId);
+        contraCode = cAcc?.code ?? '';
+        contraName = cAcc?.name ?? (isVirtual(contraId) ? VIRTUAL_LABEL[contraId as VirtualId] : 'Conta classificada');
+      }
+
+      rawEntries.push({
+        id: `tx_${t.id}_bank`,
+        date: t.date,
+        documentId: t.fitid,
+        memo: t.memo,
+        contraAccountId: contraId,
+        contraAccountCode: contraCode,
+        contraAccountName: contraName,
+        debit: t.amount > 0 ? t.amount : 0,
+        credit: t.amount < 0 ? -t.amount : 0,
+      });
+    }
+
+    // Lado da Contrapartida
+    if (t.status !== 'RECONCILED') {
+      if (targetAccountIds.has(VIRTUAL.SUSPENSE)) {
+        rawEntries.push({
+          id: `tx_${t.id}_suspense`,
+          date: t.date,
+          documentId: t.fitid,
+          memo: t.memo,
+          contraAccountId: bankLedgerId,
+          contraAccountCode: bankCode,
+          contraAccountName: bankName,
+          debit: t.amount < 0 ? -t.amount : 0,
+          credit: t.amount > 0 ? t.amount : 0,
+        });
+      }
+    } else if (t.isSplit && t.splits && t.splits.length > 0) {
+      for (const s of t.splits) {
+        const sAccId = known.has(s.accountId) ? s.accountId : VIRTUAL.SUSPENSE;
+        if (targetAccountIds.has(sAccId)) {
+          rawEntries.push({
+            id: `tx_${t.id}_split_${s.id}`,
+            date: t.date,
+            documentId: t.fitid,
+            memo: s.memo || t.memo,
+            contraAccountId: bankLedgerId,
+            contraAccountCode: bankCode,
+            contraAccountName: bankName,
+            debit: s.amount < 0 ? -s.amount : 0,
+            credit: s.amount > 0 ? s.amount : 0,
+          });
+        }
+      }
+    } else {
+      const singleAccId = t.accountId && known.has(t.accountId) ? t.accountId : VIRTUAL.SUSPENSE;
+      if (targetAccountIds.has(singleAccId)) {
+        rawEntries.push({
+          id: `tx_${t.id}_counter`,
+          date: t.date,
+          documentId: t.fitid,
+          memo: t.memo,
+          contraAccountId: bankLedgerId,
+          contraAccountCode: bankCode,
+          contraAccountName: bankName,
+          debit: t.amount < 0 ? -t.amount : 0,
+          credit: t.amount > 0 ? t.amount : 0,
+        });
+      }
+    }
+  }
+
+  // 2.4. Lançamentos manuais de fechamento (Journal Entries)
+  if (journalEntries) {
+    for (const j of journalEntries) {
+      if (j.date < range.start || j.date > range.end) continue;
+      for (const line of j.lines) {
+        const lineAcc = known.has(line.accountId) ? line.accountId : VIRTUAL.SUSPENSE;
+        if (targetAccountIds.has(lineAcc)) {
+          const others = j.lines.filter((o) => o.id !== line.id);
+          let contraCode = '';
+          let contraName = '';
+          let contraId = '';
+          if (others.length === 1) {
+            contraId = others[0].accountId;
+            const oAcc = byId.get(others[0].accountId);
+            contraCode = oAcc?.code ?? '';
+            contraName = oAcc?.name ?? 'Conta contrapartida';
+          } else if (others.length > 1) {
+            contraId = 'MULTIPLE';
+            contraName = `Várias contas (${others.length} partidas)`;
+          }
+
+          rawEntries.push({
+            id: `j_${j.id}_${line.id}`,
+            date: j.date,
+            documentId: j.entryNumber ? `L${j.entryNumber}` : 'MANUAL',
+            memo: line.memo || j.memo,
+            contraAccountId: contraId,
+            contraAccountCode: contraCode,
+            contraAccountName: contraName,
+            debit: line.type === 'DEBIT' ? line.amount : 0,
+            credit: line.type === 'CREDIT' ? line.amount : 0,
+          });
+        }
+      }
+    }
+  }
+
+  // Ordenação cronológica estável
+  rawEntries.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+
+  // 3. Saldo progressivo cumulativo linha a linha
+  let runningSigned = previousSigned;
+  const entries: AccountLedgerEntry[] = rawEntries.map((e) => {
+    runningSigned += e.debit - e.credit;
+    const balance = Math.abs(round2(runningSigned));
+    const balanceNature: 'D' | 'C' =
+      orientation === 'D'
+        ? runningSigned >= 0 ? 'D' : 'C'
+        : runningSigned <= 0 ? 'C' : 'D';
+
+    return {
+      ...e,
+      debit: round2(e.debit),
+      credit: round2(e.credit),
+      balance,
+      balanceNature,
+    };
+  });
+
+  const totalDebits = round2(entries.reduce((s, e) => s + e.debit, 0));
+  const totalCredits = round2(entries.reduce((s, e) => s + e.credit, 0));
+  const closingBalance = Math.abs(round2(runningSigned));
+  const closingNature: 'D' | 'C' =
+    orientation === 'D'
+      ? runningSigned >= 0 ? 'D' : 'C'
+      : runningSigned <= 0 ? 'C' : 'D';
+
+  return {
+    accountId,
+    code: target?.code ?? '',
+    name: target?.name ?? (virtual ? VIRTUAL_LABEL[accountId as VirtualId] : 'Conta não encontrada'),
+    kind,
+    level: target?.level ?? (target ? target.code.split('.').length : 4),
+    synthetic: isSynth,
+    isContra: target?.isContra,
+    range,
+    openingBalance,
+    openingNature,
+    entries,
+    totals: {
+      debits: totalDebits,
+      credits: totalCredits,
+      netMovement: round2(totalDebits - totalCredits),
+      closingBalance,
+      closingNature,
+    },
+  };
+}

@@ -126,6 +126,31 @@ describe('buildDRE', () => {
     const d = buildDRE([{ ...tx(null, -20), accountId: 'legacy' }], [...accounts, legacy], YEAR);
     expect(d.financialResult).toBe(-20);
   });
+
+  it('integra lançamentos manuais de fechamento (JournalEntry) na DRE', () => {
+    const journal: import('@/types/firestore').JournalEntry = {
+      id: 'j1',
+      clientId: CLIENT,
+      entryNumber: 1,
+      date: '2025-06-30',
+      memo: 'Provisão de depreciação mensal',
+      category: 'DEPRECIATION',
+      lines: [
+        { id: 'l1', accountId: id('3.3.2.06'), type: 'DEBIT', amount: 500, memo: 'Despesa depreciação' },
+        { id: 'l2', accountId: id('1.2.3.02'), type: 'CREDIT', amount: 500, memo: 'Depreciação acumulada' },
+      ],
+      totalAmount: 500,
+      createdAt: '2025-06-30T00:00:00Z',
+      updatedAt: '2025-06-30T00:00:00Z',
+      createdByUid: 'u1',
+    };
+
+    const d = buildDRE([tx('3.1.1.01', 5_000)], accounts, YEAR, [journal]);
+    expect(d.grossRevenue).toBe(5_000);
+    expect(d.operatingExpenses).toBe(500);
+    expect(d.netResult).toBe(4_500);
+    expect(d.reconciledCount).toBe(2);
+  });
 });
 
 describe('periodRange', () => {

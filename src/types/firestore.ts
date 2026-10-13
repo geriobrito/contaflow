@@ -265,7 +265,10 @@ export type AuditAction =
   | 'OPENING_SAVE'
   | 'ACCOUNT_DELETE'
   | 'QUERY_ASK'
-  | 'QUERY_RESOLVE';
+  | 'QUERY_RESOLVE'
+  | 'JOURNAL_CREATE'
+  | 'JOURNAL_UPDATE'
+  | 'JOURNAL_DELETE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -453,4 +456,48 @@ export interface OpeningBalances {
   entries: OpeningEntry[];
   updatedAt: string;
   updatedByUid?: string;
+}
+
+/* =========================================================================
+   Lançamentos contábeis manuais (Diário de Fechamento / Ajustes Avulsos)
+   ========================================================================= */
+
+export type JournalEntryCategory =
+  | 'PROVISION'
+  | 'DEPRECIATION'
+  | 'PAYROLL'
+  | 'TAX'
+  | 'ADJUSTMENT'
+  | 'CLOSING'
+  | 'OTHER';
+
+export interface JournalEntryLine {
+  id: string;
+  accountId: string;
+  accountCode?: string;
+  accountName?: string;
+  type: 'DEBIT' | 'CREDIT';
+  amount: number;
+  memo?: string;
+}
+
+/**
+ * Lançamento contábil no livro diário sem movimentação de extrato bancário
+ * (coleção `journal_entries`). Respeita estritamente a soma débito === crédito.
+ */
+export interface JournalEntry {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  entryNumber: number;
+  date: string; // YYYY-MM-DD
+  memo: string;
+  category: JournalEntryCategory;
+  lines: JournalEntryLine[];
+  totalAmount: number;
+  documentRef?: string;
+  attachmentUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByUid: string;
 }

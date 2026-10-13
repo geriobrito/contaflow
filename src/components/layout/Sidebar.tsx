@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ArrowLeftRight,
+  BookMarked,
   BookOpen,
   Building2,
   Check,
@@ -24,6 +25,7 @@ import {
   Wallet,
   ClipboardList,
   LayoutDashboard,
+  FilePenLine,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -44,7 +46,9 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
   { href: '/dre', label: 'DRE', icon: LineChart },
   { href: '/abertura', label: 'Saldos de Abertura', icon: ClipboardList },
+  { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine },
   { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
+  { href: '/razao', label: 'Livro Razão', icon: BookMarked },
   { href: '/clientes', label: 'Clientes', icon: Building2 },
   { href: '/auditoria', label: 'Auditoria', icon: History },
   { href: '/escritorio', label: 'Escritório', icon: Landmark },

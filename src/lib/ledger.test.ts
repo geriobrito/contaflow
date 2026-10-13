@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { BankAccount, BankTransaction } from '@/types/firestore';
+import type { BankAccount, BankTransaction, JournalEntry } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
-import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL } from '@/lib/ledger';
+import { buildAccountLedger, buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL } from '@/lib/ledger';
 
 const chart = buildITG1000Chart('c', '2025-01-01T00:00:00.000Z');
 const id = (code: string) => `c_itg22_${code}`;
@@ -162,3 +162,173 @@ describe('saldos de abertura das demais contas', () => {
     expect(p.map((x) => x.accountId).sort()).toEqual([VIRTUAL.OPENING, id('1.1.2.01')].sort());
   });
 });
+
+describe('Livro Razão Analítico (buildAccountLedger)', () => {
+  const txs = [
+    tx('2025-01-10', 1000, '3.1.1.01'), // receita de serviços
+    tx('2025-01-15', -200, '3.3.2.07'), // aluguel
+    tx('2025-01-20', -50, null), // pendente → a classificar
+    tx('2025-02-05', -300, '2.1.4.01'), // amortização de empréstimo (passivo)
+  ];
+  const banks = [bank('itau', '1.1.1.02', [500, '2024-12-31'])];
+
+  it('calcula saldo anterior, lançamentos e saldo progressivo da conta bancária em janeiro', () => {
+    const r = buildAccountLedger({
+      accountId: id('1.1.1.02'),
+      accounts: chart,
+      bankAccounts: banks,
+      transactions: txs,
+      range: { start: '2025-01-01', end: '2025-01-31' },
+    });
+
+    expect(r.code).toBe('1.1.1.02');
+    expect(r.openingBalance).toBe(500);
+    expect(r.openingNature).toBe('D');
+    expect(r.entries).toHaveLength(3);
+
+    // Entrada de 1000: débito 1000, contrapartida Receita (3.1.1.01), saldo 1500 D
+    expect(r.entries[0]).toMatchObject({
+      date: '2025-01-10',
+      debit: 1000,
+      credit: 0,
+      balance: 1500,
+      balanceNature: 'D',
+      contraAccountCode: '3.1.1.01',
+    });
+
+    // Saída de 200: crédito 200, contrapartida Aluguel (3.3.2.07), saldo 1300 D
+    expect(r.entries[1]).toMatchObject({
+      date: '2025-01-15',
+      debit: 0,
+      credit: 200,
+      balance: 1300,
+      balanceNature: 'D',
+      contraAccountCode: '3.3.2.07',
+    });
+
+    // Saída de 50 pendente: crédito 50, contrapartida Lançamentos a classificar, saldo 1250 D
+    expect(r.entries[2]).toMatchObject({
+      date: '2025-01-20',
+      debit: 0,
+      credit: 50,
+      balance: 1250,
+      balanceNature: 'D',
+      contraAccountName: 'Lançamentos a classificar',
+    });
+
+    expect(r.totals).toEqual({
+      debits: 1000,
+      credits: 250,
+      netMovement: 750,
+      closingBalance: 1250,
+      closingNature: 'D',
+    });
+  });
+
+  it('no mês seguinte (fevereiro), o saldo anterior parte exatamente do saldo final de janeiro', () => {
+    const r = buildAccountLedger({
+      accountId: id('1.1.1.02'),
+      accounts: chart,
+      bankAccounts: banks,
+      transactions: txs,
+      range: { start: '2025-02-01', end: '2025-02-28' },
+    });
+
+    expect(r.openingBalance).toBe(1250);
+    expect(r.openingNature).toBe('D');
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toMatchObject({
+      date: '2025-02-05',
+      debit: 0,
+      credit: 300,
+      balance: 950,
+      balanceNature: 'D',
+      contraAccountCode: '2.1.4.01',
+    });
+    expect(r.totals.closingBalance).toBe(950);
+    expect(r.totals.closingNature).toBe('D');
+  });
+
+  it('conta de receita (credora) acumula créditos e reflete contrapartida bancária', () => {
+    const r = buildAccountLedger({
+      accountId: id('3.1.1.01'),
+      accounts: chart,
+      bankAccounts: banks,
+      transactions: txs,
+      range: { start: '2025-01-01', end: '2025-01-31' },
+    });
+
+    expect(r.openingBalance).toBe(0);
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toMatchObject({
+      date: '2025-01-10',
+      debit: 0,
+      credit: 1000,
+      balance: 1000,
+      balanceNature: 'C',
+      contraAccountCode: '1.1.1.02',
+    });
+    expect(r.totals.closingBalance).toBe(1000);
+    expect(r.totals.closingNature).toBe('C');
+  });
+
+  it('integração com lançamentos contábeis manuais (JournalEntry)', () => {
+    const manual: JournalEntry = {
+      id: 'j1',
+      clientId: 'c',
+      entryNumber: 1,
+      date: '2025-01-31',
+      memo: 'Provisão de depreciação mensal',
+      category: 'DEPRECIATION',
+      totalAmount: 150,
+      createdAt: '2025-01-31',
+      updatedAt: '2025-01-31',
+      createdByUid: 'u1',
+      lines: [
+        { id: 'l1', accountId: id('3.3.2.14'), type: 'DEBIT', amount: 150, memo: 'Cota mensal' },
+        { id: 'l2', accountId: id('1.2.3.07'), type: 'CREDIT', amount: 150, memo: 'Depreciação acumulada' },
+      ],
+    };
+
+    const rExp = buildAccountLedger({
+      accountId: id('3.3.2.14'),
+      accounts: chart,
+      bankAccounts: banks,
+      transactions: txs,
+      range: { start: '2025-01-01', end: '2025-01-31' },
+      journalEntries: [manual],
+    });
+
+    expect(rExp.entries).toHaveLength(1);
+    expect(rExp.entries[0]).toMatchObject({
+      date: '2025-01-31',
+      documentId: 'L1',
+      debit: 150,
+      credit: 0,
+      balance: 150,
+      balanceNature: 'D',
+      contraAccountCode: '1.2.3.07',
+    });
+
+    const rContra = buildAccountLedger({
+      accountId: id('1.2.3.07'),
+      accounts: chart,
+      bankAccounts: banks,
+      transactions: txs,
+      range: { start: '2025-01-01', end: '2025-01-31' },
+      journalEntries: [manual],
+    });
+
+    expect(rContra.entries).toHaveLength(1);
+    expect(rContra.entries[0]).toMatchObject({
+      date: '2025-01-31',
+      documentId: 'L1',
+      debit: 0,
+      credit: 150,
+      balance: 150,
+      balanceNature: 'C',
+      contraAccountCode: '3.3.2.14',
+    });
+  });
+});
+

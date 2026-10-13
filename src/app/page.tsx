@@ -94,6 +94,7 @@ export default function ConciliacaoPage() {
   const clientId = currentClient?.id ?? null;
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selected, setSelected] = useState<BankTransaction | null>(null);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,6 +114,12 @@ export default function ConciliacaoPage() {
   useEffect(() => {
     if (!clientId) return;
     let active = true;
+    const repo = getRepository();
+
+    repo.listBankAccounts(clientId)
+      .then((banks) => active && setBankAccounts(banks))
+      .catch((e) => console.error('Erro ao carregar contas bancárias:', e));
+
     getLatestTransactionDate(clientId)
       .then((latest) => {
         if (!active) return;
@@ -644,7 +651,13 @@ export default function ConciliacaoPage() {
         <Metric label="Saídas" value={formatCurrency(metrics.debits)} tone="negative" caption="Débitos" />
       </section>
 
-      <OFXDropzone onParsed={handleOFXParsed} onParsedBatch={handleOFXParsedBatch} isLoading={isSaving} />
+      <OFXDropzone
+        onParsed={handleOFXParsed}
+        onParsedBatch={handleOFXParsedBatch}
+        isLoading={isSaving}
+        bankAccounts={bankAccounts}
+        clientId={clientId || ''}
+      />
       {duplicate && (
         <DuplicateImportModal
           info={duplicate.info}

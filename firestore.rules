@@ -116,6 +116,18 @@ service cloud.firestore {
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
     }
 
+    // ── Lançamentos contábeis manuais (Diário de Fechamento / Ajustes Avulsos) ─
+    match /journal_entries/{entryId} {
+      allow read: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && monthOpen(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && monthOpen(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && monthOpen(resource.data) && monthOpen(request.resource.data);
+    }
+
     // ── Contas bancárias do cliente ──────────────────────────────────────
     match /bank_accounts/{docId} {
       allow read, delete: if isMine(resource.data);

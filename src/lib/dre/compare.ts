@@ -1,4 +1,4 @@
-import type { BankTransaction, ChartAccount } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, JournalEntry } from '@/types/firestore';
 import { buildDRE, type DateRange, type DRESectionKey, type DREStatement } from '@/lib/dre/build';
 import { monthsBetween } from '@/lib/periods';
 
@@ -22,7 +22,12 @@ const lastDayOf = (month: string) => {
 };
 
 /** Uma coluna por mês do intervalo (recortada ao intervalo nas pontas). */
-export function monthlyColumns(transactions: readonly BankTransaction[], accounts: readonly ChartAccount[], range: DateRange): CompareColumn[] {
+export function monthlyColumns(
+  transactions: readonly BankTransaction[],
+  accounts: readonly ChartAccount[],
+  range: DateRange,
+  journalEntries?: readonly JournalEntry[] | null
+): CompareColumn[] {
   return monthsBetween(range.start, range.end).map((month) => {
     const start = `${month}-01` < range.start ? range.start : `${month}-01`;
     const endOfMonth = `${month}-${String(lastDayOf(month)).padStart(2, '0')}`;
@@ -32,7 +37,7 @@ export function monthlyColumns(transactions: readonly BankTransaction[], account
       key: month,
       label: `${MONTH_SHORT[Number(m) - 1]}/${y.slice(2)}`,
       range: { start, end },
-      statement: buildDRE(transactions, accounts, { start, end }),
+      statement: buildDRE(transactions, accounts, { start, end }, journalEntries),
     };
   });
 }
