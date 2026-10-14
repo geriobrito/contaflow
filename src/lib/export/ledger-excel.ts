@@ -4,6 +4,7 @@ import type { DateRange } from '@/lib/data/repository';
 import type { AccountLedger, BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { round2 } from '@/lib/money';
 
 /**
  * Balanço patrimonial e balancete de verificação em .xlsx com acabamento executivo.
@@ -211,7 +212,7 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
     // Linhas de detalhe
     for (const l of lines) {
       const row = wsBs.getRow(curBsRow++);
-      row.values = [l.code, l.name, l.synthetic ? 'Sintética' : 'Analítica', Math.round(l.value * 100) / 100];
+      row.values = [l.code, l.name, l.synthetic ? 'Sintética' : 'Analítica', round2(l.value)];
       row.getCell(4).numFmt = CURRENCY_FORMAT;
       row.height = l.synthetic ? 19 : 17;
 
@@ -233,7 +234,7 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
 
     // Linha de Subtotal
     const subRow = wsBs.getRow(curBsRow++);
-    subRow.values = ['', subtotalTitle, 'Sintética', Math.round(subtotalValue * 100) / 100];
+    subRow.values = ['', subtotalTitle, 'Sintética', round2(subtotalValue)];
     subRow.height = 20;
     subRow.getCell(4).numFmt = CURRENCY_FORMAT;
     subRow.eachCell((cell, col) => {
@@ -254,7 +255,7 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
   // TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO
   const totalPassivoPL = bs.totalLiabilities + bs.totalEquity;
   const totRow = wsBs.getRow(curBsRow++);
-  totRow.values = ['', 'TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO', 'Sintética', Math.round(totalPassivoPL * 100) / 100];
+  totRow.values = ['', 'TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO', 'Sintética', round2(totalPassivoPL)];
   totRow.height = 24;
   totRow.getCell(4).numFmt = CURRENCY_FORMAT;
   totRow.eachCell((cell, col) => {
@@ -345,10 +346,10 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
       r.code,
       r.name,
       r.synthetic ? 'Sintética' : 'Analítica',
-      Math.round(r.previous * 100) / 100,
-      Math.round(r.debits * 100) / 100,
-      Math.round(r.credits * 100) / 100,
-      Math.round(r.final * 100) / 100,
+      round2(r.previous),
+      round2(r.debits),
+      round2(r.credits),
+      round2(r.final),
       nat,
     ];
 
@@ -382,10 +383,10 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
     '',
     'TOTAIS (contas analíticas)',
     'Analítica',
-    Math.round(tb.totals.previous * 100) / 100,
-    Math.round(tb.totals.debits * 100) / 100,
-    Math.round(tb.totals.credits * 100) / 100,
-    Math.round(tb.totals.final * 100) / 100,
+    round2(tb.totals.previous),
+    round2(tb.totals.debits),
+    round2(tb.totals.credits),
+    round2(tb.totals.final),
     totNat,
   ];
 

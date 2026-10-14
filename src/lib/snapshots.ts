@@ -1,6 +1,7 @@
 import type { BankAccount, BankTransaction, ChartAccount, MonthCounts, PeriodLock, PeriodSnapshot } from '@/types/firestore';
 import { buildPostings, type Posting } from '@/lib/ledger';
 import { monthOf } from '@/lib/periods';
+import { toCents } from '@/lib/money';
 
 /**
  * Saldos consolidados de competências fechadas.
@@ -59,8 +60,6 @@ export function ledgerConfigKey(
   });
   return `v${SNAPSHOT_VERSION}-${hash(payload)}`;
 }
-
-const toCents = (n: number) => Math.round(n * 100);
 
 /** Saldos (em centavos) e contagens por competência de um conjunto de lançamentos. */
 function tally(

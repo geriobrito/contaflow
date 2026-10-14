@@ -27,6 +27,7 @@ import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { JournalEntryModal } from '@/components/lancamentos/JournalEntryModal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 const CATEGORY_CONFIG: Record<JournalEntryCategory, { label: string; badge: string }> = {
   CLOSING: {
@@ -79,6 +80,10 @@ export default function LancamentosPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  /** Lançamento aguardando confirmação de exclusão. */
+  const [deleteTarget, setDeleteTarget] = useState<JournalEntry | null>(null);
+  /** Aviso de ação recusada (ex.: competência fechada). */
+  const [notice, setNotice] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
 
   // Carrega plano de contas, travas e lançamentos manuais
@@ -207,30 +212,27 @@ export default function LancamentosPage() {
     setReloadCount((c) => c + 1);
   };
 
-  // Exclusão de lançamento
-  const handleDelete = async (entryId: string) => {
-    if (!clientId) return;
-    const entry = entries.find((e) => e.id === entryId);
-    if (!entry) return;
-
+  // Exclusão de lançamento: pede confirmação no diálogo; competência fechada nem chega a perguntar.
+  const requestDelete = (entry: JournalEntry) => {
     const m = entry.date.slice(0, 7);
     if (isMonthLocked(m)) {
-      alert(`A competência ${m} está bloqueada para alterações.`);
+      setNotice(`A competência ${m} está bloqueada para alterações. Reabra-a para excluir o lançamento #${entry.entryNumber}.`);
       return;
     }
+    setNotice(null);
+    setDeleteTarget(entry);
+  };
 
-    if (!confirm(`Deseja realmente excluir o lançamento #${entry.entryNumber} ("${entry.memo}")?`)) {
-      return;
-    }
-
-    setDeletingId(entryId);
+  /** Chamado pelo diálogo; se falhar, o erro aparece nele e o lançamento continua na lista. */
+  const confirmDelete = async (entry: JournalEntry) => {
+    setDeletingId(entry.id);
     try {
-      const repo = getRepository();
-      await repo.deleteJournalEntry(entryId);
+      await getRepository().deleteJournalEntry(entry.id);
+      setDeleteTarget(null);
       setReloadCount((c) => c + 1);
     } catch (err) {
       console.error('Erro ao excluir lançamento:', err);
-      alert(err instanceof Error ? err.message : 'Falha ao excluir lançamento.');
+      throw err;
     } finally {
       setDeletingId(null);
     }
@@ -283,6 +285,16 @@ export default function LancamentosPage() {
             {error}
           </p>
         </div>
+      )}
+
+      {notice && (
+        <p role="alert" className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-800/40 text-[13px] text-rose-700 dark:text-rose-300">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className="font-medium hover:underline">
+            Dispensar
+          </button>
+        </p>
       )}
 
       {/* Seletor de Período */}
@@ -506,7 +518,7 @@ export default function LancamentosPage() {
 
                             <button
                               type="button"
-                              onClick={() => void handleDelete(entry.id)}
+                              onClick={() => requestDelete(entry)}
                               disabled={monthLocked || deletingId === entry.id}
                               title={monthLocked ? 'Mês bloqueado' : 'Excluir lançamento'}
                               className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
@@ -602,6 +614,22 @@ export default function LancamentosPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={`Excluir o lançamento #${deleteTarget.entryNumber}?`}
+          description={
+            <>
+              “{deleteTarget.memo}”, de {formatDateBR(deleteTarget.date)}, no valor de {formatCurrency(deleteTarget.totalAmount)}, sai do
+              Diário, do Razão, do Balanço e da DRE. O número não é reaproveitado.
+            </>
+          }
+          confirmLabel="Excluir lançamento"
+          destructive
+          onConfirm={() => confirmDelete(deleteTarget)}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
 
       {/* Modal de Lançamento */}

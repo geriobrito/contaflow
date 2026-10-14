@@ -1,5 +1,6 @@
 import type { BankTransaction, ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { matchesRule } from '@/lib/reconciliation';
+import { sumMoney } from '@/lib/money';
 
 /**
  * Favorecido (quem pagou ou recebeu) de uma descrição de extrato, agrupamento de lançamentos
@@ -183,7 +184,7 @@ export function groupByPayee(transactions: readonly BankTransaction[]): PayeeGro
         label,
         term: suggestRuleTerm(g.txs[0].memo),
         transactions: [...g.txs].sort((a, b) => b.date.localeCompare(a.date)),
-        total: Math.round(g.txs.reduce((s, t) => s + t.amount, 0) * 100) / 100,
+        total: sumMoney(g.txs.map((t) => t.amount)),
       };
     })
     .sort(

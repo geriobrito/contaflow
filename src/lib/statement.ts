@@ -1,6 +1,7 @@
 import type { BalanceCheck, ImportBatch } from '@/types/firestore';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
 import { isISODate } from '@/lib/periods';
+import { round2 } from '@/lib/money';
 
 /**
  * Conferência de extratos: saldo final informado pelo banco (LEDGERBAL) contra a
@@ -17,7 +18,6 @@ export function accountKeyOf(account: OFXAccountInfo): string | undefined {
 }
 
 const CENT = 0.005;
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Soma dia a dia (YYYY-MM-DD) sem fuso horário. */
 export function addDays(date: string, days: number): string {

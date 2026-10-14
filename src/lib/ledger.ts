@@ -1,5 +1,6 @@
 import type { AccountType, BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
+import { round2 } from '@/lib/money';
 
 /**
  * Razão por partidas dobradas a partir do extrato, balancete de verificação e balanço
@@ -39,7 +40,6 @@ export interface Posting {
   value: number;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const PATRIMONIAL: ReadonlySet<AccountType> = new Set(['ASSET', 'ATIVO', 'LIABILITY', 'PASSIVO', 'EQUITY']);
 const ASSET: ReadonlySet<AccountType> = new Set(['ASSET', 'ATIVO']);

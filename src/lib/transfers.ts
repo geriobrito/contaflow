@@ -1,5 +1,6 @@
 import type { BankTransaction, ChartAccount } from '@/types/firestore';
 import { isMonthLocked } from '@/lib/periods';
+import { toCents } from '@/lib/money';
 
 /**
  * Transferências entre contas próprias do mesmo cliente.
@@ -24,8 +25,6 @@ export interface TransferPair {
 const HINT = /TRANSF|TED|DOC\b|PIX|APLICA|RESGATE|ENTRE CONTAS|MESMA TITULARIDADE/i;
 
 const dayNumber = (date: string) => Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10))) / 86_400_000;
-
-const cents = (n: number) => Math.round(n * 100);
 
 /** Lançamento pode ser perna de transferência (ainda não conciliado, conta conhecida, mês aberto). */
 function eligible(t: BankTransaction, lockedMonths: ReadonlySet<string>): boolean {
@@ -53,13 +52,13 @@ export function findTransferPairs(
   const candidates = transactions.filter((t) => eligible(t, locked));
   const inflowsByValue = new Map<number, BankTransaction[]>();
   for (const t of candidates) {
-    if (t.amount > 0) inflowsByValue.set(cents(t.amount), [...(inflowsByValue.get(cents(t.amount)) ?? []), t]);
+    if (t.amount > 0) inflowsByValue.set(toCents(t.amount), [...(inflowsByValue.get(toCents(t.amount)) ?? []), t]);
   }
 
   const options_: TransferPair[] = [];
   for (const out of candidates) {
     if (out.amount >= 0) continue;
-    for (const inc of inflowsByValue.get(cents(-out.amount)) ?? []) {
+    for (const inc of inflowsByValue.get(toCents(-out.amount)) ?? []) {
       if (inc.accountKey === out.accountKey) continue;
       const days = Math.abs(dayNumber(inc.date) - dayNumber(out.date));
       if (days > maxDays) continue;

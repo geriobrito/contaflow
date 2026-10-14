@@ -2,6 +2,7 @@ import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningB
 import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet, type Posting } from '@/lib/ledger';
 import { buildDRE, type DateRange, type DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { round2 } from '@/lib/money';
 
 export interface ConsistencyIssue {
   id: string;
@@ -37,7 +38,6 @@ export interface ConsistencyCheck {
   exerciseDRE: DREStatement;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Validação cruzada contábil por partidas dobradas:

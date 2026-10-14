@@ -93,4 +93,6 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 
    Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries`, `journal_counters` (sequência dos lançamentos manuais) e `period_snapshots` (saldos consolidados).
 
+   **Publicação automática:** a cada merge na `main`, depois de todos os testes passarem, o CI (`.github/workflows/ci.yml`, job `deploy-firestore`) publica as regras e os índices no projeto do `.firebaserc`. Para ativar, cadastre no repositório (*Settings → Secrets and variables → Actions*) o segredo `FIREBASE_SERVICE_ACCOUNT` com o JSON de uma conta de serviço que tenha os papéis *Firebase Rules Admin* e *Cloud Datastore Index Admin*. Sem o segredo, o job só emite um aviso e nada é publicado.
+
 3. **Deploy do app** (Vercel) normalmente.

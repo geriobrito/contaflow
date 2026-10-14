@@ -1,5 +1,6 @@
 import type { BankAccount, BankTransaction, ChartAccount, ImportBatch } from '@/types/firestore';
 import { addDays } from '@/lib/statement';
+import { round2 } from '@/lib/money';
 
 /**
  * Contas bancárias do cliente: vínculo com o plano de contas, saldo inicial e saldo
@@ -40,7 +41,6 @@ export function suggestOpening(
   return { openingBalance: round2(first.ledgerBalance - first.fileNet), openingDate: addDays(first.startDate, -1) };
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Saldo da conta ao fim do dia `date`: saldo inicial + movimentação posterior à data do

@@ -1,9 +1,9 @@
 import type { BankTransaction, ChartAccount, TransactionSplit } from '@/types/firestore';
 import { generateId } from '@/lib/utils/id';
+import { fromCents, toCents } from '@/lib/money';
 
-/** Valores monetários são comparados em centavos inteiros para evitar erro de ponto flutuante. */
-export const toCents = (value: number): number => Math.round(value * 100);
-export const fromCents = (cents: number): number => cents / 100;
+// Valores monetários são comparados em centavos inteiros (ver src/lib/money.ts).
+export { fromCents, toCents };
 
 export interface SplitDraft {
   id: string;

@@ -2,6 +2,7 @@ import { OFXParseResult, OFXRawTransaction, OFXAccountInfo } from './types';
 import { decodeOFXBytes, repairMojibake } from './encoding';
 
 import { isISODate } from '@/lib/periods';
+import { round2 } from '@/lib/money';
 
 /**
  * Normaliza qualquer data vinda do OFX para YYYY-MM-DD, ou `null` se não for uma data real.
@@ -57,8 +58,8 @@ export function normalizeOFXAmount(raw: string | null | undefined): number | nul
 
   const value = Number.parseFloat(digits);
   if (!Number.isFinite(value)) return null;
-  const cents = Math.round(value * 100) / 100;
-  return negative ? -cents : cents;
+  const amount = round2(value);
+  return negative ? -amount : amount;
 }
 
 /** @deprecated use `normalizeOFXDate` (devolve '' quando a data é inválida). */

@@ -1,13 +1,12 @@
 import type { JournalEntry, JournalEntryLine } from '@/types/firestore';
 import { isISODate } from '@/lib/periods';
+import { toCents } from '@/lib/money';
 
 /**
  * Máximo de partidas por lançamento manual. As regras do Firestore não têm laços: somam
  * as partidas uma a uma (`linesNet` em firestore.rules), e este é o teto de lá.
  */
 export const MAX_JOURNAL_LINES = 20;
-
-const toCents = (n: number) => Math.round(n * 100);
 
 /** Totais de débito e crédito das partidas, somados em centavos. */
 export function journalTotals(lines: readonly Pick<JournalEntryLine, 'type' | 'amount'>[]): {

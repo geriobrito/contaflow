@@ -12,6 +12,7 @@ import { openingAccounts, parseMoneyInput, summarizeOpening } from '@/lib/openin
 import { isISODate } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+import { round2 } from '@/lib/money';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 const toInput = (n: number) => (n ? n.toFixed(2).replace('.', ',') : '');
@@ -104,7 +105,7 @@ export default function AberturaPage() {
     if (!plugAccount || summary.balanced) return;
     const current = parseMoneyInput(values[plugAccount.id] ?? '') ?? 0;
     // Retificadora de PL (ex.: prejuízos acumulados) reduz o PL: o sinal do ajuste se inverte.
-    const next = Math.round((current + (plugAccount.isContra ? -1 : 1) * summary.difference) * 100) / 100;
+    const next = round2(current + (plugAccount.isContra ? -1 : 1) * summary.difference);
     if (next < 0) {
       setError(`Não dá para ajustar ${plugAccount.code} ${plugAccount.name}: o valor ficaria negativo. Escolha outra conta de patrimônio líquido.`);
       return;

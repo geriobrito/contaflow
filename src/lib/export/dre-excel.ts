@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { round2 } from '@/lib/money';
 import {
   buildDREExportRows,
   cnpjLabel,
@@ -98,7 +99,7 @@ export async function generateDREExcel(ctx: DREExportContext): Promise<{ blob: B
     const r = ws.getRow(tableHeaderRow + 1 + i);
     r.getCell(1).value = descriptionOf(row);
     r.getCell(2).value = row.percent === null ? null : row.percent / 100;
-    r.getCell(3).value = Math.round(row.value * 100) / 100;
+    r.getCell(3).value = round2(row.value);
 
     r.getCell(2).numFmt = PERCENT_FORMAT;
     r.getCell(3).numFmt = CURRENCY_FORMAT;

@@ -1,81 +1,39 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { OFXDropzone, type ParsedOFXItem } from '@/components/conciliacao/OFXDropzone';
-import type { BankAccount, BankTransaction, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
-import type { OFXParseResult } from '@/lib/ofx/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { AlertTriangle, CheckCheck } from 'lucide-react';
+import type { BankAccount, ChartAccount, ReconciliationStatus } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
-import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { useReconciliation, type ClassifyOptions, type ImportResult, type MemoUpdate, type PreImportCheck } from '@/hooks/useReconciliation';
-import { AlertTriangle, ArrowLeftRight, CheckCheck, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split, X } from 'lucide-react';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { useReconciliation } from '@/hooks/useReconciliation';
+import { useBulkSelection } from '@/hooks/conciliacao/useBulkSelection';
+import { useClassificationFlow } from '@/hooks/conciliacao/useClassificationFlow';
+import { useImportFlow } from '@/hooks/conciliacao/useImportFlow';
+import { usePagination } from '@/hooks/usePagination';
+import { useTableKeyboard } from '@/hooks/useTableKeyboard';
+import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { PAGE, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
-import type { SplitDraft } from '@/lib/splits';
+import { DuplicateImportModal } from '@/components/ui/DuplicateImportModal';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { GroupClassifySheet, PayeeGroupList } from '@/components/conciliacao/PayeeGroups';
-import { groupByPayee, type PayeeGroup } from '@/lib/payee';
-import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
-import { DuplicateImportModal, type DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
-import { BalanceCheckBadge, StatementPanel } from '@/components/conciliacao/StatementPanel';
-import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
+import { StatementPanel } from '@/components/conciliacao/StatementPanel';
 import { TransferPanel } from '@/components/conciliacao/TransferPanel';
-import Link from 'next/link';
-import { hasMojibake } from '@/lib/ofx/encoding';
-import { findTransferPairs, type TransferPair } from '@/lib/transfers';
-import { ensureTransitAccount } from '@/lib/services/accounting-service';
-import { matchTransaction } from '@/lib/utils/search';
-import { useTableKeyboard } from '@/hooks/useTableKeyboard';
+import { MetricsSummary } from '@/components/conciliacao/MetricsSummary';
+import { ImportSummary } from '@/components/conciliacao/ImportSummary';
+import { TransactionTable } from '@/components/conciliacao/TransactionTable';
 import { BulkActionBar } from '@/components/conciliacao/BulkActionBar';
 import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
 import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
 import { KeyboardHelpModal } from '@/components/conciliacao/KeyboardHelpModal';
-
-/* =========================================================================
-   Métricas
-   ========================================================================= */
-
-interface MetricProps {
-  label: string;
-  value: string;
-  caption?: string;
-  tone?: 'neutral' | 'positive' | 'negative' | 'accent';
-  progress?: number;
-}
-
-const TONE: Record<NonNullable<MetricProps['tone']>, string> = {
-  neutral: 'text-stone-900 dark:text-stone-100',
-  positive: 'text-emerald-600 dark:text-emerald-400',
-  negative: 'text-rose-600 dark:text-rose-400',
-  accent: 'text-[#0071E3]',
-};
-
-function Metric({ label, value, caption, tone = 'neutral', progress }: MetricProps) {
-  return (
-    <div className="px-5 py-4 min-w-0 backdrop-blur-xl bg-white/80 dark:bg-stone-900/80">
-      <p className="text-[12px] font-medium text-stone-500">{label}</p>
-      <p className={`mt-1.5 text-[22px] leading-none font-semibold tracking-tight font-mono tabular-nums truncate ${TONE[tone]}`}>
-        {value}
-      </p>
-      {progress !== undefined ? (
-        <div className="mt-3 h-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08] overflow-hidden">
-          <div className="h-full rounded-full bg-[#0071E3] transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
-        </div>
-      ) : (
-        caption && <p className="mt-2 text-[11px] text-stone-400 truncate">{caption}</p>
-      )}
-    </div>
-  );
-}
-
-/* =========================================================================
-   Sheet de classificação manual
-   ========================================================================= */
-
-/* =========================================================================
-   Página
-   ========================================================================= */
+import { groupByPayee } from '@/lib/payee';
+import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
+import { hasMojibake } from '@/lib/ofx/encoding';
+import { findTransferPairs } from '@/lib/transfers';
+import { matchTransaction } from '@/lib/utils/search';
 
 /** Linhas por página na tabela de lançamentos. */
 const PAGE_SIZE = 50;
@@ -89,22 +47,23 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'RECONCILED', label: 'Conciliados' },
 ];
 
+/**
+ * Conciliação bancária. A tela só compõe: os dados e as gravações vêm de `useReconciliation`,
+ * e cada fluxo de interação tem o seu hook em src/hooks/conciliacao/ — importação de
+ * extratos (`useImportFlow`), classificação (`useClassificationFlow`) e seleção em lote
+ * (`useBulkSelection`).
+ */
 export default function ConciliacaoPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id ?? null;
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
-  const [selected, setSelected] = useState<BankTransaction | null>(null);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [showBulkClassify, setShowBulkClassify] = useState(false);
-  const [showBulkAsk, setShowBulkAsk] = useState(false);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [lastImport, setLastImport] = useState<ImportResult | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
   // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
   // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
@@ -144,29 +103,8 @@ export default function ConciliacaoPage() {
   }, [clientId, jumpTo, setMode]);
   const range = clientId && positionedFor === clientId ? period.range : null;
 
-  const {
-    transactions,
-    rules,
-    metrics,
-    isLoading,
-    isSaving,
-    error,
-    checkImport,
-    updateMemos,
-    importTransactions,
-    classifyTransaction,
-    classifyMany,
-    splitTransaction,
-    unreconcileTransaction,
-    approveAutoClassified,
-    locks,
-    lockedMonths,
-    closeMonth,
-    reopenMonth,
-    loadAudit,
-    reconcileTransfers,
-    askClient,
-  } = useReconciliation({ clientId, accounts, range });
+  const recon = useReconciliation({ clientId, accounts, range });
+  const { transactions, rules, metrics, isLoading, isSaving, error, locks, lockedMonths, closeMonth, reopenMonth, loadAudit } = recon;
   const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
   const [statementsKey, setStatementsKey] = useState(0);
 
@@ -193,35 +131,26 @@ export default function ConciliacaoPage() {
 
   // Históricos de importações antigas com acentuação quebrada: a correção fica em Contas e Extratos.
   const hasBrokenText = useMemo(() => transactions.some((t) => hasMojibake(t.memo)), [transactions]);
-
   const transferPairs = useMemo(() => findTransferPairs(transactions, { lockedMonths }), [transactions, lockedMonths]);
 
-  const handleTransfers = async (pairs: readonly TransferPair[]) => {
-    if (!clientId) return;
-    try {
-      const { account, created } = await ensureTransitAccount(clientId, accounts);
-      if (created) setAccounts((prev) => [...prev, account]);
-      const n = await reconcileTransfers(pairs, account);
-      setToast(`${n} transferência(s) conciliada(s) em ${account.code} ${account.name}${created ? ' (conta criada no plano)' : ''}`);
-    } catch (e) {
-      setToast(e instanceof Error ? e.message : 'Não foi possível conciliar as transferências');
-    }
-  };
+  /* ── Classificação ─────────────────────────────────────────────────── */
+  const flow = useClassificationFlow({
+    clientId,
+    accounts,
+    lockedMonths,
+    classifyTransaction: recon.classifyTransaction,
+    classifyMany: recon.classifyMany,
+    splitTransaction: recon.splitTransaction,
+    unreconcileTransaction: recon.unreconcileTransaction,
+    approveAutoClassified: recon.approveAutoClassified,
+    reconcileTransfers: recon.reconcileTransfers,
+    askClient: recon.askClient,
+    onAccountCreated: (account) => setAccounts((prev) => [...prev, account]),
+    notify: setToast,
+  });
+  const { selected } = flow;
 
-  // Reseta estados efêmeros ao trocar de cliente.
-  const [lastClientId, setLastClientId] = useState(clientId);
-  if (lastClientId !== clientId) {
-    setLastClientId(clientId);
-    setSelected(null);
-    setLastImport(null);
-  }
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
-
+  /* ── Lista: filtro, busca, visão por favorecido e paginação ────────── */
   const visible = useMemo(() => {
     const byFilter = filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter);
     return searchQuery.trim() ? byFilter.filter((t) => matchTransaction(t, searchQuery)) : byFilter;
@@ -229,38 +158,18 @@ export default function ConciliacaoPage() {
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
   const [view, setView] = useState<'list' | 'payee'>('list');
-  const [groupSheet, setGroupSheet] = useState<PayeeGroup | null>(null);
   const payeeGroups = useMemo(
     () => groupByPayee(transactions.filter((t) => t.status === 'PENDING' && !t.transferPairId && !isMonthLocked(t.date, lockedMonths))),
     [transactions, lockedMonths]
   );
   const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
 
-  const handleGroupConfirm = async (ids: string[], accountId: string, options: ClassifyOptions) => {
-    try {
-      const r = await classifyMany(ids, accountId, options);
-      setGroupSheet(null);
-      const parts = [`${r.classified} lançamento(s) classificado(s)`];
-      if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
-      if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
-      if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s) (mês fechado ou transferência)`);
-      setToast(parts.join(' · '));
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  // Paginação da tabela (volta à 1ª página ao trocar filtro, busca, período ou cliente).
-  const [page, setPage] = useState(0);
-  const pageKey = `${clientId}|${filter}|${searchQuery}|${range?.start}|${range?.end}`;
-  const [lastPageKey, setLastPageKey] = useState(pageKey);
-  if (lastPageKey !== pageKey) {
-    setLastPageKey(pageKey);
-    setPage(0);
-  }
-  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const pageRows = visible.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+  // Volta à 1ª página ao trocar filtro, busca, período ou cliente.
+  const { currentPage, pageCount, rows: pageRows, setPage } = usePagination(
+    visible,
+    PAGE_SIZE,
+    `${clientId}|${filter}|${searchQuery}|${range?.start}|${range?.end}`
+  );
   const tableRef = useRef<HTMLElement>(null);
   const goToPage = (next: number) => {
     setPage(next);
@@ -271,120 +180,41 @@ export default function ConciliacaoPage() {
     [transactions, lockedMonths]
   );
 
-  // Ações e seleção múltipla
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  /* ── Seleção múltipla e ações em lote ──────────────────────────────── */
+  const bulk = useBulkSelection({
+    transactions,
+    pageRows,
+    classifyMany: recon.classifyMany,
+    askClient: recon.askClient,
+    reconcileTransferPairs: flow.handleTransfers,
+    notify: setToast,
+  });
 
-  const toggleSelectAllPage = useCallback(() => {
-    setSelectedIds((prev) => {
-      const allSelected = pageRows.length > 0 && pageRows.every((t) => prev.has(t.id));
-      const next = new Set(prev);
-      if (allSelected) {
-        pageRows.forEach((t) => next.delete(t.id));
-      } else {
-        pageRows.forEach((t) => next.add(t.id));
-      }
-      return next;
-    });
-  }, [pageRows]);
+  /* ── Importação de extratos ────────────────────────────────────────── */
+  const importFlow = useImportFlow({
+    clientId,
+    clientName: currentClient?.tradeName || currentClient?.name || 'selecionada',
+    range,
+    jumpTo,
+    checkImport: recon.checkImport,
+    importTransactions: recon.importTransactions,
+    updateMemos: recon.updateMemos,
+    onStatementsChanged: () => setStatementsKey((k) => k + 1),
+    notify: setToast,
+  });
+  const { duplicate } = importFlow;
 
-  const selectedTransactions = useMemo(
-    () => transactions.filter((t) => selectedIds.has(t.id)),
-    [transactions, selectedIds]
-  );
-
-  const selectedDebits = useMemo(
-    () => selectedTransactions.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0),
-    [selectedTransactions]
-  );
-  const selectedCredits = useMemo(
-    () => selectedTransactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
-    [selectedTransactions]
-  );
-
-  const canMatchTransfer = useMemo(() => {
-    if (selectedTransactions.length !== 2) return false;
-    const [a, b] = selectedTransactions;
-    return (
-      ((a.amount < 0 && b.amount > 0) || (a.amount > 0 && b.amount < 0)) &&
-      Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) < 0.01
-    );
-  }, [selectedTransactions]);
-
-  const handleBulkTransfer = async () => {
-    if (!canMatchTransfer || selectedTransactions.length !== 2) return;
-    const [a, b] = selectedTransactions;
-    const out = a.amount < 0 ? a : b;
-    const inTx = a.amount > 0 ? a : b;
-    await handleTransfers([{ out, in: inTx, days: 0, hinted: true }]);
-    setSelectedIds(new Set());
-  };
-
-  const handleConfirmBulkClassify = async (ids: string[], accountId: string, options: ClassifyOptions) => {
-    try {
-      const r = await classifyMany(ids, accountId, options);
-      setShowBulkClassify(false);
-      setSelectedIds(new Set());
-      const parts = [`${r.classified} lançamento(s) classificado(s)`];
-      if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
-      if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
-      if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s)`);
-      setToast(parts.join(' · '));
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  const handleConfirmBulkAsk = async (question: string) => {
-    try {
-      let count = 0;
-      for (const t of selectedTransactions) {
-        if (t.status === 'PENDING') {
-          await askClient(t.id, question);
-          count++;
-        }
-      }
-      setShowBulkAsk(false);
-      setSelectedIds(new Set());
-      setToast(`Pergunta enviada ao cliente para ${count} lançamento(s)`);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
-  const [duplicate, setDuplicate] = useState<{
-    info: DuplicateImportInfo;
-    result: OFXParseResult;
-    fileName: string;
-    memoUpdates: MemoUpdate[];
-  } | null>(null);
-
-  // Atalhos de teclado para conciliação rápida
-  const isAnyModalOpen = Boolean(
-    selected || groupSheet || duplicate || showBulkClassify || showBulkAsk || showKeyboardHelp
-  );
-
+  // Atalhos de teclado para conciliação rápida (suspensos enquanto houver um diálogo aberto).
+  const isAnyModalOpen = Boolean(selected || flow.groupSheet || duplicate || bulk.showBulkClassify || bulk.showBulkAsk || showKeyboardHelp);
   const { focusedIndex } = useTableKeyboard({
     items: pageRows,
     getId: (t) => t.id,
     disabled: isAnyModalOpen,
-    onOpenClassify: (t) => setSelected(t),
-    onToggleSelect: (id) => toggleSelect(id),
-    onApprove: async (t) => {
-      if (t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths)) {
-        await classifyTransaction(t.id, t.accountId);
-        setToast('Lançamento auto-classificado aprovado');
-      }
-    },
+    onOpenClassify: (t) => flow.openTransaction(t),
+    onToggleSelect: (id) => bulk.toggleSelect(id),
+    onApprove: flow.approveOne,
     onClearSelection: () => {
-      if (selectedIds.size > 0) setSelectedIds(new Set());
+      if (bulk.selectedIds.size > 0) bulk.clearSelection();
       else if (searchQuery) setSearchQuery('');
     },
     onFocusSearch: () => {
@@ -394,212 +224,6 @@ export default function ConciliacaoPage() {
       setShowKeyboardHelp((prev) => !prev);
     },
   });
-
-  const runImport = async (result: OFXParseResult, fileName: string) => {
-    const imported = await importTransactions(result.transactions, {
-      fileName,
-      account: result.account,
-      startDate: result.startDate,
-      endDate: result.endDate,
-      ledgerBalance: result.ledgerBalance,
-    });
-    setLastImport(imported);
-    setStatementsKey((k) => k + 1);
-    // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
-    if (imported.latestDate && range && (imported.latestDate < range.start || imported.latestDate > range.end)) {
-      jumpTo(imported.latestDate);
-    }
-  };
-
-  /** Checa duplicidade antes de gravar: bloqueia o extrato repetido e confirma a sobreposição parcial. */
-  const handleOFXParsed = async (result: OFXParseResult, fileName: string) => {
-    try {
-      const check = await checkImport(result.transactions);
-      if (check.isFullDuplicate || check.isPartialOverlap) {
-        setDuplicate({
-          result,
-          fileName,
-          info: {
-            kind: check.isFullDuplicate ? 'full' : 'partial',
-            fileName,
-            clientName: currentClient?.tradeName || currentClient?.name || 'selecionada',
-            startDate: result.startDate,
-            endDate: result.endDate,
-            totalInFile: check.totalInFile,
-            alreadyImportedCount: check.alreadyImportedCount,
-            newCount: check.newTransactions.length,
-            memoUpdateCount: check.memoUpdates.length,
-          },
-          memoUpdates: check.memoUpdates,
-        });
-        return;
-      }
-      await runImport(result, fileName);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  /** Importação consolidada de múltiplos arquivos OFX */
-  const handleOFXParsedBatch = async (items: ParsedOFXItem[]) => {
-    if (items.length === 0) return;
-    if (items.length === 1) {
-      await handleOFXParsed(items[0].result, items[0].fileName);
-      return;
-    }
-
-    let totalAdded = 0;
-    let totalAutoClassified = 0;
-    let totalDuplicates = 0;
-    let lastDate: string | null = null;
-    const duplicatesToConfirm: { item: ParsedOFXItem; check: PreImportCheck }[] = [];
-
-    for (const item of items) {
-      try {
-        const check = await checkImport(item.result.transactions);
-        if (check.isFullDuplicate || check.isPartialOverlap) {
-          duplicatesToConfirm.push({ item, check });
-        } else {
-          const imported = await importTransactions(item.result.transactions, {
-            fileName: item.fileName,
-            account: item.result.account,
-            startDate: item.result.startDate,
-            endDate: item.result.endDate,
-            ledgerBalance: item.result.ledgerBalance,
-          });
-          totalAdded += imported.added;
-          totalAutoClassified += imported.autoClassified;
-          totalDuplicates += imported.duplicates;
-          if (imported.latestDate) lastDate = imported.latestDate;
-        }
-      } catch (e) {
-        console.error(`Erro ao importar ${item.fileName}:`, e);
-      }
-    }
-
-    setStatementsKey((k) => k + 1);
-
-    const importedFilesCount = items.length - duplicatesToConfirm.length;
-    if (totalAdded > 0 || totalDuplicates > 0 || importedFilesCount > 0) {
-      setToast(
-        `${importedFilesCount} extrato(s) importado(s) · ${totalAdded} novos lançamentos · ${totalAutoClassified} auto-classificados · ${totalDuplicates} duplicados ignorados`
-      );
-      if (lastDate && range && (lastDate < range.start || lastDate > range.end)) {
-        jumpTo(lastDate);
-      }
-    }
-
-    if (duplicatesToConfirm.length > 0) {
-      const first = duplicatesToConfirm[0];
-      setDuplicate({
-        result: first.item.result,
-        fileName: first.item.fileName,
-        info: {
-          kind: first.check.isFullDuplicate ? 'full' : 'partial',
-          fileName: first.item.fileName,
-          clientName: currentClient?.tradeName || currentClient?.name || 'selecionada',
-          startDate: first.item.result.startDate,
-          endDate: first.item.result.endDate,
-          totalInFile: first.check.totalInFile,
-          alreadyImportedCount: first.check.alreadyImportedCount,
-          newCount: first.check.newTransactions.length,
-          memoUpdateCount: first.check.memoUpdates.length,
-        },
-        memoUpdates: first.check.memoUpdates,
-      });
-    }
-  };
-
-  const closeDuplicate = useCallback(() => setDuplicate(null), []);
-
-  const confirmUpdateMemos = async () => {
-    if (!duplicate) return;
-    try {
-      const { updated, skipped } = await updateMemos(duplicate.memoUpdates, duplicate.fileName);
-      setToast(
-        skipped > 0
-          ? `${updated} descrição(ões) atualizada(s) · ${skipped} em competência fechada mantida(s)`
-          : `${updated} descrição(ões) atualizada(s)`
-      );
-      setDuplicate(null);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  const confirmImportNew = async () => {
-    if (!duplicate) return;
-    try {
-      // A importação grava só os lançamentos inexistentes (a deduplicação é refeita no momento da gravação).
-      await runImport(duplicate.result, duplicate.fileName);
-    } catch {
-      /* erro exposto pelo hook */
-    } finally {
-      setDuplicate(null);
-    }
-  };
-
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const toggleExpanded = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const handleUnreconcile = async () => {
-    if (!selected) return;
-    try {
-      await unreconcileTransaction(selected.id);
-      setExpanded((prev) => {
-        const next = new Set(prev);
-        next.delete(selected.id);
-        return next;
-      });
-      setSelected(null);
-      setToast('Conciliação desfeita · lançamento voltou para Pendente');
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  const handleSplit = async (drafts: SplitDraft[]) => {
-    if (!selected) return;
-    try {
-      await splitTransaction(selected.id, drafts);
-      setExpanded((prev) => new Set(prev).add(selected.id));
-      setSelected(null);
-      setToast(`Lançamento rateado em ${drafts.length} contas`);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => {
-    if (!selected) return;
-    try {
-      const { propagated } = await classifyTransaction(selected.id, accountId, {
-        learnRule,
-        customPattern: customPattern.trim() || undefined,
-        matchType,
-      });
-      setSelected(null);
-      const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
-      setToast(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
-
-  const handleApproveAll = async () => {
-    try {
-      const n = await approveAutoClassified();
-      if (n > 0) setToast(`${n} lançamento(s) aprovado(s)`);
-    } catch {
-      /* erro exposto pelo hook */
-    }
-  };
 
   return (
     <main className={PAGE}>
@@ -636,24 +260,11 @@ export default function ConciliacaoPage() {
         )}
       </div>
 
-      {/* Métricas */}
-      <section
-        aria-label="Resumo"
-        className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
-      >
-        <Metric
-          label={`Lançamentos · ${period.label}`}
-          value={String(metrics.total)}
-          caption={`${metrics.pending} pendente(s)`}
-        />
-        <Metric label="Conciliado" value={`${metrics.reconciledPercent}%`} tone="accent" progress={metrics.reconciledPercent} />
-        <Metric label="Entradas" value={formatCurrency(metrics.credits)} tone="positive" caption="Créditos" />
-        <Metric label="Saídas" value={formatCurrency(metrics.debits)} tone="negative" caption="Débitos" />
-      </section>
+      <MetricsSummary metrics={metrics} periodLabel={period.label} />
 
       <OFXDropzone
-        onParsed={handleOFXParsed}
-        onParsedBatch={handleOFXParsedBatch}
+        onParsed={importFlow.handleOFXParsed}
+        onParsedBatch={importFlow.handleOFXParsedBatch}
         isLoading={isSaving}
         bankAccounts={bankAccounts}
         clientId={clientId || ''}
@@ -662,56 +273,13 @@ export default function ConciliacaoPage() {
         <DuplicateImportModal
           info={duplicate.info}
           busy={isSaving}
-          onClose={closeDuplicate}
-          onImportNew={() => void confirmImportNew()}
-          onUpdateMemos={() => void confirmUpdateMemos()}
+          onClose={importFlow.closeDuplicate}
+          onImportNew={() => void importFlow.confirmImportNew()}
+          onUpdateMemos={() => void importFlow.confirmUpdateMemos()}
         />
       )}
 
-      {(lastImport || error) && (
-        <div className="space-y-2 animate-fade-in">
-          {error && (
-            <p className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200/60 text-[13px] text-rose-700">{error}</p>
-          )}
-          {lastImport && (
-            <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 border border-black/[0.06] text-[13px] text-stone-600">
-              <span>
-                <span className="font-mono tabular-nums font-medium text-stone-900">{lastImport.added}</span> importados ·{' '}
-                <span className="font-mono tabular-nums font-medium text-[#0071E3]">{lastImport.autoClassified}</span> auto-classificados
-                {lastImport.duplicates > 0 && (
-                  <>
-                    {' · '}
-                    <span className="font-mono tabular-nums">{lastImport.duplicates}</span> duplicado(s) ignorado(s)
-                  </>
-                )}
-                <span className="block mt-1 space-x-3">
-                  <BalanceCheckBadge check={lastImport.balanceCheck} />
-                  {lastImport.gaps.map((g) => (
-                    <span key={g.from} className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700">
-                      <AlertTriangle className="w-3 h-3" />
-                      Falta extrato de {formatDateBR(g.from)} a {formatDateBR(g.to)}
-                    </span>
-                  ))}
-                  {lastImport.outOfRange > 0 && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
-                      <AlertTriangle className="w-3 h-3" />
-                      {lastImport.outOfRange} lançamento(s) fora do período declarado no arquivo
-                    </span>
-                  )}
-                </span>
-              </span>
-              <button
-                type="button"
-                onClick={() => setLastImport(null)}
-                aria-label="Dispensar"
-                className="p-1 rounded-lg text-stone-400 hover:text-stone-700 active:scale-[0.94] transition-all duration-150"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+      <ImportSummary lastImport={importFlow.lastImport} error={error} onDismiss={importFlow.dismissLastImport} />
 
       {clientId && <StatementPanel clientId={clientId} refreshKey={statementsKey} />}
 
@@ -725,7 +293,7 @@ export default function ConciliacaoPage() {
         </p>
       )}
 
-      <TransferPanel pairs={transferPairs} banks={banks} busy={isSaving} onReconcile={handleTransfers} />
+      <TransferPanel pairs={transferPairs} banks={banks} busy={isSaving} onReconcile={flow.handleTransfers} />
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
@@ -785,7 +353,7 @@ export default function ConciliacaoPage() {
             <button
               type="button"
               disabled={approvable === 0 || isSaving}
-              onClick={() => void handleApproveAll()}
+              onClick={() => void flow.handleApproveAll()}
               className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
             >
               <CheckCheck className="w-4 h-4" strokeWidth={2} />
@@ -796,7 +364,7 @@ export default function ConciliacaoPage() {
         </div>
 
         {view === 'payee' && !isLoading ? (
-          <PayeeGroupList groups={payeeGroups} onOpen={setGroupSheet} />
+          <PayeeGroupList groups={payeeGroups} onOpen={flow.openGroup} />
         ) : isLoading ? (
           <div className="divide-y divide-black/[0.04]">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -817,191 +385,22 @@ export default function ConciliacaoPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
-                  <th scope="col" className="pl-5 pr-2 py-2.5 w-10">
-                    <input
-                      type="checkbox"
-                      aria-label="Selecionar todos da página"
-                      checked={pageRows.length > 0 && pageRows.every((t) => selectedIds.has(t.id))}
-                      ref={(el) => {
-                        if (el) {
-                          const some = pageRows.some((t) => selectedIds.has(t.id));
-                          const all = pageRows.length > 0 && pageRows.every((t) => selectedIds.has(t.id));
-                          el.indeterminate = some && !all;
-                        }
-                      }}
-                      onChange={toggleSelectAllPage}
-                      className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
-                    />
-                  </th>
-                  <th scope="col" className="font-medium px-3 py-2.5 w-24">Data</th>
-                  <th scope="col" className="font-medium px-3 py-2.5">Descrição</th>
-                  <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell">Conta</th>
-                  <th scope="col" className="font-medium px-3 py-2.5 w-28">Status</th>
-                  <th scope="col" className="font-medium pl-3 pr-5 py-2.5 text-right w-36">Valor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((t, idx) => {
-                  const splitCount = t.isSplit ? (t.splits?.length ?? 0) : 0;
-                  const isExpanded = expanded.has(t.id);
-                  const isSelected = selectedIds.has(t.id);
-                  const isFocused = focusedIndex === idx;
-                  const splitBadge = splitCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpanded(t.id);
-                      }}
-                      onKeyDown={(e) => e.stopPropagation()}
-                      aria-expanded={isExpanded}
-                      aria-controls={`split-${t.id}`}
-                      title={t.splits?.map((sp) => `${sp.accountCode ?? ''} ${sp.accountName ?? ''}: ${formatCurrency(sp.amount)}`).join('\n')}
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 hover:bg-violet-100 active:scale-[0.97] transition-all duration-150"
-                    >
-                      <Split className="w-3 h-3" strokeWidth={2} />
-                      Rateado em {splitCount} contas
-                      <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                  );
-                  return (
-                    <React.Fragment key={t.id}>
-                    <tr
-                      onClick={() => setSelected(t)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setSelected(t);
-                        }
-                      }}
-                      tabIndex={0}
-                      className={`group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none ${
-                        isFocused ? 'ring-1 ring-inset ring-[#0071E3]/60 bg-blue-50/40 dark:bg-blue-950/20' : ''
-                      } ${isSelected ? 'bg-blue-50/60 dark:bg-blue-950/30' : ''}`}
-                    >
-                      <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(t.id)}
-                          aria-label={`Selecionar lançamento ${t.memo}`}
-                          className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
-                        />
-                      </td>
-                      <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
-                        {formatDateBR(t.date)}
-                      </td>
-                      <td className="px-3 py-3 max-w-0 w-full">
-                        <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 truncate lg:whitespace-normal lg:break-words">
-                          {t.memo}
-                        </p>
-                        {t.accountName && (
-                          <p className="md:hidden text-[12px] text-stone-400 truncate">{t.accountName}</p>
-                        )}
-                        {splitBadge && <div className="md:hidden mt-1">{splitBadge}</div>}
-                      </td>
-                      <td className="px-3 py-3 hidden md:table-cell max-w-[240px] xl:max-w-[380px]">
-                        {splitBadge ? (
-                          splitBadge
-                        ) : t.accountName ? (
-                          <p className="text-[13px] text-stone-600 dark:text-stone-400 truncate">
-                            <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{t.accountCode}</span>
-                            {t.accountName}
-                          </p>
-                        ) : (
-                          <span className="text-[13px] text-stone-300 dark:text-stone-600">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="inline-flex items-center gap-1.5">
-                          <StatusBadge status={t.status} />
-                          {t.transferPairId && (
-                            <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600" />
-                          )}
-                          {t.clientQuery?.status === 'OPEN' && (
-                            <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600" />
-                          )}
-                          {isMonthLocked(t.date, lockedMonths) && (
-                            <Lock aria-label="Competência fechada" className="w-3 h-3 text-stone-400" />
-                          )}
-                          {t.status !== 'PENDING' && (
-                            <Pencil
-                              aria-hidden
-                              className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"
-                            />
-                          )}
-                        </span>
-                      </td>
-                      <td
-                        className={`pl-3 pr-5 py-3 text-right font-mono tabular-nums text-[13px] whitespace-nowrap ${
-                          t.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-400'
-                        }`}
-                      >
-                        {formatCurrency(t.amount)}
-                      </td>
-                    </tr>
-                    {splitCount > 0 && isExpanded && (
-                      <tr id={`split-${t.id}`} className="border-b border-black/[0.04] dark:border-white/[0.05] bg-stone-900/[0.015] dark:bg-white/[0.02]">
-                        <td colSpan={2} />
-                        <td colSpan={4} className="px-3 pb-3 pt-1 pr-5">
-                          <ul className="rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white/70 dark:bg-stone-900/40 divide-y divide-black/[0.04] dark:divide-white/[0.05] animate-fade-in">
-                            {t.splits?.map((sp) => (
-                              <li key={sp.id} className="flex items-baseline gap-3 px-4 py-2 text-[13px]">
-                                <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{sp.accountCode}</span>
-                                <span className="flex-1 min-w-0 truncate text-stone-700 dark:text-stone-300">
-                                  {sp.accountName}
-                                  {sp.memo && <span className="ml-2 text-stone-400">· {sp.memo}</span>}
-                                </span>
-                                <span className="font-mono tabular-nums text-stone-900 dark:text-stone-100 whitespace-nowrap">
-                                  {formatCurrency(sp.amount)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </td>
-                      </tr>
-                    )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-            {visible.length > PAGE_SIZE && (
-              <nav
-                aria-label="Paginação"
-                className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/[0.04] dark:border-white/[0.06] text-[12px] text-stone-500"
-              >
-                <span className="font-mono tabular-nums">
-                  {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, visible.length)} de {visible.length}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => goToPage(currentPage - 1)}
-                    disabled={currentPage === 0}
-                    className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
-                  >
-                    Anterior
-                  </button>
-                  <span className="font-mono tabular-nums px-1">
-                    {currentPage + 1}/{pageCount}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => goToPage(currentPage + 1)}
-                    disabled={currentPage >= pageCount - 1}
-                    className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
-                  >
-                    Próxima
-                  </button>
-                </span>
-              </nav>
-            )}
-          </div>
+          <TransactionTable
+            rows={pageRows}
+            lockedMonths={lockedMonths}
+            selectedIds={bulk.selectedIds}
+            focusedIndex={focusedIndex}
+            expanded={flow.expanded}
+            onOpen={flow.openTransaction}
+            onToggleSelect={bulk.toggleSelect}
+            onToggleSelectAllPage={bulk.toggleSelectAllPage}
+            onToggleExpanded={flow.toggleExpanded}
+            total={visible.length}
+            pageSize={PAGE_SIZE}
+            currentPage={currentPage}
+            pageCount={pageCount}
+            onGoToPage={goToPage}
+          />
         )}
       </section>
 
@@ -1011,81 +410,63 @@ export default function ConciliacaoPage() {
           transaction={selected}
           accounts={accounts}
           isSaving={isSaving}
-          onClose={() => setSelected(null)}
-          onConfirm={handleConfirm}
-          onSplit={handleSplit}
-          onUnreconcile={handleUnreconcile}
+          onClose={flow.closeTransaction}
+          onConfirm={flow.handleConfirm}
+          onSplit={flow.handleSplit}
+          onUnreconcile={flow.handleUnreconcile}
           rules={rules}
           memoPool={memoPool}
           lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
           loadAudit={() => loadAudit(selected.id)}
-          onAskClient={async (question) => {
-            try {
-              await askClient(selected.id, question);
-              setSelected(null);
-              setToast(question.trim() ? 'Pergunta registrada · veja em Pendências do cliente' : 'Pergunta removida');
-            } catch {
-              /* erro exposto pelo hook */
-            }
-          }}
+          onAskClient={flow.handleAskClient}
         />
       )}
 
-      {groupSheet && (
+      {flow.groupSheet && (
         <GroupClassifySheet
-          key={groupSheet.id}
-          group={groupSheet}
+          key={flow.groupSheet.id}
+          group={flow.groupSheet}
           accounts={accounts}
           pool={transactions}
           isSaving={isSaving}
-          onClose={() => setGroupSheet(null)}
-          onConfirm={handleGroupConfirm}
+          onClose={flow.closeGroup}
+          onConfirm={flow.handleGroupConfirm}
         />
       )}
 
       <BulkActionBar
-        selectedCount={selectedIds.size}
-        totalDebits={selectedDebits}
-        totalCredits={selectedCredits}
-        canMatchTransfer={canMatchTransfer}
+        selectedCount={bulk.selectedIds.size}
+        totalDebits={bulk.selectedDebits}
+        totalCredits={bulk.selectedCredits}
+        canMatchTransfer={bulk.canMatchTransfer}
         isSaving={isSaving}
-        onClassify={() => setShowBulkClassify(true)}
-        onAskClient={() => setShowBulkAsk(true)}
-        onMatchTransfer={() => void handleBulkTransfer()}
-        onClearSelection={() => setSelectedIds(new Set())}
+        onClassify={() => bulk.setShowBulkClassify(true)}
+        onAskClient={() => bulk.setShowBulkAsk(true)}
+        onMatchTransfer={() => void bulk.handleBulkTransfer()}
+        onClearSelection={bulk.clearSelection}
       />
 
       <BulkClassifyModal
-        isOpen={showBulkClassify}
-        transactions={selectedTransactions}
+        isOpen={bulk.showBulkClassify}
+        transactions={bulk.selectedTransactions}
         accounts={accounts}
         memoPool={memoPool}
         isSaving={isSaving}
-        onClose={() => setShowBulkClassify(false)}
-        onConfirm={handleConfirmBulkClassify}
+        onClose={() => bulk.setShowBulkClassify(false)}
+        onConfirm={bulk.handleConfirmBulkClassify}
       />
 
       <BulkAskClientModal
-        isOpen={showBulkAsk}
-        transactions={selectedTransactions}
+        isOpen={bulk.showBulkAsk}
+        transactions={bulk.selectedTransactions}
         isSaving={isSaving}
-        onClose={() => setShowBulkAsk(false)}
-        onConfirm={handleConfirmBulkAsk}
+        onClose={() => bulk.setShowBulkAsk(false)}
+        onConfirm={bulk.handleConfirmBulkAsk}
       />
 
-      <KeyboardHelpModal
-        isOpen={showKeyboardHelp}
-        onClose={() => setShowKeyboardHelp(false)}
-      />
+      <KeyboardHelpModal isOpen={showKeyboardHelp} onClose={() => setShowKeyboardHelp(false)} />
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-[13px] tracking-tight shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in"
-        >
-          {toast}
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

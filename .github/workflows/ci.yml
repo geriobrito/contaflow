@@ -7,7 +7,9 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Em pull request, um push novo cancela a execução anterior. Na main não: um deploy em
+  # andamento nunca é interrompido pela metade.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -55,3 +57,38 @@ jobs:
       - run: npm ci
       - name: Testes das regras
         run: npm run test:rules
+
+  deploy-firestore:
+    name: Publicar regras e índices do Firestore
+    # Só no push para a main (merge), depois de todos os testes passarem. Assim as regras e os
+    # índices em produção são sempre os do código publicado, sem depender de deploy manual.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks, firestore-rules]
+    runs-on: ubuntu-latest
+    env:
+      # JSON da conta de serviço com os papéis "Firebase Rules Admin" e "Cloud Datastore Index Admin".
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Conferir credencial
+        id: credencial
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::warning title=Regras e índices não publicados::Cadastre o segredo FIREBASE_SERVICE_ACCOUNT no repositório (Settings > Secrets and variables > Actions) para publicar automaticamente."
+            echo "disponivel=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "disponivel=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publicar regras e índices
+        if: steps.credencial.outputs.disponivel == 'true'
+        # O projeto vem do .firebaserc. Índices que existem no projeto e não estão no arquivo são
+        # mantidos (sem --force, nada é apagado).
+        run: |
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-sa.json"
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json" npx --yes firebase-tools@15.31.0 deploy --only firestore:rules,firestore:indexes --non-interactive
+      - name: Remover credencial
+        if: always()
+        run: rm -f "$RUNNER_TEMP/firebase-sa.json"

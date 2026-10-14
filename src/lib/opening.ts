@@ -1,12 +1,12 @@
 import type { BankAccount, ChartAccount, OpeningEntry } from '@/types/firestore';
 import { accountKind, openingSign } from '@/lib/ledger';
+import { round2 } from '@/lib/money';
 
 /**
  * Saldos de abertura: quais contas aceitam saldo e se a abertura fecha
  * (ativo = passivo + patrimônio líquido).
  */
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Contas que recebem saldo de abertura: analíticas e patrimoniais. As de resultado não têm
