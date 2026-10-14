@@ -1,5 +1,5 @@
 import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
-import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet } from '@/lib/ledger';
+import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet, type Posting } from '@/lib/ledger';
 import { buildDRE, type DateRange, type DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';
 
@@ -51,6 +51,7 @@ export function checkAccountingConsistency({
   date,
   openings = null,
   journalEntries = null,
+  carry = null,
 }: {
   transactions: readonly BankTransaction[];
   accounts: readonly ChartAccount[];
@@ -59,6 +60,8 @@ export function checkAccountingConsistency({
   date: string;
   openings?: OpeningBalances | null;
   journalEntries?: readonly JournalEntry[] | null;
+  /** Saldos consolidados anteriores a `transactions`, sempre de antes do exercício de `date`. */
+  carry?: readonly Posting[] | null;
 }): ConsistencyCheck {
   const year = date.slice(0, 4);
   const exerciseStart = `${year}-01-01`;
@@ -69,7 +72,7 @@ export function checkAccountingConsistency({
   const dreNetResult = round2(exerciseDRE.netResult);
 
   // 2. Balanço Patrimonial em partidas dobradas até a data de corte
-  const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries);
+  const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries, carry);
   const balanceSheet = buildBalanceSheet(postings, accounts, date);
 
   const currentResultLine = balanceSheet.equity.find((l) => l.accountId === VIRTUAL.CURRENT_RESULT);

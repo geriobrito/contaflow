@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { deleteChartAccount } from '@/lib/services/accounting-service';
+import { BANKS_PARENT_CODE, createBankSubaccounts, deleteChartAccount } from '@/lib/services/accounting-service';
+import { getRepository } from '@/lib/services/data-service';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
 import { setSession } from '@/lib/data/scope';
 import type { ChartAccount, ClassificationRule, BankAccount, BankTransaction, ImportBatch } from '@/types/firestore';
@@ -134,6 +135,38 @@ describe('deleteChartAccount e integridade referencial', () => {
     await expect(deleteChartAccount(accSplit, repo)).rejects.toThrow(/lançamento/);
   });
 
+  it('bloqueia exclusão de conta usada em lançamento manual do Diário', async () => {
+    const acc = account('prov1', '2.1.05.001', 'Salários a pagar', { type: 'LIABILITY' });
+    const other = account('desp1', '3.2.01.001', 'Salários');
+    await repo.insertAccounts([acc, other]);
+    await repo.createJournalEntry({
+      id: 'j1',
+      clientId: 'c1',
+      date: '2025-01-31',
+      memo: 'Provisão de folha',
+      category: 'PAYROLL',
+      lines: [
+        { id: 'd', accountId: 'desp1', type: 'DEBIT', amount: 100 },
+        { id: 'c', accountId: 'prov1', type: 'CREDIT', amount: 100 },
+      ],
+      totalAmount: 100,
+      createdAt: '',
+      updatedAt: '',
+      createdByUid: 'u',
+    });
+    await expect(deleteChartAccount(acc, repo)).rejects.toThrow(/lançamento manual #1/);
+    expect((await repo.listAccounts('c1')).some((a) => a.id === 'prov1')).toBe(true);
+  });
+
+  it('não exclui a conta se a gravação conjunta (conta + auditoria) falhar', async () => {
+    const acc = account('free2', '3.1.99.998', 'Conta sem uso');
+    await repo.insertAccounts([acc]);
+    const failing = { ...repo, deleteAccount: () => Promise.reject(new Error('rede indisponível')) };
+    await expect(deleteChartAccount(acc, failing)).rejects.toThrow(/rede indisponível/);
+    expect((await repo.listAccounts('c1')).some((a) => a.id === 'free2')).toBe(true);
+    expect(await repo.listAudit('c1')).toEqual([]);
+  });
+
   it('permite excluir conta limpa e grava registro ACCOUNT_DELETE na auditoria', async () => {
     const acc = account('free1', '3.1.99.999', 'Conta Temporária Sem Uso');
     await repo.insertAccounts([acc]);
@@ -150,6 +183,31 @@ describe('deleteChartAccount e integridade referencial', () => {
     expect(delAudit?.note).toContain('3.1.99.999');
     expect(delAudit?.note).toContain('Conta Temporária Sem Uso');
     expect(delAudit?.actorUid).toBe('user-1');
+  });
+});
+
+describe('createBankSubaccounts: subcontas, conta-mãe e vínculos numa gravação só', () => {
+  const acc = (id: string, code: string, nature: 'ANALYTIC' | 'SYNTHETIC'): ChartAccount => ({ id, clientId: 'sub1', code, name: id, type: 'ASSET', nature, level: code.split('.').length, createdAt: '', updatedAt: '' });
+  const bank = (key: string, ledgerAccountId?: string): BankAccount => ({ id: `sub1_${key}`, clientId: 'sub1', accountKey: key, nickname: `Banco ${key}`, ...(ledgerAccountId ? { ledgerAccountId } : {}), createdAt: '', updatedAt: '' });
+
+  it('conta de bancos analítica vira sintética e cada banco ganha a própria subconta', async () => {
+    const repo = getRepository();
+    const parent = acc('bancos', BANKS_PARENT_CODE, 'ANALYTIC');
+    const banks = [bank('k1', 'bancos'), bank('k2')];
+    await repo.insertAccounts([parent]);
+    for (const b of banks) await repo.saveBankAccount(b);
+
+    const { created, linked } = await createBankSubaccounts({ clientId: 'sub1', targets: [banks[1]], allBankAccounts: banks, accounts: [parent] });
+    // O banco já ligado à conta-mãe também recebe subconta (ela deixa de aceitar lançamentos).
+    expect(created.map((a) => a.code).sort()).toEqual([`${BANKS_PARENT_CODE}.001`, `${BANKS_PARENT_CODE}.002`]);
+    expect(linked).toHaveLength(2);
+
+    const stored = await repo.listAccounts('sub1');
+    expect(stored.find((a) => a.id === 'bancos')?.nature).toBe('SYNTHETIC');
+    expect(stored.filter((a) => a.parentId === 'bancos')).toHaveLength(2);
+    const storedBanks = await repo.listBankAccounts('sub1');
+    expect(storedBanks.every((b) => created.some((a) => a.id === b.ledgerAccountId))).toBe(true);
+    expect(new Set(storedBanks.map((b) => b.ledgerAccountId)).size).toBe(2);
   });
 });
 

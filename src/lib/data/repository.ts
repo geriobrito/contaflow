@@ -12,6 +12,7 @@ import type {
   OpeningBalances,
   OrgSettings,
   PeriodLock,
+  PeriodSnapshot,
 } from '@/types/firestore';
 import type { Actor } from '@/lib/audit';
 
@@ -67,15 +68,19 @@ export interface DataRepository {
   /**
    * Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e
    * fechamentos. A auditoria é preservada, e cada fechamento removido fica registrado nela em
-   * nome de `actor`. Só administradores do escritório.
+   * nome de `actor`. Só administradores do escritório. A empresa é marcada (`deletingAt`) antes
+   * do primeiro lote: se a cascata parar no meio, chamar de novo retoma de onde parou.
    */
   deleteClient(clientId: string, actor: Actor): Promise<void>;
 
   /* Plano de contas */
   listAccounts(clientId: string): Promise<ChartAccount[]>;
   saveAccount(account: ChartAccount): Promise<void>;
-  deleteAccount(accountId: string): Promise<void>;
+  /** Exclui a conta e grava o registro de auditoria juntos. */
+  deleteAccount(accountId: string, audit?: AuditEntry): Promise<void>;
   insertAccounts(accounts: readonly ChartAccount[]): Promise<void>;
+  /** Grava contas do plano (cria ou altera) e contas bancárias (substitui) juntas: tudo ou nada. */
+  saveChartSetup(changes: { accounts: readonly ChartAccount[]; bankAccounts: readonly BankAccount[] }): Promise<void>;
 
   /* Regras */
   listRules(clientId: string): Promise<ClassificationRule[]>;
@@ -88,6 +93,10 @@ export interface DataRepository {
   /** Todos os pendentes do cliente, de qualquer período (aplicação de regras). */
   listPendingTransactions(clientId: string): Promise<BankTransaction[]>;
   latestTransactionDate(clientId: string): Promise<string | null>;
+  /** Quantidade de lançamentos com data até `until`, contada no servidor (sem baixar os documentos). */
+  countTransactions(clientId: string, until: string): Promise<number>;
+  /** Algum lançamento usa a conta (classificação, sugestão automática ou rateio)? Não baixa o histórico. */
+  isAccountUsedInTransactions(clientId: string, accountId: string): Promise<boolean>;
   findExistingTransactionIds(clientId: string, ids: readonly string[]): Promise<Set<string>>;
   insertTransactions(transactions: readonly BankTransaction[], batch?: ImportBatch): Promise<void>;
   /** Grava lançamentos alterados, regras e auditoria juntos. */
@@ -122,6 +131,10 @@ export interface DataRepository {
   /** Fecha/reabre a competência e grava o registro de auditoria juntos, sob o id `periodAuditId`. */
   closePeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;
   reopenPeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;
+
+  /* Saldos consolidados de competências fechadas (cache de leitura; ver src/lib/snapshots.ts) */
+  listPeriodSnapshots(clientId: string): Promise<PeriodSnapshot[]>;
+  savePeriodSnapshot(snapshot: PeriodSnapshot): Promise<void>;
 
   /* Auditoria */
   listAudit(clientId: string, options?: { transactionId?: string; limit?: number }): Promise<AuditEntry[]>;

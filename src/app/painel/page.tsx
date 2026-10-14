@@ -3,8 +3,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, ArrowRight, CheckCircle2, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { useClient } from '@/contexts/ClientContext';
 import { buildDashboard, type Alert, type MonthState, type MonthStatus } from '@/lib/dashboard';
 import { formatMonth } from '@/lib/periods';
@@ -18,7 +19,10 @@ const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'se
 interface Loaded {
   id: string;
   accounts: ChartAccount[];
+  /** Lançamentos do período aberto; os meses fechados chegam consolidados em `carriedMonths`. */
   transactions: BankTransaction[];
+  carriedMonths: MonthCounts[];
+  openQueries: BankTransaction[];
   batches: ImportBatch[];
   banks: BankAccount[];
   locks: PeriodLock[];
@@ -100,17 +104,33 @@ export default function PainelPage() {
     const repo = getRepository();
     Promise.all([
       repo.listAccounts(clientId),
-      repo.listTransactions(clientId),
       repo.listImportBatches(clientId),
       repo.listBankAccounts(clientId),
       repo.listPeriodLocks(clientId),
       repo.listClientRequests(clientId),
       repo.getOrgSettings(),
       repo.getOpeningBalances(clientId),
+      repo.listOpenQueries(clientId),
     ])
-      .then(([accounts, transactions, batches, banks, locks, requests, org, openings]) => {
+      .then(async ([accounts, batches, banks, locks, requests, org, openings, openQueries]) => {
+        // Meses fechados entram pelas contagens consolidadas; só o período aberto é lido lançamento a lançamento.
+        const ledger = await loadLedgerWindow({ clientId, accounts, banks, locks });
         if (!active) return;
-        setData({ id: clientId, accounts, transactions, batches, banks, locks, requests, org, openings, today: new Date().toISOString().slice(0, 10), nowMs: Date.now() });
+        setData({
+          id: clientId,
+          accounts,
+          transactions: ledger.transactions,
+          carriedMonths: ledger.carriedMonths,
+          openQueries,
+          batches,
+          banks,
+          locks,
+          requests,
+          org,
+          openings,
+          today: new Date().toISOString().slice(0, 10),
+          nowMs: Date.now(),
+        });
         setError(null);
       })
       .catch((e: unknown) => active && setError(describe(e)));

@@ -183,6 +183,54 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect(await repo.getOpeningBalances('c1')).toBeNull();
   });
 
+  it('plano de contas: exclusão com auditoria e alteração conjunta de contas e bancos', async () => {
+    const acc = (id: string, nature: 'ANALYTIC' | 'SYNTHETIC' = 'ANALYTIC') => ({ id, clientId: 'c1', code: id, name: id, type: 'ASSET' as const, nature, level: 1, createdAt: '', updatedAt: '' });
+    const bank = { id: 'c1_k', clientId: 'c1', accountKey: 'k', nickname: 'Itaú', ledgerAccountId: 'mae', openingBalance: 10, createdAt: '', updatedAt: '' };
+    await repo.insertAccounts([acc('mae'), acc('solta')]);
+    await repo.saveBankAccount(bank);
+
+    await repo.saveChartSetup({
+      accounts: [acc('filha'), { ...acc('mae', 'SYNTHETIC'), description: 'grupo' }],
+      bankAccounts: [{ ...bank, ledgerAccountId: 'filha', openingBalance: undefined }],
+    });
+    const byId = new Map((await repo.listAccounts('c1')).map((a) => [a.id, a] as const));
+    expect([...byId.keys()].sort()).toEqual(['filha', 'mae', 'solta']);
+    expect(byId.get('mae')).toMatchObject({ nature: 'SYNTHETIC', description: 'grupo' });
+    // O banco é substituído: o saldo inicial removido some de fato.
+    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: 'filha', openingBalance: undefined, orgId: LOCAL_ORG_ID }]);
+
+    await repo.deleteAccount('solta', { id: 'del', clientId: 'c1', action: 'ACCOUNT_DELETE', actorUid: 'u', at: 'T' });
+    expect((await repo.listAccounts('c1')).map((a) => a.id).sort()).toEqual(['filha', 'mae']);
+    expect((await repo.listAudit('c1')).map((a) => a.id)).toEqual(['del']);
+  });
+
+  it('conta e usa de conta sem baixar o histórico: contagem até uma data e uso em classificação ou rateio', async () => {
+    expect(await repo.countTransactions('c1', '2025-01-31')).toBe(1);
+    expect(await repo.countTransactions('c1', '2025-12-31')).toBe(2);
+    expect(await repo.countTransactions('c2', '2025-12-31')).toBe(1);
+    await repo.insertTransactions([
+      tx('d', '2025-04-01', { status: 'RECONCILED', accountId: 'direta' }),
+      tx('s', '2025-04-02', { status: 'RECONCILED', isSplit: true, splits: [{ id: 's1', accountId: 'rateada', amount: -10, memo: '' }] }),
+      tx('o', '2025-04-03', { clientId: 'c2', status: 'RECONCILED', accountId: 'de-outro-cliente' }),
+    ]);
+    expect(await repo.isAccountUsedInTransactions('c1', 'direta')).toBe(true);
+    expect(await repo.isAccountUsedInTransactions('c1', 'rateada')).toBe(true);
+    expect(await repo.isAccountUsedInTransactions('c1', 'livre')).toBe(false);
+    expect(await repo.isAccountUsedInTransactions('c1', 'de-outro-cliente')).toBe(false);
+  });
+
+  it('saldos consolidados: grava por competência (substitui) e some com o cliente', async () => {
+    const snapshot = (month: string, clientId = 'c1', txCount = 1) => ({ id: `${clientId}_${month}`, clientId, month, asOf: `${month}-28`, balances: [], txCount, months: [], locks: [], configKey: 'k', createdAt: '' });
+    await repo.savePeriodSnapshot(snapshot('2025-01'));
+    await repo.savePeriodSnapshot(snapshot('2025-01', 'c1', 7));
+    await repo.savePeriodSnapshot(snapshot('2025-02'));
+    await repo.savePeriodSnapshot(snapshot('2025-01', 'c2'));
+    expect((await repo.listPeriodSnapshots('c1')).map((s) => [s.month, s.txCount]).sort()).toEqual([['2025-01', 7], ['2025-02', 1]]);
+    await repo.deleteClient('c1', actor);
+    expect(await repo.listPeriodSnapshots('c1')).toEqual([]);
+    expect(await repo.listPeriodSnapshots('c2')).toHaveLength(1);
+  });
+
   describe('lançamentos manuais', () => {
     const draft = (id: string, clientId = 'c1', amounts: [number, number] = [100, 100]): JournalEntryDraft => ({
       id,

@@ -28,6 +28,7 @@ import { approveTransition, autoClassifyTransition, classifyTransition, resetTra
 import { transactionAudit } from '@/lib/audit';
 import { ensureUserProfile } from '@/lib/data/profile';
 import { periodAuditId } from '@/lib/periods';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import type { BankTransaction } from '@/types/firestore';
 
@@ -870,5 +871,174 @@ describe('saldos de abertura', () => {
     const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
     expect(await repo.getOpeningBalances('cA')).toBeNull();
     await assertFails(getDoc(doc(asUser('bob'), 'opening_balances/cA'))); // cliente de outro escritório
+  });
+});
+
+describe('atomicidade e consultas pontuais', () => {
+  const acc = (id: string, code: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    clientId: 'cA',
+    code,
+    name: id,
+    type: 'ASSET' as const,
+    nature: 'ANALYTIC' as const,
+    level: 1,
+    createdAt: '',
+    updatedAt: '',
+    ...extra,
+  });
+  const bank = (key: string, extra: Record<string, unknown> = {}) => ({ id: `cA_${key}`, clientId: 'cA', accountKey: key, nickname: key, createdAt: 'T', updatedAt: 'T', ...extra });
+  const deletion = (id: string, actorUid = 'alice') => ({ id, clientId: 'cA', action: 'ACCOUNT_DELETE' as const, actorUid, at: 'T' });
+
+  it('exclui a conta do plano e grava a auditoria juntas; se a auditoria é recusada, a conta fica', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.insertAccounts([acc('x1', '9.1'), acc('x2', '9.2')]);
+    await repo.deleteAccount('x1', deletion('au-x1'));
+    expect((await repo.listAccounts('cA')).map((a) => a.id)).toEqual(['x2']);
+    expect((await repo.listAudit('cA')).map((a) => a.id)).toEqual(['au-x1']);
+
+    // Auditoria em nome de outra pessoa: o lote inteiro é recusado.
+    await expect(repo.deleteAccount('x2', deletion('au-x2', 'carol'))).rejects.toThrow();
+    expect((await repo.listAccounts('cA')).map((a) => a.id)).toEqual(['x2']);
+  });
+
+  it('grava contas e bancos juntos; um item recusado não deixa nada pela metade', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.insertAccounts([acc('mae', '1.1.1.02')]);
+    await repo.saveBankAccount(bank('k1', { ledgerAccountId: 'mae' }));
+
+    // Banco apontando para empresa de outro escritório: nada do lote entra.
+    await expect(
+      repo.saveChartSetup({ accounts: [acc('filha', '1.1.1.02.001'), acc('mae', '1.1.1.02', { nature: 'SYNTHETIC' })], bankAccounts: [bank('kB', { clientId: 'cB', id: 'cB_kB' })] })
+    ).rejects.toThrow();
+    expect((await repo.listAccounts('cA')).map((a) => [a.id, a.nature])).toEqual([['mae', 'ANALYTIC']]);
+
+    await repo.saveChartSetup({
+      accounts: [acc('filha', '1.1.1.02.001'), acc('mae', '1.1.1.02', { nature: 'SYNTHETIC' })],
+      bankAccounts: [bank('k1', { ledgerAccountId: 'filha' })],
+    });
+    expect((await repo.listAccounts('cA')).map((a) => [a.id, a.nature])).toEqual([['mae', 'SYNTHETIC'], ['filha', 'ANALYTIC']]);
+    expect(await repo.listBankAccounts('cA')).toMatchObject([{ accountKey: 'k1', ledgerAccountId: 'filha' }]);
+  });
+
+  it('conta lançamentos no servidor e detecta o uso de uma conta sem baixar o histórico', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'transactions/cA_d'), { ...tx('cA_d', 'cA', ORG_A, '2025-04-01'), status: 'RECONCILED', accountId: 'direta' });
+      await setDoc(doc(db, 'transactions/cA_s'), { ...tx('cA_s', 'cA', ORG_A, '2025-04-02'), status: 'RECONCILED', isSplit: true, splits: [{ id: 's1', accountId: 'rateada', amount: -100, memo: '' }] });
+      await setDoc(doc(db, 'transactions/cB_o'), { ...tx('cB_o', 'cB', ORG_B, '2025-04-03'), status: 'RECONCILED', accountId: 'de-outro' });
+    });
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.countTransactions('cA', '2025-03-31')).toBe(1);
+    expect(await repo.countTransactions('cA', '2025-04-01')).toBe(2);
+    expect(await repo.countTransactions('cA', '2025-12-31')).toBe(3);
+    expect(await repo.isAccountUsedInTransactions('cA', 'direta')).toBe(true);
+    expect(await repo.isAccountUsedInTransactions('cA', 'rateada')).toBe(true);
+    expect(await repo.isAccountUsedInTransactions('cA', 'livre')).toBe(false);
+    expect(await repo.isAccountUsedInTransactions('cA', 'de-outro')).toBe(false);
+    // Outro escritório não conta nem consulta os lançamentos do A.
+    const forged = createFirestoreRepository(asUser('bob'), () => ORG_A);
+    await expect(forged.countTransactions('cA', '2025-12-31')).rejects.toThrow();
+    await expect(forged.isAccountUsedInTransactions('cA', 'direta')).rejects.toThrow();
+  });
+
+  it('exclusão de empresa interrompida fica marcada e é retomada de onde parou', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveRule({ id: 'r1', clientId: 'cA', pattern: 'x', accountId: 'a', createdAt: '', updatedAt: '' });
+    // Um fechamento cuja reabertura já consta na trilha (imutável) faz a cascata falhar no primeiro lote.
+    const march = lockOf('2025-03');
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'period_locks/cA_2025-03'), march);
+      await setDoc(doc(db, `audit_log/${periodAuditId(march, 'reopen')}`), periodAudit(march, 'reopen'));
+    });
+    await expect(repo.deleteClient('cA', { uid: 'alice' })).rejects.toThrow();
+    const [stuck] = await repo.listClients();
+    expect(stuck).toMatchObject({ id: 'cA' });
+    expect(stuck.deletingAt).toEqual(expect.any(String));
+    expect((await repo.listTransactions('cA')).map((t) => t.id)).toEqual(['cA_1']);
+
+    // Corrigida a causa, chamar de novo conclui.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await deleteDoc(doc(ctx.firestore() as unknown as Firestore, 'period_locks/cA_2025-03'));
+    });
+    await repo.deleteClient('cA', { uid: 'alice' });
+    expect(await repo.listClients()).toEqual([]);
+    expect(await repo.listTransactions('cA')).toEqual([]);
+    expect(await repo.listRules('cA')).toEqual([]);
+  });
+});
+
+describe('saldos consolidados de competências fechadas', () => {
+  const snapshot = (month: string, orgId = ORG_A, clientId = 'cA') => ({
+    id: `${clientId}_${month}`,
+    orgId,
+    clientId,
+    month,
+    asOf: `${month}-30`,
+    balances: [{ accountId: '__suspense__', value: 100 }],
+    txCount: 1,
+    months: [],
+    locks: [],
+    configKey: 'k',
+    createdAt: 'T',
+  });
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'transactions/cA_m5'), { ...tx('cA_m5', 'cA', ORG_A, '2024-05-10'), amount: 500, status: 'RECONCILED', accountId: 'receita' });
+      await setDoc(doc(db, 'transactions/cA_m11'), tx('cA_m11', 'cA', ORG_A, '2024-11-20'));
+    });
+  });
+
+  it('isolados por escritório; id, escritório e empresa não mudam', async () => {
+    const alice = asUser('alice');
+    await assertSucceeds(setDoc(doc(alice, 'period_snapshots/cA_2024-11'), snapshot('2024-11')));
+    await assertSucceeds(setDoc(doc(asUser('carol'), 'period_snapshots/cA_2024-11'), { ...snapshot('2024-11'), txCount: 2 }));
+    await assertFails(setDoc(doc(alice, 'period_snapshots/outro'), snapshot('2024-10'))); // id não confere
+    await assertFails(setDoc(doc(alice, 'period_snapshots/cB_2024-11'), snapshot('2024-11', ORG_A, 'cB'))); // empresa de outro escritório
+    await assertFails(updateDoc(doc(alice, 'period_snapshots/cA_2024-11'), { month: '2024-12' }));
+    await assertFails(updateDoc(doc(alice, 'period_snapshots/cA_2024-11'), { clientId: 'cB' }));
+    await assertFails(getDoc(doc(asUser('bob'), 'period_snapshots/cA_2024-11')));
+    await assertFails(setDoc(doc(asUser('bob'), 'period_snapshots/cA_2024-11'), snapshot('2024-11', ORG_B)));
+    await assertFails(getDoc(doc(anon(), 'period_snapshots/cA_2024-11')));
+  });
+
+  it('o carregador grava o snapshot, passa a ler só o período aberto e o refaz quando um extrato entra em mês fechado', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await closeMonth(db, lockOf('2024-05'));
+    await closeMonth(db, lockOf('2024-11'));
+    const load = () => loadLedgerWindow({ clientId: 'cA', accounts: [], banks: [], from: '2025-01-01', until: '2025-12-31' }, repo);
+
+    const first = await load();
+    expect(first.asOf).toBe('2024-11-30');
+    expect(first.transactions.map((t) => t.id)).toEqual(['cA_1']);
+    expect(first.carriedCount).toBe(2);
+    expect((await repo.listPeriodSnapshots('cA')).map((s) => [s.month, s.txCount])).toEqual([['2024-11', 2]]);
+    expect(await load()).toEqual(first);
+
+    // Importar em competência fechada é permitido e muda os saldos: o snapshot antigo não é usado.
+    await setDoc(doc(db, 'transactions/cA_m5b'), { ...tx('cA_m5b', 'cA', ORG_A, '2024-05-25'), amount: -40 });
+    const afterImport = await load();
+    expect(afterImport.carriedCount).toBe(3);
+    expect(afterImport.carry.find((p) => p.accountId === '__suspense__')?.value).toBe(-360);
+    expect((await repo.listPeriodSnapshots('cA')).map((s) => [s.month, s.txCount])).toEqual([['2024-11', 3]]);
+
+    // Reaberta uma competência, o consolidado recua para antes dela.
+    await reopenMonth(db, lockOf('2024-11'));
+    const reopened = await load();
+    expect(reopened.asOf).toBe('2024-05-31');
+    expect(reopened.transactions.map((t) => t.id).sort()).toEqual(['cA_1', 'cA_m11']);
+  });
+
+  it('excluir a empresa remove os snapshots', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.savePeriodSnapshot(snapshot('2024-11') as never);
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'period_snapshots/cA_2024-11'))).exists()).toBe(false);
+    });
   });
 });

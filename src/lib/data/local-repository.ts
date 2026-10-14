@@ -12,6 +12,7 @@ import type {
   OpeningBalances,
   OrgSettings,
   PeriodLock,
+  PeriodSnapshot,
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
 import { assertValidJournalEntry } from '@/lib/journal';
@@ -38,6 +39,7 @@ export const LOCAL_KEYS = {
   requests: 'contaflow_client_requests',
   journalEntries: 'contaflow_journal_entries',
   journalCounters: 'contaflow_journal_counters',
+  snapshots: 'contaflow_period_snapshots',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -143,6 +145,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.requests,
         LOCAL_KEYS.journalEntries,
         LOCAL_KEYS.journalCounters,
+        LOCAL_KEYS.snapshots,
       ]) {
         write(
           key,
@@ -158,11 +161,25 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async saveAccount(account) {
       upsert(LOCAL_KEYS.accounts, stamp(account));
     },
-    async deleteAccount(accountId) {
+    async deleteAccount(accountId, audit) {
       remove<ChartAccount>(LOCAL_KEYS.accounts, accountId);
+      if (audit) write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
     async insertAccounts(accounts) {
       write(LOCAL_KEYS.accounts, [...read<ChartAccount>(LOCAL_KEYS.accounts), ...accounts.map(stamp)]);
+    },
+    async saveChartSetup({ accounts, bankAccounts }) {
+      // Monta as duas listas antes de gravar qualquer uma.
+      const storedAccounts = read<ChartAccount>(LOCAL_KEYS.accounts);
+      for (const acc of accounts) {
+        const i = storedAccounts.findIndex((a) => a.id === acc.id);
+        if (i >= 0) storedAccounts[i] = { ...storedAccounts[i], ...stamp(acc) };
+        else storedAccounts.push(stamp(acc));
+      }
+      const replaced = new Set(bankAccounts.map((b) => b.id));
+      const storedBanks = [...read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => !replaced.has(b.id)), ...bankAccounts.map(stamp)];
+      write(LOCAL_KEYS.accounts, storedAccounts);
+      write(LOCAL_KEYS.bankAccounts, storedBanks);
     },
 
     async listRules(clientId) {
@@ -188,6 +205,14 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         .filter((t) => t.clientId === clientId)
         .map((t) => t.date);
       return dates.length ? dates.reduce((max, d) => (d > max ? d : max)) : null;
+    },
+    async countTransactions(clientId, until) {
+      return read<BankTransaction>(LOCAL_KEYS.transactions).filter((t) => t.clientId === clientId && t.date <= until).length;
+    },
+    async isAccountUsedInTransactions(clientId, accountId) {
+      return read<BankTransaction>(LOCAL_KEYS.transactions).some(
+        (t) => t.clientId === clientId && (t.accountId === accountId || Boolean(t.isSplit && t.splits?.some((s) => s.accountId === accountId)))
+      );
     },
     async findExistingTransactionIds(clientId, ids) {
       const wanted = new Set(ids);
@@ -279,6 +304,14 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async reopenPeriod(lock, audit) {
       remove<PeriodLock>(LOCAL_KEYS.locks, lock.id);
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp({ ...audit, id: periodAuditId(lock, 'reopen') })]);
+    },
+
+    async listPeriodSnapshots(clientId) {
+      return read<PeriodSnapshot>(LOCAL_KEYS.snapshots).filter((s) => s.clientId === clientId);
+    },
+    async savePeriodSnapshot(snapshot) {
+      const others = read<PeriodSnapshot>(LOCAL_KEYS.snapshots).filter((s) => s.id !== snapshot.id);
+      write(LOCAL_KEYS.snapshots, [...others, stamp(snapshot)]);
     },
 
     async listAudit(clientId, options = {}) {

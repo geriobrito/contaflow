@@ -27,6 +27,11 @@ export interface ClientCompany {
   /** Representante legal / administrador que assina as demonstrações. */
   legalRepresentativeName?: string;
   legalRepresentativeCpf?: string;
+  /**
+   * Exclusão em andamento (ISO). A cascata apaga os dados em vários lotes; se parar no
+   * meio, a empresa continua marcada e a exclusão é retomada de onde parou.
+   */
+  deletingAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -320,6 +325,40 @@ export interface PeriodLock {
   lockedAt: string;
   lockedByUid: string;
   lockedByEmail?: string;
+}
+
+/** Quantidade de lançamentos bancários de uma competência, por situação. */
+export interface MonthCounts {
+  month: string;
+  total: number;
+  pending: number;
+  auto: number;
+  reconciled: number;
+}
+
+/**
+ * Saldos consolidados até o fim de uma competência fechada (coleção `period_snapshots`,
+ * id `${clientId}_${YYYY-MM}`). É um cache: evita reler o histórico inteiro a cada balanço.
+ * Só é usado depois de conferido (`snapshotProblem` em src/lib/snapshots.ts) — se algo que
+ * ele resume mudou, é descartado e refeito a partir dos lançamentos.
+ */
+export interface PeriodSnapshot {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  month: string;
+  /** Último dia coberto (YYYY-MM-DD). */
+  asOf: string;
+  /** Soma das partidas dos lançamentos bancários até `asOf`, por conta (positivo = devedor). */
+  balances: { accountId: string; value: number }[];
+  /** Lançamentos bancários até `asOf`: total e contagem por competência. */
+  txCount: number;
+  months: MonthCounts[];
+  /** Fechamento de cada competência com lançamentos (reabrir e fechar de novo invalida). */
+  locks: { month: string; lockedAt: string }[];
+  /** Vínculos e datas dos bancos + contas do plano de que os saldos dependem. */
+  configKey: string;
+  createdAt: string;
 }
 
 /** Dados do escritório e do responsável técnico (coleção `orgs`, id = orgId). */

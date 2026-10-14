@@ -42,6 +42,27 @@ interface ClientCardProps {
 
 function ClientCard({ client, active, onActivate, onEdit, onDelete, deleting }: ClientCardProps) {
   const regime = client.regime ?? client.taxRegime;
+  // A exclusão apaga os dados em vários lotes; se parou no meio, a empresa fica só para ser retomada.
+  if (client.deletingAt) {
+    return (
+      <article className="relative flex flex-col rounded-[22px] p-5 border border-amber-200/70 bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-900/40">
+        <h3 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50 truncate">{client.tradeName || client.name}</h3>
+        <p className="mt-1 text-[12px] font-medium text-amber-800 dark:text-amber-300">Exclusão incompleta</p>
+        <p className="mt-2 text-[12px] text-stone-600 dark:text-stone-300">
+          A exclusão desta empresa começou e não terminou; parte dos dados já foi apagada. Retome para concluir.
+        </p>
+        <div className="mt-4 pt-4 border-t border-amber-200/60 dark:border-amber-900/40 flex justify-end">
+          {deleting ? (
+            <span className="px-2 text-[12px] text-stone-500">Excluindo…</span>
+          ) : (
+            <button type="button" onClick={() => void onDelete()} className={`${BUTTON.secondary} h-8 px-3 whitespace-nowrap`}>
+              <Trash2 className="w-3.5 h-3.5" /> Retomar exclusão
+            </button>
+          )}
+        </div>
+      </article>
+    );
+  }
   return (
     <article
       className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
@@ -383,7 +404,7 @@ export default function ClientesPage() {
                   flash(`${c.tradeName || c.name} excluído com seus lançamentos, regras e contas`);
                 } catch (e) {
                   console.error('Erro ao excluir cliente:', e);
-                  flash('Não foi possível excluir a empresa');
+                  flash(`Não foi possível concluir a exclusão (${e instanceof Error && e.message ? e.message : 'erro'}). Retome pelo cartão da empresa.`);
                 } finally {
                   setDeletingId(null);
                 }

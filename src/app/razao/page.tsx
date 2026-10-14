@@ -15,7 +15,8 @@ import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningB
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { buildAccountLedger, type AccountLedger } from '@/lib/ledger';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
+import { buildAccountLedger, type AccountLedger, type Posting } from '@/lib/ledger';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { generateAccountLedgerExcel } from '@/lib/export/ledger-excel';
@@ -34,7 +35,7 @@ export default function RazaoPage() {
     openings: OpeningBalances | null;
     journalEntries: JournalEntry[];
   } | null>(null);
-  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
+  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[]; carry: Posting[] } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [accountSearch, setAccountSearch] = useState('');
   const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState(false);
@@ -68,23 +69,25 @@ export default function RazaoPage() {
     };
   }, [clientId, jumpTo]);
 
-  // Carrega movimentação até o fim do período
+  // Só os lançamentos do exercício são lidos um a um; o saldo anterior vem consolidado das
+  // competências fechadas (`carry`). Navegar entre meses do mesmo exercício não refaz a leitura.
   const ready = static_?.id === clientId;
-  const key = `${clientId}|${range.end}`;
+  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
+  const banks = useMemo(() => static_?.banks ?? [], [static_]);
+  const from = `${range.start.slice(0, 4)}-01-01`;
+  const until = `${range.end.slice(0, 4)}-12-31`;
+  const key = `${clientId}|${from}|${until}`;
   useEffect(() => {
     if (!clientId || !ready) return;
     let active = true;
-    getRepository()
-      .listTransactions(clientId, { start: '1900-01-01', end: range.end })
-      .then((list) => active && setTxs({ key: `${clientId}|${range.end}`, list }))
+    loadLedgerWindow({ clientId, accounts, banks, from, until })
+      .then((w) => active && setTxs({ key: `${clientId}|${from}|${until}`, list: w.transactions, carry: w.carry }))
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar lançamentos.'));
     return () => {
       active = false;
     };
-  }, [clientId, ready, range.end]);
+  }, [clientId, ready, accounts, banks, from, until]);
 
-  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
-  const banks = useMemo(() => static_?.banks ?? [], [static_]);
   const loading = !ready || txs?.key !== key;
 
   // Deriva a conta ativa sem disparar re-renderizações cíclicas
@@ -121,6 +124,7 @@ export default function RazaoPage() {
       range,
       openings: static_?.openings,
       journalEntries: static_?.journalEntries,
+      carry: txs.carry,
     });
   }, [effectiveAccountId, loading, txs, accounts, banks, range, static_?.openings, static_?.journalEntries]);
 

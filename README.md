@@ -60,6 +60,7 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 | --- | --- | --- |
 | `bank_accounts` | Conta do extrato (banco-agência-conta) ligada a uma conta analítica do ativo, com saldo inicial. Criada na importação; a primeira é ligada a 1.1.1.02. | Como os demais dados do cliente; a chave do extrato é imutável. |
 | `client_requests` | Link de perguntas ao cliente. O id é um token aleatório de 128 bits. | Sem login, quem tem o link lê aquele documento e grava só as respostas em texto (campo `answers`, uma por pergunta; as perguntas em `items` não mudam), enquanto estiver aberto e dentro da validade (30 dias). Ninguém lista a coleção sem ser do escritório. |
+| `period_snapshots` | Saldos consolidados por conta até o fim de uma competência fechada (id `{clientId}_{AAAA-MM}`). Cache de leitura: balanço, razão e painel partem dele e leem só os lançamentos posteriores, em vez do histórico inteiro. | O app confere cada snapshot antes de usar (competências ainda fechadas, mesma configuração de bancos/plano, mesma contagem de lançamentos) e o regrava quando não confere. Isolado por escritório. |
 | `client_request_files` | Legado: o cliente não envia mais arquivos. Guarda apenas comprovantes antigos. | Nenhum documento novo é aceito; o escritório lê e apaga os antigos (some com a exclusão da empresa). |
 
 - **Transferências entre contas próprias**: saída e entrada de mesmo valor em contas diferentes, até 3 dias de distância, são conciliadas juntas na conta transitória 1.1.1.04 (criada se faltar). Reclassificar, ratear, desfazer ou excluir uma perna volta a outra para pendente.
@@ -90,6 +91,6 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
    npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>
    ```
 
-   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries` e `journal_counters` (sequência dos lançamentos manuais).
+   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries`, `journal_counters` (sequência dos lançamentos manuais) e `period_snapshots` (saldos consolidados).
 
 3. **Deploy do app** (Vercel) normalmente.

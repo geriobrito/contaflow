@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { BankAccount, BankTransaction, ChartAccount, ClientCompany, JournalEntry, OpeningBalances, OrgSettings } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import { buildAccountLedger, type AccountLedger } from '@/lib/ledger';
+import { buildAccountLedger, type AccountLedger, type Posting } from '@/lib/ledger';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { generateAccountLedgerExcel } from '@/lib/export/ledger-excel';
@@ -25,6 +25,8 @@ interface AccountLedgerDrawerProps {
   accounts: readonly ChartAccount[];
   bankAccounts: readonly BankAccount[];
   transactions: readonly BankTransaction[];
+  /** Saldos consolidados anteriores a `transactions` (competências fechadas). */
+  carry?: readonly Posting[];
   journalEntries?: readonly JournalEntry[];
   range: DateRange;
   openings?: OpeningBalances | null;
@@ -39,6 +41,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
   accounts,
   bankAccounts,
   transactions,
+  carry,
   journalEntries,
   range,
   openings,
@@ -69,8 +72,9 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
       range,
       openings,
       journalEntries,
+      carry,
     });
-  }, [accountId, isOpen, accounts, bankAccounts, transactions, range, openings, journalEntries]);
+  }, [accountId, isOpen, accounts, bankAccounts, transactions, range, openings, journalEntries, carry]);
 
   const filteredEntries = useMemo(() => {
     if (!ledger) return [];

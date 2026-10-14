@@ -7,7 +7,8 @@ import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningB
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type BalanceSheetLine } from '@/lib/ledger';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
+import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type BalanceSheetLine, type Posting } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
@@ -72,7 +73,7 @@ export default function BalancoPage() {
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
   const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null; openings: OpeningBalances | null; journalEntries: JournalEntry[] } | null>(null);
-  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
+  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[]; carry: Posting[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -104,26 +105,29 @@ export default function BalancoPage() {
     };
   }, [clientId, jumpTo]);
 
-  // Todos os lançamentos até o fim do período (o balanço acumula desde o início).
+  // O balanço acumula desde o início, mas só os lançamentos do exercício são lidos um a um:
+  // o que veio antes entra pelo saldo consolidado das competências fechadas (`carry`).
+  // Navegar entre meses do mesmo exercício não refaz a leitura.
   const ready = static_?.id === clientId;
-  const key = `${clientId}|${range.end}`;
+  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
+  const banks = useMemo(() => static_?.banks ?? [], [static_]);
+  const from = `${range.start.slice(0, 4)}-01-01`;
+  const until = `${range.end.slice(0, 4)}-12-31`;
+  const key = `${clientId}|${from}|${until}`;
   useEffect(() => {
     if (!clientId || !ready) return;
     let active = true;
-    getRepository()
-      .listTransactions(clientId, { start: '1900-01-01', end: range.end })
-      .then((list) => active && setTxs({ key: `${clientId}|${range.end}`, list }))
+    loadLedgerWindow({ clientId, accounts, banks, from, until })
+      .then((w) => active && setTxs({ key: `${clientId}|${from}|${until}`, list: w.transactions, carry: w.carry }))
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar lançamentos.'));
     return () => {
       active = false;
     };
-  }, [clientId, ready, range.end]);
+  }, [clientId, ready, accounts, banks, from, until]);
 
   const loading = !ready || txs?.key !== key;
-  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
-  const banks = useMemo(() => static_?.banks ?? [], [static_]);
   const postings = useMemo(
-    () => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, static_?.journalEntries)),
+    () => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, static_?.journalEntries, txs.carry)),
     [loading, txs, banks, accounts, range.end, static_?.openings, static_?.journalEntries]
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
@@ -139,6 +143,7 @@ export default function BalancoPage() {
       date: range.end,
       openings: static_?.openings,
       journalEntries: static_?.journalEntries,
+      carry: txs.carry,
     });
   }, [loading, txs, accounts, banks, range.end, static_?.openings, static_?.journalEntries]);
 
@@ -462,6 +467,7 @@ export default function BalancoPage() {
         accounts={accounts}
         bankAccounts={banks}
         transactions={txs?.list ?? []}
+        carry={txs?.carry}
         journalEntries={static_?.journalEntries}
         range={range}
         openings={static_?.openings}

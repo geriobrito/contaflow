@@ -65,14 +65,20 @@ export async function ensureBankAccount(args: {
   return created;
 }
 
-/** Uso de uma conta do plano em lançamentos (conta única ou rateio) e regras. */
+/** Lançamento manual (Diário) que usa a conta em alguma partida, se houver. São poucos: lidos inteiros. */
+async function journalEntryUsing(repo: DataRepository, clientId: string, accountId: string) {
+  return (await repo.listJournalEntries(clientId)).find((j) => j.lines.some((l) => l.accountId === accountId));
+}
+
+/** Uso de uma conta do plano em regras, lançamentos bancários (conta única ou rateio) e lançamentos manuais. */
 async function accountInUse(clientId: string, accountId: string): Promise<boolean> {
   const repo = getRepository();
-  const [txs, rules] = await Promise.all([repo.listTransactions(clientId), repo.listRules(clientId)]);
-  return (
-    rules.some((r) => r.accountId === accountId) ||
-    txs.some((t) => t.accountId === accountId || t.splits?.some((s) => s.accountId === accountId))
-  );
+  const [rules, inTransactions, journal] = await Promise.all([
+    repo.listRules(clientId),
+    repo.isAccountUsedInTransactions(clientId, accountId),
+    journalEntryUsing(repo, clientId, accountId),
+  ]);
+  return inTransactions || Boolean(journal) || rules.some((r) => r.accountId === accountId);
 }
 
 /**
@@ -125,9 +131,12 @@ export async function createBankSubaccounts(args: {
     created.push(account);
     linked.push({ ...bank, ledgerAccountId: account.id, ledgerAccountCode: account.code, ledgerAccountName: account.name, updatedAt: now });
   }
-  await repo.insertAccounts(created);
-  if (parent.nature === 'ANALYTIC') await repo.saveAccount({ ...parent, nature: 'SYNTHETIC', updatedAt: now });
-  for (const b of linked) await repo.saveBankAccount(b);
+  // Subcontas, conta-mãe sintética e vínculos dos bancos numa gravação só: se falhar, nada muda
+  // (antes, uma falha no meio deixava a conta-mãe sintética com bancos ainda ligados a ela).
+  await repo.saveChartSetup({
+    accounts: [...created, ...(parent.nature === 'ANALYTIC' ? [{ ...parent, nature: 'SYNTHETIC' as const, updatedAt: now }] : [])],
+    bankAccounts: linked,
+  });
   return { created, linked };
 }
 
@@ -342,7 +351,8 @@ export async function applyTextRepair(clientId: string, plan: TextRepairPlan): P
  * - Bloqueia contas vinculadas como conta contábil de bancos.
  * - Bloqueia contas com saldo de abertura cadastrado.
  * - Bloqueia contas que possuem lançamentos bancários (diretos ou em rateios).
- * Registra a exclusão na trilha de auditoria.
+ * - Bloqueia contas usadas em lançamentos manuais do Diário.
+ * Exclusão e registro na trilha de auditoria são gravados juntos.
  */
 export async function deleteChartAccount(account: ChartAccount, repo: DataRepository = getRepository()): Promise<void> {
   if (account.clientId === 'global') {
@@ -380,13 +390,17 @@ export async function deleteChartAccount(account: ChartAccount, repo: DataReposi
     throw new Error(`A conta ${account.code} possui saldo de abertura cadastrado. Remova o saldo de abertura antes de excluir.`);
   }
 
-  // 5. Lançamentos (conta direta ou splits)
-  const txs = await repo.listTransactions(clientId);
-  const linkedTxs = txs.filter((t) => t.accountId === account.id || t.splits?.some((s) => s.accountId === account.id));
-  if (linkedTxs.length > 0) {
+  // 5. Lançamentos bancários (conta direta ou rateio), por consulta pontual: não baixa o histórico
+  if (await repo.isAccountUsedInTransactions(clientId, account.id)) {
     throw new Error(
-      `A conta ${account.code} possui ${linkedTxs.length} lançamento(s) vinculado(s) na conciliação. Reclassifique ou desfaça os lançamentos antes de excluir a conta.`
+      `A conta ${account.code} possui lançamento(s) vinculado(s) na conciliação. Reclassifique ou desfaça os lançamentos antes de excluir a conta.`
     );
+  }
+
+  // 6. Lançamentos manuais do Diário
+  const journal = await journalEntryUsing(repo, clientId, account.id);
+  if (journal) {
+    throw new Error(`A conta ${account.code} é usada no lançamento manual #${journal.entryNumber} (“${journal.memo}”). Altere ou exclua o lançamento antes de excluir a conta.`);
   }
 
   // Exclusão e auditoria
@@ -402,7 +416,6 @@ export async function deleteChartAccount(account: ChartAccount, repo: DataReposi
     note: `Conta ${account.code} (${account.name}) excluída do plano de contas`,
   };
 
-  await repo.deleteAccount(account.id);
-  await repo.commitChanges({ patches: [], audits: [audit] });
+  await repo.deleteAccount(account.id, audit);
 }
 

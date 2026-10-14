@@ -8,18 +8,26 @@ import { useAuth } from '@/contexts/AuthContext';
 const STORAGE_KEY = 'contaflow_active_client';
 
 export interface ClientContextType {
+  /** Toda a carteira, inclusive empresas com exclusão incompleta (`deletingAt`), que só a tela de Clientes mostra. */
   clients: ClientCompany[];
+  /** Empresa ativa; nunca uma com exclusão em andamento. */
   currentClient: ClientCompany | null;
   isLoading: boolean;
   /** Falha ao carregar a carteira (ex.: regras do Firestore recusaram, rede). */
   loadError: string | null;
   selectClient: (client: ClientCompany) => void;
   refreshClients: () => Promise<ClientCompany[]>;
-  /** Exclui o cliente (em cascata). Se for o ativo, ativa o próximo disponível ou nenhum. */
+  /**
+   * Exclui o cliente (em cascata). Se for o ativo, ativa o próximo disponível ou nenhum. Se a
+   * exclusão parar no meio, a empresa continua na lista marcada com `deletingAt`: chamar de novo retoma.
+   */
   removeClient: (clientId: string) => Promise<void>;
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined);
+
+/** Empresas em que dá para trabalhar: as que não estão sendo excluídas. */
+const usable = (list: readonly ClientCompany[]) => list.filter((c) => !c.deletingAt);
 
 function readStoredId(): string | null {
   try {
@@ -42,7 +50,8 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     setClients(list);
     setCurrentId((prev) => {
       const wanted = prev ?? readStoredId();
-      return list.some((c) => c.id === wanted) ? wanted : (list[0]?.id ?? null);
+      const open = usable(list);
+      return open.some((c) => c.id === wanted) ? wanted : (open[0]?.id ?? null);
     });
     setIsLoading(false);
     return list;
@@ -84,10 +93,17 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
 
   const removeClient = useCallback(
     async (clientId: string): Promise<void> => {
-      await deleteClient(clientId);
+      let failure: unknown = null;
+      try {
+        await deleteClient(clientId);
+      } catch (e) {
+        // A lista é recarregada mesmo assim: a empresa pode ter ficado marcada como "em exclusão".
+        failure = e;
+      }
       const list = await getClients();
-      const keep = currentId !== clientId && list.some((c) => c.id === currentId);
-      const next = keep ? currentId : (list[0]?.id ?? null);
+      const open = usable(list);
+      const keep = currentId !== clientId && open.some((c) => c.id === currentId);
+      const next = keep ? currentId : (open[0]?.id ?? null);
       setClients(list);
       setCurrentId(next);
       try {
@@ -96,6 +112,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       } catch {
         /* armazenamento indisponível */
       }
+      if (failure) throw failure;
     },
     [currentId]
   );
@@ -103,7 +120,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<ClientContextType>(
     () => ({
       clients,
-      currentClient: clients.find((c) => c.id === currentId) ?? null,
+      currentClient: usable(clients).find((c) => c.id === currentId) ?? null,
       isLoading,
       loadError,
       selectClient,

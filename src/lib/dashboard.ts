@@ -5,6 +5,7 @@ import type {
   ClientCompany,
   ClientRequest,
   ImportBatch,
+  MonthCounts,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
@@ -24,6 +25,13 @@ export interface DashboardInput {
   client: ClientCompany;
   accounts: readonly ChartAccount[];
   transactions: readonly BankTransaction[];
+  /**
+   * Contagens por competência já consolidadas: meses fechados cujos lançamentos não vieram em
+   * `transactions` (ver `loadLedgerWindow`). Somam-se às contagens de `transactions`.
+   */
+  carriedMonths?: readonly MonthCounts[];
+  /** Lançamentos com pergunta ao cliente em aberto, de qualquer período. Sem isto, saem de `transactions`. */
+  openQueries?: readonly BankTransaction[];
   batches: readonly ImportBatch[];
   banks: readonly BankAccount[];
   locks: readonly PeriodLock[];
@@ -93,13 +101,17 @@ const lastDayOfPrevMonth = (today: string): string => addDays(`${today.slice(0, 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 export function buildDashboard(input: DashboardInput): Dashboard {
-  const { client, accounts, transactions, batches, banks, locks, requests, org, openings, today, nowMs } = input;
+  const { client, accounts, transactions, carriedMonths = [], batches, banks, locks, requests, org, openings, today, nowMs } = input;
   const alerts: Alert[] = [];
   const add = (a: Alert) => alerts.push(a);
 
   /* ── Meses ─────────────────────────────────────────────────────────── */
   const lockedMonths = new Set(locks.map((l) => l.month));
   const byMonth = new Map<string, { total: number; pending: number; auto: number; reconciled: number }>();
+  for (const m of carriedMonths) {
+    const c = byMonth.get(m.month) ?? { total: 0, pending: 0, auto: 0, reconciled: 0 };
+    byMonth.set(m.month, { total: c.total + m.total, pending: c.pending + m.pending, auto: c.auto + m.auto, reconciled: c.reconciled + m.reconciled });
+  }
   for (const t of transactions) {
     const m = monthOf(t.date);
     const c = byMonth.get(m) ?? { total: 0, pending: 0, auto: 0, reconciled: 0 };
@@ -122,7 +134,7 @@ export function buildDashboard(input: DashboardInput): Dashboard {
     pending: months.reduce((s, m) => s + m.pending, 0),
     auto: months.reduce((s, m) => s + m.auto, 0),
     reconciled: months.reduce((s, m) => s + m.reconciled, 0),
-    transactions: transactions.length,
+    transactions: months.reduce((s, m) => s + m.total, 0),
     /** Meses com lançamentos (ou fechados): base do "fechados/total". */
     monthsWithData: months.filter((m) => m.state !== 'EMPTY').length,
     monthsLocked: months.filter((m) => m.state === 'LOCKED').length,
@@ -149,7 +161,7 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   });
 
   /* ── Perguntas ao cliente ──────────────────────────────────────────── */
-  const asked = transactions.filter((t) => t.clientQuery?.status === 'OPEN');
+  const asked = input.openQueries ?? transactions.filter((t) => t.clientQuery?.status === 'OPEN');
   const inOpenLink = new Set(requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs).flatMap((r) => r.items.map((i) => i.transactionId)));
   const answeredIds = new Set(requests.flatMap((r) => r.items.filter((_, i) => answerAt(r, i)).map((i) => i.transactionId)));
   const queries = { notSent: 0, waiting: 0, answered: 0 };
@@ -163,7 +175,7 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   if (accounts.length === 0) {
     add({ id: 'chart', severity: 'high', title: 'Plano de contas vazio', detail: 'Aplique o modelo ITG 1000 para poder classificar lançamentos.', href: '/plano-de-contas' });
   }
-  if (transactions.length === 0) {
+  if (totals.transactions === 0) {
     add({ id: 'first-import', severity: 'medium', title: 'Nenhum extrato importado', detail: 'Importe o OFX do banco na Conciliação para começar.', href: '/' });
   }
 

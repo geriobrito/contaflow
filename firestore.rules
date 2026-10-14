@@ -34,6 +34,8 @@ rules_version = '2';
 //  12. Papéis: users/{uid}.role == 'operator' (definido só pelo console / Admin SDK) não
 //      reabre competência nem exclui empresa, extrato ou lançamento. Sem o campo, o
 //      usuário é administrador do escritório.
+//  13. period_snapshots guarda saldos consolidados de competências fechadas: é um cache
+//      que o app confere antes de usar, isolado por escritório como os demais dados.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -296,6 +298,19 @@ service cloud.firestore {
       allow delete: if isMine(resource.data) && isAdmin()
         && auditedNow(lockId, resource.data, 'reopen', 'PERIOD_REOPEN');
       allow update: if false;
+    }
+
+    // ── Saldos consolidados de competências fechadas ─────────────────────
+    // Cache de leitura (src/lib/snapshots.ts): o app confere cada snapshot contra os
+    // fechamentos, a configuração e a contagem de lançamentos antes de usar, e o regrava
+    // quando não confere. Não é fonte de dados — só membros do escritório o gravam.
+    match /period_snapshots/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId + '_' + request.resource.data.month;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('month');
     }
 
     // ── Trilha de auditoria (somente inclusão) ───────────────────────────

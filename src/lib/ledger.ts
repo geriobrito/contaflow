@@ -75,6 +75,10 @@ export function openingSign(account: Pick<ChartAccount, 'type' | 'isContra'>): 1
 
 /**
  * Partidas de todos os lançamentos (e dos saldos iniciais dos bancos) até `until`.
+ *
+ * `carry` são os saldos já consolidados dos lançamentos bancários anteriores aos de
+ * `transactions` (um snapshot de competência fechada; ver src/lib/snapshots.ts). Entram como
+ * partidas na data do snapshot, no lugar dos lançamentos que resumem.
  */
 export function buildPostings(
   transactions: readonly BankTransaction[],
@@ -82,13 +86,14 @@ export function buildPostings(
   accounts: readonly ChartAccount[],
   until?: string,
   openings?: OpeningBalances | null,
-  journalEntries?: readonly JournalEntry[] | null
+  journalEntries?: readonly JournalEntry[] | null,
+  carry?: readonly Posting[] | null
 ): Posting[] {
   const known = new Set(accounts.map((a) => a.id));
   const ledgerByKey = new Map(
     bankAccounts.filter((b) => b.ledgerAccountId && known.has(b.ledgerAccountId)).map((b) => [b.accountKey, b.ledgerAccountId!] as const)
   );
-  const out: Posting[] = [];
+  const out: Posting[] = carry ? carry.filter((p) => !until || p.date <= until) : [];
 
   for (const b of bankAccounts) {
     if (!b.openingBalance || !b.openingDate || (until && b.openingDate > until)) continue;
@@ -352,7 +357,8 @@ export function buildBalanceSheet(postings: readonly Posting[], accounts: readon
           value: round2(v),
         };
       })
-      .sort((a, b) => (a.code && b.code ? byCode(a, b) : a.code ? -1 : b.code ? 1 : 0));
+      // Linhas sem código (contas virtuais) em ordem fixa, e não na ordem em que as partidas chegaram.
+      .sort((a, b) => (a.code && b.code ? byCode(a, b) : a.code ? -1 : b.code ? 1 : a.name.localeCompare(b.name)));
 
   // Total do lado: só as contas-folha (as sintéticas já somam as filhas).
   const total = (m: Map<string, number>) => round2([...m].filter(([id]) => !parents.has(id)).reduce((s, [, v]) => s + v, 0));
@@ -447,6 +453,8 @@ export interface BuildAccountLedgerOptions {
   range: DateRange;
   openings?: OpeningBalances | null;
   journalEntries?: readonly JournalEntry[] | null;
+  /** Saldos consolidados anteriores a `transactions` (ver `buildPostings`); precisam ser anteriores ao exercício de `range.start`. */
+  carry?: readonly Posting[] | null;
 }
 
 /**
@@ -462,6 +470,7 @@ export function buildAccountLedger({
   range,
   openings,
   journalEntries,
+  carry,
 }: BuildAccountLedgerOptions): AccountLedger {
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
   const known = new Set(accounts.map((a) => a.id));
@@ -499,7 +508,7 @@ export function buildAccountLedger({
   const exercise = yearStart(range.start);
 
   // 1. Saldo anterior acumulado antes de range.start
-  const allPostings = buildPostings(transactions, bankAccounts, accounts, undefined, openings, journalEntries);
+  const allPostings = buildPostings(transactions, bankAccounts, accounts, undefined, openings, journalEntries, carry);
   let previousSigned = 0;
   for (const p of allPostings) {
     if (!targetAccountIds.has(p.accountId)) continue;

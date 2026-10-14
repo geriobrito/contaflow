@@ -70,7 +70,9 @@ function initials(name: string): string {
    ========================================================================= */
 
 function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
-  const { clients, currentClient, selectClient } = useClient();
+  const { clients: allClients, currentClient, selectClient } = useClient();
+  // Empresas com exclusão incompleta só aparecem na tela de Clientes (para retomar).
+  const clients = allClients.filter((c) => !c.deletingAt);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 

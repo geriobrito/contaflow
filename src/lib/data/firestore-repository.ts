@@ -3,6 +3,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit,
@@ -31,6 +32,7 @@ import type {
   OpeningBalances,
   OrgSettings,
   PeriodLock,
+  PeriodSnapshot,
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
 import { assertValidJournalEntry } from '@/lib/journal';
@@ -52,6 +54,7 @@ export const COL = {
   requestFiles: 'client_request_files',
   journalEntries: 'journal_entries',
   journalCounters: 'journal_counters',
+  snapshots: 'period_snapshots',
 } as const;
 
 /** Limites do Firestore. */
@@ -193,6 +196,13 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const profile = await getDoc(doc(db, COL.users, actor.uid));
       if (profile.data()?.role === 'operator') throw new Error('Somente o administrador do escritório pode excluir empresas.');
 
+      // A cascata são vários lotes independentes. A marca vem antes do primeiro: se algo
+      // falhar no meio, a empresa fica visivelmente "em exclusão" e esta função, chamada de
+      // novo, apaga o que restou (cada etapa só consulta o que ainda existe).
+      const clientRef = doc(db, COL.clients, clientId);
+      if (!(await getDoc(clientRef)).exists()) throw new Error('Empresa não encontrada.');
+      await updateDoc(clientRef, { deletingAt: new Date().toISOString() });
+
       // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro
       // (lançamentos de competência fechada não podem ser excluídos), cada um com o registro
       // de reabertura que as regras exigem — agrupados por competência pelo limite de consultas.
@@ -215,10 +225,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         })
       );
       // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
-      for (const name of [COL.transactions, COL.journalEntries, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
-      await deleteDoc(doc(db, COL.clients, clientId));
+      await deleteDoc(clientRef);
       // A sequência dos lançamentos manuais só pode ser apagada depois da empresa (regra):
       // enquanto a empresa existe, o contador nunca volta atrás.
       await deleteByClient(COL.journalCounters, clientId);
@@ -232,11 +242,22 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     async saveAccount(account) {
       await setDoc(doc(db, COL.accounts, account.id), stamp(account), { merge: true });
     },
-    async deleteAccount(accountId) {
-      await deleteDoc(doc(db, COL.accounts, accountId));
+    async deleteAccount(accountId, audit) {
+      const b = writeBatch(db);
+      b.delete(doc(db, COL.accounts, accountId));
+      if (audit) auditWrite(audit)(b);
+      await b.commit();
     },
     async insertAccounts(accounts) {
       await run(accounts.map((acc) => single((b) => b.set(doc(db, COL.accounts, acc.id), stamp(acc)))));
+    },
+    async saveChartSetup({ accounts, bankAccounts }) {
+      if (accounts.length + bankAccounts.length > BATCH_LIMIT) throw new Error('Alteração do plano maior que o limite de uma gravação.');
+      const b = writeBatch(db);
+      for (const acc of accounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc), { merge: true });
+      // Substitui o documento, como `saveBankAccount`.
+      for (const bank of bankAccounts) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
+      await b.commit();
     },
 
     /* ── Regras ───────────────────────────────────────────────────────── */
@@ -272,6 +293,19 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         scoped(COL.transactions, where('clientId', '==', clientId), orderBy('date', 'desc'), limit(1))
       );
       return snap.empty ? null : ((snap.docs[0].data() as BankTransaction).date ?? null);
+    },
+    async countTransactions(clientId, until) {
+      // Mesmo índice de `listTransactions` (orgId, clientId, date); a contagem custa uma
+      // leitura a cada mil lançamentos, em vez de uma por lançamento.
+      const snap = await getCountFromServer(scoped(COL.transactions, where('clientId', '==', clientId), where('date', '<=', until)));
+      return snap.data().count;
+    },
+    async isAccountUsedInTransactions(clientId, accountId) {
+      const direct = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('accountId', '==', accountId), limit(1)));
+      if (!direct.empty) return true;
+      // Rateios guardam as contas dentro de `splits`, que não é consultável: confere só os rateados.
+      const splits = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('isSplit', '==', true)));
+      return splits.docs.some((d) => (d.data() as BankTransaction).splits?.some((s) => s.accountId === accountId));
     },
     async findExistingTransactionIds(clientId, ids) {
       // Consulta pelo campo `fitid` (e não por documentId): consultas por ID são avaliadas
@@ -383,6 +417,15 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       b.delete(doc(db, COL.locks, lock.id));
       auditWrite({ ...audit, id: periodAuditId(lock, 'reopen') })(b);
       await b.commit();
+    },
+
+    /* ── Saldos consolidados (cache) ──────────────────────────────────── */
+    async listPeriodSnapshots(clientId) {
+      const snap = await getDocs(scoped(COL.snapshots, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as PeriodSnapshot), id: d.id }));
+    },
+    async savePeriodSnapshot(snapshot) {
+      await setDoc(doc(db, COL.snapshots, snapshot.id), stamp(snapshot));
     },
 
     /* ── Auditoria ────────────────────────────────────────────────────── */
