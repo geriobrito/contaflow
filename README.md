@@ -83,6 +83,38 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
   gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=14d --project <projeto>
   ```
 
+## Segurança
+
+- **Cabeçalhos HTTP** (`next.config.ts`): `Content-Security-Policy` (scripts e estilos só da própria origem, conexões só para as APIs do Google, reCAPTCHA do App Check), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` e `Referrer-Policy: no-referrer` em todas as páginas; `X-Robots-Tag: noindex` em `/responder`. Ao integrar um serviço externo novo, inclua o domínio dele na CSP — o navegador bloqueia o que não estiver listado.
+- **Link de pendências**: o token vai no fragmento do endereço (`/responder#t=…`), que o navegador não envia ao servidor — não aparece em registros de acesso. Links antigos (`?t=`) continuam abrindo. As regras limitam cada resposta a texto de até 2000 caracteres; como elas não têm laços e cada avaliação tem um teto de expressões, a conferência cobre links de até 24 perguntas (os maiores seguem aceitando respostas, limitados pelo tamanho do documento).
+- **Recuperação de senha**: "Esqueci minha senha" na tela de login envia o e-mail de redefinição do Firebase Auth.
+- **Verificação em duas etapas** (aplicativo autenticador, TOTP). Ativação, uma vez por projeto:
+  1. No console do Firebase, *Authentication → Settings*, faça o upgrade para o **Identity Platform**.
+  2. Ligue o TOTP (não há botão no console):
+
+     ```bash
+     GOOGLE_APPLICATION_CREDENTIALS=./service-account.json node scripts/mfa-admin.mjs --project <projeto> --enable
+     ```
+
+  3. Cada usuário ativa o seu em *Escritório → Verificação em duas etapas* (exige e-mail confirmado e login recente).
+
+  Quem perder o aplicativo autenticador recupera o acesso com `node scripts/mfa-admin.mjs --project <projeto> --reset-user <uid>` — guarde a chave da conta de serviço num lugar que não dependa do celular.
+- **App Check** (opcional): atesta que as chamadas ao Firebase partem deste app, inclusive a leitura pública dos links de pendências.
+  1. Crie uma chave do **reCAPTCHA Enterprise** (tipo site) para o domínio do app, no console do Google Cloud.
+  2. No console do Firebase, *App Check → Apps*, registre o app web com essa chave.
+  3. Defina `NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY` no ambiente de produção e publique.
+  4. Acompanhe as métricas do App Check por alguns dias e só então ative a exigência (*Enforce*) para o Firestore. Com a exigência ligada, rodar o app em `localhost` contra o projeto real pede um token de depuração do App Check.
+- **Cadastro de usuários**: as regras deixam qualquer usuário autenticado criar o próprio escritório (é assim que o primeiro login funciona). Para ninguém de fora criar conta, desligue o cadastro em *Authentication → Settings → User actions → Enable create (sign-up)* e crie os usuários pelo console.
+- **Ordem de deploy**: o app novo depende das regras novas, e o CI só publica regras e índices depois dos testes. Se a Vercel publica o app direto no push, ele pode entrar no ar alguns minutos antes. Para amarrar a ordem:
+  1. Na Vercel, crie um *Deploy Hook* para a `main` (*Settings → Git → Deploy Hooks*) e cadastre a URL no repositório como o segredo `VERCEL_DEPLOY_HOOK_URL`: o job `deploy-app` do CI passa a acionar o deploy depois das regras.
+  2. Desligue o deploy automático da `main` com um `vercel.json` na raiz:
+
+     ```json
+     { "git": { "deploymentEnabled": { "main": false } } }
+     ```
+
+  Faça os dois passos juntos e confira no primeiro push se o deploy saiu pelo hook: com o passo 2 e sem o segredo, a produção deixa de ser atualizada.
+
 ## Implantação (Firestore)
 
 > ⚠️ **Ordem importa.** Documentos gravados antes do isolamento não têm `orgId` e ficam **inacessíveis** assim que as novas regras são publicadas. Rode o backfill antes.

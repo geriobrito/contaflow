@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
+import { secondFactorMessage } from '@/lib/auth/two-factor';
+import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
 
 function friendlyError(code?: string): string {
   switch (code) {
@@ -40,13 +41,61 @@ const FLOAT_LABEL =
   'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-[#0071E3]';
 
 export default function LoginPage() {
-  const { signIn, isMockAuth, authError } = useAuth();
+  const { signIn, isMockAuth, authError, secondFactorPending, confirmSecondFactor, cancelSecondFactor, resetPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /** Segunda etapa: código de 6 dígitos do aplicativo autenticador. */
+  const handleCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (code.length !== 6) {
+      setErrorMessage('Informe os 6 dígitos do aplicativo autenticador.');
+      return;
+    }
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      await confirmSecondFactor(code);
+    } catch (err: unknown) {
+      console.error('Erro na verificação em duas etapas:', err);
+      setErrorMessage(secondFactorMessage(err));
+      setCode('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setErrorMessage(null);
+    setNotice(null);
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setErrorMessage('Informe seu e-mail no campo acima para receber o link de redefinição.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword(address);
+      // A mesma mensagem exista ou não a conta: a tela não revela quais e-mails têm cadastro.
+      setNotice(`Se houver uma conta para ${address}, enviamos um link para redefinir a senha. Confira também a caixa de spam.`);
+    } catch (err: unknown) {
+      console.error('Erro ao enviar redefinição de senha:', err);
+      const failure = errorCode(err);
+      if (failure === 'auth/user-not-found') {
+        setNotice(`Se houver uma conta para ${address}, enviamos um link para redefinir a senha. Confira também a caixa de spam.`);
+      } else {
+        setErrorMessage(failure === 'auth/too-many-requests' || failure === 'auth/network-request-failed' || failure === 'auth/invalid-email' ? friendlyError(failure) : 'Não foi possível enviar o e-mail de redefinição. Tente de novo em instantes.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +105,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     setErrorMessage(null);
+    setNotice(null);
     try {
       // O redirecionamento acontece no ProtectedRoute assim que o escritório do usuário é resolvido.
       await signIn(email, password);
@@ -99,6 +149,54 @@ export default function LoginPage() {
               </div>
             )}
 
+            {notice && (
+              <div role="status" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/60 text-[13px] text-emerald-800 dark:text-emerald-300 animate-fade-in">
+                <CheckCircle2 className="w-4 h-4 mt-px shrink-0" />
+                <span>{notice}</span>
+              </div>
+            )}
+
+            {secondFactorPending ? (
+              <form onSubmit={handleCode} noValidate className="space-y-3">
+                <p className="text-[13px] text-stone-600 dark:text-stone-300">
+                  Abra o aplicativo autenticador e informe o código de 6 dígitos do ContaFlow.
+                </p>
+                <div className="relative">
+                  <input
+                    id="code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Código"
+                    className={`${FIELD} font-mono tabular-nums tracking-[0.3em]`}
+                  />
+                  <label htmlFor="code" className={FLOAT_LABEL}>
+                    Código de verificação
+                  </label>
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-12 mt-2 rounded-2xl bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[15px] font-medium tracking-tight flex items-center justify-center gap-2 shadow-[0_6px_20px_rgba(28,25,23,0.18)] hover:bg-stone-800 dark:hover:bg-white active:scale-[0.98] disabled:opacity-60 transition-all duration-150"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verificar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelSecondFactor();
+                    setCode('');
+                    setErrorMessage(null);
+                  }}
+                  className="w-full text-center text-[13px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+                >
+                  Voltar
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} noValidate className="space-y-3">
               <div className="relative">
                 <input
@@ -153,7 +251,18 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
+              {!isMockAuth && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleReset()}
+                  className="w-full pt-1 text-center text-[13px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 disabled:opacity-60 transition-colors"
+                >
+                  Esqueci minha senha
+                </button>
+              )}
             </form>
+            )}
 
             {isMockAuth && (
               <button

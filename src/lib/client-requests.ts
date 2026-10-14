@@ -1,7 +1,16 @@
 import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 
-/** Tamanho máximo de uma resposta do cliente (o mesmo do campo de texto do link). */
+/** Tamanho máximo de uma resposta do cliente (o mesmo do campo de texto do link e de firestore.rules). */
 export const MAX_ANSWER_LENGTH = 2000;
+
+/** Link público de resposta. O token vai no fragmento (#), que o navegador não envia ao servidor. */
+export const requestLink = (origin: string, token: string): string => `${origin}/responder#t=${token}`;
+
+/** Token do link aberto no navegador. Links antigos traziam o token na consulta (`?t=`). */
+export function tokenFromLocation(location: { hash: string; search: string }): string {
+  const fromHash = new URLSearchParams(location.hash.replace(/^#/, '')).get('t');
+  return fromHash ?? new URLSearchParams(location.search).get('t') ?? '';
+}
 
 /**
  * Resposta do cliente à pergunta `index`, ou null se não houver. `answers` é gravado pelo

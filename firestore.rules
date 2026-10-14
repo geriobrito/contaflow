@@ -22,8 +22,9 @@ rules_version = '2';
 //      daquele mês: nenhuma alteração nem exclusão até a reabertura (também auditada).
 //   8. Pendências com o cliente (client_requests/{token}): o token aleatório de 128 bits
 //      é a credencial do link. Sem login, quem tem o link lê aquele documento e grava
-//      apenas as respostas (campo `answers`, texto; as perguntas não mudam), enquanto o
-//      link estiver aberto e dentro da validade; ninguém lista a coleção. O cliente não
+//      apenas as respostas (campo `answers`, texto de até 2000 caracteres cada, conferido
+//      em links de até 24 perguntas; as perguntas não mudam), enquanto o link estiver
+//      aberto e dentro da validade; ninguém lista a coleção. O cliente não
 //      envia arquivos: client_request_files é legado e não aceita novos documentos.
 //   9. Lançamento novo nunca entra conciliado: importar em competência fechada não altera
 //      o resultado dela.
@@ -240,6 +241,32 @@ service cloud.firestore {
       return req.status == 'OPEN' && request.time.toMillis() < req.expiresAtMs;
     }
 
+    // Resposta do cliente: só texto, até 2000 caracteres (MAX_ANSWER_LENGTH em
+    // src/lib/client-requests.ts), e a data em que foi escrita. Cada uso de `a` reavalia o
+    // caminho até a resposta, e a avaliação tem um teto de 1000 expressões: por isso um uso
+    // por campo — `lower()` e `matches()` só existem em texto, e qualquer outro tipo gera erro
+    // de avaliação (a regra nega).
+    function validAnswer(a) {
+      return a.keys().hasOnly(['text', 'answeredAt'])
+        && a.text.lower().size() <= 2000
+        && a.get('answeredAt', '').matches('[0-9A-Za-z:.+-]{0,40}');
+    }
+
+    // As regras não têm laços: as respostas são conferidas uma a uma, até 24 — o que cabe, com
+    // folga, no teto de 1000 expressões por avaliação (medido no emulador). Links com mais
+    // perguntas continuam aceitando respostas, sem a conferência de tamanho: ficam limitados
+    // pelo 1 MiB do documento, e o app corta e saneia o texto ao ler (answerAt).
+    function validAnswers(l) {
+      let n = l.size();
+      return n > 24
+        || ((n < 1 || validAnswer(l[0])) && (n < 2 || validAnswer(l[1])) && (n < 3 || validAnswer(l[2])) && (n < 4 || validAnswer(l[3]))
+            && (n < 5 || validAnswer(l[4])) && (n < 6 || validAnswer(l[5])) && (n < 7 || validAnswer(l[6])) && (n < 8 || validAnswer(l[7]))
+            && (n < 9 || validAnswer(l[8])) && (n < 10 || validAnswer(l[9])) && (n < 11 || validAnswer(l[10])) && (n < 12 || validAnswer(l[11]))
+            && (n < 13 || validAnswer(l[12])) && (n < 14 || validAnswer(l[13])) && (n < 15 || validAnswer(l[14])) && (n < 16 || validAnswer(l[15]))
+            && (n < 17 || validAnswer(l[16])) && (n < 18 || validAnswer(l[17])) && (n < 19 || validAnswer(l[18])) && (n < 20 || validAnswer(l[19]))
+            && (n < 21 || validAnswer(l[20])) && (n < 22 || validAnswer(l[21])) && (n < 23 || validAnswer(l[22])) && (n < 24 || validAnswer(l[23])));
+    }
+
     match /client_requests/{token} {
       // O token é a credencial: leitura direta por id liberada; listagem só para o escritório.
       allow get: if true;
@@ -256,6 +283,7 @@ service cloud.firestore {
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'respondedAt'])
             && request.resource.data.answers is list
             && request.resource.data.answers.size() == resource.data.items.size()
+            && validAnswers(request.resource.data.answers)
             && request.resource.data.respondedAt is string
             && request.resource.data.respondedAt.size() <= 40);
     }

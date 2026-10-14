@@ -7,6 +7,7 @@ import { getRepository } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF, normalizeCRC } from '@/lib/utils/formatters';
 import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { TwoFactorSection } from '@/components/escritorio/TwoFactorSection';
 
 /** Ícone de validação ao lado do campo. */
 function Valid({ ok }: { ok: boolean | null }) {
@@ -178,6 +179,8 @@ export default function EscritorioPage() {
           O representante legal (nome e CPF) é cadastrado em cada empresa, na tela de Clientes.
         </p>
       </form>
+
+      <TwoFactorSection />
     </main>
   );
 }

@@ -1,8 +1,16 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import {
+  User,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  type MultiFactorResolver,
+} from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { needsSecondFactor, resolveSecondFactor, secondFactorResolver } from '@/lib/auth/two-factor';
 import { ensureUserProfile } from '@/lib/data/profile';
 import { setSession } from '@/lib/data/scope';
 import { LOCAL_ORG_ID } from '@/lib/data/local-repository';
@@ -16,7 +24,14 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   /** Falha ao resolver o perfil/escritório (ex.: regras recusaram, rede). */
   authError: string | null;
+  /** Se a conta exige o código do autenticador, termina sem erro e liga `secondFactorPending`. */
   signIn: (email: string, password: string) => Promise<void>;
+  /** A senha foi aceita e falta o código do aplicativo autenticador. */
+  secondFactorPending: boolean;
+  confirmSecondFactor: (code: string) => Promise<void>;
+  cancelSecondFactor: () => void;
+  /** Envia o e-mail de redefinição de senha (sem efeito no modo local). */
+  resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   isMockAuth: boolean;
 }
@@ -32,6 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [orgId, setOrg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  // Login em duas etapas: o Firebase devolve um "resolver" que conclui a entrada com o código.
+  const secondFactor = useRef<MultiFactorResolver | null>(null);
+  const [secondFactorPending, setSecondFactorPending] = useState(false);
 
   /** Define o escopo de dados ANTES de expor o usuário, para nenhuma leitura sair sem orgId. */
   const applySession = (nextUser: User | null, nextOrg: string | null) => {
@@ -82,7 +100,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (firestoreMode) {
       // Erros (credencial, chave inválida, rede) sobem para a tela de login.
       // O perfil/escritório é resolvido pelo onAuthStateChanged.
-      await signInWithEmailAndPassword(auth, email, password);
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (e) {
+        if (!needsSecondFactor(e)) throw e;
+        secondFactor.current = secondFactorResolver(e);
+        setSecondFactorPending(true);
+      }
       return;
     }
 
@@ -96,7 +120,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     applySession(mockUser, LOCAL_ORG_ID);
   };
 
+  const cancelSecondFactor = () => {
+    secondFactor.current = null;
+    setSecondFactorPending(false);
+  };
+
+  const confirmSecondFactor = async (code: string): Promise<void> => {
+    if (!secondFactor.current) throw new Error('A verificação expirou. Informe e-mail e senha de novo.');
+    // Código errado mantém a etapa aberta para nova tentativa; o erro sobe para a tela.
+    await resolveSecondFactor(secondFactor.current, code);
+    cancelSecondFactor();
+  };
+
+  const resetPassword = async (email: string): Promise<void> => {
+    if (firestoreMode) await sendPasswordResetEmail(auth, email);
+  };
+
   const signOut = async (): Promise<void> => {
+    cancelSecondFactor();
     if (firestoreMode) await firebaseSignOut(auth);
     else localStorage.removeItem(DEV_AUTH_KEY);
     applySession(null, null);
@@ -111,6 +152,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: Boolean(user && orgId),
         authError,
         signIn,
+        secondFactorPending,
+        confirmSecondFactor,
+        cancelSecondFactor,
+        resetPassword,
         signOut,
         isMockAuth: !firestoreMode,
       }}

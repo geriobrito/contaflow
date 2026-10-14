@@ -293,8 +293,7 @@ export async function closeClientRequest(request: ClientRequest): Promise<Client
   return { ...request, status: 'CLOSED' };
 }
 
-/** Link público de resposta. */
-export const requestLink = (origin: string, token: string) => `${origin}/responder?t=${token}`;
+export { requestLink } from '@/lib/client-requests';
 
 /* =========================================================================
    Correção de acentuação (UTF-8 lido como Latin-1 em importações antigas)

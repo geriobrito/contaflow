@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerAt, answeredCount, latestAnswers, MAX_ANSWER_LENGTH } from '@/lib/client-requests';
+import { answerAt, answeredCount, latestAnswers, MAX_ANSWER_LENGTH, requestLink, tokenFromLocation } from '@/lib/client-requests';
 import type { ClientRequest } from '@/types/firestore';
 
 const request = (overrides: Partial<ClientRequest> = {}): ClientRequest => ({
@@ -50,5 +50,14 @@ describe('respostas do cliente', () => {
     const map = latestAnswers([recent, old]);
     expect(map.get('a')?.text).toBe('nova');
     expect(map.get('b')?.text).toBe('só no antigo');
+  });
+
+  it('o token do link vai no fragmento; links antigos (?t=) continuam abrindo', () => {
+    const token = 'a'.repeat(32);
+    expect(requestLink('https://app.exemplo', token)).toBe(`https://app.exemplo/responder#t=${token}`);
+    expect(tokenFromLocation({ hash: `#t=${token}`, search: '' })).toBe(token);
+    expect(tokenFromLocation({ hash: '', search: `?t=${token}` })).toBe(token);
+    expect(tokenFromLocation({ hash: '#t=novo', search: '?t=antigo' })).toBe('novo');
+    expect(tokenFromLocation({ hash: '', search: '' })).toBe('');
   });
 });

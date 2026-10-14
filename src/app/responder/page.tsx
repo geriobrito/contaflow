@@ -1,11 +1,10 @@
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Sparkles } from 'lucide-react';
 import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
-import { answerAt, MAX_ANSWER_LENGTH } from '@/lib/client-requests';
+import { answerAt, MAX_ANSWER_LENGTH, tokenFromLocation } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
@@ -16,10 +15,10 @@ const draftsOf = (req: ClientRequest): string[] => req.items.map((_, i) => answe
 /**
  * Página pública (sem login) em que o cliente justifica os lançamentos perguntados pelo
  * escritório, em texto. O token do link é a credencial; nada além destas perguntas é
- * exposto, e só as respostas são gravadas.
+ * exposto, e só as respostas são gravadas. O token vem no fragmento do endereço (`#t=`),
+ * que não é enviado ao servidor nem aparece nos registros de acesso.
  */
-function Responder() {
-  const token = useSearchParams().get('t') ?? '';
+export default function ResponderPage() {
   const [request, setRequest] = useState<ClientRequest | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'invalid' | 'closed' | 'sent'>('loading');
   const [drafts, setDrafts] = useState<string[]>([]);
@@ -29,7 +28,12 @@ function Responder() {
   useEffect(() => {
     let active = true;
     Promise.resolve()
-      .then(() => (token.length >= 32 ? getRepository().getPublicClientRequest(token) : null))
+      .then(() => {
+        const token = tokenFromLocation(window.location);
+        // Link antigo (`?t=`): passa o token para o fragmento, fora do endereço enviado ao servidor.
+        if (token && window.location.search) window.history.replaceState(null, '', `${window.location.pathname}#t=${token}`);
+        return token.length >= 32 ? getRepository().getPublicClientRequest(token) : null;
+      })
       .then((req) => {
         if (!active) return;
         if (!req) return setState('invalid');
@@ -38,10 +42,14 @@ function Responder() {
         setState(req.status !== 'OPEN' || Date.now() >= req.expiresAtMs ? 'closed' : 'ready');
       })
       .catch(() => active && setState('invalid'));
+    // Trocar só o fragmento não recarrega a página: outro link aberto na mesma aba recomeça do zero.
+    const onHashChange = () => window.location.reload();
+    window.addEventListener('hashchange', onHashChange);
     return () => {
       active = false;
+      window.removeEventListener('hashchange', onHashChange);
     };
-  }, [token]);
+  }, []);
 
   const send = async () => {
     if (!request) return;
@@ -156,13 +164,5 @@ function Responder() {
         )}
       </div>
     </main>
-  );
-}
-
-export default function ResponderPage() {
-  return (
-    <Suspense fallback={null}>
-      <Responder />
-    </Suspense>
   );
 }

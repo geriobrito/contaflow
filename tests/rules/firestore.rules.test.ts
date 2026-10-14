@@ -788,6 +788,40 @@ describe('pendências com o cliente (link público)', () => {
     await assertSucceeds(updateDoc(ref, { answers: [{ text: 'Fornecedor de embalagens, NF 1234' }], respondedAt: 'T3' }));
   });
 
+  it('cada resposta é só texto, com tamanho limitado', async () => {
+    await createFirestoreRepository(asUser('alice'), () => ORG_A).saveClientRequest(request() as never);
+    const ref = doc(anon(), `client_requests/${TOKEN}`);
+    const send = (answer: unknown) => updateDoc(ref, { answers: [answer], respondedAt: 'T3' });
+    await assertSucceeds(send({ text: 'x'.repeat(2000), answeredAt: 'T3' }));
+    await assertSucceeds(send({ text: '' }));
+    await assertFails(send({ text: 'x'.repeat(2001) }));
+    await assertFails(send({ text: 42 }));
+    await assertFails(send({ text: { aninhado: 'x'.repeat(50_000) } }));
+    await assertFails(send({ text: 'ok', anexo: 'x'.repeat(50_000) }));
+    await assertFails(send({ text: 'ok', answeredAt: 'x'.repeat(41) }));
+    await assertFails(send({ answeredAt: 'T3' }));
+    await assertFails(send('texto solto'));
+  });
+
+  it('o tamanho é conferido resposta a resposta em links de até 24 perguntas; links maiores continuam respondíveis', async () => {
+    const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const items = (n: number) => Array.from({ length: n }, (_, i) => ({ transactionId: `cA_${i}`, date: '2025-03-10', memo: 'PIX', amount: -1, question: '?' }));
+    const answers = (n: number, text = 'x'.repeat(2000)) => Array.from({ length: n }, () => ({ text, answeredAt: '2025-03-10T12:00:00.000Z' }));
+    const ref = doc(anon(), `client_requests/${TOKEN}`);
+
+    // 24 respostas no tamanho máximo cabem no teto de expressões das regras.
+    await admin.saveClientRequest(request({ items: items(24) }) as never);
+    await assertSucceeds(updateDoc(ref, { answers: answers(24), respondedAt: 'T3' }));
+    // A primeira e a última também são conferidas.
+    await assertFails(updateDoc(ref, { answers: [{ text: 'x'.repeat(2001) }, ...answers(23)], respondedAt: 'T3' }));
+    await assertFails(updateDoc(ref, { answers: [...answers(23), { text: 'x'.repeat(2001) }], respondedAt: 'T3' }));
+
+    // Acima disso as regras não conseguem conferir uma a uma: o link segue aceitando respostas.
+    await admin.saveClientRequest(request({ items: items(25) }) as never);
+    await assertSucceeds(updateDoc(ref, { answers: answers(25, 'curta'), respondedAt: 'T3' }));
+    await assertFails(updateDoc(ref, { answers: answers(24, 'curta'), respondedAt: 'T3' }));
+  });
+
   it('encerrar o link preserva respostas que chegaram depois da última leitura do escritório', async () => {
     const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
     await admin.saveClientRequest(request() as never);

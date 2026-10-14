@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -32,13 +33,23 @@ export const isFirebaseConfigured = (): boolean => {
 };
 
 // Evita múltiplas instâncias no ciclo de hot-reload do Next.js
-const app = !getApps().length
+const isNewApp = !getApps().length;
+const app = isNewApp
   ? initializeApp(
       isFirebaseConfigured()
         ? firebaseConfig
         : { apiKey: 'mock-key', projectId: 'mock-project' }
     )
   : getApp();
+
+// App Check (opcional): com a chave do reCAPTCHA Enterprise, cada chamada ao Firebase leva um
+// atestado de que partiu deste app — inclusive a leitura pública dos links de pendências. Só
+// barra chamadas de fora depois de ativada a exigência no console (ver README). Precisa vir
+// antes do primeiro uso do Firestore/Auth, e só no navegador.
+const appCheckSiteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY;
+if (isNewApp && typeof window !== 'undefined' && isFirebaseConfigured() && appCheckSiteKey) {
+  initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+}
 
 export const db = getFirestore(app);
 export const auth = getAuth(app);

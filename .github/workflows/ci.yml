@@ -92,3 +92,22 @@ jobs:
       - name: Remover credencial
         if: always()
         run: rm -f "$RUNNER_TEMP/firebase-sa.json"
+
+  deploy-app:
+    name: Publicar o app (Vercel)
+    # Opcional: aciona o deploy do app só depois das regras e dos índices, para o app novo nunca
+    # entrar no ar antes das regras de que depende. Só faz sentido com o deploy automático da
+    # main desligado na Vercel (README > Segurança > Ordem de deploy); sem o segredo, não faz nada.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [deploy-firestore]
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Acionar o deploy
+        run: |
+          if [ -z "$VERCEL_DEPLOY_HOOK_URL" ]; then
+            echo "::notice title=Deploy do app não acionado pelo CI::Sem o segredo VERCEL_DEPLOY_HOOK_URL, a publicação do app segue por conta da Vercel."
+          else
+            curl --fail --silent --show-error -X POST "$VERCEL_DEPLOY_HOOK_URL" > /dev/null
+          fi
