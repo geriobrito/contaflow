@@ -1,0 +1,98 @@
+# 1. Dependencias e Ambientes
+node_modules/
+venv/
+.venv/
+env/
+vendor/
+.pnp
+.pnp.*
+.yarn/*
+
+# 2. Arquivos de Lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Cargo.lock
+composer.lock
+*.lock
+
+# 3. Builds, Caches e Compilados
+dist/
+build/
+out/
+.next/
+.nuxt/
+.svelte-kit/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.turbo/
+.vercel/
+coverage/
+*.pyc
+*.min.js
+*.min.css
+*.map
+
+# 4. Midia, Binarios e Fontes
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.webp
+*.svg
+*.mp4
+*.mp3
+*.pdf
+*.zip
+*.tar.gz
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# 5. Dados Massivos, Logs e Bancos Locais
+*.log
+*.sqlite
+*.db
+*.csv
+*.dump
+
+# 6. Seguranca e Sistema
+.git/
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# 7. Especificos do Projeto (ContaFlow)
+# Cache incremental do TypeScript e tipagens autogeradas
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+next-env.d.ts
+
+# Credenciais e contas de servico Firebase/GCP
+service-account.json
+serviceAccountKey*.json
+firebase-adminsdk*.json
+google-services.json
+*.pem
+*.key
+*.crt
+
+# Logs de depuracao do emulador Firebase
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+
+# Arquivos bancarios e planilhas contabeis (OFX/Excel)
+*.ofx
+*.qfx
+*.xlsx
+*.xls
