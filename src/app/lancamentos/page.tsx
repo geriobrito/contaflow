@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
+  Repeat,
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
@@ -27,7 +28,12 @@ import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { JournalEntryModal } from '@/components/lancamentos/JournalEntryModal';
+import { RepeatEntriesSheet } from '@/components/lancamentos/RepeatEntriesSheet';
+import { parseAttachmentUrl, previousMonth, repeatCandidates, repeatDraft } from '@/lib/journal';
+import { formatMonth } from '@/lib/periods';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+
+const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
 const CATEGORY_CONFIG: Record<JournalEntryCategory, { label: string; badge: string }> = {
   CLOSING: {
@@ -75,6 +81,9 @@ export default function LancamentosPage() {
 
   // Estados de modal e filtros
   const [isModalOpen, setIsModalOpen] = useState(false);
+  /** Muda a cada abertura: o formulário sempre começa do lançamento escolhido, nunca do anterior. */
+  const [modalKey, setModalKey] = useState(0);
+  const [repeatOpen, setRepeatOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -196,13 +205,15 @@ export default function LancamentosPage() {
         entryNumber: existing.entryNumber,
         createdAt: existing.createdAt,
         createdByUid: existing.createdByUid,
+        // A origem da repetição também: sem ela o lançamento seria oferecido de novo.
+        ...(existing.repeatedFromId ? { repeatedFromId: existing.repeatedFromId } : {}),
         updatedAt: now,
       });
     } else {
       // O número vem da sequência do cliente, atribuído pelo repositório ao gravar.
       await repo.createJournalEntry({
         ...entryData,
-        id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        id: newJournalId(),
         clientId,
         createdAt: now,
         updatedAt: now,
@@ -238,16 +249,56 @@ export default function LancamentosPage() {
     }
   };
 
+  /** Abre o formulário para um lançamento novo (`null`), uma edição ou uma cópia. */
+  const openModal = (entry: JournalEntry | null) => {
+    setEditingEntry(entry);
+    setModalKey((k) => k + 1);
+    setIsModalOpen(true);
+  };
+
   // Duplicar lançamento
   const handleDuplicate = (entry: JournalEntry) => {
-    setEditingEntry({
+    openModal({
       ...entry,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,
       memo: `${entry.memo} (Cópia)`,
     });
-    setIsModalOpen(true);
+  };
+
+  // Lançamentos da competência anterior ainda não repetidos nesta (só na visão mensal).
+  const repeatable = useMemo(
+    () => (period.mode === 'month' ? repeatCandidates(entries, currentMonth, accounts) : []),
+    [period.mode, entries, currentMonth, accounts]
+  );
+
+  /** Grava as cópias uma a uma (cada uma recebe o seu número); se alguma falhar, diz quantas entraram. */
+  const handleRepeat = async (chosen: JournalEntry[]) => {
+    if (!clientId) return;
+    const repo = getRepository();
+    const now = new Date().toISOString();
+    let created = 0;
+    try {
+      for (const entry of chosen) {
+        await repo.createJournalEntry({
+          ...repeatDraft(entry, currentMonth),
+          id: newJournalId(),
+          clientId,
+          createdAt: now,
+          updatedAt: now,
+          createdByUid: user?.uid || 'local',
+        });
+        created++;
+      }
+    } catch (e) {
+      console.error('Erro ao repetir lançamentos:', e);
+      throw new Error(
+        `${created} de ${chosen.length} lançamento(s) gravado(s); o seguinte falhou (${e instanceof Error && e.message ? e.message : 'erro desconhecido'}).`
+      );
+    } finally {
+      if (created) setReloadCount((c) => c + 1);
+    }
   };
 
   return (
@@ -258,12 +309,27 @@ export default function LancamentosPage() {
         description="Diário avulso por partidas dobradas para provisões de folha, depreciação, impostos e ajustes patrimoniais sem movimentação bancária."
         actions={
           <div className="flex items-center gap-2">
+            {period.mode === 'month' && (
+              <button
+                type="button"
+                onClick={() => setRepeatOpen(true)}
+                disabled={loading || monthLocked || repeatable.length === 0}
+                className={BUTTON.secondary}
+                title={
+                  monthLocked
+                    ? 'Competência bloqueada'
+                    : repeatable.length
+                      ? `Copiar lançamentos de ${formatMonth(previousMonth(currentMonth))} para ${formatMonth(currentMonth)}`
+                      : `Nenhum lançamento de ${formatMonth(previousMonth(currentMonth))} a repetir`
+                }
+              >
+                <Repeat className="w-4 h-4" />
+                Repetir do mês anterior{repeatable.length > 0 && ` (${repeatable.length})`}
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => {
-                setEditingEntry(null);
-                setIsModalOpen(true);
-              }}
+              onClick={() => openModal(null)}
               disabled={loading || monthLocked}
               className={BUTTON.primary}
               title={monthLocked ? 'Competência bloqueada' : 'Criar novo lançamento contábil manual'}
@@ -412,10 +478,7 @@ export default function LancamentosPage() {
           {!monthLocked && (
             <button
               type="button"
-              onClick={() => {
-                setEditingEntry(null);
-                setIsModalOpen(true);
-              }}
+              onClick={() => openModal(null)}
               className={BUTTON.primary}
             >
               <Plus className="w-4 h-4" />
@@ -442,6 +505,8 @@ export default function LancamentosPage() {
                 {filteredEntries.map((entry) => {
                   const isExpanded = expandedId === entry.id;
                   const catCfg = CATEGORY_CONFIG[entry.category] ?? CATEGORY_CONFIG.OTHER;
+                  // Só links http/https viram link clicável (dados antigos podem ter qualquer texto).
+                  const attachment = entry.attachmentUrl ? parseAttachmentUrl(entry.attachmentUrl) : null;
                   const entryTotal = entry.totalAmount || entry.lines
                     .filter((l) => l.type === 'DEBIT')
                     .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
@@ -495,10 +560,7 @@ export default function LancamentosPage() {
                           <div className="inline-flex items-center gap-1">
                             <button
                               type="button"
-                              onClick={() => {
-                                setEditingEntry(entry);
-                                setIsModalOpen(true);
-                              }}
+                              onClick={() => openModal(entry)}
                               disabled={monthLocked}
                               title={monthLocked ? 'Mês bloqueado' : 'Editar lançamento'}
                               className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
@@ -540,16 +602,22 @@ export default function LancamentosPage() {
                             <div className="space-y-3">
                               <div className="flex items-center justify-between text-[12px] font-semibold text-stone-600 dark:text-stone-300">
                                 <span>Detalhamento das Partidas Dobradas:</span>
-                                {entry.attachmentUrl && (
-                                  <a
-                                    href={entry.attachmentUrl}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                                  >
-                                    <ExternalLink className="w-3 h-3" /> Ver Documento Anexo
-                                  </a>
-                                )}
+                                {attachment &&
+                                  ('url' in attachment ? (
+                                    <a
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title={attachment.url}
+                                      className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                                    >
+                                      <ExternalLink className="w-3 h-3" /> Ver comprovante ({attachment.host})
+                                    </a>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 font-normal text-amber-700 dark:text-amber-400" title={entry.attachmentUrl}>
+                                      <AlertCircle className="w-3 h-3" /> Comprovante com link inválido: edite o lançamento
+                                    </span>
+                                  ))}
                               </div>
 
                               <div className="border border-black/[0.06] dark:border-white/[0.08] rounded-xl overflow-hidden bg-white dark:bg-stone-900">
@@ -632,17 +700,24 @@ export default function LancamentosPage() {
         />
       )}
 
-      {/* Modal de Lançamento */}
-      <JournalEntryModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSave={handleSaveEntry}
-        initialEntry={editingEntry}
-        accounts={accounts}
-        clientId={clientId || ''}
-        defaultDate={range.end}
-        isMonthLocked={isMonthLocked}
-      />
+      {repeatOpen && (
+        <RepeatEntriesSheet targetMonth={currentMonth} candidates={repeatable} onConfirm={handleRepeat} onClose={() => setRepeatOpen(false)} />
+      )}
+
+      {/* Modal de Lançamento: remontado a cada abertura (key), para o formulário não guardar o lançamento anterior */}
+      {isModalOpen && (
+        <JournalEntryModal
+          key={modalKey}
+          isOpen
+          onClose={() => setIsModalOpen(false)}
+          onSave={handleSaveEntry}
+          initialEntry={editingEntry}
+          accounts={accounts}
+          clientId={clientId || ''}
+          defaultDate={range.end}
+          isMonthLocked={isMonthLocked}
+        />
+      )}
     </main>
   );
 }

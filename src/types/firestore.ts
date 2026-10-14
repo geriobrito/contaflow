@@ -539,7 +539,10 @@ export interface JournalEntry {
   lines: JournalEntryLine[];
   totalAmount: number;
   documentRef?: string;
+  /** Link (http/https) do comprovante guardado na nuvem; ver `parseAttachmentUrl` em src/lib/journal.ts. */
   attachmentUrl?: string;
+  /** Lançamento do mês anterior do qual este foi repetido (recorrência mensal). */
+  repeatedFromId?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;

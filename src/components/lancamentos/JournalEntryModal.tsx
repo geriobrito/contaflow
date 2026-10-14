@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
+import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl } from '@/lib/journal';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 
 interface JournalEntryModalProps {
@@ -80,6 +80,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     const { debit, credit, difference: diff } = journalTotals(lines);
     return { totalDebit: debit, totalCredit: credit, difference: diff, isBalanced: diff === 0 && debit > 0 };
   }, [lines]);
+
+  // Comprovante: só link http/https (caminho do computador ou nome de arquivo não abre em outro aparelho).
+  const attachment = useMemo(() => parseAttachmentUrl(attachmentUrl), [attachmentUrl]);
 
   if (!isOpen) return null;
 
@@ -224,6 +227,10 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       setError(problem);
       return;
     }
+    if (attachment && 'problem' in attachment) {
+      setError(`Link do comprovante: ${attachment.problem}`);
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -249,7 +256,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           }),
           totalAmount: totalDebit,
           documentRef: documentRef.trim() || undefined,
-          attachmentUrl: attachmentUrl.trim() || undefined,
+          attachmentUrl: attachment && 'url' in attachment ? attachment.url : undefined,
           createdByUid: initialEntry?.createdByUid ?? '',
         },
         initialEntry?.id
@@ -568,17 +575,35 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
           {/* Anexo / Link */}
           <div>
-            <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-              Link de Documento Comprobatório / Anexo (Opcional)
+            <label htmlFor="journal-attachment" className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+              Link do comprovante (opcional)
             </label>
             <input
-              type="url"
-              placeholder="https://exemplo.com/documentos/folha-maio.pdf"
+              id="journal-attachment"
+              type="text"
+              inputMode="url"
+              autoComplete="off"
+              placeholder="Link de compartilhamento do documento na nuvem (Drive, OneDrive, Dropbox…)"
               value={attachmentUrl}
               onChange={(e) => setAttachmentUrl(e.target.value)}
               disabled={saving || locked}
+              aria-invalid={Boolean(attachment && 'problem' in attachment)}
               className={INPUT}
             />
+            {attachment && 'problem' in attachment ? (
+              <p className="mt-1.5 text-[12px] text-rose-600">{attachment.problem}</p>
+            ) : attachment ? (
+              <p className="mt-1.5 text-[12px] text-stone-500">
+                Abre em <span className="font-mono">{attachment.host}</span> ·{' '}
+                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                  testar o link
+                </a>
+              </p>
+            ) : (
+              <p className="mt-1.5 text-[12px] text-stone-400">
+                Cole o link de compartilhamento, não o caminho do arquivo no computador: assim o comprovante abre em qualquer aparelho.
+              </p>
+            )}
           </div>
 
           {/* Rodapé / Ações */}

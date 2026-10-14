@@ -7,15 +7,15 @@ import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /* ── Paleta corporativa e sóbria (RGB) — legibilidade máxima em tela e impressão P&B ── */
-const INK: [number, number, number] = [28, 25, 23];
-const MUTED: [number, number, number] = [105, 100, 95];
-const RULE: [number, number, number] = [210, 206, 200];
-const HEADER_FILL: [number, number, number] = [246, 246, 244];
+export const INK: [number, number, number] = [28, 25, 23];
+export const MUTED: [number, number, number] = [105, 100, 95];
+export const RULE: [number, number, number] = [210, 206, 200];
+export const HEADER_FILL: [number, number, number] = [246, 246, 244];
 const SECTION_FILL: [number, number, number] = [238, 238, 236];
 const SUBTOTAL_FILL: [number, number, number] = [242, 242, 240];
-const GRAND_TOTAL_FILL: [number, number, number] = [228, 228, 226];
+export const GRAND_TOTAL_FILL: [number, number, number] = [228, 228, 226];
 
-const MARGIN_X = 12; // mm (permite acomodar as 6 colunas do Balancete com folga perfeita em A4 Retrato)
+export const MARGIN_X = 12; // mm (permite acomodar as 6 colunas do Balancete com folga perfeita em A4 Retrato)
 
 export interface LedgerPdfExportContext {
   client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
@@ -41,7 +41,7 @@ const formatDC = (v: number): string => {
 const formatBSMoney = (v: number): string => (v < 0 ? `(${formatCurrency(-v)})` : formatCurrency(v));
 
 /** Nome de arquivo sanitizado sem acentos ou caracteres especiais. */
-function sanitizeFileName(name: string): string {
+export function sanitizeFileName(name: string): string {
   return name
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -52,7 +52,7 @@ function sanitizeFileName(name: string): string {
 /**
  * Adiciona o rodapé de paginação elegante em todas as páginas do documento.
  */
-function addPageFooters(doc: jsPDF, title: string, clientName: string) {
+export function addPageFooters(doc: jsPDF, title: string, clientName: string) {
   const totalPages = doc.getNumberOfPages();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -78,7 +78,7 @@ function addPageFooters(doc: jsPDF, title: string, clientName: string) {
 /**
  * Desenha o bloco formal de encerramento e assinaturas (Administrador e Contador com CRC).
  */
-function renderSignatures(
+export function renderSignatures(
   doc: jsPDF,
   startY: number,
   issuedAt: Date,

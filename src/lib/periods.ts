@@ -47,7 +47,7 @@ export function monthsBetween(start: string, end: string): string[] {
   return out;
 }
 
-const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export const MONTH_NAMES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 /** "março de 2025" */
 export function formatMonth(month: string): string {
