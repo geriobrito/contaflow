@@ -952,6 +952,9 @@ describe('notas explicativas', () => {
     expect(await repo.getExplanatoryNotes('cA', '2024')).toBeNull();
 
     await assertFails(getDoc(doc(asUser('bob'), 'explanatory_notes/cA_2025')));
+    // Exercício ainda sem notas: outro escritório também não lê (nem o vazio).
+    await assertFails(getDoc(doc(asUser('bob'), 'explanatory_notes/cA_2023')));
+    await assertFails(getDoc(doc(asUser('alice'), 'explanatory_notes/cB_2023')));
     await assertFails(setDoc(doc(asUser('bob'), 'explanatory_notes/cA_2025'), notes('cA', ORG_B)));
     await assertFails(setDoc(doc(asUser('alice'), 'explanatory_notes/cA_2024'), notes())); // id ≠ cliente_exercício
     await assertFails(setDoc(doc(asUser('alice'), 'explanatory_notes/cA_25'), { ...notes(), year: '25' }));

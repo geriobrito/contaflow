@@ -293,7 +293,12 @@ service cloud.firestore {
 
     // ── Notas explicativas (um documento por cliente e exercício) ────────
     match /explanatory_notes/{docId} {
-      allow read: if isMine(resource.data);
+      // Exercício sem notas gravadas (documento inexistente): o próprio escritório lê o vazio.
+      // O cliente sai do id (`${clientId}_${AAAA}`).
+      allow read: if hasProfile()
+        && (resource == null
+            ? docId.matches('^.+_[0-9]{4}$') && clientInMyOrg({'clientId': docId[0:docId.size() - 5]})
+            : isMine(resource.data));
       allow delete: if isMine(resource.data);
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
