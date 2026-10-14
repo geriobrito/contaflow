@@ -20,6 +20,14 @@ export const monthOf = (date: string): string => date.slice(0, 7);
 /** ID do documento de fechamento: `${clientId}_${YYYY-MM}` (o mesmo usado pelas regras). */
 export const lockId = (clientId: string, month: string): string => `${clientId}_${month}`;
 
+/**
+ * ID do registro de auditoria de um fechamento ('close') ou da reabertura ('reopen') dele.
+ * É derivado do próprio fechamento para que as regras exijam o registro na mesma gravação:
+ * não existe fechar nem reabrir competência sem trilha.
+ */
+export const periodAuditId = (lock: { id: string; lockedAt: string }, kind: 'close' | 'reopen'): string =>
+  `${lock.id}_${kind}_${lock.lockedAt}`;
+
 export const isMonthLocked = (date: string, lockedMonths: ReadonlySet<string>): boolean =>
   lockedMonths.has(monthOf(date));
 

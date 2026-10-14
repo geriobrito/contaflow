@@ -59,8 +59,8 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 | Coleção | Conteúdo | Regras |
 | --- | --- | --- |
 | `bank_accounts` | Conta do extrato (banco-agência-conta) ligada a uma conta analítica do ativo, com saldo inicial. Criada na importação; a primeira é ligada a 1.1.1.02. | Como os demais dados do cliente; a chave do extrato é imutável. |
-| `client_requests` | Link de perguntas ao cliente. O id é um token aleatório de 128 bits. | Sem login, quem tem o link lê aquele documento e grava só as respostas, enquanto estiver aberto e dentro da validade (30 dias). Ninguém lista a coleção sem ser do escritório. |
-| `client_request_files` | Comprovantes enviados pelo cliente (base64, até 700 kB por arquivo; fotos são reduzidas no navegador). | Criados apenas para um link aberto do mesmo escritório/cliente; só o escritório lê. |
+| `client_requests` | Link de perguntas ao cliente. O id é um token aleatório de 128 bits. | Sem login, quem tem o link lê aquele documento e grava só as respostas em texto (campo `answers`, uma por pergunta; as perguntas em `items` não mudam), enquanto estiver aberto e dentro da validade (30 dias). Ninguém lista a coleção sem ser do escritório. |
+| `client_request_files` | Legado: o cliente não envia mais arquivos. Guarda apenas comprovantes antigos. | Nenhum documento novo é aceito; o escritório lê e apaga os antigos (some com a exclusão da empresa). |
 
 - **Transferências entre contas próprias**: saída e entrada de mesmo valor em contas diferentes, até 3 dias de distância, são conciliadas juntas na conta transitória 1.1.1.04 (criada se faltar). Reclassificar, ratear, desfazer ou excluir uma perna volta a outra para pendente.
 - **Balanço e balancete** são calculados por partidas dobradas a partir do extrato: conta do banco × conta classificada (ou rateio). Lançamentos não conciliados ficam em "Lançamentos a classificar"; saldos iniciais dos bancos entram no PL como "Saldos de abertura (a detalhar)".

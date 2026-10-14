@@ -23,7 +23,6 @@ import type {
   BankAccount,
   BankTransaction,
   ClientRequest,
-  ClientRequestFile,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
@@ -35,9 +34,10 @@ import type {
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
 import { assertValidJournalEntry } from '@/lib/journal';
-import { monthOf } from '@/lib/periods';
+import { monthOf, periodAuditId } from '@/lib/periods';
 
 export const COL = {
+  users: 'users',
   orgs: 'orgs',
   clients: 'clients',
   accounts: 'chart_of_accounts',
@@ -187,11 +187,35 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       // Substitui o documento: campos apagados no formulário (ex.: CPF do representante) somem de fato.
       await setDoc(doc(db, COL.clients, client.id), stamp(client));
     },
-    async deleteClient(clientId) {
+    async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
-      // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro:
-      // lançamentos de competência fechada não podem ser excluídos.
-      for (const name of [COL.locks, COL.transactions, COL.journalEntries, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
+      // Recusa antes de apagar qualquer coisa: as regras só barrariam o operador no meio da cascata.
+      const profile = await getDoc(doc(db, COL.users, actor.uid));
+      if (profile.data()?.role === 'operator') throw new Error('Somente o administrador do escritório pode excluir empresas.');
+
+      // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro
+      // (lançamentos de competência fechada não podem ser excluídos), cada um com o registro
+      // de reabertura que as regras exigem — agrupados por competência pelo limite de consultas.
+      const now = new Date().toISOString();
+      const locks = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
+      await run(
+        locks.docs.map((d): Group => {
+          const lock = { ...(d.data() as PeriodLock), id: d.id };
+          const audit: AuditEntry = {
+            id: periodAuditId(lock, 'reopen'),
+            clientId,
+            action: 'PERIOD_REOPEN',
+            actorUid: actor.uid,
+            ...(actor.email ? { actorEmail: actor.email } : {}),
+            at: now,
+            month: lock.month,
+            note: 'Competência liberada pela exclusão da empresa',
+          };
+          return { month: lock.month, writes: [(b) => b.delete(d.ref), auditWrite(audit)] };
+        })
+      );
+      // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
+      for (const name of [COL.transactions, COL.journalEntries, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(doc(db, COL.clients, clientId));
@@ -347,16 +371,17 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
       return snap.docs.map((d) => ({ ...(d.data() as PeriodLock), id: d.id }));
     },
+    // As regras exigem o registro de auditoria na mesma gravação, sob um id derivado do fechamento.
     async closePeriod(lock, audit) {
       const b = writeBatch(db);
       b.set(doc(db, COL.locks, lock.id), stamp(lock));
-      b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      auditWrite({ ...audit, id: periodAuditId(lock, 'close') })(b);
       await b.commit();
     },
     async reopenPeriod(lock, audit) {
       const b = writeBatch(db);
       b.delete(doc(db, COL.locks, lock.id));
-      b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      auditWrite({ ...audit, id: periodAuditId(lock, 'reopen') })(b);
       await b.commit();
     },
 
@@ -378,9 +403,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     async saveClientRequest(request) {
       await setDoc(doc(db, COL.requests, request.id), stamp(request));
     },
-    async getClientRequestFile(fileId) {
-      const snap = await getDoc(doc(db, COL.requestFiles, fileId));
-      return snap.exists() ? ({ ...(snap.data() as ClientRequestFile), id: snap.id }) : null;
+    async closeClientRequest(requestId) {
+      await updateDoc(doc(db, COL.requests, requestId), { status: 'CLOSED' });
     },
 
     /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
@@ -446,11 +470,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.requests, token));
       return snap.exists() ? ({ ...(snap.data() as ClientRequest), id: snap.id }) : null;
     },
-    async answerPublicClientRequest(token, items, respondedAt) {
-      await updateDoc(doc(db, COL.requests, token), { items: items.map((i) => clean(i)), respondedAt });
-    },
-    async uploadPublicClientRequestFile(file) {
-      await setDoc(doc(db, COL.requestFiles, file.id), clean(file));
+    async answerPublicClientRequest(token, answers, respondedAt) {
+      await updateDoc(doc(db, COL.requests, token), { answers: answers.map((a) => clean(a)), respondedAt });
     },
   };
 }

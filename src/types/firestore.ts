@@ -243,8 +243,15 @@ export interface UserProfile {
   uid: string;
   orgId: string;
   email?: string;
+  /**
+   * Papel no escritório. Sem o campo, o usuário é administrador. 'operator' (definido só
+   * pelo console/Admin SDK) não reabre competência nem exclui empresa ou extrato.
+   */
+  role?: UserRole;
   createdAt: string;
 }
+
+export type UserRole = 'admin' | 'operator';
 
 /* =========================================================================
    Auditoria, fechamento de período, escritório e extratos
@@ -374,22 +381,22 @@ export interface BankAccount {
   updatedAt: string;
 }
 
-export interface ClientRequestFileRef {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-}
-
+/** Pergunta sobre um lançamento. Gravada pelo escritório; o link público não a altera. */
 export interface ClientRequestItem {
   transactionId: string;
   date: string;
   memo: string;
   amount: number;
   question: string;
+  /** Legado: links antigos guardavam a resposta dentro do item. Hoje fica em `ClientRequest.answers`. */
   answer?: string;
   answeredAt?: string;
-  files?: ClientRequestFileRef[];
+}
+
+/** Justificativa do cliente para uma pergunta (somente texto). */
+export interface ClientRequestAnswer {
+  text: string;
+  answeredAt?: string;
 }
 
 export type ClientRequestStatus = 'OPEN' | 'CLOSED';
@@ -405,28 +412,18 @@ export interface ClientRequest {
   clientName: string;
   officeName?: string;
   items: ClientRequestItem[];
+  /**
+   * Respostas do cliente, na mesma ordem de `items` (texto vazio = sem resposta). Com
+   * `respondedAt`, é tudo o que o link público consegue gravar. Leia com `answerAt`
+   * (src/lib/client-requests.ts): o conteúdo vem de fora e precisa ser saneado.
+   */
+  answers?: ClientRequestAnswer[];
   status: ClientRequestStatus;
   createdAt: string;
   createdByUid: string;
   /** Validade do link (epoch ms), comparada com `request.time` nas regras. */
   expiresAtMs: number;
   respondedAt?: string;
-}
-
-/** Comprovante enviado pelo cliente (coleção `client_request_files`, conteúdo em base64). */
-export interface ClientRequestFile {
-  id: string;
-  orgId: string;
-  clientId: string;
-  requestId: string;
-  transactionId: string;
-  name: string;
-  type: string;
-  /** Tamanho do arquivo original em bytes. */
-  bytes: number;
-  /** Conteúdo em base64 (sem o prefixo data:). */
-  data: string;
-  uploadedAt: string;
 }
 
 /* =========================================================================

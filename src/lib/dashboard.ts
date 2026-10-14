@@ -12,6 +12,7 @@ import type {
 import { addDays, findCoverageGaps, type CoverageGap } from '@/lib/statement';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { summarizeOpening } from '@/lib/opening';
+import { answerAt } from '@/lib/client-requests';
 import { formatDateBR } from '@/lib/utils/formatters';
 
 /**
@@ -150,7 +151,7 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   /* ── Perguntas ao cliente ──────────────────────────────────────────── */
   const asked = transactions.filter((t) => t.clientQuery?.status === 'OPEN');
   const inOpenLink = new Set(requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs).flatMap((r) => r.items.map((i) => i.transactionId)));
-  const answeredIds = new Set(requests.flatMap((r) => r.items.filter((i) => i.answer || i.files?.length).map((i) => i.transactionId)));
+  const answeredIds = new Set(requests.flatMap((r) => r.items.filter((_, i) => answerAt(r, i)).map((i) => i.transactionId)));
   const queries = { notSent: 0, waiting: 0, answered: 0 };
   for (const t of asked) {
     if (answeredIds.has(t.id)) queries.answered++;

@@ -3,7 +3,6 @@ import type {
   BankAccount,
   BankTransaction,
   ClientRequest,
-  ClientRequestFile,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
@@ -16,6 +15,7 @@ import type {
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
 import { assertValidJournalEntry } from '@/lib/journal';
+import { periodAuditId } from '@/lib/periods';
 import { applyPatch } from '@/lib/transitions';
 
 /** Subconjunto de `Storage` usado — permite injetar um armazenamento em memória nos testes. */
@@ -36,7 +36,6 @@ export const LOCAL_KEYS = {
   bankAccounts: 'contaflow_bank_accounts',
   openings: 'contaflow_opening_balances',
   requests: 'contaflow_client_requests',
-  requestFiles: 'contaflow_client_request_files',
   journalEntries: 'contaflow_journal_entries',
   journalCounters: 'contaflow_journal_counters',
 } as const;
@@ -116,9 +115,23 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async saveClient(client) {
       upsert(LOCAL_KEYS.clients, stamp(client));
     },
-    async deleteClient(clientId) {
+    async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
-      // A trilha de auditoria é preservada, como no Firestore.
+      // A trilha de auditoria é preservada, como no Firestore, e registra os fechamentos removidos.
+      const now = new Date().toISOString();
+      const reopened = read<PeriodLock>(LOCAL_KEYS.locks)
+        .filter((l) => l.clientId === clientId)
+        .map((lock): AuditEntry => ({
+          id: periodAuditId(lock, 'reopen'),
+          clientId,
+          action: 'PERIOD_REOPEN',
+          actorUid: actor.uid,
+          ...(actor.email ? { actorEmail: actor.email } : {}),
+          at: now,
+          month: lock.month,
+          note: 'Competência liberada pela exclusão da empresa',
+        }));
+      if (reopened.length) write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), ...reopened.map(stamp)]);
       for (const key of [
         LOCAL_KEYS.accounts,
         LOCAL_KEYS.rules,
@@ -128,7 +141,6 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.bankAccounts,
         LOCAL_KEYS.openings,
         LOCAL_KEYS.requests,
-        LOCAL_KEYS.requestFiles,
         LOCAL_KEYS.journalEntries,
         LOCAL_KEYS.journalCounters,
       ]) {
@@ -262,11 +274,11 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async closePeriod(lock, audit) {
       if (read<PeriodLock>(LOCAL_KEYS.locks).some((l) => l.id === lock.id)) throw new Error('Competência já está fechada.');
       upsert(LOCAL_KEYS.locks, stamp(lock));
-      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp({ ...audit, id: periodAuditId(lock, 'close') })]);
     },
     async reopenPeriod(lock, audit) {
       remove<PeriodLock>(LOCAL_KEYS.locks, lock.id);
-      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp({ ...audit, id: periodAuditId(lock, 'reopen') })]);
     },
 
     async listAudit(clientId, options = {}) {
@@ -285,8 +297,12 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       const all = read<ClientRequest>(LOCAL_KEYS.requests).filter((r) => r.id !== request.id);
       write(LOCAL_KEYS.requests, [...all, stamp(request)]);
     },
-    async getClientRequestFile(fileId) {
-      return read<ClientRequestFile>(LOCAL_KEYS.requestFiles).find((f) => f.id === fileId) ?? null;
+    async closeClientRequest(requestId) {
+      const all = read<ClientRequest>(LOCAL_KEYS.requests);
+      const i = all.findIndex((r) => r.id === requestId);
+      if (i < 0) throw new Error('Link não encontrado.');
+      all[i] = { ...all[i], status: 'CLOSED' };
+      write(LOCAL_KEYS.requests, all);
     },
 
     /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
@@ -337,20 +353,16 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async getPublicClientRequest(token) {
       return read<ClientRequest>(LOCAL_KEYS.requests).find((r) => r.id === token) ?? null;
     },
-    async answerPublicClientRequest(token, items, respondedAt) {
+    async answerPublicClientRequest(token, answers, respondedAt) {
       const all = read<ClientRequest>(LOCAL_KEYS.requests);
       const i = all.findIndex((r) => r.id === token);
       if (i < 0) throw new Error('Link inválido.');
       const req = all[i];
       if (req.status !== 'OPEN' || Date.now() >= req.expiresAtMs) throw new Error('Este link não aceita mais respostas.');
-      if (items.length !== req.items.length) throw new Error('Lista de perguntas alterada.');
-      all[i] = { ...req, items: [...items], respondedAt };
+      if (answers.length !== req.items.length) throw new Error('É preciso uma resposta por pergunta.');
+      // Só as respostas mudam; as perguntas ficam como o escritório gravou.
+      all[i] = { ...req, answers: [...answers], respondedAt };
       write(LOCAL_KEYS.requests, all);
-    },
-    async uploadPublicClientRequestFile(file) {
-      const req = read<ClientRequest>(LOCAL_KEYS.requests).find((r) => r.id === file.requestId);
-      if (!req || req.status !== 'OPEN' || Date.now() >= req.expiresAtMs) throw new Error('Este link não aceita mais arquivos.');
-      write(LOCAL_KEYS.requestFiles, [...read<ClientRequestFile>(LOCAL_KEYS.requestFiles), file]);
     },
   };
 }

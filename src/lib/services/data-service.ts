@@ -4,7 +4,7 @@ import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
-import { getOrgId } from '@/lib/data/scope';
+import { getActor, getOrgId } from '@/lib/data/scope';
 
 /**
  * Ponto único de acesso a dados.
@@ -39,8 +39,8 @@ export const dataMode = (): DataRepository['mode'] => getRepository().mode;
 
 export const getClients = (): Promise<ClientCompany[]> => getRepository().listClients();
 export const saveClient = (client: ClientCompany): Promise<void> => getRepository().saveClient(client);
-/** Exclui a empresa e, em cascata, contas, regras, lançamentos e lotes de importação. */
-export const deleteClient = (clientId: string): Promise<void> => getRepository().deleteClient(clientId);
+/** Exclui a empresa e, em cascata, contas, regras, lançamentos, lotes de importação e fechamentos. */
+export const deleteClient = (clientId: string): Promise<void> => getRepository().deleteClient(clientId, getActor());
 
 /* =========================================================================
    Plano de contas

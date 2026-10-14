@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Copy, FileText, Link2, Mail, MessageCircle, MessageCircleQuestion, Paperclip } from 'lucide-react';
-import type { BankTransaction, ChartAccount, ClientRequest, ClientRequestItem, OrgSettings, RuleMatchType } from '@/types/firestore';
+import { Check, Copy, Link2, Mail, MessageCircle, MessageCircleQuestion } from 'lucide-react';
+import type { BankTransaction, ChartAccount, ClientRequest, OrgSettings, RuleMatchType } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { closeClientRequest, createClientRequest, requestLink } from '@/lib/services/accounting-service';
-import { openBase64File } from '@/lib/client-files';
+import { answeredCount, latestAnswers } from '@/lib/client-requests';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
@@ -15,17 +15,6 @@ import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
-
-/** Resposta mais recente do cliente para cada lançamento (entre todos os links). */
-function latestAnswers(requests: readonly ClientRequest[]): Map<string, ClientRequestItem & { requestId: string }> {
-  const out = new Map<string, ClientRequestItem & { requestId: string }>();
-  for (const r of [...requests].sort((a, b) => a.createdAt.localeCompare(b.createdAt))) {
-    for (const item of r.items) {
-      if (item.answer || item.files?.length) out.set(item.transactionId, { ...item, requestId: r.id });
-    }
-  }
-  return out;
-}
 
 function ShareLink({ request, email }: { request: ClientRequest; email?: string }) {
   const [copied, setCopied] = useState(false);
@@ -143,16 +132,6 @@ export default function PendenciasPage() {
     setToast(message);
   };
 
-  const openFile = async (fileId: string) => {
-    try {
-      const f = await getRepository().getClientRequestFile(fileId);
-      if (!f) throw new Error('Arquivo não encontrado.');
-      openBase64File(f.data, f.type);
-    } catch (e) {
-      setError(describe(e));
-    }
-  };
-
   const loaded = recon.transactions;
   const memoPool = useMemo(() => recon.transactions.map((t) => t.memo), [recon.transactions]);
   const selectedLoaded = selected ? (loaded.find((t) => t.id === selected.id) ?? null) : null;
@@ -162,7 +141,7 @@ export default function PendenciasPage() {
       <PageHeader
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Pendências do cliente"
-        description="Lançamentos que precisam de explicação do cliente. Gere um link: o cliente responde e anexa comprovantes sem precisar de login."
+        description="Lançamentos que precisam de explicação do cliente. Gere um link e envie: o cliente justifica cada lançamento por escrito, sem login, e você classifica a partir da resposta."
         actions={
           <button type="button" disabled={busy || !notSent.length} onClick={() => void generate()} className={BUTTON.accent}>
             <Link2 className="w-4 h-4" /> Gerar link com {queries.length} pergunta(s)
@@ -175,7 +154,7 @@ export default function PendenciasPage() {
         <section className={`${SURFACE} rounded-[22px] p-5 space-y-4`}>
           <h2 className="text-[15px] font-semibold tracking-tight">Links abertos</h2>
           {openRequests.map((r) => {
-            const done = r.items.filter((i) => i.answer || i.files?.length).length;
+            const done = answeredCount(r);
             return (
               <div key={r.id} className="space-y-2">
                 <p className="text-[12px] text-stone-500">
@@ -218,13 +197,7 @@ export default function PendenciasPage() {
                       <p className="text-[11px] font-medium uppercase tracking-wider text-emerald-700">
                         Resposta do cliente{answer.answeredAt && ` · ${formatDateTime(answer.answeredAt)}`}
                       </p>
-                      {answer.answer && <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap">{answer.answer}</p>}
-                      {answer.files?.map((f) => (
-                        <button key={f.id} type="button" onClick={() => void openFile(f.id)} className="mr-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white dark:bg-stone-800 border border-black/[0.06] text-[12px] hover:border-[#0071E3]/40">
-                          {f.type === 'application/pdf' ? <FileText className="w-3.5 h-3.5" /> : <Paperclip className="w-3.5 h-3.5" />}
-                          {f.name}
-                        </button>
-                      ))}
+                      <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap break-words">{answer.text}</p>
                     </div>
                   ) : (
                     <p className="ml-6 text-[12px] text-stone-400">

@@ -3,8 +3,7 @@ import type {
   BankAccount,
   BankTransaction,
   ClientRequest,
-  ClientRequestFile,
-  ClientRequestItem,
+  ClientRequestAnswer,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
@@ -14,6 +13,7 @@ import type {
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
+import type { Actor } from '@/lib/audit';
 
 /** Intervalo de datas inclusivo (YYYY-MM-DD). */
 export interface DateRange {
@@ -64,8 +64,12 @@ export interface DataRepository {
   /* Clientes */
   listClients(): Promise<ClientCompany[]>;
   saveClient(client: ClientCompany): Promise<void>;
-  /** Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e fechamentos. A auditoria é preservada. */
-  deleteClient(clientId: string): Promise<void>;
+  /**
+   * Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e
+   * fechamentos. A auditoria é preservada, e cada fechamento removido fica registrado nela em
+   * nome de `actor`. Só administradores do escritório.
+   */
+  deleteClient(clientId: string, actor: Actor): Promise<void>;
 
   /* Plano de contas */
   listAccounts(clientId: string): Promise<ChartAccount[]>;
@@ -115,6 +119,7 @@ export interface DataRepository {
 
   /* Fechamento de período */
   listPeriodLocks(clientId: string): Promise<PeriodLock[]>;
+  /** Fecha/reabre a competência e grava o registro de auditoria juntos, sob o id `periodAuditId`. */
   closePeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;
   reopenPeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;
 
@@ -124,7 +129,8 @@ export interface DataRepository {
   /* Pendências com o cliente (escritório) */
   listClientRequests(clientId: string): Promise<ClientRequest[]>;
   saveClientRequest(request: ClientRequest): Promise<void>;
-  getClientRequestFile(fileId: string): Promise<ClientRequestFile | null>;
+  /** Encerra o link sem tocar nas respostas (que podem ter chegado depois da última leitura). */
+  closeClientRequest(requestId: string): Promise<void>;
 
   /* Lançamentos manuais de fechamento (Diário Avulso / Ajustes) */
   listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]>;
@@ -136,6 +142,6 @@ export interface DataRepository {
 
   /* Pendências com o cliente (acesso público pelo link, sem login) */
   getPublicClientRequest(token: string): Promise<ClientRequest | null>;
-  answerPublicClientRequest(token: string, items: readonly ClientRequestItem[], respondedAt: string): Promise<void>;
-  uploadPublicClientRequestFile(file: ClientRequestFile): Promise<void>;
+  /** Grava só as respostas (uma por pergunta, na ordem de `items`); as perguntas não mudam. */
+  answerPublicClientRequest(token: string, answers: readonly ClientRequestAnswer[], respondedAt: string): Promise<void>;
 }

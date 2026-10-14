@@ -278,10 +278,10 @@ export async function createClientRequest(client: ClientCompany, queried: readon
   return request;
 }
 
+/** Encerra o link. Só o status é gravado: respostas recebidas depois da última leitura são mantidas. */
 export async function closeClientRequest(request: ClientRequest): Promise<ClientRequest> {
-  const closed: ClientRequest = { ...request, status: 'CLOSED' };
-  await getRepository().saveClientRequest(closed);
-  return closed;
+  await getRepository().closeClientRequest(request.id);
+  return { ...request, status: 'CLOSED' };
 }
 
 /** Link público de resposta. */

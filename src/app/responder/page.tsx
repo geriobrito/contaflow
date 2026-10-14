@@ -2,35 +2,27 @@
 
 import React, { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CheckCircle2, FileText, Paperclip, Sparkles, X } from 'lucide-react';
-import type { ClientRequest, ClientRequestFileRef, ClientRequestItem } from '@/types/firestore';
+import { CheckCircle2, Sparkles } from 'lucide-react';
+import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
-import { prepareUpload, type PreparedFile } from '@/lib/client-files';
+import { answerAt, MAX_ANSWER_LENGTH } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
-const randomId = () => {
-  const b = new Uint8Array(10);
-  crypto.getRandomValues(b);
-  return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
-};
-
-interface Draft {
-  answer: string;
-  files: ClientRequestFileRef[];
-  pending: (PreparedFile & { key: string })[];
-}
+/** Texto de cada resposta, na ordem das perguntas. */
+const draftsOf = (req: ClientRequest): string[] => req.items.map((_, i) => answerAt(req, i)?.text ?? '');
 
 /**
- * Página pública (sem login) em que o cliente responde às perguntas do escritório e
- * anexa comprovantes. O token do link é a credencial; nada além destas perguntas é exposto.
+ * Página pública (sem login) em que o cliente justifica os lançamentos perguntados pelo
+ * escritório, em texto. O token do link é a credencial; nada além destas perguntas é
+ * exposto, e só as respostas são gravadas.
  */
 function Responder() {
   const token = useSearchParams().get('t') ?? '';
   const [request, setRequest] = useState<ClientRequest | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'invalid' | 'closed' | 'sent'>('loading');
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [drafts, setDrafts] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -42,7 +34,7 @@ function Responder() {
         if (!active) return;
         if (!req) return setState('invalid');
         setRequest(req);
-        setDrafts(Object.fromEntries(req.items.map((i) => [i.transactionId, { answer: i.answer ?? '', files: i.files ?? [], pending: [] }])));
+        setDrafts(draftsOf(req));
         setState(req.status !== 'OPEN' || Date.now() >= req.expiresAtMs ? 'closed' : 'ready');
       })
       .catch(() => active && setState('invalid'));
@@ -51,63 +43,24 @@ function Responder() {
     };
   }, [token]);
 
-  const update = (id: string, patch: Partial<Draft>) => setDrafts((d) => ({ ...d, [id]: { ...d[id], ...patch } }));
-
-  const attach = async (id: string, list: FileList | null) => {
-    if (!list?.length) return;
-    setError(null);
-    try {
-      const prepared = await Promise.all([...list].map(prepareUpload));
-      setDrafts((d) => ({ ...d, [id]: { ...d[id], pending: [...d[id].pending, ...prepared.map((p) => ({ ...p, key: randomId() }))] } }));
-    } catch (e) {
-      setError(describe(e));
-    }
-  };
-
   const send = async () => {
     if (!request) return;
     setSending(true);
     setError(null);
     try {
-      const repo = getRepository();
       const now = new Date().toISOString();
-      const items: ClientRequestItem[] = [];
-      for (const item of request.items) {
-        const draft = drafts[item.transactionId];
-        const uploaded: ClientRequestFileRef[] = [];
-        for (const f of draft.pending) {
-          const id = `${request.id.slice(0, 8)}_${randomId()}`;
-          await repo.uploadPublicClientRequestFile({
-            id,
-            orgId: request.orgId ?? '',
-            clientId: request.clientId,
-            requestId: request.id,
-            transactionId: item.transactionId,
-            name: f.name,
-            type: f.type,
-            bytes: f.bytes,
-            data: f.data,
-            uploadedAt: now,
-          });
-          uploaded.push({ id, name: f.name, type: f.type, size: f.bytes });
-        }
-        const answer = draft.answer.trim();
-        const changed = answer !== (item.answer ?? '') || uploaded.length > 0;
-        const files = [...draft.files, ...uploaded];
-        items.push({
-          transactionId: item.transactionId,
-          date: item.date,
-          memo: item.memo,
-          amount: item.amount,
-          question: item.question,
-          ...(answer ? { answer } : {}),
-          ...(changed && (answer || files.length) ? { answeredAt: now } : item.answeredAt ? { answeredAt: item.answeredAt } : {}),
-          ...(files.length ? { files } : {}),
-        });
-      }
-      await repo.answerPublicClientRequest(request.id, items, now);
-      setRequest({ ...request, items, respondedAt: now });
-      setDrafts(Object.fromEntries(items.map((i) => [i.transactionId, { answer: i.answer ?? '', files: i.files ?? [], pending: [] }])));
+      // Uma resposta por pergunta, na mesma ordem; a data só muda quando o texto muda.
+      const answers: ClientRequestAnswer[] = request.items.map((_, i) => {
+        const text = (drafts[i] ?? '').trim().slice(0, MAX_ANSWER_LENGTH);
+        const previous = answerAt(request, i);
+        if (!text) return { text: '' };
+        const answeredAt = previous?.text === text ? previous.answeredAt : now;
+        return { text, ...(answeredAt ? { answeredAt } : {}) };
+      });
+      await getRepository().answerPublicClientRequest(request.id, answers, now);
+      const updated = { ...request, answers, respondedAt: now };
+      setRequest(updated);
+      setDrafts(draftsOf(updated));
       setState('sent');
     } catch (e) {
       setError(`Não foi possível enviar (${describe(e)}). Tente de novo.`);
@@ -116,7 +69,7 @@ function Responder() {
     }
   };
 
-  const answered = request ? request.items.filter((i) => drafts[i.transactionId]?.answer.trim() || drafts[i.transactionId]?.files.length || drafts[i.transactionId]?.pending.length).length : 0;
+  const answered = drafts.filter((d) => d.trim()).length;
 
   return (
     <main className="min-h-screen bg-[#F5F5F7] dark:bg-stone-950 px-4 py-10">
@@ -142,7 +95,7 @@ function Responder() {
               <p className="text-[15px] text-stone-600 dark:text-stone-300">
                 {request.officeName ? `O escritório ${request.officeName}` : 'Seu escritório de contabilidade'} precisa entender{' '}
                 {request.items.length === 1 ? 'um lançamento' : `${request.items.length} lançamentos`} da empresa <b>{request.clientName}</b>.
-                Responda com poucas palavras e, se tiver, anexe a nota fiscal ou o comprovante.
+                Explique em poucas palavras do que se trata cada um e envie.
               </p>
               {state === 'closed' && (
                 <p className="rounded-2xl bg-amber-50 border border-amber-200/60 px-4 py-3 text-[13px] text-amber-800">
@@ -157,63 +110,30 @@ function Responder() {
             </div>
 
             <ol className="space-y-4">
-              {request.items.map((item, idx) => {
-                const d = drafts[item.transactionId];
-                const readOnly = state === 'closed';
-                return (
-                  <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-5 space-y-3">
-                    <div className="flex items-baseline justify-between gap-4">
-                      <span className="text-[12px] font-medium text-stone-400">
-                        {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
-                      </span>
-                      <span className={`font-mono tabular-nums text-[17px] font-semibold ${item.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                    <p className="font-mono text-[12px] text-stone-500 break-words">{item.memo}</p>
-                    <p className="text-[15px] font-medium tracking-tight text-stone-900 dark:text-stone-100">{item.question}</p>
-                    <textarea
-                      value={d?.answer ?? ''}
-                      disabled={readOnly}
-                      onChange={(e) => update(item.transactionId, { answer: e.target.value })}
-                      rows={3}
-                      maxLength={2000}
-                      placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
-                      aria-label={`Resposta ${idx + 1}`}
-                      className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[15px] outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] disabled:opacity-60"
-                    />
-                    <div className="flex flex-wrap items-center gap-2">
-                      {[...(d?.files ?? []).map((f) => ({ key: f.id, name: f.name, sent: true })), ...(d?.pending ?? []).map((f) => ({ key: f.key, name: f.name, sent: false }))].map((f) => (
-                        <span key={f.key} className="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full bg-stone-100 dark:bg-stone-800 text-[12px] text-stone-700 dark:text-stone-200">
-                          <FileText className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{f.name}</span>
-                          {!f.sent && (
-                            <button type="button" aria-label={`Remover ${f.name}`} onClick={() => update(item.transactionId, { pending: d.pending.filter((p) => p.key !== f.key) })}>
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </span>
-                      ))}
-                      {!readOnly && (
-                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium text-[#0071E3] hover:bg-blue-50 cursor-pointer">
-                          <Paperclip className="w-3.5 h-3.5" /> Anexar comprovante
-                          <input
-                            type="file"
-                            accept="image/*,application/pdf"
-                            multiple
-                            className="sr-only"
-                            aria-label={`Anexar comprovante ${idx + 1}`}
-                            onChange={(e) => {
-                              void attach(item.transactionId, e.target.files);
-                              e.target.value = '';
-                            }}
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
+              {request.items.map((item, idx) => (
+                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-5 space-y-3">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-[12px] font-medium text-stone-400">
+                      {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
+                    </span>
+                    <span className={`font-mono tabular-nums text-[17px] font-semibold ${item.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
+                      {formatCurrency(item.amount)}
+                    </span>
+                  </div>
+                  <p className="font-mono text-[12px] text-stone-500 break-words">{item.memo}</p>
+                  <p className="text-[15px] font-medium tracking-tight text-stone-900 dark:text-stone-100">{item.question}</p>
+                  <textarea
+                    value={drafts[idx] ?? ''}
+                    disabled={state === 'closed'}
+                    onChange={(e) => setDrafts((d) => d.map((text, i) => (i === idx ? e.target.value : text)))}
+                    rows={3}
+                    maxLength={MAX_ANSWER_LENGTH}
+                    placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
+                    aria-label={`Resposta ${idx + 1}`}
+                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[15px] outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] disabled:opacity-60"
+                  />
+                </li>
+              ))}
             </ol>
 
             {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}

@@ -22,7 +22,7 @@ export function BulkAskClientModal({
 }: BulkAskClientModalProps) {
   const defaultQuestion =
     transactions.length > 0
-      ? `Favor esclarecer do que se tratam estes ${transactions.length} lançamentos e anexar notas ou comprovantes se houver.`
+      ? `Favor esclarecer do que se tratam estes ${transactions.length} lançamentos (ex.: fornecedor, serviço, número da nota).`
       : '';
   const [customQuestion, setCustomQuestion] = useState<string | null>(null);
   const question = customQuestion ?? defaultQuestion;

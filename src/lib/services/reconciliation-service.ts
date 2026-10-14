@@ -1,8 +1,8 @@
 import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, ImportBatch, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
-import { newAuditId, transactionAudit } from '@/lib/audit';
-import { isMonthLocked, lockId } from '@/lib/periods';
+import { transactionAudit } from '@/lib/audit';
+import { isMonthLocked, lockId, periodAuditId } from '@/lib/periods';
 import { pendingWonByRule } from '@/lib/reconciliation';
 import { autoClassifyTransition } from '@/lib/transitions';
 import { addDays, computeBalanceCheck, previousStatement } from '@/lib/statement';
@@ -63,7 +63,7 @@ export async function closeMonth(clientId: string, month: string, note?: string)
     ...(actor.email ? { lockedByEmail: actor.email } : {}),
   };
   const audit: AuditEntry = {
-    id: newAuditId(),
+    id: periodAuditId(lock, 'close'),
     clientId,
     action: 'PERIOD_CLOSE',
     actorUid: actor.uid,
@@ -79,7 +79,7 @@ export async function closeMonth(clientId: string, month: string, note?: string)
 export async function reopenMonth(lock: PeriodLock, reason: string): Promise<void> {
   const actor = getActor();
   const audit: AuditEntry = {
-    id: newAuditId(),
+    id: periodAuditId(lock, 'reopen'),
     clientId: lock.clientId,
     action: 'PERIOD_REOPEN',
     actorUid: actor.uid,

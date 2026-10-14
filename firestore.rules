@@ -22,13 +22,18 @@ rules_version = '2';
 //      daquele mês: nenhuma alteração nem exclusão até a reabertura (também auditada).
 //   8. Pendências com o cliente (client_requests/{token}): o token aleatório de 128 bits
 //      é a credencial do link. Sem login, quem tem o link lê aquele documento e grava
-//      apenas as respostas, enquanto o link estiver aberto e dentro da validade; ninguém
-//      lista a coleção. Comprovantes (client_request_files) só são criados para um link
-//      aberto e só o escritório os lê.
+//      apenas as respostas (campo `answers`, texto; as perguntas não mudam), enquanto o
+//      link estiver aberto e dentro da validade; ninguém lista a coleção. O cliente não
+//      envia arquivos: client_request_files é legado e não aceita novos documentos.
 //   9. Lançamento novo nunca entra conciliado: importar em competência fechada não altera
 //      o resultado dela.
 //  10. Lançamentos manuais (journal_entries) respeitam as partidas dobradas (débitos =
 //      créditos) e recebem um número sequencial por cliente (journal_counters), imutável.
+//  11. Fechar ou reabrir competência só é aceito junto do registro em audit_log, gravado
+//      na mesma operação.
+//  12. Papéis: users/{uid}.role == 'operator' (definido só pelo console / Admin SDK) não
+//      reabre competência nem exclui empresa, extrato ou lançamento. Sem o campo, o
+//      usuário é administrador do escritório.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -53,6 +58,12 @@ service cloud.firestore {
 
     function isMine(data) {
       return hasProfile() && data.orgId == myOrg();
+    }
+
+    // Administrador do escritório: todo usuário com perfil, exceto quem foi marcado como
+    // operador (campo `role`, que o próprio usuário não consegue alterar).
+    function isAdmin() {
+      return hasProfile() && get(profilePath()).data.get('role', 'admin') != 'operator';
     }
 
     // clientId deve ser um cliente do mesmo escritório (ou o plano 'global').
@@ -84,7 +95,8 @@ service cloud.firestore {
 
     // ── Empresas ─────────────────────────────────────────────────────────
     match /clients/{clientId} {
-      allow read, delete: if isMine(resource.data);
+      allow read: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId');
     }
@@ -104,8 +116,8 @@ service cloud.firestore {
 
     match /transactions/{docId} {
       allow read: if isMine(resource.data);
-      // Excluir (ex.: extrato importado por engano) só em competência aberta.
-      allow delete: if isMine(resource.data) && monthOpen(resource.data);
+      // Excluir (ex.: extrato importado por engano) só em competência aberta, e só administrador.
+      allow delete: if isMine(resource.data) && isAdmin() && monthOpen(resource.data);
       // Importar em mês fechado é permitido, mas todo lançamento novo entra como pendente/auto
       // (não altera a DRE): só a conciliação — um update, barrado em competência fechada —
       // faz o lançamento contar no resultado.
@@ -119,7 +131,8 @@ service cloud.firestore {
     }
 
     match /import_batches/{docId} {
-      allow read, delete: if isMine(resource.data);
+      allow read: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
     }
@@ -198,7 +211,7 @@ service cloud.firestore {
         && unchanged('orgId') && unchanged('clientId')
         && request.resource.data.last == resource.data.last + 1;
       // Só some junto com a empresa (enquanto ela existe, a sequência nunca volta atrás).
-      allow delete: if isMine(resource.data)
+      allow delete: if isMine(resource.data) && isAdmin()
         && !exists(/databases/$(database)/documents/clients/$(docId));
     }
 
@@ -234,38 +247,54 @@ service cloud.firestore {
         && token.size() >= 32
         && request.resource.data.status == 'OPEN'
         && request.resource.data.expiresAtMs is int;
+      // Pelo link (sem login) só entram as respostas, uma por pergunta, e a data do envio.
+      // Perguntas, valores e lançamentos (`items`) ficam como o escritório gravou.
       allow update: if (isMine(resource.data) && unchanged('orgId') && unchanged('clientId'))
         || (requestOpen(resource.data)
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'respondedAt'])
-            && request.resource.data.items is list
-            && request.resource.data.items.size() == resource.data.items.size());
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['answers', 'respondedAt'])
+            && request.resource.data.answers is list
+            && request.resource.data.answers.size() == resource.data.items.size()
+            && request.resource.data.respondedAt is string
+            && request.resource.data.respondedAt.size() <= 40);
     }
 
+    // Legado: o cliente não envia mais arquivos. Nada novo é gravado; o escritório ainda
+    // lê e apaga comprovantes antigos (ex.: ao excluir a empresa).
     match /client_request_files/{fileId} {
-      function parentRequest() {
-        return get(/databases/$(database)/documents/client_requests/$(request.resource.data.requestId)).data;
-      }
       allow get, list, delete: if isMine(resource.data);
-      allow create: if request.resource.data.requestId is string
-        && exists(/databases/$(database)/documents/client_requests/$(request.resource.data.requestId))
-        && requestOpen(parentRequest())
-        && request.resource.data.orgId == parentRequest().orgId
-        && request.resource.data.clientId == parentRequest().clientId
-        && request.resource.data.data is string
-        && request.resource.data.data.size() <= 1000000
-        && request.resource.data.bytes is int
-        && request.resource.data.bytes <= 750000;
-      allow update: if false;
+      allow create, update: if false;
     }
 
     // ── Fechamento de competência ────────────────────────────────────────
+    // Registro de auditoria de um fechamento ('close') ou da reabertura dele ('reopen'):
+    // id derivado do próprio fechamento (periodAuditId em src/lib/periods.ts).
+    function periodAudit(lockId, lock, kind) {
+      return /databases/$(database)/documents/audit_log/$(lockId + '_' + kind + '_' + lock.lockedAt);
+    }
+
+    // O registro nasce nesta mesma gravação (não existia antes) e descreve este fechamento.
+    // Como a trilha é somente-inclusão, cada fechamento e cada reabertura deixa o seu.
+    function auditedNow(lockId, lock, kind, action) {
+      return !exists(periodAudit(lockId, lock, kind))
+        && existsAfter(periodAudit(lockId, lock, kind))
+        && getAfter(periodAudit(lockId, lock, kind)).data.action == action
+        && getAfter(periodAudit(lockId, lock, kind)).data.clientId == lock.clientId
+        && getAfter(periodAudit(lockId, lock, kind)).data.month == lock.month;
+    }
+
     match /period_locks/{lockId} {
-      allow read, delete: if isMine(resource.data);
+      allow read: if isMine(resource.data);
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && request.resource.data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
         && lockId == request.resource.data.clientId + '_' + request.resource.data.month
-        && request.resource.data.lockedByUid == request.auth.uid;
+        && request.resource.data.lockedByUid == request.auth.uid
+        && request.resource.data.lockedAt is string
+        && request.resource.data.lockedAt.matches('^[0-9A-Za-z:.+-]{1,40}$')
+        && auditedNow(lockId, request.resource.data, 'close', 'PERIOD_CLOSE');
+      // Reabrir: só administrador, e com o registro de auditoria.
+      allow delete: if isMine(resource.data) && isAdmin()
+        && auditedNow(lockId, resource.data, 'reopen', 'PERIOD_REOPEN');
       allow update: if false;
     }
 

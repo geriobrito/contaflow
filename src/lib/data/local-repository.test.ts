@@ -24,6 +24,7 @@ const tx = (id: string, date: string, extra: Partial<BankTransaction> = {}): Ban
 });
 
 describe('repositório local (modo único, sem Firestore)', () => {
+  const actor = { uid: 'u1', email: 'u1@x' };
   let store: ReturnType<typeof memoryStore>;
   let repo: DataRepository;
 
@@ -47,7 +48,6 @@ describe('repositório local (modo único, sem Firestore)', () => {
   });
 
   it('commitChanges aplica patches, regras e auditoria juntos; transições sobrescrevem o estado', async () => {
-    const actor = { uid: 'u1', email: 'u1@x' };
     const ref = { accountId: 'x', accountCode: '1', accountName: 'X' };
     const rule: ClassificationRule = { id: 'r1', clientId: 'c1', pattern: 'memo', accountId: 'x', createdAt: '', updatedAt: '' };
     const [b0, a0] = await repo.listTransactions('c1');
@@ -97,7 +97,11 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect(await repo.listPeriodLocks('c1')).toHaveLength(1);
     await repo.reopenPeriod(lock, { ...audit, id: 'au3', action: 'PERIOD_REOPEN', note: 'ajuste' });
     expect(await repo.listPeriodLocks('c1')).toHaveLength(0);
-    expect((await repo.listAudit('c1')).map((e) => e.action).sort()).toEqual(['PERIOD_CLOSE', 'PERIOD_REOPEN']);
+    // Os registros levam o id derivado do fechamento (o que as regras do Firestore exigem).
+    expect((await repo.listAudit('c1')).map((e) => [e.action, e.id]).sort()).toEqual([
+      ['PERIOD_CLOSE', 'c1_2025-01_close_T'],
+      ['PERIOD_REOPEN', 'c1_2025-01_reopen_T'],
+    ]);
   });
 
   it('falhas sobem ao chamador (sem sucesso falso)', async () => {
@@ -112,13 +116,16 @@ describe('repositório local (modo único, sem Firestore)', () => {
     await repo.saveClient({ id: 'c1', name: 'A', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
     await repo.saveClient({ id: 'c2', name: 'B', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
     await repo.commitChanges({ patches: [], audits: [{ id: 'keep', clientId: 'c1', action: 'APPROVE', actorUid: 'u', at: 'T' }] });
-    await repo.deleteClient('c1');
+    await repo.closePeriod({ id: 'c1_2025-01', clientId: 'c1', month: '2025-01', lockedAt: 'T', lockedByUid: 'u1' }, { id: '', clientId: 'c1', action: 'PERIOD_CLOSE', actorUid: 'u1', at: 'T', month: '2025-01' });
+    await repo.deleteClient('c1', actor);
     expect((await repo.listClients()).map((c) => c.id)).toEqual(['c2']);
-    // A trilha de auditoria sobrevive à exclusão da empresa.
-    expect(await repo.listAudit('c1')).toHaveLength(1);
+    expect(await repo.listPeriodLocks('c1')).toEqual([]);
+    // A trilha de auditoria sobrevive à exclusão da empresa e registra o fechamento removido.
+    expect((await repo.listAudit('c1')).map((e) => e.action).sort()).toEqual(['APPROVE', 'PERIOD_CLOSE', 'PERIOD_REOPEN']);
+    expect((await repo.listAudit('c1')).find((e) => e.action === 'PERIOD_REOPEN')).toMatchObject({ actorUid: 'u1', month: '2025-01', id: 'c1_2025-01_reopen_T' });
     expect(await repo.listTransactions('c1')).toEqual([]);
     expect(await repo.listTransactions('c2')).toHaveLength(1);
-    await expect(repo.deleteClient('global')).rejects.toThrow();
+    await expect(repo.deleteClient('global', actor)).rejects.toThrow();
   });
 
   it('extrato: lançamentos pelo lote (ou pela data de gravação, nos antigos) e exclusão com alterações', async () => {
@@ -151,14 +158,17 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect((await repo.listOpenQueries('c1')).map((t) => t.id)).toEqual(['a']);
     const req = { id: 't'.repeat(32), clientId: 'c1', clientName: 'A', items: [{ transactionId: 'a', date: '2025-01-10', memo: 'm', amount: -10, question: 'O que é?' }], status: 'OPEN' as const, createdAt: 'T', createdByUid: 'u', expiresAtMs: Date.now() + 60_000 };
     await repo.saveClientRequest(req);
-    await repo.answerPublicClientRequest(req.id, [{ ...req.items[0], answer: 'Fornecedor' }], 'T2');
-    expect((await repo.getPublicClientRequest(req.id))?.items[0].answer).toBe('Fornecedor');
-    await expect(repo.answerPublicClientRequest(req.id, [], 'T3')).rejects.toThrow();
-    await repo.saveClientRequest({ ...req, status: 'CLOSED' });
-    await expect(repo.answerPublicClientRequest(req.id, req.items, 'T4')).rejects.toThrow(/não aceita/);
-    await expect(
-      repo.uploadPublicClientRequestFile({ id: 'f', orgId: 'local', clientId: 'c1', requestId: req.id, transactionId: 'a', name: 'n', type: 'application/pdf', bytes: 1, data: 'x', uploadedAt: 'T' })
-    ).rejects.toThrow();
+    await repo.answerPublicClientRequest(req.id, [{ text: 'Fornecedor', answeredAt: 'T2' }], 'T2');
+    const answered = await repo.getPublicClientRequest(req.id);
+    expect(answered?.answers).toEqual([{ text: 'Fornecedor', answeredAt: 'T2' }]);
+    // As perguntas ficam como o escritório gravou.
+    expect(answered?.items).toEqual(req.items);
+    await expect(repo.answerPublicClientRequest(req.id, [], 'T3')).rejects.toThrow(/uma resposta por pergunta/);
+    // Encerrar mantém a resposta recebida.
+    await repo.closeClientRequest(req.id);
+    expect(await repo.getPublicClientRequest(req.id)).toMatchObject({ status: 'CLOSED', answers: [{ text: 'Fornecedor' }] });
+    await expect(repo.answerPublicClientRequest(req.id, [{ text: 'tarde' }], 'T4')).rejects.toThrow(/não aceita/);
+    await expect(repo.closeClientRequest('inexistente')).rejects.toThrow(/não encontrado/);
   });
 
   it('saldos de abertura: um por cliente, com auditoria; excluir o cliente apaga os saldos', async () => {
@@ -169,7 +179,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
     await repo.saveOpeningBalances({ id: 'c1', clientId: 'c1', date: '2024-12-31', entries: [{ accountId: 'x', amount: 20 }], updatedAt: 'T2' }, audit('a2'));
     expect((await repo.getOpeningBalances('c1'))?.entries).toEqual([{ accountId: 'x', amount: 20 }]);
     expect((await repo.listAudit('c1')).map((a) => a.id).sort()).toEqual(['a1', 'a2']);
-    await repo.deleteClient('c1');
+    await repo.deleteClient('c1', actor);
     expect(await repo.getOpeningBalances('c1')).toBeNull();
   });
 
@@ -225,7 +235,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
     it('excluir o cliente remove os lançamentos manuais e a sequência', async () => {
       await repo.createJournalEntry(draft('j1'));
       await repo.createJournalEntry(draft('k1', 'c2'));
-      await repo.deleteClient('c1');
+      await repo.deleteClient('c1', actor);
       expect(await repo.listJournalEntries('c1')).toEqual([]);
       expect(await repo.listJournalEntries('c2')).toHaveLength(1);
       // Um cliente recriado com o mesmo id começa a sequência do zero.

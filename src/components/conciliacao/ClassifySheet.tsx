@@ -42,7 +42,7 @@ type SheetMode = 'single' | 'split' | 'ask' | 'history';
 
 /** Pergunta sugerida: data, valor e histórico, para o cliente reconhecer o lançamento. */
 const defaultQuestion = (t: BankTransaction) =>
-  `O que é o lançamento de ${formatCurrency(Math.abs(t.amount))} em ${formatDateBR(t.date)} (“${t.memo}”)? Se tiver, anexe a nota ou o comprovante.`;
+  `O que é o lançamento de ${formatCurrency(Math.abs(t.amount))} em ${formatDateBR(t.date)} (“${t.memo}”)? Informe do que se trata (ex.: fornecedor, serviço, número da nota).`;
 
 
 export function ClassifySheet({
@@ -231,8 +231,8 @@ export function ClassifySheet({
         ) : mode === 'ask' ? (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2 space-y-3">
             <p className="text-[13px] text-stone-600 dark:text-stone-300">
-              A pergunta entra na lista de <b>Pendências do cliente</b>, de onde você gera um link para o cliente responder e anexar
-              comprovantes, sem precisar de login.
+              A pergunta entra na lista de <b>Pendências do cliente</b>, de onde você gera um link para o cliente justificar o
+              lançamento por escrito, sem precisar de login.
             </p>
             <label className="block space-y-1.5">
               <span className="block text-[12px] font-medium text-stone-500 px-0.5">Pergunta</span>

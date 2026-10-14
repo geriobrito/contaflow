@@ -7,7 +7,9 @@ import type { UserProfile } from '@/types/firestore';
  * No primeiro acesso o usuário vira dono de um escritório próprio (`orgId = uid`).
  * Para colocar vários contadores no mesmo escritório, um administrador altera
  * `users/{uid}.orgId` pelo console ou Admin SDK — as regras não permitem que o
- * próprio usuário troque de escritório.
+ * próprio usuário troque de escritório. No mesmo ato, defina `role: 'operator'` para
+ * quem não deve reabrir competência nem excluir empresa, extrato ou lançamento; sem o
+ * campo, o usuário é administrador do escritório.
  */
 export async function ensureUserProfile(
   db: Firestore,
