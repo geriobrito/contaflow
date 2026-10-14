@@ -11,10 +11,10 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:rules": "npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project demo-contaflow \"vitest run --project rules\"",
+    "test:e2e": "playwright test",
     "clean:firestore": "node scripts/clean-firestore.mjs"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
     "firebase": "^12.19.0",
     "jspdf": "^4.2.1",
@@ -22,12 +22,12 @@
     "lucide-react": "^1.48.0",
     "next": "16.3.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "tailwind-merge": "^3.7.0"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "@google-cloud/firestore": "^9.3.1",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22.20.4",
     "@types/react": "^19",

@@ -17,6 +17,7 @@
 - **Testes Unitários**: `npm test` | Watch: `npm run test:watch`
 - **Teste de Arquivo Único**: `npx vitest run <caminho-do-arquivo>` (ex: `npx vitest run src/lib/ledger.test.ts`)
 - **Testes de Regras Firestore**: `npm run test:rules` (emulador Firestore, requer Java 21+)
+- **Testes E2E**: `npm run test:e2e` (Playwright, modo local; `PLAYWRIGHT_CHANNEL=chrome` usa o Chrome instalado)
 - **Deploy Firestore**: `npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>`
 - **Limpar Firestore Emulador**: `npm run clean:firestore`
 
@@ -24,7 +25,7 @@
 - `src/app/`: Entrypoints e rotas Next.js App Router (`layout.tsx`, `page.tsx`, `painel/`, `dre/`, `balanco/`, `regras/`, etc.)
 - `src/components/`: Componentes UI reutilizáveis por domínio (`conciliacao/`, `dre/`, `balanco/`, `lancamentos/`, `layout/`, `ui/`)
 - `src/contexts/`: Estado global de autenticação e seleção de cliente (`AuthContext.tsx`, `ClientContext.tsx`)
-- `src/hooks/`: Hooks de negócio e orquestração sem acoplamento direto de DB (`useReconciliation.ts`, `useTableKeyboard.ts`)
+- `src/hooks/`: Hooks de negócio e orquestração sem acoplamento direto de DB: carga e gravações de cada tela por domínio (`reconciliation/`, `contas/`, `regras/`, `lancamentos/`, `dre/`, `useLedgerData.ts`), `useReconciliation.ts`, `useTableKeyboard.ts`
 - `src/lib/`: Core de domínio e infraestrutura:
   - `src/lib/data/`: Abstração de persistência (`repository.ts`, `firestore-repository.ts`, `local-repository.ts`)
   - `src/lib/services/`: Fachada de dados (`data-service.ts`) alternando Firestore vs Local Storage

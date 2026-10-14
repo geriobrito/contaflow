@@ -2,23 +2,20 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
-import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
-import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { useClient } from '@/contexts/ClientContext';
+import { useLedgerData } from '@/hooks/useLedgerData';
 import { usePagination } from '@/hooks/usePagination';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 import { buildDaybook, type DaybookBookInfo, type DaybookOrigin } from '@/lib/daybook';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
+import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /** Lançamentos por página na tela (o PDF traz o período inteiro). */
 const PAGE_SIZE = 50;
 
 const ORIGIN_LABEL: Record<DaybookOrigin, string> = { OPENING: 'Abertura', BANK: 'Extrato', MANUAL: 'Manual' };
-
-const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
 /* Dados dos termos (número do livro, sede, registro): ficam no navegador, por empresa. */
 const bookKey = (clientId: string) => `contaflow_daybook_${clientId}`;
@@ -33,85 +30,37 @@ function readBook(clientId: string): DaybookBookInfo {
   }
 }
 
-interface Loaded {
-  id: string;
-  accounts: ChartAccount[];
-  banks: BankAccount[];
-  org: OrgSettings | null;
-  openings: OpeningBalances | null;
-  journalEntries: JournalEntry[];
-  locks: PeriodLock[];
-}
-
 /**
  * Livro Diário: todos os lançamentos do período em ordem cronológica (extrato, manuais e
  * saldos de abertura), com as partidas a débito e a crédito, e o PDF com os termos de
- * abertura e de encerramento.
+ * abertura e de encerramento. Os dados vêm de `useLedgerData`, o mesmo do Livro Razão.
  */
 export default function DiarioPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
   const period = usePeriod('month');
   const { range, jumpTo } = period;
-
-  const [static_, setStatic] = useState<Loaded | null>(null);
-  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
+  // O número de ordem é contado desde 1º de janeiro: o exercício inteiro é lido um lançamento por vez.
+  const { data: static_, accounts, banks, transactions, from, loading, error, setError } = useLedgerData(clientId, range, jumpTo);
   const [book, setBook] = useState<DaybookBookInfo>(EMPTY_BOOK);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const key = `${clientId}|${from}`;
 
+  // Dados dos termos guardados no navegador para a empresa (lidos fora do render).
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    const repo = getRepository();
-    Promise.all([
-      repo.listAccounts(clientId),
-      repo.listBankAccounts(clientId),
-      repo.getOrgSettings(),
-      getLatestTransactionDate(clientId),
-      repo.getOpeningBalances(clientId),
-      // Sem os lançamentos manuais o Diário sairia incompleto: a falha bloqueia o relatório.
-      repo.listJournalEntries(clientId),
-      repo.listPeriodLocks(clientId),
-    ])
-      .then(([accounts, banks, org, latest, openings, journalEntries, locks]) => {
-        if (!active) return;
-        if (latest) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks });
-        setBook(readBook(clientId));
-        setError(null);
-      })
-      .catch((e: unknown) => active && setError(`Não foi possível carregar o Diário (${describe(e)}).`));
+    void Promise.resolve().then(() => active && setBook(readBook(clientId)));
     return () => {
       active = false;
     };
-  }, [clientId, jumpTo]);
-
-  // O número de ordem é contado desde 1º de janeiro: lê o exercício inteiro, um lançamento por vez.
-  const ready = static_?.id === clientId;
-  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
-  const banks = useMemo(() => static_?.banks ?? [], [static_]);
-  const from = `${range.start.slice(0, 4)}-01-01`;
-  const until = `${range.end.slice(0, 4)}-12-31`;
-  const key = `${clientId}|${from}|${until}`;
-  useEffect(() => {
-    if (!clientId || !ready) return;
-    let active = true;
-    loadLedgerWindow({ clientId, accounts, banks, from, until })
-      .then((w) => active && setTxs({ key: `${clientId}|${from}|${until}`, list: w.transactions }))
-      .catch((e: unknown) => active && setError(`Não foi possível carregar os lançamentos (${describe(e)}).`));
-    return () => {
-      active = false;
-    };
-  }, [clientId, ready, accounts, banks, from, until]);
-
-  const loading = !ready || txs?.key !== key;
+  }, [clientId]);
 
   const daybook = useMemo(() => {
-    if (loading || !txs || !static_) return null;
+    if (!transactions || !static_) return null;
     return buildDaybook({
-      transactions: txs.list,
+      transactions,
       bankAccounts: banks,
       accounts,
       range,
@@ -119,7 +68,7 @@ export default function DiarioPage() {
       journalEntries: static_.journalEntries,
       numberFrom: from,
     });
-  }, [loading, txs, static_, banks, accounts, range, from]);
+  }, [transactions, static_, banks, accounts, range, from]);
 
   // Enquanto houver algo a classificar ou competência aberta, o conteúdo ainda pode mudar.
   const provisional = useMemo(() => {
@@ -177,7 +126,7 @@ export default function DiarioPage() {
       downloadBlob(blob, fileName);
     } catch (e) {
       console.error('Falha ao gerar o Livro Diário em PDF:', e);
-      setError(`Não foi possível gerar o PDF (${describe(e)}).`);
+      setError(`Não foi possível gerar o PDF (${describeError(e)}).`);
     } finally {
       setExporting(false);
     }

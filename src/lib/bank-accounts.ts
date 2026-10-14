@@ -62,6 +62,12 @@ export function bankBalanceAt(
   return round2((account.openingBalance ?? 0) + carried + movement);
 }
 
+/** Extrato mais recente da conta com saldo informado pelo banco. */
+export const lastReportedStatement = <T extends Pick<ImportBatch, 'accountKey' | 'ledgerBalance' | 'ledgerDate'>>(batches: readonly T[], accountKey: string): T | undefined =>
+  batches
+    .filter((x) => x.accountKey === accountKey && x.ledgerBalance !== undefined && x.ledgerDate)
+    .sort((x, y) => (y.ledgerDate ?? '').localeCompare(x.ledgerDate ?? ''))[0];
+
 const ASSET_TYPES = new Set(['ASSET', 'ATIVO']);
 
 /** Contas do plano que podem representar um banco: analíticas do ativo. */

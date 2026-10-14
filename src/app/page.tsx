@@ -7,9 +7,9 @@ import type { BankAccount, ChartAccount, ReconciliationStatus } from '@/types/fi
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation } from '@/hooks/useReconciliation';
-import { useBulkSelection } from '@/hooks/conciliacao/useBulkSelection';
-import { useClassificationFlow } from '@/hooks/conciliacao/useClassificationFlow';
-import { useImportFlow } from '@/hooks/conciliacao/useImportFlow';
+import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
+import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
+import { useImportFlow } from '@/hooks/reconciliation/useImportFlow';
 import { usePagination } from '@/hooks/usePagination';
 import { useTableKeyboard } from '@/hooks/useTableKeyboard';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -54,7 +54,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 /**
  * Conciliação bancária. A tela só compõe: os dados e as gravações vêm de `useReconciliation`,
- * e cada fluxo de interação tem o seu hook em src/hooks/conciliacao/ — importação de
+ * e cada fluxo de interação tem o seu hook em src/hooks/reconciliation/ — importação de
  * extratos (`useImportFlow`), classificação (`useClassificationFlow`) e seleção em lote
  * (`useBulkSelection`).
  */

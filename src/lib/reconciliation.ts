@@ -120,3 +120,10 @@ export function pendingWonByRule(
   const pool = [...rules.filter((r) => r.id !== target.id), target];
   return pending.filter((t) => t.status === 'PENDING' && findMatchingRule(t.memo, pool)?.id === target.id);
 }
+
+/** Chave de unicidade de uma regra: tipo de comparação + termo (duas regras iguais nisso são a mesma). */
+export const ruleKey = (pattern: string, type: RuleMatchType | undefined): string => `${type ?? 'CONTAINS'}:${pattern}`;
+
+/** Lançamentos afetados por uma regra: os vinculados a ela ou cujo histórico casa com o termo. */
+export const countAffected = (rule: ClassificationRule, transactions: readonly Pick<BankTransaction, 'memo' | 'matchedRuleId'>[]): number =>
+  transactions.filter((t) => t.matchedRuleId === rule.id || matchesRule(t.memo, rule)).length;

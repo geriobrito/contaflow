@@ -1,315 +1,31 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import {
-  ChevronDown,
-  FileSpreadsheet,
-  FileText,
-  Loader2,
-  Lock,
-  Printer,
-  TrendingDown,
-  TrendingUp,
-} from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
-import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
-import { monthsBetween } from '@/lib/periods';
+import React, { useState } from 'react';
+import { FileSpreadsheet, FileText, Loader2, Lock, Printer } from 'lucide-react';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
-import { buildDRE, type DREAccountLine } from '@/lib/dre/build';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { useDREData, type DREView } from '@/hooks/dre/useDREData';
+import { formatDateBR } from '@/lib/utils/formatters';
 import type { DREExportContext } from '@/lib/export/dre-rows';
-import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { DRECompareTable } from '@/components/dre/DRECompareTable';
-import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
-import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { DREConsistencyCard } from '@/components/dre/DREConsistencyCard';
+import { DREResultCard } from '@/components/dre/DREResultCard';
+import { DREStatement } from '@/components/dre/DREStatement';
 
-/** Receita bruta do período, base da análise vertical (% s/ receita bruta). */
-const GrossRevenueContext = createContext(0);
-
-function Pct({ value, strong = false }: { value: number; strong?: boolean }) {
-  const base = useContext(GrossRevenueContext);
-  const text =
-    base > 0 ? `${((value / base) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '—';
-  return (
-    <span
-      className={`hidden md:inline w-20 shrink-0 text-right font-mono tabular-nums text-[12px] ${
-        strong ? 'text-stone-600 dark:text-stone-300' : 'text-stone-400'
-      }`}
-    >
-      {text}
-    </span>
-  );
-}
-
-/** Valor contábil: negativos entre parênteses, como em demonstrativos impressos. */
-function Amount({ value, strong = false }: { value: number; strong?: boolean }) {
-  const abs = formatCurrency(Math.abs(value));
-  return (
-    <span className={`font-mono tabular-nums whitespace-nowrap ${strong ? 'font-semibold' : ''}`}>
-      {value < 0 ? `(${abs})` : abs}
-    </span>
-  );
-}
-
-function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 }) {
-  return (
-    <>
-      {lines.map((l) => (
-        <div key={l.accountId} className="flex items-baseline gap-3 py-2 pl-8 pr-5 text-[13px] text-stone-600 dark:text-stone-400">
-          <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{l.code}</span>
-          <span className="flex-1 min-w-0 truncate">{l.name}</span>
-          <span className="hidden sm:inline font-mono tabular-nums text-[11px] text-stone-400 w-10 text-right">{l.count}×</span>
-          <Pct value={sign * l.value} />
-          <span className="w-36 xl:w-44 text-right">
-            <Amount value={sign * l.value} />
-          </span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function Row({ label, value, variant = 'line' }: { label: string; value: number; variant?: 'line' | 'subtotal' }) {
-  const subtotal = variant === 'subtotal';
-  return (
-    <div
-      className={`flex items-baseline gap-3 px-5 ${
-        subtotal ? 'py-3.5 bg-stone-900/[0.03] dark:bg-white/[0.04]' : 'py-3'
-      }`}
-    >
-      <span
-        className={`flex-1 min-w-0 text-[14px] tracking-tight ${
-          subtotal ? 'font-semibold text-stone-900 dark:text-stone-50' : 'font-medium text-stone-800 dark:text-stone-200'
-        }`}
-      >
-        {label}
-      </span>
-      <Pct value={value} strong />
-      <span className="w-36 xl:w-44 text-right text-[14px] text-stone-900 dark:text-stone-100">
-        <Amount value={value} strong={subtotal} />
-      </span>
-    </div>
-  );
-}
-
-interface SectionProps {
-  id: string;
-  label: string;
-  value: number;
-  parts: { lines: DREAccountLine[]; sign: 1 | -1 }[];
-  open: boolean;
-  onToggle: (id: string) => void;
-}
-
-/** Linha de grupo da DRE, recolhível, com o detalhamento por conta analítica. */
-function Section({ id, label, value, parts, open, onToggle }: SectionProps) {
-  const hasLines = parts.some((p) => p.lines.length > 0);
-  return (
-    <div className="print-avoid-break">
-      <button
-        type="button"
-        onClick={() => hasLines && onToggle(id)}
-        aria-expanded={hasLines ? open : undefined}
-        disabled={!hasLines}
-        className="w-full flex items-baseline gap-3 pl-3 pr-5 py-3 text-left enabled:hover:bg-black/[0.02] dark:enabled:hover:bg-white/[0.03] transition-colors"
-      >
-        <ChevronDown
-          className={`w-3.5 h-3.5 self-center shrink-0 text-stone-400 transition-transform duration-200 print:invisible ${
-            hasLines ? '' : 'invisible'
-          } ${open ? '' : '-rotate-90'}`}
-        />
-        <span className="flex-1 min-w-0 text-[14px] font-medium tracking-tight text-stone-800 dark:text-stone-200">{label}</span>
-        <Pct value={value} strong />
-        <span className="w-36 xl:w-44 text-right text-[14px] text-stone-900 dark:text-stone-100">
-          <Amount value={value} />
-        </span>
-      </button>
-      {hasLines && (
-        <div className={open ? '' : 'hidden print:block'}>
-          {parts.map((p, i) => (
-            <AccountRows key={i} lines={p.lines} sign={p.sign} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
+/**
+ * Demonstração do resultado. Os dados vêm de `useDREData`, e o resultado em destaque, o
+ * demonstrativo e as comparações ficam em src/components/dre/.
+ */
 export default function DREPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [loadError, setLoadError] = useState<string | null>(null);
-
   const period = usePeriod('year');
   const { range, label: periodLabel, jumpTo } = period;
-
-  // 1) Ao trocar de cliente: plano de contas + posiciona o período no lançamento mais recente.
-  const [positionedFor, setPositionedFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    Promise.all([getAccounts(clientId), getLatestTransactionDate(clientId)])
-      .then(([accs, latest]) => {
-        if (!active) return;
-        setAccounts(accs);
-        if (latest) jumpTo(latest);
-        setPositionedFor(clientId);
-      })
-      .catch((e: unknown) => {
-        console.error('Erro ao carregar dados da DRE:', e);
-        if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId, jumpTo]);
-
-  // Competências fechadas (selo de DRE definitiva), dados do escritório e contas bancárias/abertura (consistência contábil).
-  const [locks, setLocks] = useState<PeriodLock[]>([]);
-  const [org, setOrg] = useState<OrgSettings | null>(null);
-  const [banks, setBanks] = useState<BankAccount[]>([]);
-  const [openings, setOpenings] = useState<OpeningBalances | null>(null);
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
-  /** Carga dos dados auxiliares por cliente: enquanto não conclui (ou se falha), a DRE não é exibida. */
-  const [auxState, setAuxState] = useState<{ id: string; error: string | null } | null>(null);
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    const repo = getRepository();
-    Promise.all([
-      repo.listPeriodLocks(clientId),
-      repo.getOrgSettings(),
-      repo.listBankAccounts(clientId),
-      repo.getOpeningBalances(clientId),
-      // Sem os lançamentos manuais a DRE sairia com valores errados: a falha bloqueia o relatório.
-      repo.listJournalEntries(clientId),
-    ])
-      .then(([l, o, b, op, je]) => {
-        if (!active) return;
-        setLocks(l);
-        setOrg(o);
-        setBanks(b);
-        setOpenings(op);
-        setJournalEntries(je);
-        setAuxState({ id: clientId, error: null });
-      })
-      .catch((e: unknown) => {
-        console.error('Erro ao carregar dados auxiliares da DRE:', e);
-        if (active) setAuxState({ id: clientId, error: e instanceof Error ? e.message : 'Falha ao carregar os lançamentos manuais.' });
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-  const lockStatus = useMemo(() => {
-    const months = monthsBetween(range.start, range.end);
-    const closed = months.filter((m) => locks.some((l) => l.month === m)).length;
-    return { total: months.length, closed };
-  }, [locks, range]);
-
-  // 2) Busca no banco os lançamentos do exercício até a data final selecionada.
-  const ready = Boolean(clientId) && positionedFor === clientId;
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const periodKey = `${clientId}|${range.start}|${range.end}`;
-  useEffect(() => {
-    if (!clientId || !ready) return;
-    let active = true;
-    const exerciseStart = `${range.end.slice(0, 4)}-01-01`;
-    const fetchStart = range.start < exerciseStart ? range.start : exerciseStart;
-    getTransactions(clientId, { start: fetchStart, end: range.end })
-      .then((txs) => {
-        if (!active) return;
-        setTransactions(txs);
-        setLoadError(null);
-        setLoadedKey(`${clientId}|${range.start}|${range.end}`);
-      })
-      .catch((e: unknown) => {
-        console.error('Erro ao carregar lançamentos da DRE:', e);
-        if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId, ready, range]);
-
-  // 3) DRE comparativa: mês a mês ou contra o mesmo período do ano anterior.
-  const [view, setView] = useState<'simple' | 'monthly' | 'yoy'>('simple');
+  const [view, setView] = useState<DREView>('simple');
   const [withAccounts, setWithAccounts] = useState(false);
-  const prevRange = useMemo(() => previousYearRange(range), [range]);
-  const [prevTxs, setPrevTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
-  const prevKey = `${clientId}|${prevRange.start}|${prevRange.end}`;
-  useEffect(() => {
-    if (!clientId || !ready || view !== 'yoy') return;
-    let active = true;
-    getTransactions(clientId, prevRange)
-      .then((list) => active && setPrevTxs({ key: `${clientId}|${prevRange.start}|${prevRange.end}`, list }))
-      .catch((e: unknown) => active && setLoadError(e instanceof Error ? e.message : 'Falha ao carregar o ano anterior.'));
-    return () => {
-      active = false;
-    };
-  }, [clientId, ready, view, prevRange]);
+  const { dre, months, prevDre, prevRange, consistency, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
 
-  const dre = useMemo(() => buildDRE(transactions, accounts, range, journalEntries), [transactions, accounts, range, journalEntries]);
-  const months = useMemo(
-    () => (view === 'monthly' ? monthlyColumns(transactions, accounts, range, journalEntries) : []),
-    [view, transactions, accounts, range, journalEntries]
-  );
-  const prevDre = useMemo(
-    () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange, journalEntries) : null),
-    [prevTxs, prevKey, accounts, prevRange, journalEntries]
-  );
-
-  const consistency = useMemo(() => {
-    if (!clientId || accounts.length === 0 || !ready) return null;
-    return checkAccountingConsistency({
-      transactions,
-      accounts,
-      banks,
-      date: range.end,
-      openings,
-      journalEntries,
-    });
-  }, [clientId, accounts, ready, transactions, banks, range.end, openings, journalEntries]);
-
-  // Qualquer falha de carga (lançamentos bancários ou manuais) torna a DRE indisponível:
-  // nunca se exibe um resultado calculado sobre dados incompletos.
-  const aux = auxState && auxState.id === clientId ? auxState : null;
-  const auxReady = Boolean(aux) && !aux?.error;
-  const blockingError = loadError ?? aux?.error ?? null;
-  const failed = Boolean(blockingError);
-  const isLoading = Boolean(clientId) && !failed && (loadedKey !== periodKey || !auxReady);
-  const profit = dre.netResult >= 0;
-  const hasData = !failed && dre.reconciledCount > 0;
-  const tone: 'neutral' | 'profit' | 'loss' = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
-  const TONE = {
-    neutral: {
-      card: 'bg-white/70 dark:bg-stone-900/60 border-black/[0.06] dark:border-white/[0.08]',
-      label: 'text-stone-500',
-      value: 'text-stone-400 dark:text-stone-500',
-      icon: 'bg-stone-200 dark:bg-stone-700 text-stone-500',
-    },
-    profit: {
-      card: 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-900/40',
-      label: 'text-emerald-700 dark:text-emerald-400',
-      value: 'text-emerald-700 dark:text-emerald-300',
-      icon: 'bg-emerald-600 text-white',
-    },
-    loss: {
-      card: 'bg-rose-50/70 dark:bg-rose-950/20 border-rose-200/60 dark:border-rose-900/40',
-      label: 'text-rose-700 dark:text-rose-400',
-      value: 'text-rose-700 dark:text-rose-300',
-      icon: 'bg-rose-600 text-white',
-    },
-  }[tone];
-
-  const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
-  const isOpen = (id: string) => !collapsed[id];
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -352,7 +68,6 @@ export default function DREPage() {
       setBusy(false);
     }
   };
-
 
   return (
     <main className={`${PAGE} print:p-0 print:space-y-6`}>
@@ -448,36 +163,7 @@ export default function DREPage() {
       )}
 
       {/* Resultado em destaque */}
-      <section
-        className={`print-avoid-break rounded-[22px] p-6 sm:p-7 border ${TONE.card}`}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className={`text-[13px] font-medium ${TONE.label}`}>
-              Resultado líquido do exercício · {periodLabel}
-            </p>
-            <p
-              className={`mt-2 text-[32px] sm:text-[40px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE.value}`}
-            >
-              {isLoading || failed ? '—' : formatCurrency(dre.netResult)}
-            </p>
-            <p className="mt-3 text-[13px] text-stone-600 dark:text-stone-400">
-              {failed ? 'DRE indisponível' : tone === 'neutral' ? 'Sem movimentação conciliada' : profit ? 'Lucro' : 'Prejuízo'}
-              {!failed && dre.netMargin !== null && (
-                <>
-                  {' · margem líquida '}
-                  <span className="font-mono tabular-nums">{dre.netMargin.toFixed(1).replace('.', ',')}%</span>
-                </>
-              )}
-            </p>
-          </div>
-          <span
-            className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center ${TONE.icon}`}
-          >
-            {profit ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-          </span>
-        </div>
-      </section>
+      <DREResultCard dre={dre} tone={tone} profit={profit} isLoading={isLoading} failed={failed} periodLabel={periodLabel} />
 
       {consistency && !isLoading && hasData && (
         <div className="print:hidden">
@@ -524,111 +210,7 @@ export default function DREPage() {
       )}
 
       {view === 'simple' && (
-      <GrossRevenueContext.Provider value={dre.grossRevenue}>
-      {/* Demonstrativo */}
-      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        <div className="flex items-baseline gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
-          <span className="flex-1">Demonstrativo</span>
-          <span className="hidden md:inline w-20 text-right">% RB</span>
-          <span className="w-36 xl:w-44 text-right">R$</span>
-        </div>
-
-        {failed ? (
-          <EmptyState title="DRE indisponível" description="Os dados não puderam ser carregados. Corrija o erro indicado acima e recarregue a página." />
-        ) : isLoading ? (
-          <div className="p-5 space-y-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
-            ))}
-          </div>
-        ) : !hasData ? (
-          <EmptyState title="Sem lançamentos conciliados" description="Não há movimentação conciliada neste período." />
-        ) : (
-          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
-            <Section
-              id="rob"
-              label="Receita operacional bruta"
-              value={dre.grossRevenue}
-              parts={[{ lines: dre.sections.GROSS_REVENUE.lines, sign: 1 }]}
-              open={isOpen('rob')}
-              onToggle={toggle}
-            />
-            <Section
-              id="ded"
-              label="(−) Deduções da receita bruta"
-              value={-dre.deductions}
-              parts={[{ lines: dre.sections.DEDUCTIONS.lines, sign: -1 }]}
-              open={isOpen('ded')}
-              onToggle={toggle}
-            />
-            <Row label="(=) Receita operacional líquida" value={dre.netRevenue} variant="subtotal" />
-            <Section
-              id="cus"
-              label="(−) Custos das vendas"
-              value={-dre.costs}
-              parts={[{ lines: dre.sections.COSTS.lines, sign: -1 }]}
-              open={isOpen('cus')}
-              onToggle={toggle}
-            />
-            <Row label="(=) Lucro bruto" value={dre.grossProfit} variant="subtotal" />
-            <Section
-              id="dop"
-              label="(−) Despesas operacionais"
-              value={-dre.operatingExpenses}
-              parts={[{ lines: dre.sections.OPERATING_EXPENSES.lines, sign: -1 }]}
-              open={isOpen('dop')}
-              onToggle={toggle}
-            />
-            <Section
-              id="fin"
-              label="(+/−) Resultado financeiro líquido"
-              value={dre.financialResult}
-              parts={[
-                { lines: dre.sections.FINANCIAL_INCOME.lines, sign: 1 },
-                { lines: dre.sections.FINANCIAL_EXPENSES.lines, sign: -1 },
-              ]}
-              open={isOpen('fin')}
-              onToggle={toggle}
-            />
-            <Section
-              id="out"
-              label="(+/−) Outras receitas e despesas operacionais"
-              value={dre.otherResult}
-              parts={[
-                { lines: dre.sections.OTHER_INCOME.lines, sign: 1 },
-                { lines: dre.sections.OTHER_EXPENSES.lines, sign: -1 },
-              ]}
-              open={isOpen('out')}
-              onToggle={toggle}
-            />
-            {dre.sections.INCOME_TAXES.lines.length > 0 && (
-              <Section
-                id="ir"
-                label="(−) IRPJ e CSLL"
-                value={-dre.incomeTaxes}
-                parts={[{ lines: dre.sections.INCOME_TAXES.lines, sign: -1 }]}
-                open={isOpen('ir')}
-                onToggle={toggle}
-              />
-            )}
-
-            <div
-              className={`flex items-baseline gap-3 px-5 py-4 ${
-                profit ? 'bg-emerald-50/60 dark:bg-emerald-950/20' : 'bg-rose-50/60 dark:bg-rose-950/20'
-              }`}
-            >
-              <span className="flex-1 text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-                (=) Resultado líquido do exercício
-              </span>
-              <Pct value={dre.netResult} strong />
-              <span className={`w-36 xl:w-44 text-right text-[15px] ${profit ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
-                <Amount value={dre.netResult} strong />
-              </span>
-            </div>
-          </div>
-        )}
-      </section>
-      </GrossRevenueContext.Provider>
+        <DREStatement dre={dre} failed={failed} isLoading={isLoading} hasData={hasData} profit={profit} />
       )}
 
       <p className="text-[12px] text-stone-400">

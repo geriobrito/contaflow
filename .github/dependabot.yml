@@ -1,0 +1,28 @@
+# Atualizações de dependências por pull request (cada PR passa pelo CI antes de entrar).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      # Correções e versões menores chegam juntas; versões maiores, uma por PR.
+      menores:
+        update-types: [minor, patch]
+    ignore:
+      # Next, React e o plugin de lint andam juntos: atualize os três manualmente.
+      - dependency-name: next
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint-config-next
+        update-types: [version-update:semver-major]
+      - dependency-name: react
+        update-types: [version-update:semver-major]
+      - dependency-name: react-dom
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

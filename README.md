@@ -17,9 +17,18 @@ Sem as variáveis `NEXT_PUBLIC_FIREBASE_*` no `.env.local`, o app roda em **modo
 | `npm run lint` | ESLint |
 | `npm test` | Testes unitários (Vitest): DRE, rateio, parser OFX, plano ITG 1000, regras de casamento, repositório local |
 | `npm run test:rules` | Regras do Firestore no emulador (requer Java 21+; baixa o `firebase-tools` via `npx`) |
+| `npm run test:e2e` | Fluxo completo no navegador (Playwright), no modo local: login, empresa, plano ITG 1000, importação de OFX, classificação, fechamento, DRE, Diário, Balanço, Razão, Contas, Regras e Lançamentos. Requer `npx playwright install chromium` (ou `PLAYWRIGHT_CHANNEL=chrome` para usar o Chrome instalado). Gera um build próprio com as variáveis do Firebase vazias: nunca toca num projeto real |
 | `npm run build` | Build de produção |
 
-O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
+O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR, mais um `npm audit` informativo das dependências de produção. O Dependabot (`.github/dependabot.yml`) abre PRs semanais de atualização.
+
+### Organização do código
+
+Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio (`src/hooks/<domínio>/`, ex.: `useContasData`, `useRulesData`, `useJournalEntries`, `useDREData`; `useLedgerData` serve ao Razão e ao Diário) e os blocos da tela em `src/components/<domínio>/`. A conciliação segue o mesmo desenho com `useReconciliation` e os hooks de `src/hooks/reconciliation/`.
+
+### Dados em formato antigo
+
+`scripts/migrate-legacy.mjs` converte, uma única vez, o que ainda estiver em formato antigo no Firestore: tipos de conta em português e grupos antigos da DRE, `taxRegime` das empresas, lançamentos de extratos antigos sem `importBatchId` e (com `--drop-request-files`) os comprovantes de `client_request_files`. Sem `--apply` só relata o que encontraria. Quando a simulação relatar zero em tudo, o código de compatibilidade correspondente pode sair do app.
 
 ## Arquitetura de dados
 
