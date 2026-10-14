@@ -53,15 +53,14 @@ export default function RazaoPage() {
       repo.getOrgSettings(),
       getLatestTransactionDate(clientId),
       repo.getOpeningBalances(clientId),
-      repo.listJournalEntries(clientId).catch((err: unknown) => {
-        console.warn('Aviso: Lançamentos manuais indisponíveis ou regras pendentes de publicação:', err);
-        return [];
-      }),
+      // Sem os lançamentos manuais o razão sairia com valores errados: a falha bloqueia o relatório.
+      repo.listJournalEntries(clientId),
     ])
       .then(([accounts, banks, org, latest, openings, journalEntries]) => {
         if (!active) return;
         if (latest) jumpTo(latest);
         setStatic({ id: clientId, accounts, banks, org, openings, journalEntries });
+        setError(null);
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar plano de contas.'));
     return () => {
@@ -287,7 +286,8 @@ export default function RazaoPage() {
 
       {/* Conteúdo Principal do Livro Razão */}
       {loading ? (
-        <p className="py-16 text-center text-[13px] text-stone-400">Carregando movimentação contábil…</p>
+        // Falha de carga: fica só o erro acima, sem razão parcial nem "carregando" eterno.
+        error ? null : <p className="py-16 text-center text-[13px] text-stone-400">Carregando movimentação contábil…</p>
       ) : !ledger ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Nenhuma conta selecionada" description="Escolha uma conta contábil no seletor acima para abrir sua ficha do Razão." />

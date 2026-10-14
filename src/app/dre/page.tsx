@@ -176,6 +176,8 @@ export default function DREPage() {
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [openings, setOpenings] = useState<OpeningBalances | null>(null);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  /** Carga dos dados auxiliares por cliente: enquanto não conclui (ou se falha), a DRE não é exibida. */
+  const [auxState, setAuxState] = useState<{ id: string; error: string | null } | null>(null);
   useEffect(() => {
     if (!clientId) return;
     let active = true;
@@ -185,10 +187,8 @@ export default function DREPage() {
       repo.getOrgSettings(),
       repo.listBankAccounts(clientId),
       repo.getOpeningBalances(clientId),
-      repo.listJournalEntries(clientId).catch((err: unknown) => {
-        console.warn('Aviso: Lançamentos manuais indisponíveis ou regras pendentes de publicação:', err);
-        return [];
-      }),
+      // Sem os lançamentos manuais a DRE sairia com valores errados: a falha bloqueia o relatório.
+      repo.listJournalEntries(clientId),
     ])
       .then(([l, o, b, op, je]) => {
         if (!active) return;
@@ -197,8 +197,12 @@ export default function DREPage() {
         setBanks(b);
         setOpenings(op);
         setJournalEntries(je);
+        setAuxState({ id: clientId, error: null });
       })
-      .catch((e: unknown) => console.error('Erro ao carregar dados auxiliares da DRE:', e));
+      .catch((e: unknown) => {
+        console.error('Erro ao carregar dados auxiliares da DRE:', e);
+        if (active) setAuxState({ id: clientId, error: e instanceof Error ? e.message : 'Falha ao carregar os lançamentos manuais.' });
+      });
     return () => {
       active = false;
     };
@@ -273,9 +277,15 @@ export default function DREPage() {
     });
   }, [clientId, accounts, ready, transactions, banks, range.end, openings, journalEntries]);
 
-  const isLoading = Boolean(clientId) && loadedKey !== periodKey && !loadError;
+  // Qualquer falha de carga (lançamentos bancários ou manuais) torna a DRE indisponível:
+  // nunca se exibe um resultado calculado sobre dados incompletos.
+  const aux = auxState && auxState.id === clientId ? auxState : null;
+  const auxReady = Boolean(aux) && !aux?.error;
+  const blockingError = loadError ?? aux?.error ?? null;
+  const failed = Boolean(blockingError);
+  const isLoading = Boolean(clientId) && !failed && (loadedKey !== periodKey || !auxReady);
   const profit = dre.netResult >= 0;
-  const hasData = dre.reconciledCount > 0;
+  const hasData = !failed && dre.reconciledCount > 0;
   const tone: 'neutral' | 'profit' | 'loss' = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
   const TONE = {
     neutral: {
@@ -420,13 +430,13 @@ export default function DREPage() {
           {!org && ' Cadastre o contador em Escritório para assinar a DRE exportada.'}
         </p>
       )}
-      {loadError && (
+      {blockingError && (
         <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden">
-          Não foi possível carregar a DRE: {loadError}
+          Não foi possível carregar a DRE: {blockingError}
         </p>
       )}
 
-      {!isLoading && !hasData && (
+      {!isLoading && !failed && !hasData && (
         <p className="-mt-4 text-[13px] text-stone-500 print:hidden">
           Exportação indisponível: não há lançamentos conciliados neste período.
         </p>
@@ -449,11 +459,11 @@ export default function DREPage() {
             <p
               className={`mt-2 text-[32px] sm:text-[40px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE.value}`}
             >
-              {isLoading ? '—' : formatCurrency(dre.netResult)}
+              {isLoading || failed ? '—' : formatCurrency(dre.netResult)}
             </p>
             <p className="mt-3 text-[13px] text-stone-600 dark:text-stone-400">
-              {tone === 'neutral' ? 'Sem movimentação conciliada' : profit ? 'Lucro' : 'Prejuízo'}
-              {dre.netMargin !== null && (
+              {failed ? 'DRE indisponível' : tone === 'neutral' ? 'Sem movimentação conciliada' : profit ? 'Lucro' : 'Prejuízo'}
+              {!failed && dre.netMargin !== null && (
                 <>
                   {' · margem líquida '}
                   <span className="font-mono tabular-nums">{dre.netMargin.toFixed(1).replace('.', ',')}%</span>
@@ -475,7 +485,7 @@ export default function DREPage() {
         </div>
       )}
 
-      {dre.awaitingApproval > 0 && (
+      {!failed && dre.awaitingApproval > 0 && (
         <p className="text-[13px] text-stone-500 print:hidden">
           <span className="font-mono tabular-nums text-[#0071E3]">{dre.awaitingApproval}</span> lançamento(s) auto-classificado(s)
           neste período aguardam aprovação na Conciliação e ainda não entram na DRE.
@@ -492,7 +502,9 @@ export default function DREPage() {
               <input type="checkbox" checked={withAccounts} onChange={(e) => setWithAccounts(e.target.checked)} /> Detalhar contas
             </label>
           </div>
-          {isLoading || (view === 'yoy' && !prevDre) ? (
+          {failed ? (
+            <p className="px-5 py-10 text-center text-[13px] text-stone-500">DRE indisponível: os dados não puderam ser carregados.</p>
+          ) : isLoading || (view === 'yoy' && !prevDre) ? (
             <p className="px-5 py-10 text-center text-[13px] text-stone-400">Carregando…</p>
           ) : view === 'monthly' && months.length < 2 ? (
             <p className="px-5 py-10 text-center text-[13px] text-stone-500">Selecione Trimestre ou Ano para comparar os meses.</p>
@@ -521,7 +533,9 @@ export default function DREPage() {
           <span className="w-36 xl:w-44 text-right">R$</span>
         </div>
 
-        {isLoading ? (
+        {failed ? (
+          <EmptyState title="DRE indisponível" description="Os dados não puderam ser carregados. Corrija o erro indicado acima e recarregue a página." />
+        ) : isLoading ? (
           <div className="p-5 space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />

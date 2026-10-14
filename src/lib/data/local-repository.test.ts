@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createLocalRepository, LOCAL_KEYS, LOCAL_ORG_ID, type KeyValueStore } from '@/lib/data/local-repository';
-import type { DataRepository } from '@/lib/data/repository';
+import type { DataRepository, JournalEntryDraft } from '@/lib/data/repository';
 import type { BankTransaction, ClassificationRule } from '@/types/firestore';
 import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
 import { transactionAudit } from '@/lib/audit';
@@ -171,5 +171,65 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect((await repo.listAudit('c1')).map((a) => a.id).sort()).toEqual(['a1', 'a2']);
     await repo.deleteClient('c1');
     expect(await repo.getOpeningBalances('c1')).toBeNull();
+  });
+
+  describe('lançamentos manuais', () => {
+    const draft = (id: string, clientId = 'c1', amounts: [number, number] = [100, 100]): JournalEntryDraft => ({
+      id,
+      clientId,
+      date: '2025-03-31',
+      memo: 'Provisão',
+      category: 'PROVISION',
+      lines: [
+        { id: 'd', accountId: 'x', type: 'DEBIT', amount: amounts[0] },
+        { id: 'c', accountId: 'y', type: 'CREDIT', amount: amounts[1] },
+      ],
+      totalAmount: amounts[0],
+      createdAt: 'T',
+      updatedAt: 'T',
+      createdByUid: 'u',
+    });
+
+    it('numeração sequencial por cliente; número excluído não é reaproveitado', async () => {
+      expect((await repo.createJournalEntry(draft('j1'))).entryNumber).toBe(1);
+      expect((await repo.createJournalEntry(draft('j2'))).entryNumber).toBe(2);
+      expect((await repo.createJournalEntry(draft('j3'))).entryNumber).toBe(3);
+      expect((await repo.createJournalEntry(draft('k1', 'c2'))).entryNumber).toBe(1);
+      await repo.deleteJournalEntry('j2');
+      await repo.deleteJournalEntry('j3');
+      expect((await repo.createJournalEntry(draft('j4'))).entryNumber).toBe(4);
+      expect((await repo.listJournalEntries('c1')).map((e) => e.entryNumber).sort()).toEqual([1, 4]);
+    });
+
+    it('lançamentos anteriores ao contador: continua do maior número já usado', async () => {
+      store.setItem(LOCAL_KEYS.journalEntries, JSON.stringify([{ ...draft('antigo'), entryNumber: 7 }]));
+      expect((await repo.createJournalEntry(draft('novo'))).entryNumber).toBe(8);
+    });
+
+    it('edição preserva o número e exige o lançamento existente', async () => {
+      const saved = await repo.createJournalEntry(draft('j1'));
+      await repo.updateJournalEntry({ ...saved, memo: 'Corrigido', entryNumber: 99 });
+      expect(await repo.listJournalEntries('c1')).toMatchObject([{ id: 'j1', memo: 'Corrigido', entryNumber: 1 }]);
+      await expect(repo.updateJournalEntry({ ...saved, id: 'inexistente' })).rejects.toThrow(/não encontrado/);
+    });
+
+    it('recusa débito ≠ crédito na criação e na edição, sem gravar nem gastar número', async () => {
+      await expect(repo.createJournalEntry(draft('j1', 'c1', [100, 90]))).rejects.toThrow(/desbalanceado/);
+      expect(await repo.listJournalEntries('c1')).toEqual([]);
+      const saved = await repo.createJournalEntry(draft('j2'));
+      expect(saved.entryNumber).toBe(1);
+      await expect(repo.updateJournalEntry({ ...saved, lines: draft('x', 'c1', [5, 4]).lines })).rejects.toThrow(/desbalanceado/);
+      expect((await repo.listJournalEntries('c1'))[0].lines[0].amount).toBe(100);
+    });
+
+    it('excluir o cliente remove os lançamentos manuais e a sequência', async () => {
+      await repo.createJournalEntry(draft('j1'));
+      await repo.createJournalEntry(draft('k1', 'c2'));
+      await repo.deleteClient('c1');
+      expect(await repo.listJournalEntries('c1')).toEqual([]);
+      expect(await repo.listJournalEntries('c2')).toHaveLength(1);
+      // Um cliente recriado com o mesmo id começa a sequência do zero.
+      expect((await repo.createJournalEntry(draft('j9'))).entryNumber).toBe(1);
+    });
   });
 });

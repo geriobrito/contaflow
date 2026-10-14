@@ -90,6 +90,6 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
    npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>
    ```
 
-   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests` e `client_request_files`.
+   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries` e `journal_counters` (sequência dos lançamentos manuais).
 
 3. **Deploy do app** (Vercel) normalmente.

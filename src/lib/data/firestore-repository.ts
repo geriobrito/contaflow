@@ -8,6 +8,7 @@ import {
   limit,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
@@ -33,6 +34,7 @@ import type {
   PeriodLock,
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
+import { assertValidJournalEntry } from '@/lib/journal';
 import { monthOf } from '@/lib/periods';
 
 export const COL = {
@@ -49,6 +51,7 @@ export const COL = {
   requests: 'client_requests',
   requestFiles: 'client_request_files',
   journalEntries: 'journal_entries',
+  journalCounters: 'journal_counters',
 } as const;
 
 /** Limites do Firestore. */
@@ -60,6 +63,8 @@ const IN_LIMIT = 30;
  * perfil do usuário e o cliente, 15 competências por lote deixam folga.
  */
 export const MONTHS_PER_BATCH = 15;
+/** Tentativas de obter o próximo número de lançamento manual quando há disputa entre usuários. */
+const JOURNAL_NUMBER_ATTEMPTS = 5;
 
 const chunk = <T,>(items: readonly T[], size: number): T[][] => {
   const out: T[][] = [];
@@ -129,9 +134,9 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   async function deleteByClient(name: string, clientId: string) {
     const snap = await getDocs(scoped(name, where('clientId', '==', clientId)));
-    // Lançamentos: agrupados por competência (as regras consultam o fechamento de cada mês).
-    const monthOfDoc = (data: DocumentData) =>
-      name === COL.transactions && typeof data.date === 'string' ? monthOf(data.date) : undefined;
+    // Lançamentos (bancários e manuais): agrupados por competência (as regras consultam o fechamento de cada mês).
+    const dated = name === COL.transactions || name === COL.journalEntries;
+    const monthOfDoc = (data: DocumentData) => (dated && typeof data.date === 'string' ? monthOf(data.date) : undefined);
     await run(snap.docs.map((d) => single((b) => b.delete(d.ref), monthOfDoc(d.data()))));
   }
 
@@ -186,10 +191,13 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
       // A trilha de auditoria é preservada (imutável por regra). Os fechamentos saem primeiro:
       // lançamentos de competência fechada não podem ser excluídos.
-      for (const name of [COL.locks, COL.transactions, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.locks, COL.transactions, COL.journalEntries, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(doc(db, COL.clients, clientId));
+      // A sequência dos lançamentos manuais só pode ser apagada depois da empresa (regra):
+      // enquanto a empresa existe, o contador nunca volta atrás.
+      await deleteByClient(COL.journalCounters, clientId);
     },
 
     /* ── Plano de contas ──────────────────────────────────────────────── */
@@ -386,7 +394,41 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         .map((d) => ({ ...(d.data() as JournalEntry), id: d.id }))
         .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
     },
-    async saveJournalEntry(entry, audit) {
+    async createJournalEntry(draft, audit) {
+      assertValidJournalEntry(draft);
+      const counterRef = doc(db, COL.journalCounters, draft.clientId);
+      // Cliente ainda sem contador: a sequência parte do maior número já usado. A consulta
+      // fica fora da transação, que só lê documentos por referência.
+      let seed = 0;
+      if (!(await getDoc(counterRef)).exists()) {
+        const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', draft.clientId)));
+        seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
+      }
+      // Número e lançamento gravados juntos: dois usuários simultâneos nunca recebem o mesmo número.
+      for (let attempt = 1; ; attempt++) {
+        let seen: number | null = null;
+        try {
+          return await runTransaction(db, async (t) => {
+            const counter = await t.get(counterRef);
+            seen = counter.exists() ? Number(counter.data().last) || 0 : null;
+            const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
+            t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
+            t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
+            if (audit) t.set(doc(db, COL.audit, audit.id), stamp(audit));
+            return entry;
+          });
+        } catch (err) {
+          // Se outro usuário avançou o contador entre a leitura e a gravação, as regras recusam
+          // o número repetido (em vez de a transação repetir sozinha). Só nesse caso tenta de
+          // novo; qualquer outra recusa (ex.: competência fechada) sobe ao chamador.
+          const current = await getDoc(counterRef);
+          const now = current.exists() ? Number(current.data().last) || 0 : null;
+          if (now === seen || attempt >= JOURNAL_NUMBER_ATTEMPTS) throw err;
+        }
+      }
+    },
+    async updateJournalEntry(entry, audit) {
+      assertValidJournalEntry(entry);
       const b = writeBatch(db);
       b.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
       if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));

@@ -93,7 +93,7 @@ export default function LancamentosPage() {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('Missing or insufficient permissions') || msg.includes('permission')) {
           setError(
-            'Permissão insuficiente no Firestore: as regras de segurança para a coleção "journal_entries" precisam ser publicadas no Firebase Console (na aba Firestore Database > Regras). Siga as instruções para atualizar as regras do seu projeto.'
+            'Permissão insuficiente no Firestore: as regras de segurança das coleções "journal_entries" e "journal_counters" precisam ser publicadas (npx firebase-tools deploy --only firestore:rules, ou Firebase Console > Firestore Database > Regras).'
           );
         } else {
           setError(msg);
@@ -173,26 +173,37 @@ export default function LancamentosPage() {
 
   // Criação / Edição de lançamento
   const handleSaveEntry = async (
-    entryData: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>,
+    entryData: Omit<JournalEntry, 'id' | 'entryNumber' | 'createdAt' | 'updatedAt'>,
     existingId?: string
   ) => {
     if (!clientId) return;
     const repo = getRepository();
 
     const now = new Date().toISOString();
-    const entryToSave: JournalEntry = {
-      ...entryData,
-      id: existingId || `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      clientId,
-      entryNumber: existingId
-        ? (entries.find((e) => e.id === existingId)?.entryNumber ?? 1)
-        : entries.length + 1,
-      createdAt: existingId ? (entries.find((e) => e.id === existingId)?.createdAt ?? now) : now,
-      updatedAt: now,
-      createdByUid: user?.uid || 'local',
-    };
-
-    await repo.saveJournalEntry(entryToSave);
+    if (existingId) {
+      const existing = entries.find((e) => e.id === existingId);
+      if (!existing) throw new Error('Lançamento não encontrado. Recarregue a página e tente novamente.');
+      // Número, criação e autor são preservados na edição.
+      await repo.updateJournalEntry({
+        ...entryData,
+        id: existing.id,
+        clientId,
+        entryNumber: existing.entryNumber,
+        createdAt: existing.createdAt,
+        createdByUid: existing.createdByUid,
+        updatedAt: now,
+      });
+    } else {
+      // O número vem da sequência do cliente, atribuído pelo repositório ao gravar.
+      await repo.createJournalEntry({
+        ...entryData,
+        id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        clientId,
+        createdAt: now,
+        updatedAt: now,
+        createdByUid: user?.uid || 'local',
+      });
+    }
     setReloadCount((c) => c + 1);
   };
 
@@ -229,8 +240,8 @@ export default function LancamentosPage() {
   const handleDuplicate = (entry: JournalEntry) => {
     setEditingEntry({
       ...entry,
+      // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
-      entryNumber: entries.length + 1,
       date: range.end,
       memo: `${entry.memo} (Cópia)`,
     });

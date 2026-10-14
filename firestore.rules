@@ -25,6 +25,10 @@ rules_version = '2';
 //      apenas as respostas, enquanto o link estiver aberto e dentro da validade; ninguém
 //      lista a coleção. Comprovantes (client_request_files) só são criados para um link
 //      aberto e só o escritório os lê.
+//   9. Lançamento novo nunca entra conciliado: importar em competência fechada não altera
+//      o resultado dela.
+//  10. Lançamentos manuais (journal_entries) respeitam as partidas dobradas (débitos =
+//      créditos) e recebem um número sequencial por cliente (journal_counters), imutável.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -102,8 +106,12 @@ service cloud.firestore {
       allow read: if isMine(resource.data);
       // Excluir (ex.: extrato importado por engano) só em competência aberta.
       allow delete: if isMine(resource.data) && monthOpen(resource.data);
-      // Importar em mês fechado é permitido (entra como pendente/auto e não altera a DRE).
-      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
+      // Importar em mês fechado é permitido, mas todo lançamento novo entra como pendente/auto
+      // (não altera a DRE): só a conciliação — um update, barrado em competência fechada —
+      // faz o lançamento contar no resultado.
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && request.resource.data.status in ['PENDING', 'AUTO_CLASSIFIED'];
       // Nenhuma alteração em competência fechada; data e valor são imutáveis.
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId') && unchanged('date') && unchanged('amount')
@@ -117,15 +125,81 @@ service cloud.firestore {
     }
 
     // ── Lançamentos contábeis manuais (Diário de Fechamento / Ajustes Avulsos) ─
+    // Valor com sinal de uma partida: débito +, crédito − (a mesma leitura do razão em
+    // src/lib/ledger.ts). Valor que não é número gera erro de avaliação, e a regra nega.
+    // Fica só o essencial de propósito: cada avaliação tem um teto de 1000 expressões, e
+    // checar conta e valor positivo por partida o estoura com poucas partidas — isso é
+    // validado pelo app (journalEntryProblem em src/lib/journal.ts) antes de gravar.
+    function lineValue(l) {
+      return l.type == 'DEBIT' ? l.amount : -l.amount;
+    }
+
+    // Débitos − créditos. As regras não têm laços: as partidas são somadas uma a uma, até 20
+    // (MAX_JOURNAL_LINES em src/lib/journal.ts).
+    function linesNet(lines) {
+      let n = lines.size();
+      return (n > 0 ? lineValue(lines[0]) : 0) + (n > 1 ? lineValue(lines[1]) : 0)
+        + (n > 2 ? lineValue(lines[2]) : 0) + (n > 3 ? lineValue(lines[3]) : 0)
+        + (n > 4 ? lineValue(lines[4]) : 0) + (n > 5 ? lineValue(lines[5]) : 0)
+        + (n > 6 ? lineValue(lines[6]) : 0) + (n > 7 ? lineValue(lines[7]) : 0)
+        + (n > 8 ? lineValue(lines[8]) : 0) + (n > 9 ? lineValue(lines[9]) : 0)
+        + (n > 10 ? lineValue(lines[10]) : 0) + (n > 11 ? lineValue(lines[11]) : 0)
+        + (n > 12 ? lineValue(lines[12]) : 0) + (n > 13 ? lineValue(lines[13]) : 0)
+        + (n > 14 ? lineValue(lines[14]) : 0) + (n > 15 ? lineValue(lines[15]) : 0)
+        + (n > 16 ? lineValue(lines[16]) : 0) + (n > 17 ? lineValue(lines[17]) : 0)
+        + (n > 18 ? lineValue(lines[18]) : 0) + (n > 19 ? lineValue(lines[19]) : 0);
+    }
+
+    // Partidas dobradas: de 2 a 20 partidas com débitos = créditos (tolerância de meio
+    // centavo para o ponto flutuante), e data YYYY-MM-DD (define a competência).
+    function validJournal(entry) {
+      return entry.date is string && entry.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && entry.lines is list && entry.lines.size() >= 2 && entry.lines.size() <= 20
+        && math.abs(linesNet(entry.lines)) < 0.005;
+    }
+
+    function journalCounter(clientId) {
+      return /databases/$(database)/documents/journal_counters/$(clientId);
+    }
+
+    // O número do lançamento novo é o do contador do cliente, avançado nesta mesma gravação
+    // (transação): nunca se repete, nem com dois usuários lançando ao mesmo tempo.
+    function takesNextNumber(entry) {
+      return entry.entryNumber == getAfter(journalCounter(entry.clientId)).data.last
+        && (!exists(journalCounter(entry.clientId))
+            || get(journalCounter(entry.clientId)).data.last < entry.entryNumber);
+    }
+
     match /journal_entries/{entryId} {
       allow read: if isMine(resource.data);
       allow delete: if isMine(resource.data) && monthOpen(resource.data);
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
-        && monthOpen(request.resource.data);
+        && monthOpen(request.resource.data)
+        && validJournal(request.resource.data)
+        && takesNextNumber(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('entryNumber')
+        && monthOpen(resource.data) && monthOpen(request.resource.data)
+        && validJournal(request.resource.data);
+    }
+
+    // ── Sequência dos lançamentos manuais (um documento por cliente, id = clientId) ─
+    match /journal_counters/{docId} {
+      // Ler o contador de um cliente que ainda não tem um (documento inexistente) é permitido ao próprio escritório.
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && request.resource.data.last is int
+        && request.resource.data.last >= 1;
+      // Só avança, de um em um.
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
-        && monthOpen(resource.data) && monthOpen(request.resource.data);
+        && request.resource.data.last == resource.data.last + 1;
+      // Só some junto com a empresa (enquanto ela existe, a sequência nunca volta atrás).
+      allow delete: if isMine(resource.data)
+        && !exists(/databases/$(database)/documents/clients/$(docId));
     }
 
     // ── Contas bancárias do cliente ──────────────────────────────────────

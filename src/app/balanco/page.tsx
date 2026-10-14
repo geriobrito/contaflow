@@ -89,15 +89,14 @@ export default function BalancoPage() {
       repo.getOrgSettings(),
       getLatestTransactionDate(clientId),
       repo.getOpeningBalances(clientId),
-      repo.listJournalEntries(clientId).catch((err: unknown) => {
-        console.warn('Aviso: Lançamentos manuais indisponíveis ou regras pendentes de publicação:', err);
-        return [];
-      }),
+      // Sem os lançamentos manuais o balanço sairia com valores errados: a falha bloqueia o relatório.
+      repo.listJournalEntries(clientId),
     ])
       .then(([accounts, banks, org, latest, openings, journalEntries]) => {
         if (!active) return;
         if (latest) jumpTo(latest);
         setStatic({ id: clientId, accounts, banks, org, openings, journalEntries });
+        setError(null);
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));
     return () => {
@@ -331,7 +330,8 @@ export default function BalancoPage() {
       )}
 
       {loading ? (
-        <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
+        // Falha de carga: fica só o erro acima, sem relatório parcial nem "carregando" eterno.
+        error ? null : <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
       ) : !hasData ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem movimento até esta data" description="Importe extratos e concilie lançamentos para gerar o balanço e o balancete." />

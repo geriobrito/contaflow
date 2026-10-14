@@ -327,6 +327,176 @@ describe('fechamento de competência', () => {
     const db = asUser('alice');
     await setDoc(doc(db, 'period_locks/cA_2025-03'), lock('2025-03'));
     await assertSucceeds(setDoc(doc(db, 'transactions/cA_9'), tx('cA_9', 'cA', ORG_A, '2025-03-20')));
+    await assertSucceeds(setDoc(doc(db, 'transactions/cA_10'), { ...tx('cA_10', 'cA', ORG_A, '2025-03-21'), status: 'AUTO_CLASSIFIED', accountId: 'x' }));
+  });
+
+  it('lançamento novo nunca entra conciliado (não altera o resultado de mês fechado nem aberto)', async () => {
+    const db = asUser('alice');
+    const reconciled = (id: string, date: string) => ({ ...tx(id, 'cA', ORG_A, date), status: 'RECONCILED', accountId: 'x', reconciledAt: 'T' });
+    await assertFails(setDoc(doc(db, 'transactions/cA_20'), reconciled('cA_20', '2025-04-05')));
+    await setDoc(doc(db, 'period_locks/cA_2025-03'), lock('2025-03'));
+    await assertFails(setDoc(doc(db, 'transactions/cA_21'), reconciled('cA_21', '2025-03-20')));
+    await assertFails(setDoc(doc(db, 'transactions/cA_22'), { ...tx('cA_22', 'cA', ORG_A, '2025-03-20'), status: 'QUALQUER' }));
+  });
+});
+
+describe('lançamentos manuais: partidas dobradas e numeração', () => {
+  type Line = { id: string; accountId: string; type: 'DEBIT' | 'CREDIT'; amount: number };
+  const line = (type: 'DEBIT' | 'CREDIT', amount: number, accountId = 'conta'): Line => ({ id: `${type}-${amount}`, accountId, type, amount });
+  const draft = (id: string, overrides: { date?: string; lines?: Line[]; memo?: string } = {}) => ({
+    id,
+    clientId: 'cA',
+    date: '2025-03-31',
+    memo: 'Provisão de folha',
+    category: 'PAYROLL' as const,
+    lines: [line('DEBIT', 100), line('CREDIT', 100)],
+    totalAmount: 100,
+    createdAt: 'T',
+    updatedAt: 'T',
+    createdByUid: 'alice',
+    ...overrides,
+  });
+  /** Gravação crua (sem a validação do repositório): contador e lançamento no mesmo lote, como a transação do app. */
+  const rawCreate = (db: Firestore, id: string, entryNumber: number, entry: Record<string, unknown> = {}) => {
+    const b = writeBatch(db);
+    b.set(doc(db, 'journal_counters/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', last: entryNumber });
+    b.set(doc(db, `journal_entries/${id}`), { ...draft(id), orgId: ORG_A, entryNumber, ...entry });
+    return b.commit();
+  };
+  const lockMarch = { id: 'cA_2025-03', orgId: ORG_A, clientId: 'cA', month: '2025-03', lockedAt: 'T', lockedByUid: 'alice' };
+
+  it('numera em sequência por cliente; número excluído não é reaproveitado', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect((await repo.createJournalEntry(draft('j1'))).entryNumber).toBe(1);
+    expect((await repo.createJournalEntry(draft('j2'))).entryNumber).toBe(2);
+    expect((await repo.createJournalEntry(draft('j3'))).entryNumber).toBe(3);
+    await repo.deleteJournalEntry('j2');
+    expect((await repo.createJournalEntry(draft('j4'))).entryNumber).toBe(4);
+    expect((await repo.listJournalEntries('cA')).map((e) => e.entryNumber).sort()).toEqual([1, 3, 4]);
+  });
+
+  it('dois usuários lançando ao mesmo tempo recebem números diferentes', async () => {
+    const alice = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const carol = createFirestoreRepository(asUser('carol'), () => ORG_A);
+    const created = await Promise.all([
+      alice.createJournalEntry(draft('ja')),
+      carol.createJournalEntry(draft('jc')),
+      alice.createJournalEntry(draft('ja2')),
+    ]);
+    expect(created.map((e) => e.entryNumber).sort()).toEqual([1, 2, 3]);
+  });
+
+  it('cliente com lançamentos anteriores ao contador continua do maior número', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'journal_entries/antigo1'), { ...draft('antigo1'), orgId: ORG_A, entryNumber: 4 });
+      await setDoc(doc(db, 'journal_entries/antigo2'), { ...draft('antigo2'), orgId: ORG_A, entryNumber: 7 });
+    });
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect((await repo.createJournalEntry(draft('novo'))).entryNumber).toBe(8);
+  });
+
+  it('o número vem do contador avançado na mesma gravação; não se repete nem muda', async () => {
+    const db = asUser('alice');
+    await assertSucceeds(rawCreate(db, 'j1', 1));
+    // Sem avançar o contador (número repetido) ou com número diferente do contador.
+    await assertFails(setDoc(doc(db, 'journal_entries/j2'), { ...draft('j2'), orgId: ORG_A, entryNumber: 1 }));
+    await assertFails(setDoc(doc(db, 'journal_entries/j2'), { ...draft('j2'), orgId: ORG_A, entryNumber: 2 }));
+    // O contador só avança de um em um e não volta.
+    await assertFails(rawCreate(db, 'j2', 5));
+    await assertFails(rawCreate(db, 'j2', 1));
+    await assertSucceeds(rawCreate(db, 'j2', 2));
+    await assertFails(updateDoc(doc(db, 'journal_entries/j2'), { entryNumber: 9 }));
+    await assertSucceeds(updateDoc(doc(db, 'journal_entries/j2'), { memo: 'Histórico corrigido' }));
+    // Enquanto a empresa existe, ninguém apaga a sequência.
+    await assertFails(deleteDoc(doc(db, 'journal_counters/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'journal_counters/cA'), { id: 'cA', orgId: ORG_B, clientId: 'cA', last: 3 }));
+  });
+
+  it('recusa lançamento em que débitos ≠ créditos, na criação e na edição', async () => {
+    const db = asUser('alice');
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [line('DEBIT', 100), line('CREDIT', 99.99)] }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [line('DEBIT', 100), line('DEBIT', 100)] }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [line('DEBIT', 100)] }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [] }));
+    await assertSucceeds(rawCreate(db, 'j1', 1));
+    await assertFails(updateDoc(doc(db, 'journal_entries/j1'), { lines: [line('DEBIT', 100), line('CREDIT', 50)] }));
+    await assertSucceeds(updateDoc(doc(db, 'journal_entries/j1'), { lines: [line('DEBIT', 80), line('CREDIT', 50), line('CREDIT', 30)] }));
+    // O repositório recusa antes mesmo de enviar, com mensagem legível.
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await expect(repo.createJournalEntry(draft('j2', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }))).rejects.toThrow(/desbalanceado/);
+    await expect(repo.updateJournalEntry({ ...draft('j1', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }), entryNumber: 1 })).rejects.toThrow(/desbalanceado/);
+  });
+
+  it('recusa valor que não é número, tipo que não fecha a conta e data inválida', async () => {
+    const db = asUser('alice');
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [{ ...line('DEBIT', 100), amount: '100' }, line('CREDIT', 100)] }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [{ ...line('DEBIT', 100), amount: '100' }, { ...line('CREDIT', 100), amount: '100' }] }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [{ ...line('DEBIT', 100), amount: null }, line('CREDIT', 100)] }));
+    // Tipo desconhecido conta como crédito (como no razão): dois "créditos" não fecham.
+    await assertFails(rawCreate(db, 'j1', 1, { lines: [{ ...line('DEBIT', 100), type: 'OUTRO' }, line('CREDIT', 100)] }));
+    await assertFails(rawCreate(db, 'j1', 1, { date: '2025-3-31' }));
+    await assertFails(rawCreate(db, 'j1', 1, { lines: 'nenhuma' }));
+    // Conta e valor positivo por partida são validados pelo app antes de gravar.
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await expect(repo.createJournalEntry(draft('j1', { lines: [line('DEBIT', 100, ''), line('CREDIT', 100)] }))).rejects.toThrow(/sem conta/);
+    await expect(repo.createJournalEntry(draft('j1', { lines: [line('DEBIT', -100), line('CREDIT', -100)] }))).rejects.toThrow(/valor zerado/);
+    expect(await repo.listJournalEntries('cA')).toEqual([]);
+  });
+
+  it('aceita lançamento composto com centavos e até 20 partidas; a 21ª é recusada', async () => {
+    const db = asUser('alice');
+    await assertSucceeds(rawCreate(db, 'j1', 1, { lines: [line('DEBIT', 0.1), line('DEBIT', 0.2), line('CREDIT', 0.3)] }));
+    await assertSucceeds(rawCreate(db, 'j2', 2, { lines: [line('DEBIT', 100), line('CREDIT', 60.5), line('CREDIT', 39.5)] }));
+    const pairs = (n: number) => Array.from({ length: n }, (_, i) => [line('DEBIT', 10.1 + i), line('CREDIT', 10.1 + i)]).flat();
+    await assertSucceeds(rawCreate(db, 'j3', 3, { lines: pairs(10) }));
+    await assertFails(rawCreate(db, 'j4', 4, { lines: [...pairs(10), line('DEBIT', 1)] }));
+    await assertFails(rawCreate(db, 'j4', 4, { lines: pairs(11) }));
+    // O caminho real do app (transação com contador e auditoria) também passa com 20 partidas,
+    // na criação e na edição, sem estourar o teto de expressões das regras.
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    const audit = (id: string, action: 'JOURNAL_CREATE' | 'JOURNAL_UPDATE') => ({ id, clientId: 'cA', action, actorUid: 'alice', at: 'T' });
+    const saved = await repo.createJournalEntry(draft('j5', { lines: pairs(10) }), audit('au-j5', 'JOURNAL_CREATE'));
+    expect(saved.entryNumber).toBe(4);
+    await repo.updateJournalEntry({ ...saved, memo: 'Editado' }, audit('au-j5b', 'JOURNAL_UPDATE'));
+    expect((await repo.listJournalEntries('cA')).find((e) => e.id === 'j5')).toMatchObject({ memo: 'Editado', entryNumber: 4 });
+  });
+
+  it('competência fechada congela os lançamentos manuais', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    const saved = await repo.createJournalEntry(draft('j1'));
+    await setDoc(doc(db, 'period_locks/cA_2025-03'), lockMarch);
+    await expect(repo.createJournalEntry(draft('j2'))).rejects.toThrow();
+    await expect(repo.updateJournalEntry({ ...saved, memo: 'alterado' })).rejects.toThrow();
+    await expect(repo.deleteJournalEntry('j1')).rejects.toThrow();
+    // Nem mudando a data para "fugir" do mês fechado.
+    await expect(repo.updateJournalEntry({ ...saved, date: '2025-04-01' })).rejects.toThrow();
+    // Outra competência segue livre, e a numeração continua.
+    expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-30' }))).entryNumber).toBe(2);
+  });
+
+  it('isolamento: outro escritório não lê nem grava', async () => {
+    await rawCreate(asUser('alice'), 'j1', 1);
+    await assertSucceeds(getDoc(doc(asUser('carol'), 'journal_entries/j1')));
+    await assertFails(getDoc(doc(asUser('bob'), 'journal_entries/j1')));
+    await assertFails(getDoc(doc(asUser('bob'), 'journal_counters/cA')));
+    await assertFails(updateDoc(doc(asUser('bob'), 'journal_entries/j1'), { memo: 'x' }));
+    await assertFails(deleteDoc(doc(asUser('bob'), 'journal_entries/j1')));
+  });
+
+  it('excluir a empresa remove os lançamentos manuais (mesmo de mês fechado) e a sequência', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await repo.createJournalEntry(draft('j1'));
+    await repo.createJournalEntry(draft('j2', { date: '2025-04-30' }));
+    await setDoc(doc(db, 'period_locks/cA_2025-03'), lockMarch);
+    await repo.deleteClient('cA');
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore() as unknown as Firestore;
+      expect((await getDocs(query(collection(admin, 'journal_entries'), where('clientId', '==', 'cA')))).size).toBe(0);
+      expect((await getDoc(doc(admin, 'journal_counters/cA'))).exists()).toBe(false);
+    });
   });
 });
 

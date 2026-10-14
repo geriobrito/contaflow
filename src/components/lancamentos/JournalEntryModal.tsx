@@ -13,12 +13,13 @@ import {
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (entry: Omit<JournalEntry, 'id' | 'createdAt' | 'updatedAt'>, existingId?: string) => Promise<void>;
+  onSave: (entry: Omit<JournalEntry, 'id' | 'entryNumber' | 'createdAt' | 'updatedAt'>, existingId?: string) => Promise<void>;
   initialEntry?: JournalEntry | null;
   accounts: readonly ChartAccount[];
   clientId: string;
@@ -35,8 +36,6 @@ const CATEGORY_LABELS: Record<JournalEntryCategory, string> = {
   PROVISION: 'Provisão Geral',
   OTHER: 'Outros Lançamentos',
 };
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   isOpen,
@@ -78,27 +77,17 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
   // Balanço das partidas
   const { totalDebit, totalCredit, difference, isBalanced } = useMemo(() => {
-    let debit = 0;
-    let credit = 0;
-    for (const l of lines) {
-      const val = Number(l.amount) || 0;
-      if (l.type === 'DEBIT') debit += val;
-      else credit += val;
-    }
-    debit = round2(debit);
-    credit = round2(credit);
-    const diff = round2(Math.abs(debit - credit));
-    return {
-      totalDebit: debit,
-      totalCredit: credit,
-      difference: diff,
-      isBalanced: diff < 0.005 && debit > 0,
-    };
+    const { debit, credit, difference: diff } = journalTotals(lines);
+    return { totalDebit: debit, totalCredit: credit, difference: diff, isBalanced: diff === 0 && debit > 0 };
   }, [lines]);
 
   if (!isOpen) return null;
 
   const handleAddLine = () => {
+    if (lines.length >= MAX_JOURNAL_LINES) {
+      setError(`Um lançamento aceita no máximo ${MAX_JOURNAL_LINES} partidas. Divida-o em dois lançamentos.`);
+      return;
+    }
     const nextId = `l_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const lastLine = lines[lines.length - 1];
     const newType = lastLine?.type === 'DEBIT' ? 'CREDIT' : 'DEBIT';
@@ -229,23 +218,10 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       setError('Informe a descrição / histórico do lançamento.');
       return;
     }
-    if (lines.length < 2) {
-      setError('Adicione pelo menos 2 partidas (débito e crédito).');
-      return;
-    }
-    for (let i = 0; i < lines.length; i++) {
-      const l = lines[i];
-      if (!l.accountId) {
-        setError(`A linha #${i + 1} está sem conta contábil selecionada.`);
-        return;
-      }
-      if (!l.amount || l.amount <= 0) {
-        setError(`A linha #${i + 1} possui valor zerado ou inválido.`);
-        return;
-      }
-    }
-    if (!isBalanced) {
-      setError(`O lançamento está desbalanceado em ${formatCurrency(difference)}. As partidas dobradas devem fechar em zero.`);
+    // Mesma validação aplicada pelos repositórios e pelas regras do Firestore.
+    const problem = journalEntryProblem({ date, lines });
+    if (problem) {
+      setError(problem);
       return;
     }
 
@@ -256,7 +232,6 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       await onSave(
         {
           clientId,
-          entryNumber: initialEntry?.entryNumber ?? 1,
           date,
           memo: memo.trim(),
           category,
@@ -306,7 +281,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </div>
             <div>
               <h2 id="journal-entry-modal-title" className="text-[17px] font-semibold text-stone-900 dark:text-stone-100">
-                {initialEntry ? `Editar Lançamento #${initialEntry.entryNumber}` : 'Novo Lançamento Contábil Manual'}
+                {initialEntry?.id ? `Editar Lançamento #${initialEntry.entryNumber}` : 'Novo Lançamento Contábil Manual'}
               </h2>
               <p className="text-[13px] text-stone-500">
                 Partidas dobradas de fechamento, provisões ou ajustes patrimoniais

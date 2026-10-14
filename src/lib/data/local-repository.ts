@@ -8,12 +8,14 @@ import type {
   ClassificationRule,
   ClientCompany,
   ImportBatch,
+  JournalCounter,
   JournalEntry,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
+import { assertValidJournalEntry } from '@/lib/journal';
 import { applyPatch } from '@/lib/transitions';
 
 /** Subconjunto de `Storage` usado — permite injetar um armazenamento em memória nos testes. */
@@ -36,6 +38,7 @@ export const LOCAL_KEYS = {
   requests: 'contaflow_client_requests',
   requestFiles: 'contaflow_client_request_files',
   journalEntries: 'contaflow_journal_entries',
+  journalCounters: 'contaflow_journal_counters',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -126,6 +129,8 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.openings,
         LOCAL_KEYS.requests,
         LOCAL_KEYS.requestFiles,
+        LOCAL_KEYS.journalEntries,
+        LOCAL_KEYS.journalCounters,
       ]) {
         write(
           key,
@@ -290,12 +295,33 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         .filter((j) => j.clientId === clientId && (!range || (j.date >= range.start && j.date <= range.end)))
         .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
     },
-    async saveJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void> {
+    async createJournalEntry(draft: JournalEntryDraft, audit?: AuditEntry): Promise<JournalEntry> {
+      assertValidJournalEntry(draft);
+      const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
+      const counters = read<JournalCounter>(LOCAL_KEYS.journalCounters);
+      // Cliente ainda sem contador: a sequência parte do maior número já usado.
+      const last =
+        counters.find((c) => c.clientId === draft.clientId)?.last ??
+        list.filter((j) => j.clientId === draft.clientId).reduce((max, j) => Math.max(max, j.entryNumber || 0), 0);
+      const entry: JournalEntry = { ...draft, entryNumber: last + 1 };
+      write(LOCAL_KEYS.journalCounters, [
+        ...counters.filter((c) => c.clientId !== draft.clientId),
+        stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }),
+      ]);
+      write(LOCAL_KEYS.journalEntries, [...list, stamp(entry)]);
+      if (audit) {
+        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      }
+      return entry;
+    },
+    async updateJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void> {
+      assertValidJournalEntry(entry);
       const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
       const idx = list.findIndex((j) => j.id === entry.id);
-      const stamped = stamp(entry);
-      const next = idx >= 0 ? list.map((j, i) => (i === idx ? stamped : j)) : [...list, stamped];
-      write(LOCAL_KEYS.journalEntries, next);
+      if (idx < 0) throw new Error(`Lançamento manual ${entry.id} não encontrado.`);
+      // O número é imutável, como nas regras do Firestore.
+      const stamped = stamp({ ...entry, entryNumber: list[idx].entryNumber });
+      write(LOCAL_KEYS.journalEntries, list.map((j, i) => (i === idx ? stamped : j)));
       if (audit) {
         write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
       }

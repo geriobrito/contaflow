@@ -47,6 +47,9 @@ export interface ChangeSet {
   audits: readonly AuditEntry[];
 }
 
+/** Lançamento manual ainda sem número: o repositório atribui o próximo da sequência do cliente. */
+export type JournalEntryDraft = Omit<JournalEntry, 'entryNumber'>;
+
 /**
  * Contrato único de persistência. Duas implementações — Firestore e localStorage — e a
  * aplicação usa exatamente uma por execução (sem escrita dupla). Toda falha é propagada.
@@ -61,7 +64,7 @@ export interface DataRepository {
   /* Clientes */
   listClients(): Promise<ClientCompany[]>;
   saveClient(client: ClientCompany): Promise<void>;
-  /** Exclui a empresa e, em cascata, contas, regras, lançamentos, lotes e fechamentos. A auditoria é preservada. */
+  /** Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e fechamentos. A auditoria é preservada. */
   deleteClient(clientId: string): Promise<void>;
 
   /* Plano de contas */
@@ -125,7 +128,10 @@ export interface DataRepository {
 
   /* Lançamentos manuais de fechamento (Diário Avulso / Ajustes) */
   listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]>;
-  saveJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void>;
+  /** Grava um lançamento novo com o próximo número da sequência do cliente; recusa se débito ≠ crédito. */
+  createJournalEntry(draft: JournalEntryDraft, audit?: AuditEntry): Promise<JournalEntry>;
+  /** Altera um lançamento existente (o número não muda); recusa se débito ≠ crédito. */
+  updateJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void>;
   deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void>;
 
   /* Pendências com o cliente (acesso público pelo link, sem login) */

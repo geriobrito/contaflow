@@ -501,3 +501,14 @@ export interface JournalEntry {
   updatedAt: string;
   createdByUid: string;
 }
+
+/**
+ * Sequência dos lançamentos manuais de um cliente (coleção `journal_counters`, id = clientId).
+ * `last` é o último número atribuído; só avança, de um em um, junto com o lançamento novo.
+ */
+export interface JournalCounter {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  last: number;
+}
