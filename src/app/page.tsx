@@ -40,6 +40,11 @@ const PAGE_SIZE = 50;
 
 type Filter = 'ALL' | ReconciliationStatus;
 
+const loadFailure = (what: string, e: unknown): string => {
+  console.error(`Erro ao carregar ${what}:`, e);
+  return `Não foi possível carregar ${what} (${e instanceof Error && e.message ? e.message : 'erro desconhecido'}). Recarregue a página para tentar de novo.`;
+};
+
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'ALL', label: 'Todos' },
   { value: 'PENDING', label: 'Pendentes' },
@@ -64,6 +69,8 @@ export default function ConciliacaoPage() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useToast();
+  // Falha ao carregar os cadastros da empresa: sem eles a tela pareceria apenas vazia.
+  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
 
   // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
   // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
@@ -77,7 +84,7 @@ export default function ConciliacaoPage() {
 
     repo.listBankAccounts(clientId)
       .then((banks) => active && setBankAccounts(banks))
-      .catch((e) => console.error('Erro ao carregar contas bancárias:', e));
+      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('as contas bancárias', e) }));
 
     getLatestTransactionDate(clientId)
       .then((latest) => {
@@ -110,9 +117,13 @@ export default function ConciliacaoPage() {
 
   useEffect(() => {
     if (!clientId) return;
+    let active = true;
     getAccounts(clientId)
-      .then(setAccounts)
-      .catch((e) => console.error('Erro ao carregar plano de contas:', e));
+      .then((list) => active && setAccounts(list))
+      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('o plano de contas', e) }));
+    return () => {
+      active = false;
+    };
   }, [clientId]);
 
   // Contas bancárias (nomes nas transferências); recarrega após cada importação.
@@ -123,7 +134,7 @@ export default function ConciliacaoPage() {
     getRepository()
       .listBankAccounts(clientId)
       .then((b) => active && setBanks(b))
-      .catch((e) => console.error('Erro ao carregar contas bancárias:', e));
+      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('as contas bancárias', e) }));
     return () => {
       active = false;
     };
@@ -238,6 +249,11 @@ export default function ConciliacaoPage() {
           <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
         </p>
       </header>
+      {loadError && loadError.id === clientId && (
+        <p role="alert" className="text-[13px] text-rose-600">
+          {loadError.message}
+        </p>
+      )}
 
       <div className="space-y-2">
         <PeriodPicker period={period} />

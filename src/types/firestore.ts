@@ -351,6 +351,13 @@ export interface PeriodSnapshot {
   asOf: string;
   /** Soma das partidas dos lançamentos bancários até `asOf`, por conta (positivo = devedor). */
   balances: { accountId: string; value: number }[];
+  /**
+   * Movimentação de cada conta bancária (chave do extrato) até `asOf`, já descontado o que
+   * veio até a data do saldo inicial dela: soma direto em `bankBalanceAt`.
+   */
+  bankMovements: { accountKey: string; value: number }[];
+  /** Lançamentos até `asOf` sem conta bancária identificada (extratos sem banco/conta). */
+  unlinkedCount: number;
   /** Lançamentos bancários até `asOf`: total e contagem por competência. */
   txCount: number;
   months: MonthCounts[];

@@ -15,6 +15,10 @@ export interface LedgerWindow {
   /** Contagens por competência e total dos lançamentos consolidados (ausentes de `transactions`). */
   carriedMonths: MonthCounts[];
   carriedCount: number;
+  /** Movimentação consolidada por conta bancária (chave do extrato): some em `bankBalanceAt`. */
+  carriedBanks: { accountKey: string; value: number }[];
+  /** Lançamentos consolidados sem conta bancária identificada. */
+  carriedUnlinked: number;
   /** Último dia consolidado, ou null se o histórico inteiro foi lido. */
   asOf: string | null;
 }
@@ -109,6 +113,8 @@ function windowOf(snapshot: PeriodSnapshot | null, transactions: BankTransaction
     carry: carryOf(snapshot),
     carriedMonths: snapshot?.months ?? [],
     carriedCount: snapshot?.txCount ?? 0,
+    carriedBanks: snapshot?.bankMovements ?? [],
+    carriedUnlinked: snapshot?.unlinkedCount ?? 0,
     asOf: snapshot?.asOf ?? null,
   };
 }

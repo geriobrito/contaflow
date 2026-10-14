@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, PeriodLock } from '@/types/firestore';
+import { bankBalanceAt } from '@/lib/bank-accounts';
 import { buildAccountLedger, buildBalanceSheet, buildPostings, buildTrialBalance } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { buildSnapshot, carryOf, ledgerConfigKey, monthEnd, snapshotProblem, snapshotTarget } from '@/lib/snapshots';
@@ -143,6 +144,34 @@ describe('saldos consolidados de competências fechadas', () => {
     const snap = snapshotAt('2024-12')!;
     const postings = buildPostings(transactions.filter((t) => t.date > snap.asOf), banks, accounts, '2025-03-31', openings, journals, carryOf(snap));
     expect(buildBalanceSheet(postings, accounts, '2025-03-31').difference).toBe(0);
+  });
+
+  it('o saldo de cada banco sai idêntico com snapshot ou com o histórico inteiro', () => {
+    const snap = snapshotAt('2024-12')!;
+    const after = transactions.filter((t) => t.date > snap.asOf);
+    const carried = new Map(snap.bankMovements.map((b) => [b.accountKey, b.value] as const));
+    for (const bank of banks) {
+      for (const date of ['2024-12-31', '2025-01-31', '2025-12-31']) {
+        expect(bankBalanceAt(bank, after, date, carried.get(bank.accountKey))).toBe(bankBalanceAt(bank, transactions, date));
+      }
+    }
+    // O lançamento de jan/2023 é anterior ao saldo inicial do Itaú: não entra na movimentação.
+    expect(carried.get('k1')).toBe(bankBalanceAt({ ...banks[0], openingBalance: 0 }, transactions, '2024-12-31'));
+    expect(carried.get('k2')).toBe(60);
+    expect(snap.unlinkedCount).toBe(0);
+
+    // Lançamento de extrato sem banco/conta: só é contado.
+    const loose = buildSnapshot({
+      clientId: 'c1',
+      month: '2023-03',
+      base: null,
+      transactions: [tx('2023-03-15', 10, { accountKey: undefined })],
+      banks,
+      accounts,
+      locks: [lock('2023-03')],
+      createdAt: '',
+    });
+    expect(loose).toMatchObject({ bankMovements: [], unlinkedCount: 1, txCount: 1 });
   });
 
   it('encadear snapshots (dez/2023 → dez/2024) dá o mesmo que consolidar de uma vez', () => {

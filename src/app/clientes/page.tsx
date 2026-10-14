@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Check, CheckCircle2, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Download, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
 import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
-import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
@@ -36,11 +36,17 @@ interface ClientCardProps {
   active: boolean;
   onActivate: () => void;
   onEdit: () => void;
+  /** Baixa o backup (JSON) com todos os dados da empresa. */
+  onBackup: () => void;
+  backingUp: boolean;
+  /** Abre a confirmação de exclusão (que oferece o backup antes). */
+  onAskDelete: () => void;
+  /** Retoma uma exclusão que parou no meio. */
   onDelete: () => Promise<void>;
   deleting: boolean;
 }
 
-function ClientCard({ client, active, onActivate, onEdit, onDelete, deleting }: ClientCardProps) {
+function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, onAskDelete, onDelete, deleting }: ClientCardProps) {
   const regime = client.regime ?? client.taxRegime;
   // A exclusão apaga os dados em vários lotes; se parou no meio, a empresa fica só para ser retomada.
   if (client.deletingAt) {
@@ -123,15 +129,27 @@ function ClientCard({ client, active, onActivate, onEdit, onDelete, deleting }: 
               Definir como ativo
             </button>
           )}
+          <button
+            type="button"
+            disabled={backingUp}
+            onClick={onBackup}
+            aria-label={`Baixar backup de ${client.tradeName || client.name}`}
+            title="Baixar backup (JSON) com todos os dados da empresa"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/[0.05] disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
+          >
+            <Download className={`w-3.5 h-3.5 ${backingUp ? 'animate-pulse' : ''}`} />
+          </button>
           {deleting ? (
             <span className="px-2 text-[12px] text-stone-400">Excluindo…</span>
           ) : (
-            <ConfirmButton
-              ariaLabel={`Excluir ${client.tradeName || client.name} e todos os seus dados`}
-              label={<Trash2 className="w-3.5 h-3.5" />}
-              confirmLabel="Excluir empresa"
-              onConfirm={onDelete}
-            />
+            <button
+              type="button"
+              onClick={onAskDelete}
+              aria-label={`Excluir ${client.tradeName || client.name} e todos os seus dados`}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.94] transition-all duration-150"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           )}
         </div>
       </div>
@@ -302,12 +320,71 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
 }
 
 /* =========================================================================
+   Confirmação de exclusão (com backup antes)
+   ========================================================================= */
+
+interface DeleteClientSheetProps {
+  client: ClientCompany;
+  backingUp: boolean;
+  /** Baixa o backup; devolve se deu certo. */
+  onBackup: () => Promise<boolean>;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+
+function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConfirm }: DeleteClientSheetProps) {
+  const [saved, setSaved] = useState(false);
+  const [armed, setArmed] = useState(false);
+
+  return (
+    <Sheet
+      title="Excluir empresa"
+      subtitle={client.tradeName || client.name}
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          disabled={backingUp}
+          onClick={() => (armed ? onConfirm() : setArmed(true))}
+          className={`w-full h-12 rounded-2xl text-[15px] font-medium text-white transition-all active:scale-[0.98] disabled:opacity-40 ${armed ? 'bg-rose-700' : 'bg-rose-600 hover:bg-rose-700'}`}
+        >
+          {armed ? 'Toque de novo para excluir definitivamente' : 'Excluir empresa e todos os dados'}
+        </button>
+      }
+    >
+      <div className="space-y-4 pb-2 text-[13px] text-stone-600 dark:text-stone-300">
+        <p className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 border border-rose-200/60">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>
+            A exclusão não tem volta: apaga lançamentos, extratos, regras, plano de contas, contas bancárias, saldos de abertura, lançamentos
+            manuais, fechamentos e pendências desta empresa. Só a trilha de auditoria é preservada.
+          </span>
+        </p>
+        <p>Antes de excluir, guarde uma cópia: o backup reúne todos esses dados num arquivo JSON.</p>
+        <button
+          type="button"
+          disabled={backingUp}
+          onClick={() => void onBackup().then((ok) => ok && setSaved(true))}
+          className={`${BUTTON.secondary} w-full`}
+        >
+          {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Download className="w-4 h-4" />}
+          {backingUp ? 'Gerando backup…' : saved ? 'Backup baixado · baixar de novo' : 'Baixar backup (JSON)'}
+        </button>
+        {!saved && <p className="text-[12px] text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}
+      </div>
+    </Sheet>
+  );
+}
+
+/* =========================================================================
    Página
    ========================================================================= */
 
 export default function ClientesPage() {
   const { clients, currentClient, selectClient, refreshClients, removeClient, isLoading } = useClient();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ClientCompany | null>(null);
+  const [backingUpId, setBackingUpId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ClientCompany | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -333,6 +410,45 @@ export default function ClientesPage() {
   const flash = (message: string) => {
     setToast(message);
     setTimeout(() => setToast((t) => (t === message ? null : t)), 2800);
+  };
+
+  /** Lê todos os dados da empresa e baixa o arquivo. As bibliotecas só são carregadas aqui. */
+  const exportBackup = async (client: ClientCompany): Promise<boolean> => {
+    const label = client.tradeName || client.name;
+    setBackingUpId(client.id);
+    try {
+      const [{ buildClientBackup, backupBlob, backupFileName }, { downloadBlob }] = await Promise.all([
+        import('@/lib/export/client-backup'),
+        import('@/lib/export/dre-rows'),
+      ]);
+      const backup = await buildClientBackup(client);
+      downloadBlob(backupBlob(backup), backupFileName(client, backup.exportedAt));
+      flash(
+        `Backup de ${label} baixado · ${backup.transactions.length} lançamento(s)${backup.auditTruncated ? ' · auditoria parcial (só os registros mais recentes)' : ''}`
+      );
+      return true;
+    } catch (e) {
+      console.error('Erro ao gerar backup:', e);
+      flash(`Não foi possível gerar o backup de ${label} (${e instanceof Error && e.message ? e.message : 'erro'}).`);
+      return false;
+    } finally {
+      setBackingUpId(null);
+    }
+  };
+
+  const handleDelete = async (client: ClientCompany) => {
+    const label = client.tradeName || client.name;
+    setConfirmDelete(null);
+    setDeletingId(client.id);
+    try {
+      await removeClient(client.id);
+      flash(`${label} excluído com seus lançamentos, regras e contas`);
+    } catch (e) {
+      console.error('Erro ao excluir cliente:', e);
+      flash(`Não foi possível concluir a exclusão (${e instanceof Error && e.message ? e.message : 'erro'}). Retome pelo cartão da empresa.`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const handleSaved = async (client: ClientCompany) => {
@@ -397,18 +513,10 @@ export default function ClientesPage() {
                 flash(`${c.tradeName || c.name} definido como ativo`);
               }}
               deleting={deletingId === c.id}
-              onDelete={async () => {
-                setDeletingId(c.id);
-                try {
-                  await removeClient(c.id);
-                  flash(`${c.tradeName || c.name} excluído com seus lançamentos, regras e contas`);
-                } catch (e) {
-                  console.error('Erro ao excluir cliente:', e);
-                  flash(`Não foi possível concluir a exclusão (${e instanceof Error && e.message ? e.message : 'erro'}). Retome pelo cartão da empresa.`);
-                } finally {
-                  setDeletingId(null);
-                }
-              }}
+              backingUp={backingUpId === c.id}
+              onBackup={() => void exportBackup(c)}
+              onAskDelete={() => setConfirmDelete(c)}
+              onDelete={() => handleDelete(c)}
               onEdit={() => {
                 setEditing(c);
                 setSheetOpen(true);
@@ -427,6 +535,17 @@ export default function ClientesPage() {
             setEditing(null);
           }}
           onSaved={(c) => void handleSaved(c)}
+        />
+      )}
+
+      {confirmDelete && (
+        <DeleteClientSheet
+          key={confirmDelete.id}
+          client={confirmDelete}
+          backingUp={backingUpId === confirmDelete.id}
+          onBackup={() => exportBackup(confirmDelete)}
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => void handleDelete(confirmDelete)}
         />
       )}
 

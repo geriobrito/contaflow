@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, Wand2, X } from 'lucide-react';
 import type { BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
-import { deleteRule, getAccounts, getRepository, getRules, getTransactions, saveRule } from '@/lib/services/data-service';
-import { applyRuleToPending } from '@/lib/services/reconciliation-service';
+import { deleteRule, getAccounts, getRepository, getRules, saveRule } from '@/lib/services/data-service';
+import { RULE_SAMPLE_MONTHS, applyRuleToPending, loadRuleSample } from '@/lib/services/reconciliation-service';
 import { useClient } from '@/contexts/ClientContext';
 import {
   MATCH_TYPE_LABEL,
@@ -256,6 +256,7 @@ export default function RegrasPage() {
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [lockedMonths, setLockedMonths] = useState<ReadonlySet<string>>(new Set());
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
   const [search, setSearch] = useState('');
 
   const [newPattern, setNewPattern] = useState('');
@@ -276,20 +277,29 @@ export default function RegrasPage() {
     },
     []
   );
+  // Os lançamentos são uma amostra (pendentes + últimos meses), não o histórico inteiro.
   const fetchAll = (id: string) =>
-    Promise.all([getRules(id), getAccounts(id), getTransactions(id), getRepository().listPeriodLocks(id)]);
+    Promise.all([getRules(id), getAccounts(id), loadRuleSample(id), getRepository().listPeriodLocks(id)]);
   const load = async (id: string) => apply(id, await fetchAll(id));
 
   useEffect(() => {
     if (!clientId) return;
     let active = true;
     fetchAll(clientId)
-      .then((data) => active && apply(clientId, data))
-      .catch((e) => console.error('Erro ao carregar regras:', e));
+      .then((data) => {
+        if (!active) return;
+        apply(clientId, data);
+        setLoadError(null);
+      })
+      .catch((e: unknown) => {
+        console.error('Erro ao carregar regras:', e);
+        if (active) setLoadError({ id: clientId, message: e instanceof Error && e.message ? e.message : 'erro desconhecido' });
+      });
     return () => {
       active = false;
     };
   }, [clientId, apply]);
+  const loadFailure = loadError && loadError.id === clientId ? loadError.message : null;
 
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
   const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
@@ -362,7 +372,7 @@ export default function RegrasPage() {
     }
   };
 
-  const isLoading = Boolean(clientId) && loadedFor !== clientId;
+  const isLoading = Boolean(clientId) && loadedFor !== clientId && !loadFailure;
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -507,7 +517,11 @@ export default function RegrasPage() {
       )}
 
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        {isLoading ? (
+        {loadFailure ? (
+          <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600">
+            Não foi possível carregar as regras ({loadFailure}). Recarregue a página para tentar de novo.
+          </p>
+        ) : isLoading ? (
           <div className="p-5 space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
@@ -530,7 +544,13 @@ export default function RegrasPage() {
                   <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
                   <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
                   <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell w-32">Criada em</th>
-                  <th scope="col" className="font-medium px-3 py-2.5 text-right w-44 whitespace-nowrap">Lançamentos afetados</th>
+                  <th
+                    scope="col"
+                    title={`Pendentes de qualquer período e lançamentos dos últimos ${RULE_SAMPLE_MONTHS} meses`}
+                    className="font-medium px-3 py-2.5 text-right w-44 whitespace-nowrap"
+                  >
+                    Lançamentos afetados
+                  </th>
                   <th scope="col" className="pl-3 pr-4 py-2.5 w-24">
                     <span className="sr-only">Ações</span>
                   </th>

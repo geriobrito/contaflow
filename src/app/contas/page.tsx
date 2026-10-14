@@ -2,8 +2,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Link2, Pencil, Plus, Trash2, Type, Wallet } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, ClassificationRule, ImportBatch, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, ClassificationRule, ImportBatch, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
+import { loadLedgerWindow, type LedgerWindow } from '@/lib/services/ledger-loader';
 import { useClient } from '@/contexts/ClientContext';
 import { bankBalanceAt, bankLedgerCandidates, suggestOpening } from '@/lib/bank-accounts';
 import {
@@ -29,10 +30,17 @@ interface Data {
   accounts: ChartAccount[];
   banks: BankAccount[];
   batches: ImportBatch[];
-  transactions: BankTransaction[];
+  /** Lançamentos do período aberto e a movimentação já consolidada (competências fechadas). */
+  ledger: LedgerWindow;
   locks: PeriodLock[];
   rules: ClassificationRule[];
 }
+
+/** Extrato mais recente da conta com saldo informado pelo banco. */
+const lastReported = (batches: readonly ImportBatch[], accountKey: string): ImportBatch | undefined =>
+  batches
+    .filter((x) => x.accountKey === accountKey && x.ledgerBalance !== undefined && x.ledgerDate)
+    .sort((x, y) => (y.ledgerDate ?? '').localeCompare(x.ledgerDate ?? ''))[0];
 
 /* =========================================================================
    Edição de conta bancária
@@ -301,15 +309,18 @@ export default function ContasPage() {
 
   const load = useCallback(async (id: string) => {
     const repo = getRepository();
-    const [accounts, banks, batches, transactions, locks, rules] = await Promise.all([
+    const [accounts, banks, batches, locks, rules] = await Promise.all([
       repo.listAccounts(id),
       repo.listBankAccounts(id),
       repo.listImportBatches(id),
-      repo.listTransactions(id),
       repo.listPeriodLocks(id),
       repo.listRules(id),
     ]);
-    setData({ accounts, banks, batches, transactions, locks, rules });
+    // Competências fechadas entram consolidadas; só o período aberto é lido lançamento a
+    // lançamento. O consolidado termina antes do saldo mais antigo a conferir com o banco.
+    const reported = banks.flatMap((b) => lastReported(batches, b.accountKey)?.ledgerDate ?? []).sort();
+    const ledger = await loadLedgerWindow({ clientId: id, accounts, banks, locks, from: reported[0] });
+    setData({ accounts, banks, batches, ledger, locks, rules });
     setLoadedFor(id);
     setError(null);
   }, []);
@@ -369,8 +380,10 @@ export default function ContasPage() {
     }
   };
 
+  // Históricos de competências já consolidadas não entram: estão fechadas e só seriam
+  // corrigidos depois da reabertura, quando voltam a ser lidos.
   const textPlan = useMemo(
-    () => (current && clientId ? planTextRepair(current.transactions, current.rules, clientId, lockedMonths) : null),
+    () => (current && clientId ? planTextRepair(current.ledger.transactions, current.rules, clientId, lockedMonths) : null),
     [current, clientId, lockedMonths]
   );
 
@@ -391,7 +404,8 @@ export default function ContasPage() {
   };
 
   const today = todayISO();
-  const unlinkedTx = current ? current.transactions.filter((t) => !t.accountKey).length : 0;
+  const unlinkedTx = current ? current.ledger.carriedUnlinked + current.ledger.transactions.filter((t) => !t.accountKey).length : 0;
+  const carriedByBank = useMemo(() => new Map((current?.ledger.carriedBanks ?? []).map((b) => [b.accountKey, b.value] as const)), [current]);
 
   return (
     <main className={PAGE}>
@@ -427,10 +441,9 @@ export default function ContasPage() {
               </thead>
               <tbody>
                 {current.banks.map((b) => {
-                  const last = current.batches
-                    .filter((x) => x.accountKey === b.accountKey && x.ledgerBalance !== undefined && x.ledgerDate)
-                    .sort((x, y) => (y.ledgerDate ?? '').localeCompare(x.ledgerDate ?? ''))[0];
-                  const bookAtLast = last?.ledgerDate ? bankBalanceAt(b, current.transactions, last.ledgerDate) : null;
+                  const last = lastReported(current.batches, b.accountKey);
+                  const balanceAt = (date: string) => bankBalanceAt(b, current.ledger.transactions, date, carriedByBank.get(b.accountKey));
+                  const bookAtLast = last?.ledgerDate ? balanceAt(last.ledgerDate) : null;
                   const matches = last && bookAtLast !== null && Math.abs(bookAtLast - (last.ledgerBalance ?? 0)) < 0.005;
                   // Saldo de data posterior ao fim do extrato: há lançamentos entre as datas fora do arquivo.
                   const comparable = !(last?.endDate && last.ledgerDate && last.ledgerDate > last.endDate);
@@ -461,7 +474,7 @@ export default function ContasPage() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
-                        {formatCurrency(bankBalanceAt(b, current.transactions, today))}
+                        {formatCurrency(balanceAt(today))}
                       </td>
                       <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
                         {last ? (

@@ -378,6 +378,7 @@ export default function PlanoDeContasPage() {
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -398,20 +399,26 @@ export default function PlanoDeContasPage() {
         if (!active) return;
         setAccounts(list);
         setLoadedFor(clientId);
+        setLoadError(null);
       })
-      .catch((e) => console.error('Erro ao carregar plano de contas:', e));
+      .catch((e: unknown) => {
+        console.error('Erro ao carregar plano de contas:', e);
+        if (active) setLoadError({ id: clientId, message: e instanceof Error && e.message ? e.message : 'erro desconhecido' });
+      });
     return () => {
       active = false;
     };
   }, [clientId]);
+  const loadFailure = loadError && loadError.id === clientId ? loadError.message : null;
 
   const tree = useMemo(() => buildTree(accounts), [accounts]);
   const term = search.trim().toLowerCase();
   const visible = useMemo(() => filterTree(tree, term), [tree, term]);
 
   const analyticCount = accounts.filter((a) => a.nature === 'ANALYTIC').length;
-  const isLoading = Boolean(clientId) && loadedFor !== clientId;
-  const isEmpty = !isLoading && accounts.length === 0;
+  const isLoading = Boolean(clientId) && loadedFor !== clientId && !loadFailure;
+  // Carga que falhou não é plano vazio: não oferece o modelo ITG 1000 por cima de dados que não foram lidos.
+  const isEmpty = !isLoading && !loadFailure && accounts.length === 0;
 
   const expanded = useCallback((code: string) => Boolean(term) || !collapsed[code], [collapsed, term]);
   const toggle = (code: string) => setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
@@ -460,7 +467,7 @@ export default function PlanoDeContasPage() {
                 {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (2022)'}
               </button>
             )}
-            <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId} className={BUTTON.primary}>
+            <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId || Boolean(loadFailure)} className={BUTTON.primary}>
               <Plus className="w-4 h-4" strokeWidth={2} />
               Nova conta
             </button>
@@ -480,7 +487,11 @@ export default function PlanoDeContasPage() {
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por código ou nome da conta" />
 
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        {isLoading ? (
+        {loadFailure ? (
+          <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600">
+            Não foi possível carregar o plano de contas ({loadFailure}). Recarregue a página para tentar de novo.
+          </p>
+        ) : isLoading ? (
           <div className="p-5 space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" style={{ marginLeft: (i % 4) * 22 }} />

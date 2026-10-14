@@ -220,7 +220,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
   });
 
   it('saldos consolidados: grava por competência (substitui) e some com o cliente', async () => {
-    const snapshot = (month: string, clientId = 'c1', txCount = 1) => ({ id: `${clientId}_${month}`, clientId, month, asOf: `${month}-28`, balances: [], txCount, months: [], locks: [], configKey: 'k', createdAt: '' });
+    const snapshot = (month: string, clientId = 'c1', txCount = 1) => ({ id: `${clientId}_${month}`, clientId, month, asOf: `${month}-28`, balances: [], bankMovements: [], unlinkedCount: 0, txCount, months: [], locks: [], configKey: 'k', createdAt: '' });
     await repo.savePeriodSnapshot(snapshot('2025-01'));
     await repo.savePeriodSnapshot(snapshot('2025-01', 'c1', 7));
     await repo.savePeriodSnapshot(snapshot('2025-02'));

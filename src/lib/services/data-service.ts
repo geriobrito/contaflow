@@ -4,7 +4,8 @@ import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
-import { getActor, getOrgId } from '@/lib/data/scope';
+import { withReadCache } from '@/lib/data/cached-repository';
+import { getActor, getOrgId, peekOrgId } from '@/lib/data/scope';
 
 /**
  * Ponto único de acesso a dados.
@@ -24,9 +25,11 @@ let repository: DataRepository | null = null;
 
 export function getRepository(): DataRepository {
   if (!repository) {
-    repository = isFirebaseConfigured()
+    const base = isFirebaseConfigured()
       ? createFirestoreRepository(db, getOrgId)
       : createLocalRepository(typeof window === 'undefined' ? memoryStore() : window.localStorage);
+    // Plano de contas, bancos e fechamentos ficam em memória por cliente (ver cached-repository.ts).
+    repository = withReadCache(base, () => peekOrgId() ?? '');
   }
   return repository;
 }

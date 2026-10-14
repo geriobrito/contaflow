@@ -60,13 +60,28 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR.
 | --- | --- | --- |
 | `bank_accounts` | Conta do extrato (banco-agência-conta) ligada a uma conta analítica do ativo, com saldo inicial. Criada na importação; a primeira é ligada a 1.1.1.02. | Como os demais dados do cliente; a chave do extrato é imutável. |
 | `client_requests` | Link de perguntas ao cliente. O id é um token aleatório de 128 bits. | Sem login, quem tem o link lê aquele documento e grava só as respostas em texto (campo `answers`, uma por pergunta; as perguntas em `items` não mudam), enquanto estiver aberto e dentro da validade (30 dias). Ninguém lista a coleção sem ser do escritório. |
-| `period_snapshots` | Saldos consolidados por conta até o fim de uma competência fechada (id `{clientId}_{AAAA-MM}`). Cache de leitura: balanço, razão e painel partem dele e leem só os lançamentos posteriores, em vez do histórico inteiro. | O app confere cada snapshot antes de usar (competências ainda fechadas, mesma configuração de bancos/plano, mesma contagem de lançamentos) e o regrava quando não confere. Isolado por escritório. |
+| `period_snapshots` | Saldos consolidados por conta contábil e movimentação por conta bancária até o fim de uma competência fechada (id `{clientId}_{AAAA-MM}`). Cache de leitura: balanço, razão, painel e Contas e extratos partem dele e leem só os lançamentos posteriores, em vez do histórico inteiro. | O app confere cada snapshot antes de usar (competências ainda fechadas, mesma configuração de bancos/plano, mesma contagem de lançamentos) e o regrava quando não confere. Isolado por escritório. |
 | `client_request_files` | Legado: o cliente não envia mais arquivos. Guarda apenas comprovantes antigos. | Nenhum documento novo é aceito; o escritório lê e apaga os antigos (some com a exclusão da empresa). |
 
 - **Transferências entre contas próprias**: saída e entrada de mesmo valor em contas diferentes, até 3 dias de distância, são conciliadas juntas na conta transitória 1.1.1.04 (criada se faltar). Reclassificar, ratear, desfazer ou excluir uma perna volta a outra para pendente.
 - **Balanço e balancete** são calculados por partidas dobradas a partir do extrato: conta do banco × conta classificada (ou rateio). Lançamentos não conciliados ficam em "Lançamentos a classificar"; saldos iniciais dos bancos entram no PL como "Saldos de abertura (a detalhar)".
 - **Excluir extrato**: remove os lançamentos do lote (`importBatchId`; nos extratos antigos, a data/hora de gravação) e registra `BATCH_DELETE` na auditoria. As regras recusam excluir lançamento de competência fechada.
 - **DRE comparativa**: mês a mês (com variação sobre o mês anterior) ou contra o mesmo período do ano anterior.
+
+### Leituras
+
+- **Cache em memória** (`src/lib/data/cached-repository.ts`): plano de contas, contas bancárias e fechamentos ficam guardados por cliente e são relidos só depois de uma gravação que os altere, ou após 5 minutos (limite da defasagem em relação a outra aba ou aparelho). Recarregar a página zera o cache.
+- **Regras**: a tela avalia as regras contra os pendentes de qualquer período e os lançamentos dos últimos 12 meses (`loadRuleSample`), não contra o histórico inteiro.
+
+### Backup
+
+- **Por empresa (JSON)**: em *Clientes*, o botão de download do cartão gera um arquivo com tudo o que pertence à empresa — cadastro, plano de contas, regras, contas bancárias, saldos de abertura, extratos, lançamentos, lançamentos manuais, fechamentos, pendências e trilha de auditoria (`src/lib/export/client-backup.ts`). A confirmação de exclusão oferece o mesmo backup antes de apagar. É um arquivo de guarda: não há importação automática de volta.
+- **Do banco inteiro (Firestore)**: ative a recuperação pontual (7 dias) e um backup diário no projeto. São configurações do projeto, feitas uma vez, fora do app:
+
+  ```bash
+  gcloud firestore databases update --database='(default)' --enable-pitr --project <projeto>
+  gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=14d --project <projeto>
+  ```
 
 ## Implantação (Firestore)
 

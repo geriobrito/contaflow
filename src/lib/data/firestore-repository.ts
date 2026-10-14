@@ -295,9 +295,12 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return snap.empty ? null : ((snap.docs[0].data() as BankTransaction).date ?? null);
     },
     async countTransactions(clientId, until) {
-      // Mesmo índice de `listTransactions` (orgId, clientId, date); a contagem custa uma
-      // leitura a cada mil lançamentos, em vez de uma por lançamento.
-      const snap = await getCountFromServer(scoped(COL.transactions, where('clientId', '==', clientId), where('date', '<=', until)));
+      // Mesmo índice de `listTransactions` (orgId, clientId, date desc) — por isso o `orderBy`
+      // explícito: sem ele a ordem implícita é crescente e pediria outro índice. A contagem
+      // custa uma leitura a cada mil lançamentos, em vez de uma por lançamento.
+      const snap = await getCountFromServer(
+        scoped(COL.transactions, where('clientId', '==', clientId), where('date', '<=', until), orderBy('date', 'desc'))
+      );
       return snap.data().count;
     },
     async isAccountUsedInTransactions(clientId, accountId) {

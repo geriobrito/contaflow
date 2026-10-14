@@ -3,6 +3,7 @@ import type { BankAccount, BankTransaction, ChartAccount, PeriodLock } from '@/t
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
+import { bankBalanceAt } from '@/lib/bank-accounts';
 import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
 import { buildDashboard } from '@/lib/dashboard';
 
@@ -170,6 +171,25 @@ describe('carregamento do razão por janela (snapshot + período aberto)', () =>
     expect(await balanceAt('2025-02-28', w)).toEqual(await fullBalanceAt('2025-02-28'));
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('contas e extratos: o saldo do banco parte do consolidado e nunca de uma data anterior a ele', async () => {
+    for (const m of ['2023-05', '2023-11', '2024-03', '2024-12']) await close(m);
+    await repo.insertTransactions([tx('solto', '2025-02-20', 12, { accountKey: undefined })]);
+    const full = await repo.listTransactions('c1');
+    const balance = (w: Awaited<ReturnType<typeof load>>, date: string) =>
+      bankBalanceAt(banks[0], w.transactions, date, w.carriedBanks.find((b) => b.accountKey === 'k1')?.value);
+
+    const recent = await load();
+    expect(recent.asOf).toBe('2024-12-31');
+    expect(recent.carriedBanks).toEqual([{ accountKey: 'k1', value: 1069.5 }]);
+    expect(balance(recent, '2025-03-01')).toBe(bankBalanceAt(banks[0], full, '2025-03-01'));
+    expect(recent.carriedUnlinked + recent.transactions.filter((t) => !t.accountKey).length).toBe(1);
+
+    // Último saldo informado pelo banco em mar/2024: o consolidado termina antes desse mês.
+    const older = await load('2024-03-31');
+    expect(older.asOf).toBe('2023-11-30');
+    expect(balance(older, '2024-03-31')).toBe(bankBalanceAt(banks[0], full, '2024-03-31'));
   });
 
   it('painel: meses fechados chegam como contagens e só o período aberto é lido', async () => {

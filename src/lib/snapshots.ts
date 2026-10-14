@@ -11,7 +11,8 @@ import { toCents } from '@/lib/money';
  * fechado) e só os lançamentos posteriores a ele.
  *
  * O snapshot resume apenas as partidas dos lançamentos bancários — saldos iniciais,
- * saldos de abertura e lançamentos manuais são poucos e continuam calculados na hora. Ele
+ * saldos de abertura e lançamentos manuais são poucos e continuam calculados na hora. Guarda
+ * também a movimentação por conta bancária, para o saldo de cada banco (Contas e extratos). Ele
  * só é usado enquanto nada do que resume pode ter mudado:
  *   - toda competência com lançamentos até a data dele segue fechada, no mesmo fechamento
  *     (as regras do Firestore congelam os lançamentos de mês fechado);
@@ -21,8 +22,11 @@ import { toCents } from '@/lib/money';
  * Se qualquer condição falha, ele é ignorado e refeito a partir dos lançamentos.
  */
 
-/** Muda quando a forma de calcular as partidas muda: snapshots antigos deixam de valer. */
-const SNAPSHOT_VERSION = 1;
+/**
+ * Muda quando a forma de calcular as partidas ou o conteúdo do snapshot muda: os antigos
+ * deixam de valer. v2: movimentação por conta bancária e contagem de lançamentos sem conta.
+ */
+const SNAPSHOT_VERSION = 2;
 
 export const snapshotId = (clientId: string, month: string): string => `${clientId}_${month}`;
 
@@ -61,20 +65,31 @@ export function ledgerConfigKey(
   return `v${SNAPSHOT_VERSION}-${hash(payload)}`;
 }
 
-/** Saldos (em centavos) e contagens por competência de um conjunto de lançamentos. */
+/**
+ * Saldos por conta contábil e movimentação por conta bancária (em centavos), e contagens por
+ * competência, de um conjunto de lançamentos. Devolve quantos não têm conta bancária.
+ */
 function tally(
   transactions: readonly BankTransaction[],
   banks: readonly BankAccount[],
   accounts: readonly ChartAccount[],
   balances: Map<string, number>,
+  bankMovements: Map<string, number>,
   months: Map<string, MonthCounts>
-): void {
+): number {
   // Só as partidas dos lançamentos: o saldo inicial dos bancos é lançado à parte, na hora.
   const banksWithoutOpening = banks.map((b) => ({ ...b, openingBalance: undefined }));
   for (const p of buildPostings(transactions, banksWithoutOpening, accounts)) {
     balances.set(p.accountId, (balances.get(p.accountId) ?? 0) + toCents(p.value));
   }
+  // O mesmo corte de `bankBalanceAt`: o que veio até a data do saldo inicial já está nele.
+  const openingDate = new Map(banks.map((b) => [b.accountKey, b.openingDate ?? ''] as const));
+  let unlinked = 0;
   for (const t of transactions) {
+    if (!t.accountKey) unlinked++;
+    else if (t.date > (openingDate.get(t.accountKey) ?? '')) {
+      bankMovements.set(t.accountKey, (bankMovements.get(t.accountKey) ?? 0) + toCents(t.amount));
+    }
     const month = monthOf(t.date);
     const c = months.get(month) ?? { month, total: 0, pending: 0, auto: 0, reconciled: 0 };
     c.total++;
@@ -83,6 +98,7 @@ function tally(
     else c.reconciled++;
     months.set(month, c);
   }
+  return unlinked;
 }
 
 /**
@@ -107,8 +123,9 @@ export function buildSnapshot(args: {
     throw new Error('Lançamentos fora do intervalo do snapshot.');
   }
   const balances = new Map((base?.balances ?? []).map((b) => [b.accountId, toCents(b.value)] as const));
+  const bankMovements = new Map((base?.bankMovements ?? []).map((b) => [b.accountKey, toCents(b.value)] as const));
   const months = new Map((base?.months ?? []).map((m) => [m.month, { ...m }] as const));
-  tally(transactions, banks, accounts, balances, months);
+  const unlinked = tally(transactions, banks, accounts, balances, bankMovements, months);
 
   const lockedAt = new Map(locks.map((l) => [l.month, l.lockedAt] as const));
   const dataMonths = [...months.keys()].sort();
@@ -123,6 +140,11 @@ export function buildSnapshot(args: {
       .filter(([, cents]) => cents !== 0)
       .map(([accountId, cents]) => ({ accountId, value: cents / 100 }))
       .sort((a, b) => a.accountId.localeCompare(b.accountId)),
+    bankMovements: [...bankMovements]
+      .filter(([, cents]) => cents !== 0)
+      .map(([accountKey, cents]) => ({ accountKey, value: cents / 100 }))
+      .sort((a, b) => a.accountKey.localeCompare(b.accountKey)),
+    unlinkedCount: (base?.unlinkedCount ?? 0) + unlinked,
     txCount: (base?.txCount ?? 0) + transactions.length,
     months: dataMonths.map((m) => months.get(m)!),
     locks: dataMonths.map((m) => ({ month: m, lockedAt: lockedAt.get(m)! })),

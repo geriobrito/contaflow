@@ -2,7 +2,7 @@ import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, Imp
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
 import { transactionAudit } from '@/lib/audit';
-import { isMonthLocked, lockId, periodAuditId } from '@/lib/periods';
+import { isISODate, isMonthLocked, lockId, monthOf, periodAuditId } from '@/lib/periods';
 import { pendingWonByRule } from '@/lib/reconciliation';
 import { autoClassifyTransition } from '@/lib/transitions';
 import { addDays, computeBalanceCheck, previousStatement } from '@/lib/statement';
@@ -45,6 +45,27 @@ export async function applyRuleToPending(args: {
     audits: transitions.map((t) => transactionAudit('AUTO_CLASSIFY', actor, t.tx, t.after, now, { ruleId: rule.id })),
   });
   return transitions.map((t) => t.after);
+}
+
+/** Meses de lançamentos recentes que a tela de Regras considera. */
+export const RULE_SAMPLE_MONTHS = 12;
+
+/**
+ * Lançamentos para avaliar as regras sem ler o histórico inteiro: todos os pendentes (de
+ * qualquer período — é sobre eles que as regras agem) e os dos últimos `months` meses,
+ * contados até o lançamento mais recente do cliente. Mais recentes primeiro.
+ */
+export async function loadRuleSample(clientId: string, months = RULE_SAMPLE_MONTHS): Promise<BankTransaction[]> {
+  const repo = getRepository();
+  const [pending, latest] = await Promise.all([repo.listPendingTransactions(clientId), repo.latestTransactionDate(clientId)]);
+  if (!latest) return pending;
+  // Data fora do padrão não permite calcular o intervalo: lê tudo.
+  if (!isISODate(latest)) return repo.listTransactions(clientId);
+  const [y, m] = monthOf(latest).split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - months, 1)).toISOString().slice(0, 10);
+  const recent = await repo.listTransactions(clientId, { start, end: latest });
+  const seen = new Set(recent.map((t) => t.id));
+  return [...recent, ...pending.filter((t) => !seen.has(t.id))].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /* =========================================================================

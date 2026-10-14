@@ -45,13 +45,21 @@ export function suggestOpening(
 /**
  * Saldo da conta ao fim do dia `date`: saldo inicial + movimentação posterior à data do
  * saldo inicial. Sem saldo inicial, considera toda a movimentação importada.
+ *
+ * `carried` é a movimentação já consolidada da conta (`LedgerWindow.carriedBanks`), quando
+ * `transactions` traz só o que veio depois do consolidado; `date` não pode ser anterior a ele.
  */
-export function bankBalanceAt(account: Pick<BankAccount, 'accountKey' | 'openingBalance' | 'openingDate'>, transactions: readonly BankTransaction[], date: string): number {
+export function bankBalanceAt(
+  account: Pick<BankAccount, 'accountKey' | 'openingBalance' | 'openingDate'>,
+  transactions: readonly BankTransaction[],
+  date: string,
+  carried = 0
+): number {
   const from = account.openingDate ?? '';
   const movement = transactions
     .filter((t) => t.accountKey === account.accountKey && t.date > from && t.date <= date)
     .reduce((s, t) => s + t.amount, 0);
-  return round2((account.openingBalance ?? 0) + movement);
+  return round2((account.openingBalance ?? 0) + carried + movement);
 }
 
 const ASSET_TYPES = new Set(['ASSET', 'ATIVO']);
