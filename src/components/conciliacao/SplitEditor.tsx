@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Plus, Search, X } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
-import { newSplitId, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { grossNetDrafts, grossOriginsFor, newSplitId, retentionPresetsFor, summarizeSplits, toCents, type RetentionOption, type SplitDraft } from '@/lib/splits';
 
 const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCents = (cents: number): string => BRL.format(cents / 100);
@@ -148,18 +148,156 @@ function AccountPicker({
    Editor de rateio
    ========================================================================= */
 
+/* =========================================================================
+   Atalho bruto × líquido: conta principal pelo bruto e retenções redutoras
+   ========================================================================= */
+
+function GrossNetPanel({
+  transactionAmount,
+  accounts,
+  defaultAccountId,
+  onApply,
+}: {
+  transactionAmount: number;
+  accounts: readonly ChartAccount[];
+  defaultAccountId?: string;
+  onApply: (drafts: SplitDraft[]) => void;
+}) {
+  const presets = retentionPresetsFor(transactionAmount);
+  const origins = grossOriginsFor(transactionAmount);
+  const byCode = useMemo(() => new Map(accounts.map((a) => [a.code, a] as const)), [accounts]);
+  const [originKey, setOriginKey] = useState(origins[0].key);
+  const origin = origins.find((o) => o.key === originKey) ?? origins[0];
+  const [pickedId, setPickedId] = useState(defaultAccountId ?? '');
+  const grossId = origin.code ? (byCode.get(origin.code)?.id ?? '') : pickedId;
+  const [values, setValues] = useState<Record<string, number>>({});
+  /** Conta escolhida para cada retenção com mais de uma opção (código). */
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const net = Math.abs(toCents(transactionAmount));
+  // Só as opções que existem no plano; a retenção sem nenhuma fica de fora.
+  const available = presets.map((p) => ({ preset: p, options: p.options.filter((o) => byCode.has(o.code)) }));
+  const codeOf = (key: string, options: readonly RetentionOption[]) => (options.some((o) => o.code === choice[key]) ? choice[key] : options[0]?.code);
+  const withheld = available.reduce((s, { preset, options }) => s + (options.length ? (values[preset.key] ?? 0) : 0), 0);
+  const receipt = transactionAmount >= 0;
+
+  return (
+    <div className="rounded-2xl bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 p-3 space-y-3">
+      <p className="text-[12px] text-sky-900 dark:text-sky-200">
+        {receipt
+          ? 'O banco recebeu o líquido. Informe as retenções e a taxa: o valor bruto entra na conta escolhida e cada retenção, na conta dela.'
+          : 'O banco pagou o líquido. Informe o que foi retido do fornecedor: o valor bruto entra na conta escolhida e a retenção vai para o imposto a recolher.'}
+      </p>
+      <div className="space-y-1.5">
+        <span className="block text-[11px] font-medium text-stone-500">Valor bruto</span>
+        <div role="radiogroup" aria-label="Origem do valor bruto" className="flex flex-wrap gap-1.5">
+          {origins.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              role="radio"
+              aria-checked={o.key === origin.key}
+              onClick={() => setOriginKey(o.key)}
+              className={`h-8 px-3 rounded-xl border text-[12px] font-medium ${
+                o.key === origin.key ? 'bg-[#0071E3] border-[#0071E3] text-white' : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-600 dark:text-stone-300'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <span className="block text-[11px] text-stone-500">{origin.hint}</span>
+        {origin.code ? (
+          byCode.has(origin.code) ? (
+            <span className="block text-[12px] text-stone-700 dark:text-stone-300">
+              <span className="font-mono text-[11px] text-stone-400 mr-1.5">{origin.code}</span>
+              {byCode.get(origin.code)!.name}
+            </span>
+          ) : (
+            <span className="block text-[11px] text-amber-700">Conta {origin.code} fora do plano: complete o plano com o modelo.</span>
+          )
+        ) : (
+          <AccountPicker accounts={accounts} value={pickedId} onChange={setPickedId} label="Conta do valor bruto" />
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {available.map(({ preset: p, options }) => {
+          const code = codeOf(p.key, options);
+          return (
+            <div key={p.key} className="space-y-1">
+              <span className="block text-[11px] font-medium text-stone-600 dark:text-stone-300">{p.label}</span>
+              {options.length > 0 ? (
+                <>
+                  <MoneyInput cents={values[p.key] ?? 0} onChange={(cents) => setValues((v) => ({ ...v, [p.key]: cents }))} label={p.label} />
+                  {options.length > 1 ? (
+                    <select
+                      aria-label={`Conta do ${p.label}`}
+                      value={code}
+                      onChange={(e) => setChoice((c) => ({ ...c, [p.key]: e.target.value }))}
+                      className="w-full h-8 px-2 rounded-lg bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[11px] text-stone-600 dark:text-stone-300"
+                    >
+                      {options.map((o) => (
+                        <option key={o.code} value={o.code}>
+                          {o.code} · {o.hint}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="block text-[11px] text-stone-400">
+                      {options[0].code} · {options[0].hint}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="block text-[11px] text-amber-700">Conta {p.options[0].code} fora do plano: complete o plano com o modelo.</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[12px] text-stone-600 dark:text-stone-300">
+          Líquido R$ {formatCents(net)} + retenções R$ {formatCents(withheld)} = <b>bruto R$ {formatCents(net + withheld)}</b>
+        </span>
+        <button
+          type="button"
+          disabled={!grossId || withheld === 0}
+          onClick={() =>
+            onApply(
+              grossNetDrafts({
+                transactionAmount,
+                grossAccountId: grossId,
+                retentions: available
+                  .filter(({ options }) => options.length > 0)
+                  .map(({ preset, options }) => ({ accountId: byCode.get(codeOf(preset.key, options)!)!.id, memo: preset.label, cents: values[preset.key] ?? 0 })),
+              })
+            )
+          }
+          className="h-8 px-3 rounded-xl bg-[#0071E3] text-white text-[12px] font-medium disabled:opacity-40"
+        >
+          Montar rateio
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface SplitEditorProps {
   transactionAmount: number;
   accounts: readonly ChartAccount[];
   drafts: SplitDraft[];
   onChange: (drafts: SplitDraft[]) => void;
+  /** Conta já escolhida para o lançamento: sugestão de conta do valor bruto. */
+  defaultAccountId?: string;
+  /** Abre já no atalho bruto × líquido. */
+  startWithGrossNet?: boolean;
 }
 
-export function SplitEditor({ transactionAmount, accounts, drafts, onChange }: SplitEditorProps) {
+export function SplitEditor({ transactionAmount, accounts, drafts, onChange, defaultAccountId, startWithGrossNet = false }: SplitEditorProps) {
   const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
   const summary = summarizeSplits(transactionAmount, drafts);
   const balanced = summary.isBalanced;
   const over = summary.remainingCents < 0;
+  const [grossNet, setGrossNet] = useState(startWithGrossNet);
 
   const update = (id: string, patch: Partial<SplitDraft>) =>
     onChange(drafts.map((d) => (d.id === id ? { ...d, ...patch } : d)));
@@ -201,6 +339,26 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange }: S
         </div>
       </div>
 
+      <button
+        type="button"
+        aria-expanded={grossNet}
+        onClick={() => setGrossNet((v) => !v)}
+        className="text-[12px] font-medium text-[#0071E3] hover:underline"
+      >
+        {grossNet ? 'Fechar bruto × líquido' : 'Bruto × líquido (retenções, ISS, taxa de cartão)'}
+      </button>
+      {grossNet && (
+        <GrossNetPanel
+          transactionAmount={transactionAmount}
+          accounts={analytic}
+          defaultAccountId={defaultAccountId}
+          onApply={(next) => {
+            onChange(next);
+            setGrossNet(false);
+          }}
+        />
+      )}
+
       {/* Linhas */}
       <ol className="space-y-2.5">
         {drafts.map((d, i) => (
@@ -236,18 +394,32 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange }: S
                 aria-label={`Descrição da linha ${i + 1}`}
                 className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
               />
+              <button
+                type="button"
+                aria-pressed={Boolean(d.reduces)}
+                onClick={() => update(d.id, { reduces: !d.reduces })}
+                aria-label={`Linha ${i + 1}: ${d.reduces ? 'subtrai do lançamento (redutora)' : 'soma ao lançamento'}`}
+                title={d.reduces ? 'Redutora: retenção ou tarifa subtraída do valor bruto' : 'Soma ao lançamento'}
+                className={`w-9 h-10 shrink-0 rounded-xl border font-mono text-[15px] font-semibold transition-colors ${
+                  d.reduces
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-600'
+                    : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-500'
+                }`}
+              >
+                {d.reduces ? '−' : '+'}
+              </button>
               <div className="w-36 shrink-0">
                 <MoneyInput cents={d.cents} onChange={(cents) => update(d.id, { cents })} label={`Valor da linha ${i + 1}`} />
               </div>
             </div>
-            {!balanced && summary.remainingCents > 0 && (
+            {!balanced && (d.reduces ? summary.remainingCents < 0 : summary.remainingCents > 0) && (
               <div className="pl-7">
                 <button
                   type="button"
-                  onClick={() => update(d.id, { cents: d.cents + summary.remainingCents })}
+                  onClick={() => update(d.id, { cents: d.cents + Math.abs(summary.remainingCents) })}
                   className="text-[11px] font-medium text-[#0071E3] hover:underline"
                 >
-                  Alocar saldo restante nesta linha
+                  {d.reduces ? 'Absorver o excedente nesta linha' : 'Alocar saldo restante nesta linha'}
                 </button>
               </div>
             )}

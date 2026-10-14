@@ -10,6 +10,7 @@ import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { previousMonth, repeatCandidates } from '@/lib/journal';
 import { formatMonth } from '@/lib/periods';
+import { yearClosingLockedMessage } from '@/lib/year-closing';
 import { BUTTON, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { CATEGORY_CONFIG } from '@/components/lancamentos/categories';
@@ -77,6 +78,10 @@ export default function LancamentosPage() {
 
   // Exclusão de lançamento: pede confirmação no diálogo; competência fechada nem chega a perguntar.
   const requestDelete = (entry: JournalEntry) => {
+    if (entry.yearClosing) {
+      setNotice(yearClosingLockedMessage(entry));
+      return;
+    }
     const m = entry.date.slice(0, 7);
     if (isMonthLocked(m)) {
       setNotice(`A competência ${m} está bloqueada para alterações. Reabra-a para excluir o lançamento #${entry.entryNumber}.`);
@@ -102,6 +107,10 @@ export default function LancamentosPage() {
 
   /** Abre o formulário para um lançamento novo (`null`), uma edição ou uma cópia. */
   const openModal = (entry: JournalEntry | null) => {
+    if (entry?.id && entry.yearClosing) {
+      setNotice(yearClosingLockedMessage(entry));
+      return;
+    }
     setEditingEntry(entry);
     setModalKey((k) => k + 1);
     setIsModalOpen(true);
@@ -110,6 +119,8 @@ export default function LancamentosPage() {
   const handleDuplicate = (entry: JournalEntry) => {
     openModal({
       ...entry,
+      // A cópia é um lançamento comum, não um encerramento de exercício.
+      yearClosing: undefined,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,

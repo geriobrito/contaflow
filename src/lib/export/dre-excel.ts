@@ -4,7 +4,6 @@ import {
   buildDREExportRows,
   cnpjLabel,
   DRE_CURRENCY,
-  DRE_STANDARD,
   DRE_TITLE,
   dreFileBaseName,
   formatIssueDate,
@@ -12,6 +11,7 @@ import {
   type DREExportContext,
   type DREExportRow,
 } from '@/lib/export/dre-rows';
+import { accountingStandard } from '@/lib/accounting-standard';
 
 const FONT_NAME = 'Aptos';
 /** Formato contábil: positivos, negativos em vermelho com sinal, e zero. */
@@ -36,7 +36,7 @@ function descriptionOf(row: DREExportRow): string {
 }
 
 /**
- * Gera a DRE em .xlsx estilizado (layout ITG 1000/2022). Valores são gravados como
+ * Gera a DRE em .xlsx estilizado (layout NBC TG 1002). Valores são gravados como
  * números (não texto), com formato contábil, para permitir fórmulas e conferência.
  */
 export async function generateDREExcel(ctx: DREExportContext): Promise<{ blob: Blob; fileName: string }> {
@@ -57,7 +57,7 @@ export async function generateDREExcel(ctx: DREExportContext): Promise<{ blob: B
     { text: ctx.client.name.toUpperCase(), bold: true, size: 12 },
     { text: cnpjLabel(ctx.client.cnpj) },
     { text: DRE_TITLE, bold: true, size: 12 },
-    { text: DRE_STANDARD, italic: true },
+    { text: accountingStandard(ctx.client), italic: true },
     { text: `${periodLabel(ctx.range)}  •  ${DRE_CURRENCY}` },
   ];
   headerLines.forEach((line, i) => {

@@ -2,19 +2,35 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings } from '@/types/firestore';
+import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, FileText, Info, Loader2, Printer } from 'lucide-react';
+import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
-import { buildBalanceSheet, buildPostings, buildTrialBalance, VIRTUAL, type BalanceSheetLine, type Posting } from '@/lib/ledger';
+import { buildBalanceSheet, buildPostings, buildTrialBalance, type BalanceSheetLine, type Posting } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { accountingStandardCode, porteOf } from '@/lib/accounting-standard';
+import { openingStatus } from '@/lib/opening';
+import { monthOf } from '@/lib/periods';
+import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
+import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
+import { DLPAStatement } from '@/components/balanco/DLPAStatement';
+import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
+import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 
-type View = 'bs' | 'tb';
+type View = 'bs' | 'tb' | 'dlpa';
+
+const TITLE: Record<View, string> = {
+  bs: 'Balanço patrimonial',
+  tb: 'Balancete de verificação',
+  dlpa: 'Lucros ou prejuízos acumulados',
+};
+
+const EMPTY_LOCKS: PeriodLock[] = [];
 
 const money = (v: number) => (v < 0 ? `(${formatCurrency(-v)})` : formatCurrency(v));
 /** Saldo de balancete com natureza: D (devedor) ou C (credor). */
@@ -72,7 +88,17 @@ export default function BalancoPage() {
   const { range, jumpTo } = period;
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
-  const [static_, setStatic] = useState<{ id: string; accounts: ChartAccount[]; banks: BankAccount[]; org: OrgSettings | null; openings: OpeningBalances | null; journalEntries: JournalEntry[] } | null>(null);
+  const [static_, setStatic] = useState<{
+    id: string;
+    accounts: ChartAccount[];
+    banks: BankAccount[];
+    org: OrgSettings | null;
+    openings: OpeningBalances | null;
+    journalEntries: JournalEntry[];
+    locks: PeriodLock[];
+  } | null>(null);
+  /** Muda depois de encerrar ou reabrir o exercício: relê plano e lançamentos manuais. */
+  const [reloadCount, setReloadCount] = useState(0);
   const [txs, setTxs] = useState<{ key: string; list: BankTransaction[]; carry: Posting[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -92,18 +118,20 @@ export default function BalancoPage() {
       repo.getOpeningBalances(clientId),
       // Sem os lançamentos manuais o balanço sairia com valores errados: a falha bloqueia o relatório.
       repo.listJournalEntries(clientId),
+      repo.listPeriodLocks(clientId),
     ])
-      .then(([accounts, banks, org, latest, openings, journalEntries]) => {
+      .then(([accounts, banks, org, latest, openings, journalEntries, locks]) => {
         if (!active) return;
-        if (latest) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries });
+        // Recarga depois do encerramento: fica no período escolhido.
+        if (latest && reloadCount === 0) jumpTo(latest);
+        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks });
         setError(null);
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));
     return () => {
       active = false;
     };
-  }, [clientId, jumpTo]);
+  }, [clientId, jumpTo, reloadCount]);
 
   // O balanço acumula desde o início, mas só os lançamentos do exercício são lidos um a um:
   // o que veio antes entra pelo saldo consolidado das competências fechadas (`carry`).
@@ -131,7 +159,21 @@ export default function BalancoPage() {
     [loading, txs, banks, accounts, range.end, static_?.openings, static_?.journalEntries]
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
-  const tb = useMemo(() => buildTrialBalance(postings, accounts, range), [postings, accounts, range]);
+  // Balancete antes (padrão) ou depois do encerramento do exercício que cai no período: antes, as
+  // contas de resultado aparecem com os saldos do ano; depois, zeradas contra a ARE.
+  const [ignoreClosing, setIgnoreClosing] = useState(true);
+  const inRangeClosing = (j: JournalEntry) => Boolean(j.yearClosing) && j.date >= range.start && j.date <= range.end;
+  const closingInRange = (static_?.journalEntries ?? []).some(inRangeClosing);
+  const tbPostings = useMemo(
+    () =>
+      !ignoreClosing || !closingInRange || loading || !txs
+        ? postings
+        : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, (static_?.journalEntries ?? []).filter((j) => !inRangeClosing(j)), txs.carry),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- inRangeClosing só depende de `range`
+    [ignoreClosing, closingInRange, loading, txs, postings, banks, accounts, range, static_?.openings, static_?.journalEntries]
+  );
+  const tb = useMemo(() => buildTrialBalance(tbPostings, accounts, range), [tbPostings, accounts, range]);
+  const tbStage = closingInRange ? (ignoreClosing ? 'Antes do encerramento do exercício' : 'Após o encerramento do exercício (ARE)') : undefined;
   const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
 
   const consistency = useMemo(() => {
@@ -147,20 +189,59 @@ export default function BalancoPage() {
     });
   }, [loading, txs, accounts, banks, range.end, static_?.openings, static_?.journalEntries]);
 
-  const openingGap = bs.equity.find((l) => l.accountId === VIRTUAL.OPENING)?.value ?? 0;
+  const opening = useMemo(
+    () => (ready && accounts.length > 0 ? openingStatus(static_?.openings, accounts, banks) : null),
+    [ready, static_?.openings, accounts, banks]
+  );
+
+  // Encerramento e DLPA do exercício da data final.
+  const year = range.end.slice(0, 4);
+  const journalEntries = useMemo(() => static_?.journalEntries ?? [], [static_]);
+  const postingsBeforeClosing = useMemo(
+    () =>
+      loading || !txs
+        ? null
+        : buildPostings(txs.list, banks, accounts, yearEndOf(year), static_?.openings, withoutClosingOf(journalEntries, year), txs.carry),
+    [loading, txs, banks, accounts, year, static_?.openings, journalEntries]
+  );
+  const monthsWithData = useMemo(
+    () => new Set([...(txs?.list ?? []).map((t) => monthOf(t.date)), ...journalEntries.filter((j) => !j.yearClosing).map((j) => monthOf(j.date))]),
+    [txs, journalEntries]
+  );
+  const yearClosing = useYearClosing({
+    clientId,
+    year,
+    postings: postingsBeforeClosing,
+    accounts,
+    journalEntries,
+    locks: static_?.locks ?? EMPTY_LOCKS,
+    monthsWithData,
+    implantation: opening?.date ?? null,
+    onChanged: () => setReloadCount((c) => c + 1),
+  });
+  const dlpa = useMemo(() => buildDLPA(postings, accounts, journalEntries, range.end), [postings, accounts, journalEntries, range.end]);
+
   const missingOpening = banks.filter((b) => b.openingBalance === undefined);
   const unlinked = banks.filter((b) => !b.ledgerAccountId);
   const hasData = postings.length > 0;
+
+  const signatories = () => ({
+    legalRepresentative: { name: currentClient?.legalRepresentativeName, cpf: currentClient?.legalRepresentativeCpf },
+    accountant: static_?.org ? { name: static_.org.accountantName, crc: static_.org.accountantCrc } : undefined,
+  });
 
   const exportPdf = async () => {
     if (!currentClient) return;
     setGeneratingPdf(true);
     try {
-      const [{ generateLedgerPdf }, { downloadBlob }] = await Promise.all([
-        import('@/lib/export/ledger-pdf'),
-        import('@/lib/export/dre-rows'),
-      ]);
-      const org = static_?.org;
+      const { downloadBlob } = await import('@/lib/export/dre-rows');
+      if (view === 'dlpa') {
+        const { generateDLPAPdf } = await import('@/lib/export/dlpa-export');
+        const file = generateDLPAPdf({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        return;
+      }
+      const { generateLedgerPdf } = await import('@/lib/export/ledger-pdf');
       const file = generateLedgerPdf({
         client: currentClient,
         range,
@@ -168,11 +249,9 @@ export default function BalancoPage() {
         trialBalance: tb,
         documentType: view,
         showSynthetic,
+        trialBalanceStage: tbStage,
         issuedAt: new Date(),
-        signatories: {
-          legalRepresentative: { name: currentClient.legalRepresentativeName, cpf: currentClient.legalRepresentativeCpf },
-          accountant: org ? { name: org.accountantName, crc: org.accountantCrc } : undefined,
-        },
+        signatories: signatories(),
       });
       downloadBlob(file.blob, file.fileName);
     } catch (e) {
@@ -186,21 +265,22 @@ export default function BalancoPage() {
     if (!currentClient) return;
     setExporting(true);
     try {
-      const [{ generateLedgerExcel }, { downloadBlob }] = await Promise.all([
-        import('@/lib/export/ledger-excel'),
-        import('@/lib/export/dre-rows'),
-      ]);
-      const org = static_?.org;
+      const { downloadBlob } = await import('@/lib/export/dre-rows');
+      if (view === 'dlpa') {
+        const { generateDLPAExcel } = await import('@/lib/export/dlpa-export');
+        const file = await generateDLPAExcel({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        return;
+      }
+      const { generateLedgerExcel } = await import('@/lib/export/ledger-excel');
       const file = await generateLedgerExcel({
         client: currentClient,
         range,
         balanceSheet: bs,
         trialBalance: tb,
+        trialBalanceStage: tbStage,
         issuedAt: new Date(),
-        signatories: {
-          legalRepresentative: { name: currentClient.legalRepresentativeName, cpf: currentClient.legalRepresentativeCpf },
-          accountant: org ? { name: org.accountantName, crc: org.accountantCrc } : undefined,
-        },
+        signatories: signatories(),
       });
       downloadBlob(file.blob, file.fileName);
     } catch (e) {
@@ -214,10 +294,15 @@ export default function BalancoPage() {
     <main className={`${PAGE} print:p-0 print:space-y-4`}>
       <PageHeader
         eyebrow={currentClient?.tradeName || currentClient?.name}
-        title={view === 'bs' ? 'Balanço patrimonial' : 'Balancete de verificação'}
+        title={TITLE[view]}
         description={
           view === 'bs' ? (
             <>Posição em <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, por partidas dobradas a partir dos extratos e das classificações.</>
+          ) : view === 'dlpa' ? (
+            <>
+              Exercício de {year} até <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>: saldo inicial, resultado, distribuições e
+              encerramento do exercício.
+            </>
           ) : (
             <>De <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.start)}</span> a <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>. Contas de resultado acumulam desde 1º de janeiro.</>
           )
@@ -229,7 +314,7 @@ export default function BalancoPage() {
               disabled={!hasData || generatingPdf || exporting}
               onClick={() => void exportPdf()}
               className={BUTTON.primary}
-              title={`Gerar PDF oficial do ${view === 'bs' ? 'Balanço Patrimonial' : 'Balancete'}`}
+              title={`Gerar PDF oficial: ${TITLE[view]}`}
             >
               {generatingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" strokeWidth={1.75} />}
               {generatingPdf ? 'Gerando…' : 'PDF Oficial'}
@@ -239,7 +324,7 @@ export default function BalancoPage() {
               disabled={!hasData || exporting || generatingPdf}
               onClick={() => void exportExcel()}
               className={BUTTON.secondary}
-              title="Exportar planilha Excel (.xlsx) com Balanço e Balancete"
+              title={view === 'dlpa' ? 'Exportar a DLPA em planilha Excel (.xlsx)' : 'Exportar planilha Excel (.xlsx) com Balanço e Balancete'}
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />}
               {exporting ? 'Gerando…' : 'Exportar Excel'}
@@ -266,6 +351,7 @@ export default function BalancoPage() {
             options={[
               { value: 'bs', label: 'Balanço patrimonial' },
               { value: 'tb', label: 'Balancete' },
+              { value: 'dlpa', label: 'DLPA' },
             ]}
           />
           <PeriodPicker period={period} />
@@ -282,21 +368,24 @@ export default function BalancoPage() {
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
 
+      <OpeningStatusNotice status={opening} />
+
+      {view !== 'tb' && porteOf(currentClient) === 'PEQUENA_EMPRESA' && (
+        <p role="note" className="flex items-start gap-2 rounded-2xl px-4 py-3 bg-sky-50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 text-[13px] text-sky-900 dark:text-sky-200 print:hidden">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            Pequena empresa (NBC TG 1001): além do Balanço, da DRE e da DLPA, a norma pede a Demonstração dos Fluxos de Caixa (DFC), que o ContaFlow ainda não
+            gera. Elabore-a à parte para completar o conjunto das demonstrações.
+          </span>
+        </p>
+      )}
+
       {!loading && hasData && (
         <div className="space-y-2 print:hidden">
           {bs.suspense !== 0 && (
             <p className="flex items-start gap-2 text-[13px] text-amber-700">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               {formatCurrency(Math.abs(bs.suspense))} em lançamentos ainda não conciliados até {formatDateBR(range.end)} aparecem como “Lançamentos a classificar”. Concilie-os para um balanço definitivo.
-            </p>
-          )}
-          {openingGap !== 0 && (
-            <p className="flex items-start gap-2 text-[13px] text-amber-700">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <span>
-                Há {formatCurrency(Math.abs(openingGap))} em “Saldos de abertura (a detalhar)”: os saldos de abertura de clientes, fornecedores, capital etc. ainda não
-                fecham com os dos bancos. <a href="/abertura" className="font-medium underline">Completar saldos de abertura</a>
-              </span>
             </p>
           )}
           {unlinked.length > 0 && (
@@ -311,9 +400,9 @@ export default function BalancoPage() {
               Sem saldo inicial: {missingOpening.map((b) => b.nickname).join(', ')}. O saldo dos bancos parte de zero até ser informado em Contas e extratos.
             </p>
           )}
-          <p className={`flex items-center gap-2 text-[13px] ${(view === 'bs' ? bs.difference === 0 : tb.balanced) ? 'text-emerald-700' : 'text-rose-700'}`}>
-            {(view === 'bs' ? bs.difference === 0 : tb.balanced) ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            {view === 'bs'
+          <p className={`flex items-center gap-2 text-[13px] ${(view !== 'tb' ? bs.difference === 0 : tb.balanced) ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {(view !== 'tb' ? bs.difference === 0 : tb.balanced) ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+            {view !== 'tb'
               ? bs.difference === 0
                 ? 'Ativo = Passivo + Patrimônio líquido'
                 : `Diferença de ${formatCurrency(bs.difference)} entre ativo e passivo + PL`
@@ -341,6 +430,13 @@ export default function BalancoPage() {
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem movimento até esta data" description="Importe extratos e concilie lançamentos para gerar o balanço e o balancete." />
         </section>
+      ) : view === 'dlpa' ? (
+        <div className="space-y-6">
+          <DLPAStatement dlpa={dlpa} />
+          {yearClosing.state && (
+            <YearClosingPanel state={yearClosing.state} busy={yearClosing.busy} onClose={yearClosing.close} onReopen={yearClosing.reopen} />
+          )}
+        </div>
       ) : view === 'bs' ? (
         <div className="grid lg:grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
@@ -357,15 +453,26 @@ export default function BalancoPage() {
         </div>
       ) : (
         <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
-          <div className="flex items-center justify-between px-5 py-2.5 border-b border-black/[0.04] print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/[0.04] print:hidden">
             <span className="text-[12px] text-stone-400 flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5 text-stone-400" />
               Clique em qualquer conta para abrir a ficha do Livro Razão
             </span>
-            <label className="flex items-center gap-2 text-[12px] text-stone-500">
-              <input type="checkbox" checked={showSynthetic} onChange={(e) => setShowSynthetic(e.target.checked)} /> Mostrar contas sintéticas
-            </label>
+            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
+              <label className="flex items-center gap-2 text-[12px] text-stone-500">
+                <input type="checkbox" checked={showSynthetic} onChange={(e) => setShowSynthetic(e.target.checked)} /> Mostrar contas sintéticas
+              </label>
+              <label className="flex items-center gap-2 text-[12px] text-stone-500" title="Desmarcado, o balancete sai depois do encerramento: contas de resultado zeradas contra a ARE">
+                <input type="checkbox" checked={ignoreClosing} onChange={(e) => setIgnoreClosing(e.target.checked)} /> Ignorar lançamentos de encerramento (ARE)
+                {!closingInRange && <span className="text-stone-400">(nenhum no período)</span>}
+              </label>
+            </div>
           </div>
+          {tbStage && (
+            <p className="px-5 py-2 border-b border-black/[0.04] text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
+              Balancete {tbStage.toLowerCase()}.
+            </p>
+          )}
           <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-left print-fit-table">
               <thead>
@@ -433,7 +540,7 @@ export default function BalancoPage() {
       {hasData && (
         <section aria-label="Assinaturas contábeis" className="hidden print:block pt-8 print-avoid-break">
           <div className="text-[9px] text-stone-500 mb-6 text-center">
-            NBC TG 1002 / ITG 1000 — Relatório emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
+            {accountingStandardCode(currentClient)} — Relatório emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
           </div>
           <div className="grid grid-cols-2 gap-8 pt-4">
             <div className="text-center">

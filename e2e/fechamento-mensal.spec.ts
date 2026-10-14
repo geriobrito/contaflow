@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 /**
  * Fluxo completo de um fechamento mensal, do cadastro da empresa aos demonstrativos:
- * login → empresa → plano de contas ITG 1000 → importar extrato OFX → classificar →
+ * login → empresa → modelo de plano de contas → importar extrato OFX → classificar →
  * fechar a competência → DRE, Livro Diário e Balanço.
  */
 
@@ -108,10 +108,10 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByText('Cliente cadastrado e definido como ativo')).toBeVisible();
   });
 
-  await test.step('plano de contas ITG 1000', async () => {
+  await test.step('modelo de plano de contas', async () => {
     await page.goto('/plano-de-contas');
-    await page.getByRole('button', { name: 'Aplicar plano ITG 1000 (2022)' }).first().click();
-    await expect(page.getByText(/contas do plano ITG 1000 adicionadas/)).toBeVisible();
+    await page.getByRole('button', { name: 'Modelo de plano de contas (CFC)' }).first().click();
+    await expect(page.getByText(/contas do modelo de plano de contas \(CFC\) adicionadas/)).toBeVisible();
     await expect(page.getByRole('tree', { name: 'Plano de contas' })).toBeVisible();
   });
 
@@ -164,6 +164,24 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByText(/3\.767,50/).first()).toBeVisible();
   });
 
+  await test.step('DLPA e encerramento do exercício', async () => {
+    await page.getByRole('radio', { name: 'DLPA' }).click();
+    await expect(page.getByRole('heading', { name: 'Lucros ou prejuízos acumulados' }).first()).toBeVisible();
+    const dlpa = page.getByRole('region', { name: 'Demonstração de lucros ou prejuízos acumulados' });
+    await expect(dlpa.getByRole('row', { name: /Lucro ou prejuízo líquido do exercício.*3\.767,50/ })).toBeVisible();
+    // Dezembro ainda aberto: o exercício não pode ser encerrado.
+    const closing = page.getByRole('region', { name: 'Encerramento do exercício' });
+    await expect(closing.getByText(/Feche a competência de dezembro/)).toBeVisible();
+    await expect(closing.getByRole('button', { name: 'Encerrar exercício' })).toBeDisabled();
+  });
+
+  await test.step('Balancete: filtro do encerramento (ARE)', async () => {
+    await page.getByRole('radio', { name: 'Balancete' }).click();
+    const ignore = page.getByLabel(/Ignorar lançamentos de encerramento \(ARE\)/);
+    await expect(ignore).toBeChecked();
+    await expect(page.getByText('(nenhum no período)')).toBeVisible();
+  });
+
   await test.step('Livro Razão', async () => {
     await page.goto('/razao');
     await expect(page.getByRole('heading', { name: 'Livro Razão Analítico' })).toBeVisible();
@@ -191,8 +209,34 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await page.goto('/lancamentos');
     await page.getByRole('button', { name: 'Novo Lançamento' }).first().click();
     await expect(page.getByRole('heading', { name: 'Novo Lançamento Contábil Manual' })).toBeVisible();
+    // Modelo de provisão: o valor do DAS vira as partidas nas contas do modelo de plano de contas.
+    await page.getByRole('group', { name: 'Modelos de lançamento' }).getByRole('button', { name: 'DAS do Simples Nacional' }).click();
+    await page.getByLabel('Valor do DAS (PGDAS-D)').fill('812,40');
+    await page.getByRole('button', { name: 'Preencher as partidas' }).click();
+    await expect(page.getByPlaceholder(/Provisão mensal de salários/)).toHaveValue(/Provisão do Simples Nacional \(DAS\) - competência/);
+    await expect(page.getByText(/812,40/).first()).toBeVisible();
     await page.getByRole('button', { name: 'Cancelar' }).click();
     await expect(page.getByRole('heading', { name: 'Novo Lançamento Contábil Manual' })).toBeHidden();
+  });
+
+  await test.step('Notas explicativas', async () => {
+    await page.goto('/notas');
+    await expect(page.getByRole('heading', { name: 'Notas explicativas' })).toBeVisible();
+    // Exercício do extrato (o padrão é o ano anterior ao corrente).
+    await page.locator('select').first().selectOption('2025');
+    await expect(page.getByRole('region', { name: 'Base de preparação' }).getByRole('textbox', { name: /Texto da nota/ })).toHaveValue(/NBC TG 1002 - Contabilidade para Microentidades/);
+    await expect(page.getByText(/trecho\(s\) entre colchetes/)).toBeVisible();
+    // Patrimônio líquido já vem com o resultado do exercício; a edição é gravada para a empresa.
+    const equity = page.getByRole('region', { name: 'Patrimônio líquido' }).getByRole('textbox', { name: /Texto da nota/ });
+    await expect(equity).toHaveValue(/O lucro de R\$\s3\.767,50 do exercício/);
+    await equity.fill('Capital social de R$ 10.000,00.');
+    await expect(page.getByText('Salvo (modo local)')).toBeVisible();
+    await page.reload();
+    await page.locator('select').first().selectOption('2025');
+    await expect(page.getByRole('region', { name: 'Patrimônio líquido' }).getByRole('textbox', { name: /Texto da nota/ })).toHaveValue('Capital social de R$ 10.000,00.');
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Gerar PDF' }).click();
+    expect((await download).suggestedFilename()).toMatch(/^Notas_Explicativas_.*\.pdf$/);
   });
 
   expect(pageErrors).toEqual([]);

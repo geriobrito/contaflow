@@ -290,4 +290,42 @@ describe('repositório local (modo único, sem Firestore)', () => {
       expect((await repo.createJournalEntry(draft('j9'))).entryNumber).toBe(1);
     });
   });
+  describe('encerramento do exercício e notas explicativas', () => {
+    const line = (type: 'DEBIT' | 'CREDIT', amount: number, accountId = 'conta') => ({ id: `${type}${amount}`, accountId, type, amount });
+    const closing = (id: string): JournalEntryDraft => ({
+      id, clientId: 'c1', date: '2025-12-31', memo: 'Encerramento', category: 'CLOSING', yearClosing: '2025',
+      lines: [line('DEBIT', 100), line('CREDIT', 100)], totalAmount: 100, createdAt: '', updatedAt: '', createdByUid: 'u1',
+    });
+    const audit = (id: string, action: 'YEAR_CLOSE' | 'YEAR_REOPEN') => ({ id, clientId: 'c1', action, actorUid: 'u1', at: 'T' });
+
+    it('grava todos os lançamentos numerados em sequência e um só registro; reabre tudo de uma vez', async () => {
+      await repo.createJournalEntry({ ...closing('antes'), category: 'OTHER', yearClosing: undefined, date: '2025-06-30' });
+      const saved = await repo.closeYear([closing('e1'), closing('e2'), closing('e3')], audit('c1_2025_close_x', 'YEAR_CLOSE'));
+      expect(saved.map((e) => [e.entryNumber, e.closingAuditId])).toEqual([[2, 'c1_2025_close_x'], [3, 'c1_2025_close_x'], [4, 'c1_2025_close_x']]);
+      // A sequência continua depois do bloco.
+      expect((await repo.createJournalEntry({ ...closing('depois'), category: 'OTHER', yearClosing: undefined, date: '2026-01-31' })).entryNumber).toBe(5);
+      await repo.reopenYear(saved, audit('c1_2025_close_x_reopen', 'YEAR_REOPEN'));
+      expect((await repo.listJournalEntries('c1')).map((e) => e.id).sort()).toEqual(['antes', 'depois']);
+      expect((await repo.listAudit('c1')).map((a) => a.action).sort()).toEqual(['YEAR_CLOSE', 'YEAR_REOPEN']);
+    });
+
+    it('lançamento que não fecha recusa o encerramento inteiro', async () => {
+      const bad = { ...closing('e2'), lines: [line('DEBIT', 100), line('CREDIT', 99)] };
+      await expect(repo.closeYear([closing('e1'), bad], audit('x', 'YEAR_CLOSE'))).rejects.toThrow(/desbalanceado/);
+      expect(await repo.listJournalEntries('c1')).toEqual([]);
+      expect(await repo.listAudit('c1')).toEqual([]);
+    });
+
+    it('notas explicativas por cliente e exercício', async () => {
+      const notes = (year: string, text: string) => ({ id: '', clientId: 'c1', year, notes: [{ id: 'context', title: 'Contexto', text, enabled: true }], updatedAt: 'T' });
+      await repo.saveExplanatoryNotes(notes('2025', 'v1'));
+      await repo.saveExplanatoryNotes(notes('2025', 'v2'));
+      await repo.saveExplanatoryNotes(notes('2024', 'antigo'));
+      expect((await repo.getExplanatoryNotes('c1', '2025'))?.notes[0].text).toBe('v2');
+      expect((await repo.getExplanatoryNotes('c1', '2024'))?.id).toBe('c1_2024');
+      expect(await repo.getExplanatoryNotes('c2', '2025')).toBeNull();
+      await repo.deleteClient('c1', actor);
+      expect(await repo.getExplanatoryNotes('c1', '2025')).toBeNull();
+    });
+  });
 });

@@ -13,7 +13,7 @@ interface DREStatementProps {
   profit: boolean;
 }
 
-/** Demonstrativo no layout da ITG 1000: grupos recolhíveis com o detalhe por conta e a análise vertical. */
+/** Demonstrativo no layout da NBC TG 1002: grupos recolhíveis com o detalhe por conta e a análise vertical. */
 export function DREStatement({ dre, failed, isLoading, hasData, profit }: DREStatementProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));

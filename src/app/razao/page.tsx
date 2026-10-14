@@ -7,6 +7,7 @@ import { useLedgerData } from '@/hooks/useLedgerData';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { buildAccountLedger, type AccountLedger } from '@/lib/ledger';
 import { describeError } from '@/lib/utils/errors';
+import { accountingStandardCode } from '@/lib/accounting-standard';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { AccountSelect } from '@/components/razao/AccountSelect';
 import { LedgerEntriesTable } from '@/components/razao/LedgerEntriesTable';
@@ -77,7 +78,7 @@ export default function RazaoPage() {
     <main className={PAGE}>
       {/* Cabeçalho da Página */}
       <PageHeader
-        eyebrow="NBC TG 1002 / ITG 1000 — Demonstrações Contábeis"
+        eyebrow={`${accountingStandardCode(currentClient)} — Demonstrações Contábeis`}
         title="Livro Razão Analítico"
         description="Ficha detalhada de movimentação por conta contábil, saldo anterior, débitos/créditos com contrapartida e saldo progressivo acumulado."
         actions={

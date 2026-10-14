@@ -1,6 +1,7 @@
 import type { BankTransaction, ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { matchesRule } from '@/lib/reconciliation';
 import { sumMoney } from '@/lib/money';
+import { isValidCNPJ } from '@/lib/utils/formatters';
 
 /**
  * Favorecido (quem pagou ou recebeu) de uma descrição de extrato, agrupamento de lançamentos
@@ -56,12 +57,22 @@ const DESCRIPTORS = new Set([
   'recebido',
 ]);
 
+/** CNPJ alfanumérico, com ou sem pontuação. */
+const ALNUM_CNPJ = '[0-9A-Z]{2}\\.?[0-9A-Z]{3}\\.?[0-9A-Z]{3}\\/?[0-9A-Z]{4}-?\\d{2}';
+const ALNUM_CNPJ_ONLY = new RegExp(`^${ALNUM_CNPJ}$`);
+const ALNUM_CNPJ_PREFIX = new RegExp(`^(${ALNUM_CNPJ})\\s+(?=\\S)`);
+const ALNUM_CNPJ_SUFFIX = new RegExp(`\\s+(${ALNUM_CNPJ})$`);
+
+/** Com letras, só é CNPJ se os dígitos verificadores conferem: "SUPERMERCADO12" continua sendo nome. */
+const isAlnumCNPJ = (s: string): boolean => ALNUM_CNPJ_ONLY.test(s) && isValidCNPJ(s);
+
 /** Trecho que é só documento (CPF mascarado, CNPJ, números) ou dados bancários. */
 function isNoise(segment: string): boolean {
   const s = segment.trim();
   if (/^[•*·xX]{3}\.\d{3}\.\d{3}-[•*·xX]{2}$/.test(s)) return true; // CPF mascarado
   if (/^\d{3}\.?\d{3}\.?\d{3}-?\d{2}$/.test(s)) return true; // CPF
   if (/^\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}$/.test(s)) return true; // CNPJ
+  if (isAlnumCNPJ(s)) return true; // CNPJ alfanumérico
   if (/Ag[êe]ncia:|\bConta:/i.test(s)) return true; // "… Agência: 810 Conta: 16754-4"
   if (/\(\d{4}\)\s*$/.test(s)) return true; // "CAIXA ECONOMICA FEDERAL (0104)"
   return false;
@@ -71,6 +82,8 @@ function isNoise(segment: string): boolean {
 function cleanPayee(raw: string): string {
   return raw
     .replace(/^pix\s+(?=\S)/i, '')
+    .replace(ALNUM_CNPJ_PREFIX, (m, doc: string) => (isValidCNPJ(doc) ? '' : m))
+    .replace(ALNUM_CNPJ_SUFFIX, (m, doc: string) => (isValidCNPJ(doc) ? '' : m))
     .replace(/^[\d.\/-]{6,}\s+(?=\D)/, '')
     .replace(/\s+\d{11,14}$/, '')
     .replace(/[\s.,;:-]+$/, '')

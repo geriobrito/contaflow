@@ -22,7 +22,7 @@ import type { TextRepairPlan } from '@/lib/text-repair';
    Contas bancárias
    ========================================================================= */
 
-/** Código da conta de bancos no modelo ITG 1000 (vínculo padrão e pai das subcontas). */
+/** Código da conta de bancos no modelo de plano de contas (vínculo padrão e pai das subcontas). */
 export const BANKS_PARENT_CODE = '1.1.1.02';
 
 /**
@@ -95,7 +95,7 @@ export async function createBankSubaccounts(args: {
   const repo = getRepository();
   const parent = args.accounts.find((a) => a.code === BANKS_PARENT_CODE);
   if (!parent) {
-    throw new Error(`O plano não tem a conta ${BANKS_PARENT_CODE} (Bancos). Aplique o modelo ITG 1000 ou vincule o banco a uma conta existente.`);
+    throw new Error(`O plano não tem a conta ${BANKS_PARENT_CODE} (Bancos). Aplique o modelo de plano de contas (CFC) ou vincule o banco a uma conta existente.`);
   }
   const targets = new Map(args.targets.map((b) => [b.id, b] as const));
   if (parent.nature === 'ANALYTIC') {

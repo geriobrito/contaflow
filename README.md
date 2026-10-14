@@ -1,6 +1,6 @@
 # ContaFlow
 
-Conciliação bancária por OFX com aprendizado contínuo, plano de contas ITG 1000 (2022) e DRE com exportação em PDF/Excel. Next.js (App Router) + Firebase (Auth + Firestore).
+Conciliação bancária por OFX com aprendizado contínuo, modelo de plano de contas do CFC (NBC TG 1002 / NBC TG 1001) e DRE com exportação em PDF/Excel. Next.js (App Router) + Firebase (Auth + Firestore).
 
 ## Desenvolvimento
 
@@ -15,9 +15,9 @@ Sem as variáveis `NEXT_PUBLIC_FIREBASE_*` no `.env.local`, o app roda em **modo
 | --- | --- |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm test` | Testes unitários (Vitest): DRE, rateio, parser OFX, plano ITG 1000, regras de casamento, repositório local |
+| `npm test` | Testes unitários (Vitest): DRE, rateio, parser OFX, modelo de plano de contas, regras de casamento, repositório local |
 | `npm run test:rules` | Regras do Firestore no emulador (requer Java 21+; baixa o `firebase-tools` via `npx`) |
-| `npm run test:e2e` | Fluxo completo no navegador (Playwright), no modo local: login, empresa, plano ITG 1000, importação de OFX, classificação, fechamento, DRE, Diário, Balanço, Razão, Contas, Regras e Lançamentos. Requer `npx playwright install chromium` (ou `PLAYWRIGHT_CHANNEL=chrome` para usar o Chrome instalado). Gera um build próprio com as variáveis do Firebase vazias: nunca toca num projeto real |
+| `npm run test:e2e` | Fluxo completo no navegador (Playwright), no modo local: login, empresa, modelo de plano de contas, importação de OFX, classificação, fechamento, DRE, Diário, Balanço, Razão, Contas, Regras e Lançamentos. Requer `npx playwright install chromium` (ou `PLAYWRIGHT_CHANNEL=chrome` para usar o Chrome instalado). Gera um build próprio com as variáveis do Firebase vazias: nunca toca num projeto real |
 | `npm run build` | Build de produção |
 
 O CI (`.github/workflows/ci.yml`) roda tudo isso em cada PR, mais um `npm audit` informativo das dependências de produção. O Dependabot (`.github/dependabot.yml`) abre PRs semanais de atualização.

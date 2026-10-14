@@ -29,7 +29,7 @@ import { transactionAudit } from '@/lib/audit';
 import { ensureUserProfile } from '@/lib/data/profile';
 import { periodAuditId } from '@/lib/periods';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
-import { buildITG1000Chart } from '@/lib/chart/itg1000';
+import { buildITG1000Chart, ITG1000_ACCOUNT_COUNT } from '@/lib/chart/itg1000';
 import type { BankTransaction } from '@/types/firestore';
 
 const PROJECT = 'demo-contaflow';
@@ -205,7 +205,7 @@ describe('repositório da aplicação sob as regras', () => {
     expect((await repo.listClients()).map((c) => c.id).sort()).toEqual(['c2', 'cA']);
 
     await repo.insertAccounts(buildITG1000Chart('c2', '2025-01-01'));
-    expect(await repo.listAccounts('c2')).toHaveLength(140);
+    expect(await repo.listAccounts('c2')).toHaveLength(ITG1000_ACCOUNT_COUNT);
 
     await repo.insertTransactions([tx('c2_1', 'c2', ORG_A, '2025-01-15'), tx('c2_2', 'c2', ORG_A, '2025-02-15')], {
       id: 'b1',
@@ -479,6 +479,9 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     return b.commit();
   };
 
+  const rawCreateCounter = (db: Firestore, last: number) =>
+    setDoc(doc(db, 'journal_counters/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', last });
+
   it('numera em sequência por cliente; número excluído não é reaproveitado', async () => {
     const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
     expect((await repo.createJournalEntry(draft('j1'))).entryNumber).toBe(1);
@@ -588,6 +591,69 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     await expect(repo.updateJournalEntry({ ...saved, date: '2025-04-01' })).rejects.toThrow();
     // Outra competência segue livre, e a numeração continua.
     expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-30' }))).entryNumber).toBe(2);
+  });
+
+  it('nenhum lançamento manual até a data de implantação (saldos de abertura)', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    const saved = await repo.createJournalEntry(draft('j1', { date: '2025-04-30' }));
+    await repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-03-31', entries: [], updatedAt: 'T' }, { id: 'au-op', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: 'T' });
+    await expect(repo.createJournalEntry(draft('j2', { date: '2025-03-31' }))).rejects.toThrow();
+    await expect(repo.createJournalEntry(draft('j2', { date: '2025-01-10' }))).rejects.toThrow();
+    await expect(repo.updateJournalEntry({ ...saved, date: '2025-03-15' })).rejects.toThrow();
+    expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-01' }))).entryNumber).toBe(2);
+  });
+
+  describe('encerramento do exercício', () => {
+    const closing = (id: string, extra: Record<string, unknown> = {}) =>
+      ({ ...draft(id, { date: '2025-12-31', memo: 'Encerramento do exercício de 2025' }), category: 'CLOSING', yearClosing: '2025', ...extra }) as never;
+    const yearAudit = (id: string, action: 'YEAR_CLOSE' | 'YEAR_REOPEN', actorUid = 'alice') => ({ id, clientId: 'cA', action, actorUid, at: 'T', month: '2025-12' });
+    const CLOSE = 'cA_2025_close_t';
+
+    it('entra inteiro, numa gravação, com dezembro fechado e um único registro de auditoria', async () => {
+      const db = asUser('alice');
+      const repo = createFirestoreRepository(db, () => ORG_A);
+      await repo.createJournalEntry(draft('j0'));
+      await closeMonth(db, lockOf('2025-12'));
+      // Lançamento comum continua barrado em dezembro fechado.
+      await expect(repo.createJournalEntry(draft('j1', { date: '2025-12-31' }))).rejects.toThrow();
+      // Registro de outra ação, marca que não confere com a data, ou fora de 31/12: nada entra.
+      await expect(repo.closeYear([closing('e1'), closing('e2')], yearAudit(CLOSE, 'YEAR_REOPEN'))).rejects.toThrow();
+      await expect(repo.closeYear([closing('e1'), closing('e2', { yearClosing: '2024' })], yearAudit(CLOSE, 'YEAR_CLOSE'))).rejects.toThrow();
+      await expect(repo.closeYear([closing('e1', { date: '2025-12-30' })], yearAudit(CLOSE, 'YEAR_CLOSE'))).rejects.toThrow();
+      expect((await repo.listJournalEntries('cA')).map((e) => e.id)).toEqual(['j0']);
+
+      const saved = await repo.closeYear([closing('e1'), closing('e2'), closing('e3')], yearAudit(CLOSE, 'YEAR_CLOSE'));
+      expect(saved.map((e) => e.entryNumber)).toEqual([2, 3, 4]);
+      expect((await repo.listAudit('cA')).filter((a) => a.action === 'YEAR_CLOSE').map((a) => a.id)).toEqual([CLOSE]);
+      // Dezembro fechado: o encerramento não muda; a numeração segue depois do bloco.
+      await expect(repo.updateJournalEntry({ ...saved[0], memo: 'alterado' })).rejects.toThrow();
+      expect((await repo.createJournalEntry(draft('j5', { date: '2026-01-31' }))).entryNumber).toBe(5);
+    });
+
+    it('o salto do contador exige o YEAR_CLOSE na mesma gravação', async () => {
+      const db = asUser('alice');
+      await rawCreateCounter(db, 1);
+      // Sem registro novo: o contador não salta.
+      await assertFails(setDoc(doc(db, 'journal_counters/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', last: 4, closingAudit: CLOSE }));
+      // Lançamento marcado sem o registro dele nascendo junto.
+      await assertFails(setDoc(doc(db, 'journal_entries/e1'), { ...(closing('e1') as object), orgId: ORG_A, entryNumber: 2, closingAuditId: CLOSE }));
+    });
+
+    it('sai inteiro pela reabertura: administrador, com o registro do encerramento + _reopen', async () => {
+      const db = asUser('alice');
+      const repo = createFirestoreRepository(db, () => ORG_A);
+      await closeMonth(db, lockOf('2025-12'));
+      const saved = await repo.closeYear([closing('e1'), closing('e2')], yearAudit(CLOSE, 'YEAR_CLOSE'));
+      await expect(repo.deleteJournalEntry('e1')).rejects.toThrow();
+      await expect(repo.reopenYear(saved, yearAudit('outro_reopen', 'YEAR_REOPEN'))).rejects.toThrow();
+      await expect(repo.reopenYear(saved, yearAudit(`${CLOSE}_reopen`, 'YEAR_CLOSE'))).rejects.toThrow();
+      // Operadora não reabre exercício.
+      await expect(createFirestoreRepository(asUser('carol'), () => ORG_A).reopenYear(saved, yearAudit(`${CLOSE}_reopen`, 'YEAR_REOPEN', 'carol'))).rejects.toThrow();
+      expect(await repo.listJournalEntries('cA')).toHaveLength(2);
+      await repo.reopenYear(saved, yearAudit(`${CLOSE}_reopen`, 'YEAR_REOPEN'));
+      expect(await repo.listJournalEntries('cA')).toEqual([]);
+    });
   });
 
   it('isolamento: outro escritório não lê nem grava', async () => {
@@ -870,6 +936,35 @@ describe('correção de acentuação dos históricos', () => {
     await closeMonth(asUser('alice'));
     await expect(repo.commitChanges({ patches: [{ id: 'cA_1', date: '2025-03-10', set: { memo: 'outra' } }], audits: [] })).rejects.toThrow();
     await assertFails(updateDoc(doc(asUser('alice'), 'transactions/cA_1'), { memo: 'x', amount: -1 }));
+  });
+});
+
+describe('notas explicativas', () => {
+  const notes = (clientId = 'cA', orgId = ORG_A, year = '2025') => ({ id: `${clientId}_${year}`, orgId, clientId, year, notes: [{ id: 'context', title: 'Contexto', text: 'x', enabled: true }], updatedAt: 'T' });
+
+  it('grava por cliente e exercício, isolado entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveExplanatoryNotes(notes() as never);
+    expect((await repo.getExplanatoryNotes('cA', '2025'))?.notes[0].text).toBe('x');
+    // Outro usuário do mesmo escritório vê e edita o mesmo texto.
+    await createFirestoreRepository(asUser('carol'), () => ORG_A).saveExplanatoryNotes({ ...notes(), notes: [{ id: 'context', title: 'Contexto', text: 'y', enabled: true }] } as never);
+    expect((await repo.getExplanatoryNotes('cA', '2025'))?.notes[0].text).toBe('y');
+    expect(await repo.getExplanatoryNotes('cA', '2024')).toBeNull();
+
+    await assertFails(getDoc(doc(asUser('bob'), 'explanatory_notes/cA_2025')));
+    await assertFails(setDoc(doc(asUser('bob'), 'explanatory_notes/cA_2025'), notes('cA', ORG_B)));
+    await assertFails(setDoc(doc(asUser('alice'), 'explanatory_notes/cA_2024'), notes())); // id ≠ cliente_exercício
+    await assertFails(setDoc(doc(asUser('alice'), 'explanatory_notes/cA_25'), { ...notes(), year: '25' }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'explanatory_notes/cA_2025'), { year: '2026' }));
+  });
+
+  it('excluir a empresa remove as notas', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveExplanatoryNotes(notes() as never);
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'explanatory_notes/cA_2025'))).exists()).toBe(false);
+    });
   });
 });
 

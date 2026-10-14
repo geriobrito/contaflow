@@ -1,6 +1,7 @@
-import type { BankAccount, ChartAccount, OpeningEntry } from '@/types/firestore';
+import type { BankAccount, ChartAccount, OpeningBalances, OpeningEntry } from '@/types/firestore';
 import { accountKind, openingSign } from '@/lib/ledger';
 import { round2 } from '@/lib/money';
+import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /**
  * Saldos de abertura: quais contas aceitam saldo e se a abertura fecha
@@ -60,6 +61,76 @@ export function summarizeOpening(entries: readonly Pick<OpeningEntry, 'accountId
 
 /** Sinal de uma entrada (para testes e telas): +1 débito, -1 crédito. */
 export { openingSign };
+
+/* =========================================================================
+   Data de implantação e conferência da abertura
+   ========================================================================= */
+
+/**
+ * Data de implantação (fim do dia): o marco zero da contabilidade no sistema. É a data dos
+ * saldos de abertura ou, sem eles, a do saldo inicial bancário mais antigo. Tudo até ela está
+ * contido nos saldos de abertura; os lançamentos começam no dia seguinte.
+ */
+export function implantationDate(openings: Pick<OpeningBalances, 'date'> | null | undefined, banks: readonly BankAccount[]): string | null {
+  if (openings?.date) return openings.date;
+  return (
+    banks
+      .map((b) => b.openingDate)
+      .filter((d): d is string => Boolean(d))
+      .sort()[0] ?? null
+  );
+}
+
+/**
+ * Banco cujo saldo inicial não está na data de implantação: a abertura deixa de ser uma posição
+ * única (a contrapartida do banco cai em outra data). Um banco aberto depois, com saldo inicial
+ * zero, não é divergência.
+ */
+function bankOutOfDate(b: BankAccount, date: string): boolean {
+  if (!b.openingDate || b.openingDate === date) return false;
+  return Boolean(b.openingBalance) || b.openingDate < date;
+}
+
+export interface OpeningStatus {
+  /** Data de implantação, ou null se nada foi informado. */
+  date: string | null;
+  summary: OpeningSummary;
+  /** Bancos com saldo inicial em data diferente da implantação. */
+  mismatchedBanks: BankAccount[];
+  /** Saldos de abertura informados, os bancos na mesma data e ativo = passivo + PL. */
+  verified: boolean;
+  /** Motivos de a abertura não estar conferida, prontos para exibir. */
+  problems: string[];
+}
+
+/** Conferência da abertura: data única, equação patrimonial e bancos alinhados. */
+export function openingStatus(
+  openings: OpeningBalances | null | undefined,
+  accounts: readonly ChartAccount[],
+  banks: readonly BankAccount[]
+): OpeningStatus {
+  const date = implantationDate(openings, banks);
+  const summary = summarizeOpening(openings?.entries ?? [], accounts, banks);
+  const mismatchedBanks = date ? banks.filter((b) => bankOutOfDate(b, date)) : [];
+  const problems: string[] = [];
+  if (!openings) problems.push('Saldos de abertura não informados: o balanço só tem os bancos.');
+  if (!summary.balanced) {
+    problems.push(`Faltam ${formatCurrency(Math.abs(summary.difference))} para ativo = passivo + patrimônio líquido na abertura.`);
+  }
+  for (const b of mismatchedBanks) {
+    problems.push(`Saldo inicial de ${b.nickname} em ${formatDateBR(b.openingDate)}, e a implantação é em ${formatDateBR(date ?? '')}.`);
+  }
+  return { date, summary, mismatchedBanks, verified: problems.length === 0, problems };
+}
+
+/**
+ * Motivo de recusar um lançamento manual na data `date`, ou null. Até a data de implantação,
+ * o movimento já está nos saldos de abertura.
+ */
+export function implantationProblem(date: string, implantation: string | null): string | null {
+  if (!implantation || date > implantation) return null;
+  return `A contabilidade começa depois de ${formatDateBR(implantation)} (data de implantação, em Saldos de abertura): o que aconteceu até esse dia já está nos saldos de abertura. Use uma data posterior.`;
+}
 
 /** Lê um valor digitado ("1.234,56", "1234.5"); null se inválido; vazio = 0. */
 export function parseMoneyInput(text: string): number | null {

@@ -61,7 +61,7 @@ describe('findTransferPairs', () => {
     expect(resetTransition(after).after.transferPairId).toBeUndefined();
   });
 
-  it('encontra a conta transitória do modelo ITG 1000', () => {
+  it('encontra a conta transitória do modelo de plano de contas', () => {
     expect(findTransitAccount(buildITG1000Chart('c'))?.code).toBe('1.1.1.04');
     expect(findTransitAccount([])).toBeUndefined();
   });

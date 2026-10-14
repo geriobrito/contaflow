@@ -1,7 +1,7 @@
 import type { AccountType, BankTransaction, ChartAccount, DREGroup, JournalEntry } from '@/types/firestore';
 
 /* =========================================================================
-   Grupos canônicos (ITG 1000) e compatibilidade com dados legados
+   Grupos canônicos (NBC TG 1002) e compatibilidade com dados legados
    ========================================================================= */
 
 export type DRESectionKey =
@@ -161,6 +161,8 @@ export function buildDRE(
   if (journalEntries) {
     for (const j of journalEntries) {
       if (j.date < range.start || j.date > range.end) continue;
+      // O encerramento do exercício zera as contas de resultado: a DRE mostra o resultado antes dele.
+      if (j.yearClosing) continue;
       let counted = false;
       for (const line of j.lines) {
         if (!line.amount) continue;

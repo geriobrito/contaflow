@@ -12,9 +12,9 @@ import type {
 } from '@/types/firestore';
 import { addDays, findCoverageGaps, type CoverageGap } from '@/lib/statement';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
-import { summarizeOpening } from '@/lib/opening';
+import { openingStatus } from '@/lib/opening';
 import { answerAt } from '@/lib/client-requests';
-import { formatDateBR } from '@/lib/utils/formatters';
+import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /**
  * Painel do cliente: o que falta fazer, mês a mês, extratos, perguntas ao cliente e cadastros.
@@ -173,7 +173,7 @@ export function buildDashboard(input: DashboardInput): Dashboard {
 
   /* ── Alertas ───────────────────────────────────────────────────────── */
   if (accounts.length === 0) {
-    add({ id: 'chart', severity: 'high', title: 'Plano de contas vazio', detail: 'Aplique o modelo ITG 1000 para poder classificar lançamentos.', href: '/plano-de-contas' });
+    add({ id: 'chart', severity: 'high', title: 'Plano de contas vazio', detail: 'Aplique o modelo de plano de contas (CFC) para poder classificar lançamentos.', href: '/plano-de-contas' });
   }
   if (totals.transactions === 0) {
     add({ id: 'first-import', severity: 'medium', title: 'Nenhum extrato importado', detail: 'Importe o OFX do banco na Conciliação para começar.', href: '/' });
@@ -265,11 +265,27 @@ export function buildDashboard(input: DashboardInput): Dashboard {
     add({ id: 'bank-opening', severity: 'medium', title: `${plural(noOpening.length, 'conta bancária', 'contas bancárias')} sem saldo inicial`, detail: noOpening.map((b) => b.nickname).join(', '), href: '/contas' });
   }
   if (banks.length > 0 || openings) {
-    const sum = summarizeOpening(openings?.entries ?? [], accounts, banks);
+    const opening = openingStatus(openings, accounts, banks);
     if (!openings) {
       add({ id: 'opening-none', severity: 'medium', title: 'Saldos de abertura não informados', detail: 'Sem eles o balanço patrimonial só tem os bancos.', href: '/abertura' });
-    } else if (!sum.balanced) {
-      add({ id: 'opening-gap', severity: 'medium', title: 'Os saldos de abertura não fecham', detail: `Faltam ${Math.abs(sum.difference).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} para ativo = passivo + patrimônio líquido.`, href: '/abertura' });
+    } else if (!opening.summary.balanced) {
+      // Abertura que não fecha deixa o balanço inteiro com a diferença em "a detalhar".
+      add({
+        id: 'opening-gap',
+        severity: 'high',
+        title: 'Abertura não conferida: os saldos não fecham',
+        detail: `Faltam ${formatCurrency(Math.abs(opening.summary.difference))} para ativo = passivo + patrimônio líquido.`,
+        href: '/abertura',
+      });
+    }
+    if (opening.mismatchedBanks.length > 0) {
+      add({
+        id: 'opening-dates',
+        severity: 'high',
+        title: `Abertura não conferida: ${plural(opening.mismatchedBanks.length, 'banco', 'bancos')} com saldo inicial em outra data`,
+        detail: `${opening.mismatchedBanks.map((b) => `${b.nickname} (${formatDateBR(b.openingDate)})`).join(', ')}; a implantação é em ${formatDateBR(opening.date ?? '')}.`,
+        href: '/abertura',
+      });
     }
   }
   if (!org?.accountantName || !org?.accountantCrc) {

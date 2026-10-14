@@ -86,6 +86,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   JOURNAL_CREATE: 'Incluiu lançamento manual no Diário',
   JOURNAL_UPDATE: 'Alterou lançamento manual no Diário',
   JOURNAL_DELETE: 'Excluiu lançamento manual no Diário',
+  YEAR_CLOSE: 'Encerrou o exercício',
+  YEAR_REOPEN: 'Reabriu o exercício',
 };
 
 /** Descrição curta de um estado de classificação. */

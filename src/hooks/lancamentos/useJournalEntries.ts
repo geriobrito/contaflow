@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ChartAccount, JournalEntry, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { repeatDraft } from '@/lib/journal';
+import { implantationDate, implantationProblem } from '@/lib/opening';
+import { yearClosingLockedMessage } from '@/lib/year-closing';
 import { describeError } from '@/lib/utils/errors';
 
 /** Dados do formulário de lançamento: o resto (id, número, datas de gravação) é de quem grava. */
@@ -19,6 +21,8 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
+  /** Data de implantação: nenhum lançamento manual até ela (já está nos saldos de abertura). */
+  const [implantation, setImplantation] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
@@ -42,12 +46,15 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
         }
         return [];
       }),
+      repo.getOpeningBalances(clientId),
+      repo.listBankAccounts(clientId),
     ])
-      .then(([accs, periodLocks, journalList]) => {
+      .then(([accs, periodLocks, journalList, openings, banks]) => {
         if (!active) return;
         setAccounts(accs);
         setLocks(periodLocks);
         setEntries(journalList);
+        setImplantation(implantationDate(openings, banks));
         setLoading(false);
       })
       .catch((e: unknown) => {
@@ -68,11 +75,14 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
   /** Cria (sem `existingId`) ou altera um lançamento. */
   const saveEntry = async (entryData: JournalEntryInput, existingId?: string) => {
     if (!clientId) return;
+    const before = implantationProblem(entryData.date, implantation);
+    if (before) throw new Error(before);
     const repo = getRepository();
     const now = new Date().toISOString();
     if (existingId) {
       const existing = entries.find((e) => e.id === existingId);
       if (!existing) throw new Error('Lançamento não encontrado. Recarregue a página e tente novamente.');
+      if (existing.yearClosing) throw new Error(yearClosingLockedMessage(existing));
       // Número, criação e autor são preservados na edição.
       await repo.updateJournalEntry({
         ...entryData,
@@ -86,9 +96,12 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
         updatedAt: now,
       });
     } else {
-      // O número vem da sequência do cliente, atribuído pelo repositório ao gravar.
+      // O número vem da sequência do cliente, atribuído pelo repositório ao gravar. Encerramento
+      // de exercício só nasce pela rotina própria (Balanço › DLPA), nunca de uma cópia.
+      const plain = { ...entryData };
+      delete plain.yearClosing;
       await repo.createJournalEntry({
-        ...entryData,
+        ...plain,
         id: newJournalId(),
         clientId,
         createdAt: now,
@@ -101,6 +114,7 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
 
   /** Exclui; se falhar, o erro sobe ao chamador e o lançamento continua na lista. */
   const deleteEntry = async (entry: JournalEntry) => {
+    if (entry.yearClosing) throw new Error(yearClosingLockedMessage(entry));
     await getRepository().deleteJournalEntry(entry.id);
     reload();
   };
@@ -113,8 +127,11 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
     let created = 0;
     try {
       for (const entry of chosen) {
+        const draft = repeatDraft(entry, targetMonth);
+        const before = implantationProblem(draft.date, implantation);
+        if (before) throw new Error(before);
         await repo.createJournalEntry({
-          ...repeatDraft(entry, targetMonth),
+          ...draft,
           id: newJournalId(),
           clientId,
           createdAt: now,
@@ -131,5 +148,5 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
     }
   };
 
-  return { accounts, entries, loading, error, isMonthLocked, saveEntry, deleteEntry, repeatEntries };
+  return { accounts, entries, implantation, loading, error, isMonthLocked, saveEntry, deleteEntry, repeatEntries };
 }

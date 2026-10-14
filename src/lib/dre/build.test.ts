@@ -27,7 +27,7 @@ function tx(code: string | null, amount: number, extra: Partial<BankTransaction>
 }
 
 describe('buildDRE', () => {
-  it('monta a cascata da DRE com os grupos da ITG 1000', () => {
+  it('monta a cascata da DRE com os grupos do modelo (NBC TG 1002)', () => {
     const d = buildDRE(
       [
         tx('3.1.1.01', 10_000), // receita de serviços

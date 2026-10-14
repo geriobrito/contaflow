@@ -8,6 +8,7 @@ import { buildDRE } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { monthsBetween } from '@/lib/periods';
+import { openingStatus } from '@/lib/opening';
 import { describeError } from '@/lib/utils/errors';
 import type { DRETone } from '@/components/dre/DREResultCard';
 
@@ -145,6 +146,10 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
 
   const aux = auxState && auxState.id === clientId ? auxState : null;
   const auxReady = Boolean(aux) && !aux?.error;
+  const opening = useMemo(
+    () => (auxReady && ready && accounts.length > 0 ? openingStatus(openings, accounts, banks) : null),
+    [auxReady, ready, openings, accounts, banks]
+  );
   const blockingError = loadError ?? aux?.error ?? null;
   const failed = Boolean(blockingError);
   const isLoading = Boolean(clientId) && !failed && (loadedKey !== periodKey || !auxReady);
@@ -152,5 +157,5 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
   const hasData = !failed && dre.reconciledCount > 0;
   const tone: DRETone = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
 
-  return { dre, months, prevDre, prevRange, consistency, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone };
+  return { dre, months, prevDre, prevRange, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone };
 }

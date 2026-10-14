@@ -128,7 +128,14 @@ describe('buildDashboard: cadastros', () => {
     const d = buildDashboard(base({ banks: [bank('k1', { ledgerAccountId: undefined, openingBalance: undefined, openingDate: undefined })], openings: null }));
     expect(ids(d)).toEqual(expect.arrayContaining(['bank-link', 'bank-opening', 'opening-none']));
     const gap = buildDashboard(base({ banks: [bank('k1', { openingBalance: 400 })] }));
-    expect(gap.alerts.find((a) => a.id === 'opening-gap')?.href).toBe('/abertura');
+    expect(gap.alerts.find((a) => a.id === 'opening-gap')).toMatchObject({ href: '/abertura', severity: 'high' });
+  });
+
+  it('abertura não conferida: banco com saldo inicial fora da data de implantação', () => {
+    const d = buildDashboard(base({ banks: [bank('k1'), bank('k2', { openingBalance: 0, openingDate: '2024-06-30' })] }));
+    const alert = d.alerts.find((a) => a.id === 'opening-dates');
+    expect(alert).toMatchObject({ severity: 'high', href: '/abertura' });
+    expect(alert?.detail).toMatch(/Banco k2 \(30\/06\/2024\).*31\/12\/2024/);
   });
 
   it('tudo certo: sem alertas altos ou médios', () => {

@@ -85,7 +85,7 @@ export function findTransferPairs(
   return pairs.sort((a, b) => a.out.date.localeCompare(b.out.date));
 }
 
-/** Código e nome da conta transitória no modelo ITG 1000. */
+/** Código e nome da conta transitória no modelo de plano de contas. */
 export const TRANSIT_ACCOUNT = { code: '1.1.1.04', name: 'Transferências entre Contas (Numerário em Trânsito)' } as const;
 
 const TRANSIT_NAME = /tr[aâ]nsito|transfer[êe]ncias entre contas/i;

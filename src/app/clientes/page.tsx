@@ -2,10 +2,11 @@
 
 import React, { useMemo, useState } from 'react';
 import { AlertTriangle, Check, CheckCircle2, Download, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
-import type { ClientCompany, TaxRegime } from '@/types/firestore';
+import type { ClientCompany, CompanyPorte, TaxRegime } from '@/types/firestore';
 import { saveClient } from '@/lib/services/data-service';
+import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { useClient } from '@/contexts/ClientContext';
-import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
+import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
@@ -17,6 +18,8 @@ const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
 ];
 
 const regimeLabel = (r: TaxRegime) => REGIMES.find((x) => x.value === r)?.label ?? r;
+
+const PORTES: readonly CompanyPorte[] = ['MICROENTIDADE', 'PEQUENA_EMPRESA'];
 
 function initials(name: string): string {
   return name
@@ -110,6 +113,10 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
           <dt className="text-stone-400">Regime</dt>
           <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{regimeLabel(regime)}</dd>
         </div>
+        <div className="min-w-0">
+          <dt className="text-stone-400">Porte</dt>
+          <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{PORTE_LABEL[porteOf(client)]}</dd>
+        </div>
       </dl>
 
       <div className="mt-5 pt-4 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between gap-3">
@@ -172,17 +179,18 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
   const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
   const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
+  const [porte, setPorte] = useState<CompanyPorte>(porteOf(client));
   const [email, setEmail] = useState(client?.email ?? '');
   const [phone, setPhone] = useState(client?.phone ?? '');
   const [repName, setRepName] = useState(client?.legalRepresentativeName ?? '');
   const [repCpf, setRepCpf] = useState(client?.legalRepresentativeCpf ? maskCPF(client.legalRepresentativeCpf) : '');
   const [saving, setSaving] = useState(false);
 
-  const digits = cleanDigits(cnpj);
-  const complete = digits.length === 14;
-  const cnpjValid = complete && isValidCNPJ(digits);
+  const cnpjChars = cleanCNPJ(cnpj);
+  const complete = cnpjChars.length === 14;
+  const cnpjValid = complete && isValidCNPJ(cnpjChars);
   // Registros legados com CNPJ inválido podem ser salvos sem alterar o documento.
-  const cnpjUnchanged = Boolean(client) && digits === cleanDigits(client?.cnpj ?? '');
+  const cnpjUnchanged = Boolean(client) && cnpjChars === cleanCNPJ(client?.cnpj ?? '');
   const cnpjError = complete && !cnpjValid ? 'CNPJ inválido: dígitos verificadores não conferem.' : null;
   const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
   const cpfDigits = cleanDigits(repCpf);
@@ -200,9 +208,12 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       id: client?.id ?? newClientId(),
       name: name.trim(),
       tradeName: tradeName.trim() || undefined,
-      cnpj: formatCNPJ(digits),
+      cnpj: formatCNPJ(cnpjChars),
       regime,
       taxRegime: regime,
+      porte,
+      // Preferências gravadas fora deste formulário (Plano de Contas) seguem com o cadastro.
+      ...(client?.ignoredTemplateCodes?.length ? { ignoredTemplateCodes: client.ignoredTemplateCodes } : {}),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       legalRepresentativeName: repName.trim() || undefined,
@@ -256,7 +267,9 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
         <Field label="CNPJ" error={cnpjError}>
           <div className="relative">
             <input
-              inputMode="numeric"
+              autoCapitalize="characters"
+              autoComplete="off"
+              spellCheck={false}
               value={cnpj}
               onChange={(e) => setCnpj(maskCNPJ(e.target.value))}
               placeholder="00.000.000/0000-00"
@@ -283,6 +296,19 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               options={REGIMES.map((r) => ({ value: r.value, label: r.short }))}
             />
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <span className="block text-[12px] font-medium text-stone-500 px-0.5">Porte contábil</span>
+          <div className="overflow-x-auto">
+            <SegmentedControl
+              ariaLabel="Porte contábil"
+              value={porte}
+              onChange={setPorte}
+              options={PORTES.map((p) => ({ value: p, label: PORTE_LABEL[p] }))}
+            />
+          </div>
+          <p className="text-[11px] text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -392,13 +418,14 @@ export default function ClientesPage() {
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const digits = cleanDigits(term);
+    // Só busca por CNPJ quando o termo tem algum dígito: nomes ("alpha") não casam com CNPJ alfanumérico.
+    const doc = /\d/.test(term) ? cleanCNPJ(term) : '';
     return clients.filter(
       (c) =>
         !term ||
         c.name.toLowerCase().includes(term) ||
         (c.tradeName?.toLowerCase().includes(term) ?? false) ||
-        (digits.length > 0 && cleanDigits(c.cnpj).includes(digits))
+        (doc.length > 0 && cleanCNPJ(c.cnpj).includes(doc))
     );
   }, [clients, search]);
 

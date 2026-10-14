@@ -27,6 +27,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   FilePenLine,
+  NotebookPen,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -51,6 +52,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
   { href: '/diario', label: 'Livro Diário', icon: BookText },
   { href: '/razao', label: 'Livro Razão', icon: BookMarked },
+  { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },
   { href: '/clientes', label: 'Clientes', icon: Building2 },
   { href: '/auditoria', label: 'Auditoria', icon: History },
   { href: '/escritorio', label: 'Escritório', icon: Landmark },

@@ -12,6 +12,7 @@ import { DRECompareTable } from '@/components/dre/DRECompareTable';
 import { DREConsistencyCard } from '@/components/dre/DREConsistencyCard';
 import { DREResultCard } from '@/components/dre/DREResultCard';
 import { DREStatement } from '@/components/dre/DREStatement';
+import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 
 /**
  * Demonstração do resultado. Os dados vêm de `useDREData`, e o resultado em destaque, o
@@ -24,7 +25,7 @@ export default function DREPage() {
   const { range, label: periodLabel, jumpTo } = period;
   const [view, setView] = useState<DREView>('simple');
   const [withAccounts, setWithAccounts] = useState(false);
-  const { dre, months, prevDre, prevRange, consistency, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
+  const { dre, months, prevDre, prevRange, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
@@ -161,6 +162,8 @@ export default function DREPage() {
           {exportError}
         </p>
       )}
+
+      <OpeningStatusNotice status={opening} />
 
       {/* Resultado em destaque */}
       <DREResultCard dre={dre} tone={tone} profit={profit} isLoading={isLoading} failed={failed} periodLabel={periodLabel} />

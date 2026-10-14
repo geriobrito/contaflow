@@ -6,6 +6,7 @@ import type {
   ChartAccount,
   ClassificationRule,
   ClientCompany,
+  ExplanatoryNotes,
   ImportBatch,
   JournalCounter,
   JournalEntry,
@@ -40,6 +41,7 @@ export const LOCAL_KEYS = {
   journalEntries: 'contaflow_journal_entries',
   journalCounters: 'contaflow_journal_counters',
   snapshots: 'contaflow_period_snapshots',
+  notes: 'contaflow_explanatory_notes',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -146,6 +148,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.journalEntries,
         LOCAL_KEYS.journalCounters,
         LOCAL_KEYS.snapshots,
+        LOCAL_KEYS.notes,
       ]) {
         write(
           key,
@@ -381,6 +384,36 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       if (audit) {
         write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
       }
+    },
+
+    // Valida tudo antes de escrever: entra o encerramento inteiro ou nada, como no Firestore.
+    async closeYear(drafts, audit) {
+      if (drafts.length === 0) throw new Error('Nada a encerrar.');
+      drafts.forEach(assertValidJournalEntry);
+      const clientId = drafts[0].clientId;
+      const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
+      const counters = read<JournalCounter>(LOCAL_KEYS.journalCounters);
+      const base =
+        counters.find((c) => c.clientId === clientId)?.last ??
+        list.filter((j) => j.clientId === clientId).reduce((max, j) => Math.max(max, j.entryNumber || 0), 0);
+      const entries: JournalEntry[] = drafts.map((d, i) => ({ ...d, entryNumber: base + i + 1, closingAuditId: audit.id }));
+      write(LOCAL_KEYS.journalCounters, [...counters.filter((c) => c.clientId !== clientId), stamp({ id: clientId, clientId, last: base + entries.length })]);
+      write(LOCAL_KEYS.journalEntries, [...list, ...entries.map(stamp)]);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      return entries;
+    },
+    async reopenYear(entries, audit) {
+      const gone = new Set(entries.map((e) => e.id));
+      write(LOCAL_KEYS.journalEntries, read<JournalEntry>(LOCAL_KEYS.journalEntries).filter((j) => !gone.has(j.id)));
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+    },
+
+    async getExplanatoryNotes(clientId, year) {
+      return read<ExplanatoryNotes>(LOCAL_KEYS.notes).find((n) => n.clientId === clientId && n.year === year) ?? null;
+    },
+    async saveExplanatoryNotes(notes) {
+      const id = `${notes.clientId}_${notes.year}`;
+      write(LOCAL_KEYS.notes, [...read<ExplanatoryNotes>(LOCAL_KEYS.notes).filter((n) => n.id !== id), stamp({ ...notes, id })]);
     },
 
     async getPublicClientRequest(token) {

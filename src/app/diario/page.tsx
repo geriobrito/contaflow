@@ -11,6 +11,8 @@ import { buildDaybook, type DaybookBookInfo, type DaybookOrigin } from '@/lib/da
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { openingStatus } from '@/lib/opening';
+import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 
 /** Lançamentos por página na tela (o PDF traz o período inteiro). */
 const PAGE_SIZE = 50;
@@ -82,6 +84,11 @@ export default function DiarioPage() {
     ].filter(Boolean);
     return reasons.length ? reasons.join('; ') : null;
   }, [daybook, static_, range]);
+
+  const opening = useMemo(
+    () => (static_ && accounts.length > 0 ? openingStatus(static_.openings, accounts, banks) : null),
+    [static_, accounts, banks]
+  );
 
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -171,6 +178,8 @@ export default function DiarioPage() {
           </Field>
         </div>
       </section>
+
+      <OpeningStatusNotice status={opening} />
 
       {provisional && (
         <p role="status" className="flex gap-2 rounded-2xl px-4 py-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 text-[13px] text-amber-800 dark:text-amber-300">

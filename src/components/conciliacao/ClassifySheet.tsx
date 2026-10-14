@@ -72,6 +72,8 @@ export function ClassifySheet({
   }, [confirmUndo]);
 
   const [mode, setMode] = useState<SheetMode>(locked ? 'history' : transaction.isSplit ? 'split' : 'single');
+  /** Atalho "bruto × líquido" da conta única: o rateio abre já no painel de retenções. */
+  const [grossNetFirst, setGrossNetFirst] = useState(false);
   const openQuery = transaction.clientQuery?.status === 'OPEN' ? transaction.clientQuery : undefined;
   const [question, setQuestion] = useState(openQuery?.question ?? defaultQuestion(transaction));
   const [audit, setAudit] = useState<AuditEntry[] | null>(null);
@@ -88,7 +90,7 @@ export function ClassifySheet({
     };
   }, [mode, audit, loadAudit]);
   const [drafts, setDrafts] = useState<SplitDraft[]>(() =>
-    transaction.isSplit && transaction.splits?.length ? splitsToDrafts(transaction.splits) : [emptySplitDraft(), emptySplitDraft()]
+    transaction.isSplit && transaction.splits?.length ? splitsToDrafts(transaction.splits, transaction.amount) : [emptySplitDraft(), emptySplitDraft()]
   );
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
   const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
@@ -252,7 +254,14 @@ export function ClassifySheet({
           </div>
         ) : mode === 'split' ? (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6">
-            <SplitEditor transactionAmount={transaction.amount} accounts={accounts} drafts={drafts} onChange={setDrafts} />
+            <SplitEditor
+              transactionAmount={transaction.amount}
+              accounts={accounts}
+              drafts={drafts}
+              onChange={setDrafts}
+              defaultAccountId={accountId || undefined}
+              startWithGrossNet={grossNetFirst}
+            />
           </div>
         ) : (
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 space-y-5">
@@ -260,6 +269,16 @@ export function ClassifySheet({
           <section className="space-y-2">
             <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
             <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
+            <button
+              type="button"
+              onClick={() => {
+                setGrossNetFirst(true);
+                setMode('split');
+              }}
+              className="px-1 text-[12px] font-medium text-[#0071E3] hover:underline"
+            >
+              {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
+            </button>
           </section>
 
           {/* Aprendizado */}

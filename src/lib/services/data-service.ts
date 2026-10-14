@@ -1,6 +1,6 @@
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany } from '@/types/firestore';
-import { buildITG1000Chart } from '@/lib/chart/itg1000';
+import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
@@ -55,13 +55,14 @@ export const deleteAccount = (accountId: string): Promise<void> => getRepository
 export { deleteChartAccount } from '@/lib/services/accounting-service';
 
 /**
- * Aplica o Plano de Contas da ITG 1000 (CFC, 15/12/2022 — NBC TG 1002, Anexo 11)
- * como contas próprias do cliente. Códigos já existentes são preservados.
- * Retorna quantas contas foram criadas.
+ * Aplica o modelo de plano de contas do CFC (NBC TG 1002, Anexo 11) como contas próprias
+ * do cliente. Códigos já existentes são preservados; num plano em uso, só entram as que faltam
+ * (ou só as de `codes`, com os grupos delas que também faltam). Retorna quantas contas foram criadas.
  */
-export async function applyDefaultChartTemplate(clientId: string): Promise<number> {
-  const existingCodes = new Set((await getAccounts(clientId)).map((a) => a.code));
-  const toCreate = buildITG1000Chart(clientId).filter((a) => !existingCodes.has(a.code));
+export async function applyDefaultChartTemplate(clientId: string, codes?: readonly string[]): Promise<number> {
+  const missing = missingTemplateAccounts(clientId, await getAccounts(clientId));
+  const wanted = codes ? withMissingParents(codes, missing) : null;
+  const toCreate = wanted ? missing.filter((a) => wanted.has(a.code)) : missing;
   if (toCreate.length > 0) await getRepository().insertAccounts(toCreate);
   return toCreate.length;
 }

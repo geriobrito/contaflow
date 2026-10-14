@@ -84,7 +84,7 @@ interface LineSpec {
   section?: DRESectionKey;
 }
 
-/** Estrutura da DRE (ITG 1000) na ordem de apresentação. */
+/** Estrutura da DRE (NBC TG 1002) na ordem de apresentação. */
 const SPEC: readonly LineSpec[] = [
   { id: 'gross', label: 'Receita bruta', kind: 'section', favorable: 'up', value: (s) => s.grossRevenue, section: 'GROSS_REVENUE' },
   { id: 'deductions', label: '(−) Deduções da receita', kind: 'section', favorable: 'down', value: (s) => s.deductions, section: 'DEDUCTIONS' },

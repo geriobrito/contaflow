@@ -20,14 +20,24 @@ export function formatDateBR(dateStr?: string): string {
   return dateStr;
 }
 
+/** CNPJ completo: 12 posições alfanuméricas (IN RFB 2.229/2024) e 2 dígitos verificadores numéricos. */
+const CNPJ_SHAPE = /^[0-9A-Z]{12}\d{2}$/;
+
 /**
- * Formata CNPJ (XX.XXX.XXX/XXXX-XX)
+ * Normaliza CNPJ numérico ou alfanumérico: maiúsculas e só [0-9A-Z], sem pontuação.
+ */
+export function cleanCNPJ(value: string): string {
+  return value.toUpperCase().replace(/[^0-9A-Z]/g, '');
+}
+
+/**
+ * Formata CNPJ (XX.XXX.XXX/XXXX-XX), numérico ou alfanumérico.
  */
 export function formatCNPJ(cnpj: string): string {
-  const digits = cnpj.replace(/\D/g, '');
-  if (digits.length !== 14) return cnpj;
-  return digits.replace(
-    /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+  const chars = cleanCNPJ(cnpj);
+  if (!CNPJ_SHAPE.test(chars)) return cnpj;
+  return chars.replace(
+    /^(\w{2})(\w{3})(\w{3})(\w{4})(\d{2})$/,
     '$1.$2.$3/$4-$5'
   );
 }
@@ -40,34 +50,39 @@ export function cleanDigits(value: string): string {
 }
 
 /**
- * Valida CNPJ pelos dígitos verificadores (módulo 11).
+ * Valida CNPJ pelos dígitos verificadores (módulo 11). Cada posição vale o código ASCII − 48,
+ * o que mantém o cálculo antigo para dígitos e dá A=17 … Z=42 no CNPJ alfanumérico.
  */
 export function isValidCNPJ(value: string): boolean {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length !== 14 || /^(\d)\1{13}$/.test(digits)) return false;
+  const chars = cleanCNPJ(value);
+  if (!CNPJ_SHAPE.test(chars) || /^(\d)\1{13}$/.test(chars)) return false;
   const calc = (length: number): number => {
     let sum = 0;
     let weight = length - 7;
     for (let i = 0; i < length; i++) {
-      sum += Number(digits[i]) * weight--;
+      sum += (chars.charCodeAt(i) - 48) * weight--;
       if (weight < 2) weight = 9;
     }
     const rest = sum % 11;
     return rest < 2 ? 0 : 11 - rest;
   };
-  return calc(12) === Number(digits[12]) && calc(13) === Number(digits[13]);
+  return calc(12) === Number(chars[12]) && calc(13) === Number(chars[13]);
 }
 
 /**
- * Máscara progressiva de CNPJ enquanto o usuário digita.
+ * Máscara progressiva de CNPJ enquanto o usuário digita: letras só nas 12 primeiras posições.
  */
 export function maskCNPJ(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 14);
+  let d = '';
+  for (const ch of cleanCNPJ(value)) {
+    if (d.length === 14) break;
+    if (d.length < 12 || /\d/.test(ch)) d += ch;
+  }
   return d
-    .replace(/^(\d{2})(\d)/, '$1.$2')
-    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-    .replace(/\.(\d{3})(\d)/, '.$1/$2')
-    .replace(/(\d{4})(\d)/, '$1-$2');
+    .replace(/^(\w{2})(\w)/, '$1.$2')
+    .replace(/^(\w{2})\.(\w{3})(\w)/, '$1.$2.$3')
+    .replace(/\.(\w{3})(\w)/, '.$1/$2')
+    .replace(/(\w{4})(\w)/, '$1-$2');
 }
 
 /**

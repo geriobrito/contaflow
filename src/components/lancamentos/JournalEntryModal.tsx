@@ -13,7 +13,8 @@ import {
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl } from '@/lib/journal';
+import { JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
+import { parseMoneyInput } from '@/lib/opening';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 
 interface JournalEntryModalProps {
@@ -63,6 +64,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<JournalTemplateId | null>(null);
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   // Apenas contas analíticas são selecionáveis
   const analyticAccounts = useMemo(() => {
@@ -125,90 +129,25 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     );
   };
 
-  // Modelos rápidos de 1 clique
-  const applyTemplate = (tmpl: 'payroll' | 'depreciation' | 'taxes') => {
-    if (tmpl === 'payroll') {
-      const expAcc =
-        analyticAccounts.find((a) => (a.code.startsWith('3.') || a.code.startsWith('4.')) && /sal[aá]rio|folha|pessoal/i.test(a.name)) ??
-        analyticAccounts.find((a) => a.type === 'EXPENSE');
-      const passAcc =
-        analyticAccounts.find((a) => a.code.startsWith('2.') && /sal[aá]rio.*pagar|ordenado.*pagar|folha/i.test(a.name)) ??
-        analyticAccounts.find((a) => a.type === 'LIABILITY');
-
-      setCategory('PAYROLL');
-      setMemo(`Provisão de Folha de Pagamento - Competência ${month}`);
-      setDocumentRef(`FOLHA-${month}`);
-      setLines([
-        {
-          id: 'l1',
-          accountId: expAcc?.id ?? '',
-          type: 'DEBIT',
-          amount: 0,
-          memo: 'Salários e encargos do período',
-        },
-        {
-          id: 'l2',
-          accountId: passAcc?.id ?? '',
-          type: 'CREDIT',
-          amount: 0,
-          memo: 'Salários e ordenados a pagar',
-        },
-      ]);
-    } else if (tmpl === 'depreciation') {
-      const expAcc =
-        analyticAccounts.find((a) => /deprecia/i.test(a.name) && (a.code.startsWith('3.') || a.code.startsWith('4.'))) ??
-        analyticAccounts.find((a) => a.type === 'EXPENSE');
-      const assetAcc =
-        analyticAccounts.find((a) => /deprecia/i.test(a.name) && a.code.startsWith('1.')) ??
-        analyticAccounts.find((a) => a.isContra);
-
-      setCategory('DEPRECIATION');
-      setMemo(`Depreciação Mensal do Imobilizado - Competência ${month}`);
-      setDocumentRef(`DEPREC-${month}`);
-      setLines([
-        {
-          id: 'l1',
-          accountId: expAcc?.id ?? '',
-          type: 'DEBIT',
-          amount: 0,
-          memo: 'Despesa com depreciação',
-        },
-        {
-          id: 'l2',
-          accountId: assetAcc?.id ?? '',
-          type: 'CREDIT',
-          amount: 0,
-          memo: '(-) Depreciação acumulada',
-        },
-      ]);
-    } else if (tmpl === 'taxes') {
-      const expAcc =
-        analyticAccounts.find((a) => /simples|das|imposto/i.test(a.name) && (a.code.startsWith('3.') || a.code.startsWith('4.'))) ??
-        analyticAccounts.find((a) => a.type === 'EXPENSE' || a.type === 'COST');
-      const passAcc =
-        analyticAccounts.find((a) => /simples.*pagar|imposto.*pagar|tributo/i.test(a.name) && a.code.startsWith('2.')) ??
-        analyticAccounts.find((a) => a.type === 'LIABILITY');
-
-      setCategory('TAX');
-      setMemo(`Provisão Tributária Simples Nacional - Competência ${month}`);
-      setDocumentRef(`DAS-${month}`);
-      setLines([
-        {
-          id: 'l1',
-          accountId: expAcc?.id ?? '',
-          type: 'DEBIT',
-          amount: 0,
-          memo: 'Dedução / despesa tributária',
-        },
-        {
-          id: 'l2',
-          accountId: passAcc?.id ?? '',
-          type: 'CREDIT',
-          amount: 0,
-          memo: 'Simples Nacional a recolher',
-        },
-      ]);
+  // Modelos de provisão: os valores do mês viram as partidas nas contas do modelo de plano de contas.
+  const template = JOURNAL_TEMPLATES.find((t) => t.id === templateId) ?? null;
+  const applyTemplate = () => {
+    if (!template) return;
+    const values: Record<string, number> = {};
+    for (const f of template.fields) {
+      const n = parseMoneyInput(templateValues[f.key] ?? '');
+      if (n === null) return setTemplateError(`${f.label}: valor inválido (use números, como 1.234,56).`);
+      values[f.key] = n;
     }
+    const { draft, problem } = templateDraft(template, values, accounts, date);
+    if (!draft) return setTemplateError(problem);
+    setTemplateError(null);
+    setError(null);
+    setCategory(draft.category);
+    setMemo(draft.memo);
+    setDocumentRef(draft.documentRef ?? '');
+    setLines(draft.lines);
+    setTemplateId(null);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -306,33 +245,61 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           </button>
         </div>
 
-        {/* Templates Rápidos */}
-        <div className="px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/[0.04] dark:border-white/[0.06] flex items-center gap-2 overflow-x-auto text-[12px]">
-          <span className="font-medium text-stone-500 flex items-center gap-1 shrink-0">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Modelos Rápidos:
-          </span>
-          <button
-            type="button"
-            onClick={() => applyTemplate('payroll')}
-            className="px-2.5 py-1 rounded-lg bg-white dark:bg-stone-700 border border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-blue-500 hover:text-blue-600 transition-colors shrink-0"
-          >
-            📋 Provisão de Folha
-          </button>
-          <button
-            type="button"
-            onClick={() => applyTemplate('depreciation')}
-            className="px-2.5 py-1 rounded-lg bg-white dark:bg-stone-700 border border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-blue-500 hover:text-blue-600 transition-colors shrink-0"
-          >
-            📉 Depreciação Mensal
-          </button>
-          <button
-            type="button"
-            onClick={() => applyTemplate('taxes')}
-            className="px-2.5 py-1 rounded-lg bg-white dark:bg-stone-700 border border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-blue-500 hover:text-blue-600 transition-colors shrink-0"
-          >
-            🏛️ Provisão Tributária (DAS)
-          </button>
-        </div>
+        {/* Modelos de provisão mensal */}
+        {!initialEntry?.id && (
+          <div className="px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/[0.04] dark:border-white/[0.06] space-y-2.5 text-[12px]">
+            <div role="group" aria-label="Modelos de lançamento" className="flex items-center gap-2 overflow-x-auto">
+              <span className="font-medium text-stone-500 flex items-center gap-1 shrink-0">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Modelos:
+              </span>
+              {JOURNAL_TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-pressed={templateId === t.id}
+                  onClick={() => {
+                    setTemplateId(templateId === t.id ? null : t.id);
+                    setTemplateError(null);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg border transition-colors shrink-0 ${
+                    templateId === t.id
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-stone-700 border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-blue-500 hover:text-blue-600'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {template && (
+              <div className="rounded-xl bg-white dark:bg-stone-900 border border-black/[0.06] dark:border-white/[0.08] p-3 space-y-3">
+                <p className="text-stone-500">{template.description} Competência pela data do lançamento.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {template.fields.map((f) => (
+                    <label key={f.key} className="block space-y-1">
+                      <span className="block font-medium text-stone-600 dark:text-stone-300">
+                        {f.label}
+                        {f.optional && <span className="font-normal text-stone-400"> (opcional)</span>}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        value={templateValues[f.key] ?? ''}
+                        onChange={(e) => setTemplateValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        placeholder="0,00"
+                        className={`${INPUT} h-9 text-right font-mono tabular-nums text-[13px]`}
+                      />
+                      {f.hint && <span className="block text-[11px] text-stone-400">{f.hint}</span>}
+                    </label>
+                  ))}
+                </div>
+                {templateError && <p role="alert" className="text-rose-600">{templateError}</p>}
+                <button type="button" onClick={applyTemplate} className={`${BUTTON.secondary} h-8`}>
+                  Preencher as partidas
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">

@@ -7,6 +7,7 @@ import type {
   ChartAccount,
   ClassificationRule,
   ClientCompany,
+  ExplanatoryNotes,
   ImportBatch,
   JournalEntry,
   OpeningBalances,
@@ -152,6 +153,19 @@ export interface DataRepository {
   /** Altera um lançamento existente (o número não muda); recusa se débito ≠ crédito. */
   updateJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void>;
   deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void>;
+
+  /* Encerramento do exercício (src/lib/year-closing.ts) */
+  /**
+   * Grava todos os lançamentos do encerramento, com números seguidos da sequência do cliente, e
+   * o registro de auditoria YEAR_CLOSE numa única operação: entra tudo ou nada.
+   */
+  closeYear(drafts: readonly JournalEntryDraft[], audit: AuditEntry): Promise<JournalEntry[]>;
+  /** Exclui todos os lançamentos do encerramento e grava o YEAR_REOPEN (`${closingAuditId}_reopen`) numa única operação. */
+  reopenYear(entries: readonly JournalEntry[], audit: AuditEntry): Promise<void>;
+
+  /* Notas explicativas (id `${clientId}_${year}`) */
+  getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;
+  saveExplanatoryNotes(notes: ExplanatoryNotes): Promise<void>;
 
   /* Pendências com o cliente (acesso público pelo link, sem login) */
   getPublicClientRequest(token: string): Promise<ClientRequest | null>;

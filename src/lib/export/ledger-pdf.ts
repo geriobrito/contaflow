@@ -5,6 +5,7 @@ import type { DateRange } from '@/lib/data/repository';
 import type { BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { accountingStandard } from '@/lib/accounting-standard';
 
 /* ── Paleta corporativa e sóbria (RGB) — legibilidade máxima em tela e impressão P&B ── */
 export const INK: [number, number, number] = [28, 25, 23];
@@ -18,12 +19,14 @@ export const GRAND_TOTAL_FILL: [number, number, number] = [228, 228, 226];
 export const MARGIN_X = 12; // mm (permite acomodar as 6 colunas do Balancete com folga perfeita em A4 Retrato)
 
 export interface LedgerPdfExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
   range: DateRange;
   balanceSheet: BalanceSheet;
   trialBalance: TrialBalance;
   documentType: 'bs' | 'tb'; // 'bs' = Balanço patrimonial, 'tb' = Balancete de verificação
   showSynthetic?: boolean;
+  /** Antes ou depois do encerramento do exercício, quando ele cai no período do balancete. */
+  trialBalanceStage?: string;
   issuedAt?: Date;
   signatories?: {
     legalRepresentative?: { name?: string; cpf?: string };
@@ -153,10 +156,11 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   const center = pageWidth / 2;
   const issuedAt = ctx.issuedAt ?? new Date();
   const bs = ctx.balanceSheet;
+  const standard = accountingStandard(ctx.client);
 
   doc.setProperties({
     title: `Balanço Patrimonial - ${ctx.client.name}`,
-    subject: `Posição em ${formatDateBR(bs.date)} - NBC TG 1002 / ITG 1000`,
+    subject: `Posição em ${formatDateBR(bs.date)} - ${standard}`,
     creator: 'ContaFlow',
   });
 
@@ -183,7 +187,7 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(...MUTED);
-  doc.text('NBC TG 1002 / ITG 1000 - Microentidades', center, y, { align: 'center' });
+  doc.text(standard, center, y, { align: 'center' });
 
   y += 7;
   doc.setFontSize(8.5);
@@ -350,10 +354,11 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   const issuedAt = ctx.issuedAt ?? new Date();
   const tb = ctx.trialBalance;
   const rows = ctx.showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
+  const standard = accountingStandard(ctx.client);
 
   doc.setProperties({
     title: `Balancete de Verificação - ${ctx.client.name}`,
-    subject: `${periodLabel(ctx.range)} - NBC TG 1002 / ITG 1000`,
+    subject: `${periodLabel(ctx.range)} - ${standard}`,
     creator: 'ContaFlow',
   });
 
@@ -380,7 +385,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(...MUTED);
-  doc.text('NBC TG 1002 / ITG 1000 - Microentidades', center, y, { align: 'center' });
+  doc.text(ctx.trialBalanceStage ? `${standard} - ${ctx.trialBalanceStage}` : standard, center, y, { align: 'center' });
 
   y += 6.5;
   doc.setFontSize(8.5);
@@ -503,7 +508,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
 
 /**
  * Gera o relatório contábil em PDF vetorial A4 de alta qualidade.
- * - Balanço Patrimonial: A4 Retrato (layout oficial NBC TG 1002 / ITG 1000).
+ * - Balanço Patrimonial: A4 Retrato (norma pelo porte: NBC TG 1002 ou NBC TG 1001).
  * - Balancete de Verificação: A4 Retrato (padronizado no mesmo padrão do Balanço, sem cortes).
  */
 export function generateLedgerPdf(ctx: LedgerPdfExportContext): { blob: Blob; fileName: string } {

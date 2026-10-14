@@ -34,6 +34,14 @@ describe('extractPayee (descrições reais dos extratos)', () => {
     ['Mensalidade Seguro Conta - Para: PAGSEGURO INTERNET INSTITUICAO DE PAGAMENTO', 'Mensalidade Seguro Conta'],
     // Outros bancos: descrição livre fica como está
     ['UBER *TRIP SAO PAULO BR', 'UBER *TRIP SAO PAULO BR'],
+    // CNPJ alfanumérico (IN RFB 2.229/2024): como trecho próprio ou colado no nome
+    ['Transferência enviada pelo Pix - ALFA SERVICOS - 12.ABC.345/01DE-35 - BANCO X (0001) Agência: 1 Conta: 2-3', 'ALFA SERVICOS'],
+    ['Transferência recebida pelo Pix - 12.ABC.345/01DE-35 - ALFA SERVICOS', 'ALFA SERVICOS'],
+    ['Pix enviado - ALFA SERVICOS 12ABC34501DE35', 'ALFA SERVICOS'],
+    ['Pix enviado - 12ABC34501DE35 ALFA SERVICOS', 'ALFA SERVICOS'],
+    // Formato de CNPJ com DV que não confere continua sendo nome
+    ['Compra no débito - SUPERMERCADO12', 'SUPERMERCADO12'],
+    ['Pix enviado - LOJA SUPERMERCADO12', 'LOJA SUPERMERCADO12'],
   ];
   it.each(cases)('%s', (memo, expected) => {
     expect(extractPayee(memo)).toBe(expected);

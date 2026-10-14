@@ -36,6 +36,8 @@ const GROUP: Record<AuditAction, Filter> = {
   JOURNAL_CREATE: 'MANUAL',
   JOURNAL_UPDATE: 'MANUAL',
   JOURNAL_DELETE: 'MANUAL',
+  YEAR_CLOSE: 'PERIOD',
+  YEAR_REOPEN: 'PERIOD',
 };
 
 const LIMIT = 300;

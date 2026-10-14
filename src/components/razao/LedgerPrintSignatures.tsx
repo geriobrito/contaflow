@@ -1,12 +1,13 @@
 import React from 'react';
 import type { ClientCompany, OrgSettings } from '@/types/firestore';
+import { accountingStandardCode } from '@/lib/accounting-standard';
 
 /** Assinaturas do representante legal e do contador, só na impressão da ficha. */
 export function LedgerPrintSignatures({ client, org }: { client: ClientCompany | null; org: OrgSettings | null | undefined }) {
   return (
     <section aria-label="Assinaturas contábeis" className="hidden print:block pt-8 print-avoid-break">
       <div className="text-[9px] text-stone-500 mb-6 text-center">
-        NBC TG 1002 / ITG 1000 — Livro Razão emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
+        {accountingStandardCode(client)} — Livro Razão emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
       </div>
       <div className="grid grid-cols-2 gap-8 pt-4">
         <div className="text-center">

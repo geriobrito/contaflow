@@ -3,7 +3,7 @@ import type { DateRange, DREAccountLine, DREStatement } from '@/lib/dre/build';
 import { formatCNPJ, formatDateBR } from '@/lib/utils/formatters';
 
 /**
- * Linhas da DRE no layout da ITG 1000/2022 (NBC TG 1002 — Anexo 9), compartilhadas
+ * Linhas da DRE no layout da NBC TG 1002 (Anexo 9), compartilhadas
  * pelos exportadores de PDF e Excel para que os dois documentos sejam idênticos.
  */
 export type DRERowKind = 'group' | 'account' | 'subtotal' | 'result';
@@ -19,7 +19,7 @@ export interface DREExportRow {
 }
 
 export interface DREExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
   range: DateRange;
   statement: DREStatement;
   /** Data de emissão; padrão: agora. */
@@ -31,7 +31,6 @@ export interface DREExportContext {
 }
 
 export const DRE_TITLE = 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO';
-export const DRE_STANDARD = 'NBC TG 1002 / ITG 1000 - Microentidades';
 export const DRE_CURRENCY = 'Em Reais - R$';
 
 export function buildDREExportRows(statement: DREStatement): DREExportRow[] {

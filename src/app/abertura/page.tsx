@@ -8,7 +8,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { getActor } from '@/lib/data/scope';
 import { newAuditId } from '@/lib/audit';
 import { accountKind, type AccountKind } from '@/lib/ledger';
-import { openingAccounts, parseMoneyInput, summarizeOpening } from '@/lib/opening';
+import { openingAccounts, openingStatus, parseMoneyInput, summarizeOpening } from '@/lib/opening';
 import { isISODate } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
@@ -79,6 +79,12 @@ export default function AberturaPage() {
     return { entries, invalid };
   }, [values]);
   const summary = useMemo(() => summarizeOpening(parsed.entries, accounts, banks), [parsed.entries, accounts, banks]);
+  // Bancos com saldo inicial fora da data digitada: a implantação precisa ser uma data única.
+  const outOfDate = useMemo(() => {
+    if (!clientId || !isISODate(date)) return new Set<string>();
+    const status = openingStatus({ id: clientId, clientId, date, entries: parsed.entries, updatedAt: '' }, accounts, banks);
+    return new Set(status.mismatchedBanks.map((b) => b.id));
+  }, [clientId, date, parsed.entries, accounts, banks]);
   const dirty = useMemo(() => {
     const saved = ready?.saved;
     if (!saved) return parsed.entries.length > 0;
@@ -170,13 +176,13 @@ export default function AberturaPage() {
         <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
       ) : rows.length === 0 ? (
         <section className={`${SURFACE} rounded-[22px]`}>
-          <EmptyState title="Plano de contas vazio" description="Aplique o modelo ITG 1000 em Plano de Contas para informar os saldos de abertura." />
+          <EmptyState title="Plano de contas vazio" description="Aplique o modelo de plano de contas (CFC) em Plano de Contas para informar os saldos de abertura." />
         </section>
       ) : (
         <>
           {/* Resumo e equilíbrio */}
           <section className={`${SURFACE} rounded-[22px] p-5 grid gap-5 lg:grid-cols-[minmax(0,220px)_1fr] items-start`}>
-            <Field label="Saldo em" hint="Normalmente o último dia do exercício anterior">
+            <Field label="Data de implantação (saldo em)" hint="Normalmente o último dia do exercício anterior. Lançamentos manuais só depois dela.">
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
             </Field>
             <div className="space-y-3">
@@ -236,6 +242,13 @@ export default function AberturaPage() {
               <h2 className="text-[14px] font-semibold tracking-tight">Bancos</h2>
               <a href="/contas" className="ml-auto text-[12px] text-[#0071E3] hover:underline">Editar em Contas e Extratos</a>
             </div>
+            {outOfDate.size > 0 && (
+              <p className="mb-2 flex items-start gap-2 text-[12px] text-amber-700">
+                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                O saldo inicial de cada banco precisa ser o do fim do dia {formatDateBR(date)}, a mesma data dos demais saldos. Ajuste a data e o saldo em Contas e
+                Extratos.
+              </p>
+            )}
             {banks.length === 0 ? (
               <p className="text-[12px] text-stone-500">Nenhuma conta bancária cadastrada. Importe um extrato OFX para cadastrá-la.</p>
             ) : (
@@ -245,7 +258,11 @@ export default function AberturaPage() {
                     <span className="flex-1 min-w-0 truncate">{b.nickname}</span>
                     {b.openingBalance !== undefined ? (
                       <span className="font-mono tabular-nums">
-                        {formatCurrency(b.openingBalance)} <span className="text-[11px] text-stone-400">em {formatDateBR(b.openingDate)}</span>
+                        {formatCurrency(b.openingBalance)}{' '}
+                        <span className={`text-[11px] ${outOfDate.has(b.id) ? 'text-amber-700 font-medium' : 'text-stone-400'}`}>
+                          em {formatDateBR(b.openingDate)}
+                          {outOfDate.has(b.id) && ` · diferente da implantação (${formatDateBR(date)})`}
+                        </span>
                       </span>
                     ) : (
                       <span className="text-[12px] text-amber-700">saldo inicial não informado</span>

@@ -27,6 +27,7 @@ import type {
   ChartAccount,
   ClassificationRule,
   ClientCompany,
+  ExplanatoryNotes,
   ImportBatch,
   JournalEntry,
   OpeningBalances,
@@ -55,6 +56,7 @@ export const COL = {
   journalEntries: 'journal_entries',
   journalCounters: 'journal_counters',
   snapshots: 'period_snapshots',
+  notes: 'explanatory_notes',
 } as const;
 
 /** Limites do Firestore. */
@@ -225,7 +227,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         })
       );
       // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -509,6 +511,47 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       b.delete(doc(db, COL.journalEntries, entryId));
       if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));
       await b.commit();
+    },
+
+    /* ── Encerramento do exercício ────────────────────────────────────── */
+    // Transação (não um lote simples) porque os números saem do contador lido nela. As regras
+    // aceitam o contador saltar o bloco inteiro quando o YEAR_CLOSE nasce na mesma gravação.
+    async closeYear(drafts, audit) {
+      if (drafts.length === 0) throw new Error('Nada a encerrar.');
+      if (drafts.length + 2 > BATCH_LIMIT) throw new Error('Encerramento maior que o limite de uma gravação.');
+      drafts.forEach(assertValidJournalEntry);
+      const clientId = drafts[0].clientId;
+      const counterRef = doc(db, COL.journalCounters, clientId);
+      let seed = 0;
+      if (!(await getDoc(counterRef)).exists()) {
+        const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', clientId)));
+        seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
+      }
+      return runTransaction(db, async (t) => {
+        const counter = await t.get(counterRef);
+        const base = counter.exists() ? Number(counter.data().last) || 0 : seed;
+        const entries: JournalEntry[] = drafts.map((d, i) => ({ ...d, entryNumber: base + i + 1, closingAuditId: audit.id }));
+        t.set(counterRef, stamp({ id: clientId, clientId, last: base + entries.length, closingAudit: audit.id }));
+        for (const e of entries) t.set(doc(db, COL.journalEntries, e.id), stamp(e));
+        t.set(doc(db, COL.audit, audit.id), stamp(audit));
+        return entries;
+      });
+    },
+    async reopenYear(entries, audit) {
+      if (entries.length + 1 > BATCH_LIMIT) throw new Error('Encerramento maior que o limite de uma gravação.');
+      const b = writeBatch(db);
+      for (const e of entries) b.delete(doc(db, COL.journalEntries, e.id));
+      auditWrite(audit)(b);
+      await b.commit();
+    },
+
+    /* ── Notas explicativas ───────────────────────────────────────────── */
+    async getExplanatoryNotes(clientId, year) {
+      const snap = await getDoc(doc(db, COL.notes, `${clientId}_${year}`));
+      return snap.exists() ? ({ ...(snap.data() as ExplanatoryNotes), id: snap.id }) : null;
+    },
+    async saveExplanatoryNotes(notes) {
+      await setDoc(doc(db, COL.notes, `${notes.clientId}_${notes.year}`), stamp({ ...notes, id: `${notes.clientId}_${notes.year}` }));
     },
 
     /* Acesso público pelo link: sem orgId de sessão; as regras validam pelo token. */

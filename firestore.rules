@@ -37,6 +37,11 @@ rules_version = '2';
 //      usuário é administrador do escritório.
 //  13. period_snapshots guarda saldos consolidados de competências fechadas: é um cache
 //      que o app confere antes de usar, isolado por escritório como os demais dados.
+//  14. Encerramento do exercício: todos os lançamentos dele (yearClosing, em 31/12) entram
+//      juntos, com dezembro fechado, numa gravação com um único registro em audit_log, e só
+//      saem juntos pela reabertura (administrador), também auditada. Nenhum lançamento manual
+//      até a data de implantação.
+//  15. explanatory_notes guarda o texto das notas explicativas por cliente e exercício.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -186,17 +191,61 @@ service cloud.firestore {
             || get(journalCounter(entry.clientId)).data.last < entry.entryNumber);
     }
 
+    // Até a data de implantação (opening_balances.date) o movimento já está nos saldos de
+    // abertura: nenhum lançamento manual nela ou antes.
+    function afterImplantation(entry) {
+      let opening = /databases/$(database)/documents/opening_balances/$(entry.clientId);
+      return !exists(opening) || entry.date > get(opening).data.date;
+    }
+
+    // Encerramento do exercício (src/lib/year-closing.ts): todos os lançamentos dele (marcados
+    // com o ano, em 31/12) e um único registro de auditoria nascem numa mesma gravação; cada
+    // lançamento aponta o registro em `closingAuditId`. A reabertura apaga todos juntos com o
+    // registro `${closingAuditId}_reopen`. É a única exceção à competência fechada: o exercício
+    // só se encerra com dezembro fechado.
+    function auditDoc(id) {
+      return /databases/$(database)/documents/audit_log/$(id);
+    }
+    function auditedNowAs(id, clientId, action) {
+      return !exists(auditDoc(id))
+        && existsAfter(auditDoc(id))
+        && getAfter(auditDoc(id)).data.action == action
+        && getAfter(auditDoc(id)).data.clientId == clientId;
+    }
+    function isYearClosing(entry) {
+      return entry.category == 'CLOSING'
+        && entry.get('yearClosing', '') == entry.date[0:4]
+        && entry.date[4:10] == '-12-31'
+        && entry.get('closingAuditId', '') is string
+        && entry.get('closingAuditId', '').size() > 0;
+    }
+    // Número dentro do bloco reservado no contador por este encerramento.
+    function takesClosingNumber(entry) {
+      return entry.entryNumber <= getAfter(journalCounter(entry.clientId)).data.last
+        && getAfter(journalCounter(entry.clientId)).data.get('closingAudit', '') == entry.closingAuditId
+        && (!exists(journalCounter(entry.clientId))
+            || get(journalCounter(entry.clientId)).data.last < entry.entryNumber);
+    }
+
     match /journal_entries/{entryId} {
       allow read: if isMine(resource.data);
-      allow delete: if isMine(resource.data) && monthOpen(resource.data);
+      // Reabrir o exercício (apagar o encerramento em dezembro fechado): só administrador, auditado.
+      allow delete: if isMine(resource.data)
+        && (monthOpen(resource.data)
+            || (isAdmin() && isYearClosing(resource.data)
+                && auditedNowAs(resource.data.closingAuditId + '_reopen', resource.data.clientId, 'YEAR_REOPEN')));
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
-        && monthOpen(request.resource.data)
+        && afterImplantation(request.resource.data)
         && validJournal(request.resource.data)
-        && takesNextNumber(request.resource.data);
+        && ((monthOpen(request.resource.data) && takesNextNumber(request.resource.data))
+            || (isYearClosing(request.resource.data)
+                && auditedNowAs(request.resource.data.closingAuditId, request.resource.data.clientId, 'YEAR_CLOSE')
+                && takesClosingNumber(request.resource.data)));
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId') && unchanged('entryNumber')
         && monthOpen(resource.data) && monthOpen(request.resource.data)
+        && afterImplantation(request.resource.data)
         && validJournal(request.resource.data);
     }
 
@@ -209,10 +258,16 @@ service cloud.firestore {
         && docId == request.resource.data.clientId
         && request.resource.data.last is int
         && request.resource.data.last >= 1;
-      // Só avança, de um em um.
+      // Só avança: de um em um, ou um bloco (até 100) reservado pelo encerramento do exercício,
+      // com o registro YEAR_CLOSE nascendo na mesma gravação.
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
-        && request.resource.data.last == resource.data.last + 1;
+        && (request.resource.data.last == resource.data.last + 1
+            || (request.resource.data.last > resource.data.last
+                && request.resource.data.last - resource.data.last <= 100
+                && request.resource.data.get('closingAudit', '') is string
+                && request.resource.data.get('closingAudit', '').size() > 0
+                && auditedNowAs(request.resource.data.closingAudit, resource.data.clientId, 'YEAR_CLOSE')));
       // Só some junto com a empresa (enquanto ela existe, a sequência nunca volta atrás).
       allow delete: if isMine(resource.data) && isAdmin()
         && !exists(/databases/$(database)/documents/clients/$(docId));
@@ -234,6 +289,23 @@ service cloud.firestore {
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId;
       allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+    }
+
+    // ── Notas explicativas (um documento por cliente e exercício) ────────
+    match /explanatory_notes/{docId} {
+      allow read: if isMine(resource.data);
+      allow delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && request.resource.data.year is string
+        && request.resource.data.year.matches('^[0-9]{4}$')
+        && docId == request.resource.data.clientId + '_' + request.resource.data.year
+        && request.resource.data.notes is list
+        && request.resource.data.notes.size() <= 30;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('year')
+        && request.resource.data.notes is list
+        && request.resource.data.notes.size() <= 30;
     }
 
     // ── Pendências com o cliente ─────────────────────────────────────────

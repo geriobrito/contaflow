@@ -4,7 +4,6 @@ import {
   buildDREExportRows,
   cnpjLabel,
   DRE_CURRENCY,
-  DRE_STANDARD,
   DRE_TITLE,
   dreFileBaseName,
   formatAccounting,
@@ -13,6 +12,7 @@ import {
   periodLabel,
   type DREExportContext,
 } from '@/lib/export/dre-rows';
+import { accountingStandard } from '@/lib/accounting-standard';
 
 /* Paleta sóbria em tons de cinza (RGB) — imprime bem em P&B. */
 const INK: [number, number, number] = [28, 25, 23];
@@ -25,7 +25,7 @@ const MARGIN_X = 18; // mm
 const PAGE_BOTTOM = 280; // mm úteis em A4 retrato (297 - margem)
 
 /**
- * Gera a DRE oficial em PDF vetorial (A4 retrato), no layout da ITG 1000/2022,
+ * Gera a DRE oficial em PDF vetorial (A4 retrato), no layout da NBC TG 1002,
  * com bloco de encerramento e assinaturas. Retorna o Blob e o nome sugerido.
  */
 export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: string } {
@@ -33,10 +33,11 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
   const pageWidth = doc.internal.pageSize.getWidth();
   const center = pageWidth / 2;
   const issuedAt = ctx.issuedAt ?? new Date();
+  const standard = accountingStandard(ctx.client);
 
   doc.setProperties({
     title: `${DRE_TITLE} - ${ctx.client.name}`,
-    subject: `${periodLabel(ctx.range)} - ${DRE_STANDARD}`,
+    subject: `${periodLabel(ctx.range)} - ${standard}`,
     creator: 'ContaFlow',
   });
 
@@ -61,7 +62,7 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...MUTED);
-  doc.text(DRE_STANDARD, center, y, { align: 'center' });
+  doc.text(standard, center, y, { align: 'center' });
 
   y += 8;
   doc.setFontSize(9);

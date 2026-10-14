@@ -3,6 +3,7 @@ import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet, type Post
 import { buildDRE, type DateRange, type DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { round2 } from '@/lib/money';
+import { closingTransfer } from '@/lib/year-closing';
 
 export interface ConsistencyIssue {
   id: string;
@@ -18,7 +19,7 @@ export interface ConsistencyCheck {
   isConsistent: boolean;
   /** Resultado líquido da DRE no período do exercício */
   dreNetResult: number;
-  /** Resultado do Exercício acumulado no Balanço Patrimonial (PL) */
+  /** Resultado do Exercício no Balanço (PL), mais o que o encerramento do exercício já transferiu a Lucros/Prejuízos Acumulados */
   balanceCurrentResult: number;
   /** Diferença: dreNetResult - balanceCurrentResult */
   difference: number;
@@ -75,8 +76,10 @@ export function checkAccountingConsistency({
   const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries, carry);
   const balanceSheet = buildBalanceSheet(postings, accounts, date);
 
+  // Exercício encerrado: o resultado saiu de "Resultado do exercício" para Lucros/Prejuízos
+  // Acumulados. Soma-se o que foi transferido, para comparar com a DRE (anterior ao encerramento).
   const currentResultLine = balanceSheet.equity.find((l) => l.accountId === VIRTUAL.CURRENT_RESULT);
-  const balanceCurrentResult = round2(currentResultLine?.value ?? 0);
+  const balanceCurrentResult = round2((currentResultLine?.value ?? 0) + closingTransfer(journalEntries, accounts, year, date));
 
   const difference = round2(dreNetResult - balanceCurrentResult);
   const isConsistent = Math.abs(difference) < 0.005;

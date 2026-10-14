@@ -5,6 +5,7 @@ import type { AccountLedger, BalanceSheet, BalanceSheetLine, TrialBalance } from
 import { cnpjLabel, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { round2 } from '@/lib/money';
+import { accountingStandard } from '@/lib/accounting-standard';
 
 /**
  * Balanço patrimonial e balancete de verificação em .xlsx com acabamento executivo.
@@ -34,10 +35,12 @@ const font = (overrides: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> => (
 });
 
 export interface LedgerExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
   range: DateRange;
   balanceSheet: BalanceSheet;
   trialBalance: TrialBalance;
+  /** Antes ou depois do encerramento do exercício, quando ele cai no período do balancete. */
+  trialBalanceStage?: string;
   issuedAt?: Date;
   signatories?: {
     legalRepresentative?: { name?: string; cpf?: string };
@@ -46,7 +49,7 @@ export interface LedgerExportContext {
 }
 
 export interface SheetHeaderContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
   issuedAt?: Date;
 }
 
@@ -55,7 +58,7 @@ export interface SignaturesContext {
 }
 
 /** Cabeçalho corporativo integrado no topo da planilha */
-function renderSheetHeader(
+export function renderSheetHeader(
   ws: ExcelJS.Worksheet,
   ctx: SheetHeaderContext,
   title: string,
@@ -66,7 +69,7 @@ function renderSheetHeader(
     { text: ctx.client.name.toUpperCase(), bold: true, size: 12 },
     { text: cnpjLabel(ctx.client.cnpj), size: 10 },
     { text: title, bold: true, size: 12 },
-    { text: 'NBC TG 1002 / ITG 1000 - Microentidades', italic: true, size: 9 },
+    { text: accountingStandard(ctx.client), italic: true, size: 9 },
     { text: `${subtitle}  •  Em Reais - R$`, size: 10 },
     { text: `Emitido em ${formatIssueDate(ctx.issuedAt ?? new Date())}`, size: 9 },
   ];
@@ -105,7 +108,7 @@ function renderSheetHeader(
 }
 
 /** Renderiza bloco formal de assinaturas */
-function renderSignatures(
+export function renderSignatures(
   ws: ExcelJS.Worksheet,
   ctx: SignaturesContext,
   startRow: number,
@@ -309,7 +312,7 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
     wsTb,
     ctx,
     'BALANCETE DE VERIFICAÇÃO',
-    periodLabel(ctx.range),
+    ctx.trialBalanceStage ? `${periodLabel(ctx.range)}  •  ${ctx.trialBalanceStage}` : periodLabel(ctx.range),
     8
   );
 

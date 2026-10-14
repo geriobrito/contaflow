@@ -3,10 +3,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronRight, Plus, Trash2, Wand2 } from 'lucide-react';
 import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
-import { applyDefaultChartTemplate, deleteChartAccount, getAccounts, saveAccount } from '@/lib/services/data-service';
+import { applyDefaultChartTemplate, deleteChartAccount, getAccounts, saveAccount, saveClient } from '@/lib/services/data-service';
+import { TemplateCompletionSheet } from '@/components/plano-de-contas/TemplateCompletionSheet';
 import { newAccountId } from '@/lib/utils/id';
 import { useClient } from '@/contexts/ClientContext';
 import { resolveDREGroup } from '@/lib/dre/build';
+import { missingTemplateAccounts } from '@/lib/chart/itg1000';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
 
 /* =========================================================================
@@ -373,7 +375,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
    ========================================================================= */
 
 export default function PlanoDeContasPage() {
-  const { currentClient } = useClient();
+  const { currentClient, refreshClients } = useClient();
   const clientId = currentClient?.id;
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
@@ -417,8 +419,50 @@ export default function PlanoDeContasPage() {
 
   const analyticCount = accounts.filter((a) => a.nature === 'ANALYTIC').length;
   const isLoading = Boolean(clientId) && loadedFor !== clientId && !loadFailure;
-  // Carga que falhou não é plano vazio: não oferece o modelo ITG 1000 por cima de dados que não foram lidos.
+  // Carga que falhou não é plano vazio: não oferece o modelo por cima de dados que não foram lidos.
   const isEmpty = !isLoading && !loadFailure && accounts.length === 0;
+  // Plano em uso: contas do modelo que ainda faltam (ex.: IBS e CBS, incluídas depois), menos as
+  // que o contador excluiu de propósito e mandou não oferecer mais.
+  const ignored = useMemo(() => new Set(currentClient?.ignoredTemplateCodes ?? []), [currentClient]);
+  const missing = useMemo(
+    () =>
+      clientId && loadedFor === clientId && !loadFailure && accounts.length > 0
+        ? missingTemplateAccounts(clientId, accounts).filter((a) => !ignored.has(a.code))
+        : [],
+    [clientId, loadedFor, loadFailure, accounts, ignored]
+  );
+  const missingCount = missing.length;
+  const [completeOpen, setCompleteOpen] = useState(false);
+
+  const addFromTemplate = async (codes: string[]) => {
+    if (!clientId) return;
+    setApplying(true);
+    try {
+      const created = await applyDefaultChartTemplate(clientId, codes);
+      await load(clientId);
+      setNotice(`${created} conta(s) do modelo de plano de contas (CFC) adicionada(s).`);
+      setCompleteOpen(false);
+    } catch (e: unknown) {
+      setNotice(`Não foi possível completar o plano (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const setIgnored = async (codes: string[]) => {
+    if (!currentClient) return;
+    setApplying(true);
+    try {
+      await saveClient({ ...currentClient, ignoredTemplateCodes: codes, updatedAt: new Date().toISOString() });
+      await refreshClients();
+      setNotice(codes.length ? `${codes.length} conta(s) do modelo não serão mais oferecidas para este cliente.` : 'As contas ignoradas voltam a ser oferecidas.');
+      setCompleteOpen(false);
+    } catch (e: unknown) {
+      setNotice(`Não foi possível gravar a escolha (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const expanded = useCallback((code: string) => Boolean(term) || !collapsed[code], [collapsed, term]);
   const toggle = (code: string) => setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
@@ -439,9 +483,9 @@ export default function PlanoDeContasPage() {
     try {
       const created = await applyDefaultChartTemplate(clientId);
       await load(clientId);
-      setNotice(created > 0 ? `${created} contas do plano ITG 1000 adicionadas.` : 'O plano já contém todas as contas da ITG 1000.');
+      setNotice(created > 0 ? `${created} contas do modelo de plano de contas (CFC) adicionadas.` : 'O plano já contém todas as contas do modelo.');
     } catch (e: unknown) {
-      setNotice(`Não foi possível aplicar o plano ITG 1000 (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setNotice(`Não foi possível aplicar o modelo de plano de contas (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
     } finally {
       setApplying(false);
     }
@@ -464,7 +508,19 @@ export default function PlanoDeContasPage() {
             {isEmpty && (
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.secondary}>
                 <Wand2 className="w-4 h-4" strokeWidth={1.75} />
-                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (2022)'}
+                {applying ? 'Aplicando…' : 'Modelo de plano de contas (CFC)'}
+              </button>
+            )}
+            {!isEmpty && (missingCount > 0 || ignored.size > 0) && (
+              <button
+                type="button"
+                onClick={() => setCompleteOpen(true)}
+                disabled={applying}
+                className={BUTTON.secondary}
+                title="Escolha as contas do modelo que não estão no plano; as existentes não mudam"
+              >
+                <Wand2 className="w-4 h-4" strokeWidth={1.75} />
+                {missingCount > 0 ? `Completar com o modelo (${missingCount})` : `Contas do modelo ignoradas (${ignored.size})`}
               </button>
             )}
             <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId || Boolean(loadFailure)} className={BUTTON.primary}>
@@ -500,11 +556,11 @@ export default function PlanoDeContasPage() {
         ) : isEmpty ? (
           <EmptyState
             title="Plano de contas vazio"
-            description="Aplique o modelo para microentidades da ITG 1000 (CFC, 15/12/2022 — NBC TG 1002, Anexo 11), já amarrado à DRE."
+            description="Aplique o modelo de plano de contas do CFC (NBC TG 1002, Anexo 11), já amarrado à DRE."
             action={
               <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.accent}>
                 <Wand2 className="w-4 h-4" />
-                {applying ? 'Aplicando…' : 'Aplicar plano ITG 1000 (2022)'}
+                {applying ? 'Aplicando…' : 'Modelo de plano de contas (CFC)'}
               </button>
             }
           />
@@ -530,6 +586,18 @@ export default function PlanoDeContasPage() {
           </>
         )}
       </section>
+
+      {completeOpen && (
+        <TemplateCompletionSheet
+          missing={missing}
+          ignoredCount={ignored.size}
+          busy={applying}
+          onAdd={addFromTemplate}
+          onIgnore={(codes) => setIgnored([...ignored, ...codes])}
+          onRestoreIgnored={() => setIgnored([])}
+          onClose={() => setCompleteOpen(false)}
+        />
+      )}
 
       {sheetOpen && clientId && (
         <NewAccountSheet

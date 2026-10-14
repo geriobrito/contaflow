@@ -13,6 +13,9 @@
 
 export type TaxRegime = 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL' | 'MEI';
 
+/** Porte contábil (CFC): define a norma das demonstrações, independente do regime tributário. */
+export type CompanyPorte = 'MICROENTIDADE' | 'PEQUENA_EMPRESA';
+
 export interface ClientCompany {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
@@ -22,6 +25,10 @@ export interface ClientCompany {
   cnpj: string;
   regime: TaxRegime; // Regime Tributário
   taxRegime?: TaxRegime; // Alias de compatibilidade
+  /** Porte contábil; ausente em cadastros antigos, que contam como microentidade. */
+  porte?: CompanyPorte;
+  /** Contas do modelo de plano de contas excluídas de propósito: "Completar com o modelo" não as oferece mais. */
+  ignoredTemplateCodes?: string[];
   email?: string;
   phone?: string;
   /** Representante legal / administrador que assina as demonstrações. */
@@ -52,7 +59,7 @@ export type AccountType =
   | 'CUSTO';
 
 /**
- * Grupos da DRE (ITG 1000, CFC 15/12/2022 — NBC TG 1002, Anexo 11).
+ * Grupos da DRE (modelo de plano de contas do CFC — NBC TG 1002, Anexo 11).
  * Os valores em português são legados e continuam aceitos pelo `buildDRE`.
  */
 export type DREGroup =
@@ -280,7 +287,9 @@ export type AuditAction =
   | 'QUERY_RESOLVE'
   | 'JOURNAL_CREATE'
   | 'JOURNAL_UPDATE'
-  | 'JOURNAL_DELETE';
+  | 'JOURNAL_DELETE'
+  | 'YEAR_CLOSE'
+  | 'YEAR_REOPEN';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -543,9 +552,46 @@ export interface JournalEntry {
   attachmentUrl?: string;
   /** Lançamento do mês anterior do qual este foi repetido (recorrência mensal). */
   repeatedFromId?: string;
+  /**
+   * Exercício (YYYY) encerrado por este lançamento: gerado pela rotina de encerramento
+   * (src/lib/year-closing.ts), com `category: 'CLOSING'` e data em 31/12. Fica fora da DRE, que
+   * mostra o resultado antes do encerramento, e só sai pela reabertura do exercício.
+   */
+  yearClosing?: string;
+  /**
+   * Registro de auditoria (YEAR_CLOSE) do encerramento a que o lançamento pertence: todos os
+   * lançamentos de um encerramento são gravados com ele numa só operação, e a reabertura grava
+   * `${closingAuditId}_reopen` junto com a exclusão de todos.
+   */
+  closingAuditId?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;
+}
+
+/* =========================================================================
+   Notas explicativas
+   ========================================================================= */
+
+export interface ExplanatoryNoteBlock {
+  id: string;
+  title: string;
+  text: string;
+  enabled: boolean;
+}
+
+/**
+ * Notas explicativas de um exercício (coleção `explanatory_notes`, id `${clientId}_${year}`):
+ * o texto revisado pelo contador, compartilhado entre os aparelhos e usuários do escritório.
+ */
+export interface ExplanatoryNotes {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  year: string;
+  notes: ExplanatoryNoteBlock[];
+  updatedAt: string;
+  updatedByUid?: string;
 }
 
 /**

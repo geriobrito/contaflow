@@ -30,7 +30,7 @@
   - `src/lib/data/`: Abstração de persistência (`repository.ts`, `firestore-repository.ts`, `local-repository.ts`)
   - `src/lib/services/`: Fachada de dados (`data-service.ts`) alternando Firestore vs Local Storage
   - `src/lib/ofx/`: Parser e decodificação UTF-8/Windows-1252 de arquivos OFX
-  - `src/lib/chart/`: Plano de contas padrão ITG 1000 (2022)
+  - `src/lib/chart/`: Modelo de plano de contas do CFC (NBC TG 1002, Anexo 11; arquivo `itg1000.ts` por legado)
   - `src/lib/dre/` & `src/lib/export/`: Cálculos contábeis de DRE e exportação PDF/Excel
   - `src/lib/rules/`, `payee.ts`, `ledger.ts`: Regras de conciliação, favorecidos e partidas dobradas
 - `src/types/`: Definições centrais de tipos TypeScript (`firestore.ts`)
@@ -41,7 +41,7 @@
 - **Dual Mode (Firestore / Local)**: Se `NEXT_PUBLIC_FIREBASE_*` presentes, usa Firestore; caso contrário, `localStorage`. Sem fallback silencioso.
 - **Multi-tenant**: Isolamento estrito por `orgId` em todas as coleções. `orgId` derivado de `users/{uid}.orgId` e imutável.
 - **Auditoria & Travamento**: Coleção `audit_log` append-only; períodos fechados via `period_locks` tornam lançamentos imutáveis.
-- **Contábil**: Partidas dobradas estritas (banco x conta contrapartida/rateio), plano de contas ITG 1000.
+- **Contábil**: Partidas dobradas estritas (banco x conta contrapartida/rateio), modelo de plano de contas do CFC; norma das demonstrações pelo porte do cliente (NBC TG 1002 microentidade / NBC TG 1001 pequena empresa).
 - **Nomenclatura**: Componentes em PascalCase (`*.tsx`), utilitários/serviços em kebab-case (`*.ts`), hooks em camelCase (`use*.ts`).
 - **Tratamento de Erros**: Falha explícita na UI em operações negadas pelo backend/regras de validação.
 

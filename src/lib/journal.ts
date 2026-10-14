@@ -1,6 +1,6 @@
-import type { JournalEntry, JournalEntryLine } from '@/types/firestore';
+import type { ChartAccount, JournalEntry, JournalEntryLine } from '@/types/firestore';
 import { isISODate, MONTH_NAMES } from '@/lib/periods';
-import { toCents } from '@/lib/money';
+import { fromCents, toCents } from '@/lib/money';
 
 /**
  * Máximo de partidas por lançamento manual. As regras do Firestore não têm laços: somam
@@ -151,7 +151,8 @@ export function repeatCandidates(
   const done = new Set(entries.filter((e) => e.date.startsWith(targetMonth) && e.repeatedFromId).map((e) => e.repeatedFromId));
   const analytic = new Set(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => a.id));
   return entries
-    .filter((e) => e.date.startsWith(source) && !done.has(e.id))
+    // Encerramento do exercício não se repete: é gerado pela rotina própria, uma vez por ano.
+    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing)
     .sort((a, b) => a.date.localeCompare(b.date) || a.entryNumber - b.entryNumber)
     .map((entry) => {
       const missing = entry.lines.find((l) => !analytic.has(l.accountId));
@@ -161,6 +162,182 @@ export function repeatCandidates(
         problem: missing ? `${['A conta', missing.accountCode, missing.accountName].filter(Boolean).join(' ')} não aceita mais lançamentos.` : null,
       };
     });
+}
+
+/* =========================================================================
+   Modelos de lançamento (provisões mensais por competência)
+   ========================================================================= */
+
+export type JournalTemplateId = 'PAYROLL' | 'PRO_LABORE' | 'DAS' | 'DEPRECIATION' | 'CREDIT_SALES';
+
+export interface JournalTemplateField {
+  key: string;
+  label: string;
+  hint?: string;
+  /** Pode ficar em branco (zero): a partida correspondente sai do lançamento. */
+  optional?: boolean;
+}
+
+type TemplateValues = Readonly<Record<string, number>>;
+
+interface JournalTemplateLine {
+  /** Conta do modelo de plano de contas (CFC). */
+  code: string;
+  type: 'DEBIT' | 'CREDIT';
+  memo: string;
+  /** Valor em centavos a partir dos campos (também em centavos). */
+  cents: (v: TemplateValues) => number;
+}
+
+export interface JournalTemplate {
+  id: JournalTemplateId;
+  label: string;
+  description: string;
+  category: JournalEntry['category'];
+  fields: readonly JournalTemplateField[];
+  lines: readonly JournalTemplateLine[];
+  /** Histórico e documento citam a competência (MM/AAAA, AAAA-MM): "Repetir do mês anterior" os atualiza. */
+  memo: (competence: string) => string;
+  documentRef: (month: string) => string;
+}
+
+const v = (values: TemplateValues, key: string) => values[key] ?? 0;
+
+/**
+ * Provisões mensais por competência, nas contas do modelo de plano de contas. O extrato mostra
+ * só o caixa: estes lançamentos põem no mês a despesa ou a receita que ele ainda não pagou ou
+ * recebeu. Quando o pagamento sai no banco, ele é classificado na conta "a pagar" (ou "a receber").
+ */
+export const JOURNAL_TEMPLATES: readonly JournalTemplate[] = [
+  {
+    id: 'PAYROLL',
+    label: 'Folha de pagamento',
+    description: 'Salários do mês com os descontos dos empregados e os encargos (FGTS e, se houver, INSS patronal).',
+    category: 'PAYROLL',
+    fields: [
+      { key: 'gross', label: 'Salários brutos' },
+      { key: 'inss', label: 'INSS descontado dos empregados', optional: true },
+      { key: 'irrf', label: 'IRRF descontado dos empregados', optional: true },
+      { key: 'fgts', label: 'FGTS do mês', hint: '8% da remuneração', optional: true },
+      { key: 'cpp', label: 'INSS patronal', hint: 'Em branco no Simples Nacional, exceto no Anexo IV', optional: true },
+    ],
+    lines: [
+      { code: '3.3.2.01', type: 'DEBIT', memo: 'Salários do mês', cents: (x) => v(x, 'gross') },
+      { code: '2.1.1.01', type: 'CREDIT', memo: 'Salários líquidos a pagar', cents: (x) => v(x, 'gross') - v(x, 'inss') - v(x, 'irrf') },
+      { code: '2.1.1.03', type: 'CREDIT', memo: 'INSS descontado dos empregados', cents: (x) => v(x, 'inss') },
+      { code: '2.1.5.04', type: 'CREDIT', memo: 'IRRF sobre salários', cents: (x) => v(x, 'irrf') },
+      { code: '3.3.2.03', type: 'DEBIT', memo: 'FGTS do mês', cents: (x) => v(x, 'fgts') },
+      { code: '2.1.1.04', type: 'CREDIT', memo: 'FGTS a recolher', cents: (x) => v(x, 'fgts') },
+      { code: '3.3.2.03', type: 'DEBIT', memo: 'INSS patronal do mês', cents: (x) => v(x, 'cpp') },
+      { code: '2.1.1.03', type: 'CREDIT', memo: 'INSS patronal a recolher', cents: (x) => v(x, 'cpp') },
+    ],
+    memo: (c) => `Provisão da folha de pagamento - competência ${c}`,
+    documentRef: (m) => `FOLHA-${m}`,
+  },
+  {
+    id: 'PRO_LABORE',
+    label: 'Pró-labore',
+    description: 'Remuneração dos sócios com o INSS (11%) e o IRRF retidos.',
+    category: 'PAYROLL',
+    fields: [
+      { key: 'gross', label: 'Pró-labore bruto' },
+      { key: 'inss', label: 'INSS retido do sócio', hint: '11% do pró-labore, até o teto', optional: true },
+      { key: 'irrf', label: 'IRRF retido', optional: true },
+      { key: 'cpp', label: 'INSS patronal (20%)', hint: 'Em branco no Simples Nacional, exceto no Anexo IV', optional: true },
+    ],
+    lines: [
+      { code: '3.3.2.02', type: 'DEBIT', memo: 'Pró-labore do mês', cents: (x) => v(x, 'gross') },
+      { code: '2.1.1.02', type: 'CREDIT', memo: 'Pró-labore líquido a pagar', cents: (x) => v(x, 'gross') - v(x, 'inss') - v(x, 'irrf') },
+      { code: '2.1.1.03', type: 'CREDIT', memo: 'INSS retido do sócio', cents: (x) => v(x, 'inss') },
+      { code: '2.1.5.04', type: 'CREDIT', memo: 'IRRF sobre pró-labore', cents: (x) => v(x, 'irrf') },
+      { code: '3.3.2.03', type: 'DEBIT', memo: 'INSS patronal sobre pró-labore', cents: (x) => v(x, 'cpp') },
+      { code: '2.1.1.03', type: 'CREDIT', memo: 'INSS patronal a recolher', cents: (x) => v(x, 'cpp') },
+    ],
+    memo: (c) => `Provisão do pró-labore - competência ${c}`,
+    documentRef: (m) => `PROLABORE-${m}`,
+  },
+  {
+    id: 'DAS',
+    label: 'DAS do Simples Nacional',
+    description: 'Simples Nacional apurado sobre o faturamento do mês, pago no mês seguinte.',
+    category: 'TAX',
+    fields: [{ key: 'amount', label: 'Valor do DAS (PGDAS-D)' }],
+    lines: [
+      { code: '3.1.2.01', type: 'DEBIT', memo: 'Simples Nacional sobre o faturamento', cents: (x) => v(x, 'amount') },
+      { code: '2.1.5.01', type: 'CREDIT', memo: 'Simples Nacional a recolher', cents: (x) => v(x, 'amount') },
+    ],
+    memo: (c) => `Provisão do Simples Nacional (DAS) - competência ${c}`,
+    documentRef: (m) => `DAS-${m}`,
+  },
+  {
+    id: 'DEPRECIATION',
+    label: 'Depreciação',
+    description: 'Depreciação mensal do imobilizado.',
+    category: 'DEPRECIATION',
+    fields: [{ key: 'amount', label: 'Depreciação do mês' }],
+    lines: [
+      { code: '3.3.2.15', type: 'DEBIT', memo: 'Depreciação do mês', cents: (x) => v(x, 'amount') },
+      { code: '1.2.3.07', type: 'CREDIT', memo: '(-) Depreciação acumulada', cents: (x) => v(x, 'amount') },
+    ],
+    memo: (c) => `Depreciação do imobilizado - competência ${c}`,
+    documentRef: (m) => `DEPREC-${m}`,
+  },
+  {
+    id: 'CREDIT_SALES',
+    label: 'Faturamento a prazo',
+    description: 'Notas emitidas no mês e ainda não recebidas. O recebimento no extrato vai para 1.1.2.01 Clientes.',
+    category: 'PROVISION',
+    fields: [
+      { key: 'services', label: 'Serviços faturados a prazo', optional: true },
+      { key: 'goods', label: 'Mercadorias vendidas a prazo', optional: true },
+    ],
+    lines: [
+      { code: '1.1.2.01', type: 'DEBIT', memo: 'Clientes a receber', cents: (x) => v(x, 'services') + v(x, 'goods') },
+      { code: '3.1.1.01', type: 'CREDIT', memo: 'Receita de serviços faturados a prazo', cents: (x) => v(x, 'services') },
+      { code: '3.1.1.02', type: 'CREDIT', memo: 'Receita de vendas a prazo', cents: (x) => v(x, 'goods') },
+    ],
+    memo: (c) => `Faturamento a prazo - competência ${c}`,
+    documentRef: (m) => `FAT-${m}`,
+  },
+];
+
+export type TemplateDraft = Pick<JournalEntry, 'date' | 'memo' | 'category' | 'lines' | 'totalAmount' | 'documentRef'>;
+
+/**
+ * Lançamento de um modelo com os valores informados (em reais), nas contas do plano do cliente.
+ * Partidas zeradas saem; conta que falta no plano ou valor que não fecha viram `problem`.
+ */
+export function templateDraft(
+  template: JournalTemplate,
+  values: Readonly<Record<string, number>>,
+  accounts: readonly ChartAccount[],
+  date: string
+): { draft: TemplateDraft | null; problem: string | null } {
+  const cents: Record<string, number> = Object.fromEntries(Object.entries(values).map(([k, n]) => [k, toCents(n || 0)]));
+  const missing = template.fields.find((f) => !f.optional && !cents[f.key]);
+  if (missing) return { draft: null, problem: `Informe ${missing.label.toLowerCase()}.` };
+
+  const byCode = new Map(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => [a.code, a] as const));
+  const lines: JournalEntryLine[] = [];
+  for (const [i, l] of template.lines.entries()) {
+    const amount = l.cents(cents);
+    if (amount === 0) continue;
+    if (amount < 0) return { draft: null, problem: `“${l.memo}” ficaria negativo: os descontos passam do valor bruto.` };
+    const acc = byCode.get(l.code);
+    if (!acc) return { draft: null, problem: `A conta ${l.code} não está no plano como analítica. Complete o plano com o modelo em Plano de Contas.` };
+    lines.push({ id: `t${i + 1}`, accountId: acc.id, accountCode: acc.code, accountName: acc.name, type: l.type, amount: fromCents(amount), memo: l.memo });
+  }
+  const month = date.slice(0, 7);
+  const draft: TemplateDraft = {
+    date,
+    memo: template.memo(`${month.slice(5, 7)}/${month.slice(0, 4)}`),
+    category: template.category,
+    lines,
+    totalAmount: journalTotals(lines).debit,
+    documentRef: template.documentRef(month),
+  };
+  const problem = journalEntryProblem(draft);
+  return problem ? { draft: null, problem } : { draft, problem: null };
 }
 
 /**

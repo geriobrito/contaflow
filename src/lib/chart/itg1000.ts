@@ -1,8 +1,10 @@
 import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
 
 /**
- * Modelo de Plano de Contas para Microentidades — ITG 1000 (CFC, 15/12/2022),
- * NBC TG 1002, Anexo 11 (receita bruta anual até R$ 4,8 milhões).
+ * Modelo de Plano de Contas do CFC para Microentidades — NBC TG 1002, Anexo 11
+ * (receita bruta anual até R$ 4,8 milhões). Serve também de base para pequenas empresas
+ * (NBC TG 1001). O nome do arquivo e o prefixo `itg22_` dos IDs vêm da ITG 1000, revogada
+ * em 2023, e ficam como estão: os IDs determinísticos tornam a reaplicação idempotente.
  *
  * Regras do modelo:
  * - Contas com subcontas são SINTÉTICAS: apenas agrupam e totalizam.
@@ -38,6 +40,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '1.1.2.04', name: 'Adiantamentos a Empregados' },
   { code: '1.1.2.05', name: 'Tributos a Recuperar' },
   { code: '1.1.2.06', name: 'Outros Créditos' },
+  // Reforma tributária (LC 214/2025): créditos de IBS e CBS nas aquisições, no regime normal.
+  { code: '1.1.2.07', name: 'IBS a Recuperar' },
+  { code: '1.1.2.08', name: 'CBS a Recuperar' },
   { code: '1.1.3', name: 'Estoques' },
   { code: '1.1.3.01', name: 'Mercadorias para Revenda' },
   { code: '1.1.3.02', name: 'Produtos Acabados' },
@@ -94,6 +99,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '2.1.5.03', name: 'ISS a Recolher' },
   { code: '2.1.5.04', name: 'IRRF a Recolher' },
   { code: '2.1.5.05', name: 'Parcelamentos Tributários' },
+  // Reforma tributária (LC 214/2025): tributos sobre consumo do regime normal.
+  { code: '2.1.5.06', name: 'IBS a Recolher' },
+  { code: '2.1.5.07', name: 'CBS a Recolher' },
 
   { code: '2.2', name: 'PASSIVO NÃO CIRCULANTE' },
   { code: '2.2.1', name: 'Empréstimos e Financiamentos de Longo Prazo' },
@@ -174,6 +182,15 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.4.1.02.001', name: 'Rendimentos de Aplicações Financeiras' },
   { code: '3.4.1.02.002', name: 'Juros Ativos' },
   { code: '3.4.1.02.003', name: 'Descontos Obtidos' },
+
+  /* ──────────────────────── 5 APURAÇÃO DO RESULTADO ──────────────────────── */
+  // Transitória do encerramento, fora do grupo 3: recebe o saldo das contas de resultado em 31/12
+  // e o passa a Lucros ou Prejuízos Acumulados (src/lib/year-closing.ts). Nenhum totalizador de
+  // receitas e despesas a soma, e ela não tem grupo da DRE.
+  { code: '5', name: 'APURAÇÃO DO RESULTADO', type: 'EXPENSE' },
+  { code: '5.1', name: 'Encerramento do Exercício' },
+  { code: '5.1.1', name: 'Apuração do Resultado' },
+  { code: '5.1.1.01', name: 'Apuração do Resultado do Exercício (ARE)' },
 ];
 
 const parentCode = (code: string): string | null => {
@@ -233,3 +250,36 @@ export function buildITG1000Chart(clientId: string, now: string = new Date().toI
 }
 
 export const ITG1000_ACCOUNT_COUNT = ENTRIES.length;
+
+/**
+ * Códigos escolhidos mais os grupos deles que também faltam: uma conta nunca entra no plano
+ * sem o pai.
+ */
+export function withMissingParents(codes: Iterable<string>, missing: readonly Pick<ChartAccount, 'code'>[]): Set<string> {
+  const missingCodes = new Set(missing.map((a) => a.code));
+  const out = new Set<string>();
+  for (const code of codes) {
+    for (let c: string | null = code; c; c = parentCode(c)) if (missingCodes.has(c)) out.add(c);
+  }
+  return out;
+}
+
+/**
+ * Contas do modelo que faltam no plano do cliente (por código), para completar um plano já
+ * em uso, como as contas que o modelo ganhou depois. Quando o pai já existe no plano, a conta
+ * nova pendura nele, mesmo que ele tenha outro ID (conta criada à mão).
+ */
+export function missingTemplateAccounts(
+  clientId: string,
+  existing: readonly Pick<ChartAccount, 'id' | 'code'>[],
+  now?: string
+): ChartAccount[] {
+  const idByCode = new Map(existing.map((a) => [a.code, a.id] as const));
+  return buildITG1000Chart(clientId, now)
+    .filter((a) => !idByCode.has(a.code))
+    .map((a) => {
+      const parent = parentCode(a.code);
+      const parentId = parent ? idByCode.get(parent) : undefined;
+      return parentId ? { ...a, parentId } : a;
+    });
+}

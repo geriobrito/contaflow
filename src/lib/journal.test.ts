@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assertValidJournalEntry, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, previousMonth, repeatCandidates, repeatDraft, sameDayIn, shiftCompetence } from '@/lib/journal';
+import { assertValidJournalEntry, JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, previousMonth, repeatCandidates, repeatDraft, sameDayIn, shiftCompetence, templateDraft } from '@/lib/journal';
+import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import type { JournalEntry, JournalEntryLine } from '@/types/firestore';
 
 const line = (type: 'DEBIT' | 'CREDIT', amount: number, accountId = 'acc'): JournalEntryLine => ({
@@ -147,5 +148,68 @@ describe('repetir lançamentos do mês anterior', () => {
       repeatedFromId: 'j1',
     });
     expect(journalEntryProblem(draft)).toBeNull();
+  });
+});
+
+describe('modelos de provisão mensal', () => {
+  const chart = buildITG1000Chart('c', 'x');
+  const tpl = (id: string) => JOURNAL_TEMPLATES.find((t) => t.id === id)!;
+  const codes = (lines: readonly JournalEntryLine[]) => lines.map((l) => [l.accountCode, l.type, l.amount]);
+
+  it('todas as contas dos modelos estão no modelo de plano de contas como analíticas', () => {
+    const analytic = new Set(chart.filter((a) => a.nature === 'ANALYTIC').map((a) => a.code));
+    for (const t of JOURNAL_TEMPLATES) for (const l of t.lines) expect(analytic.has(l.code), `${t.id} ${l.code}`).toBe(true);
+  });
+
+  it('folha: bruto, descontos dos empregados e encargos; partidas zeradas saem', () => {
+    const { draft, problem } = templateDraft(tpl('PAYROLL'), { gross: 5000, inss: 450, irrf: 120.35, fgts: 400 }, chart, '2026-03-31');
+    expect(problem).toBeNull();
+    expect(codes(draft!.lines)).toEqual([
+      ['3.3.2.01', 'DEBIT', 5000],
+      ['2.1.1.01', 'CREDIT', 4429.65],
+      ['2.1.1.03', 'CREDIT', 450],
+      ['2.1.5.04', 'CREDIT', 120.35],
+      ['3.3.2.03', 'DEBIT', 400],
+      ['2.1.1.04', 'CREDIT', 400],
+    ]);
+    expect(draft).toMatchObject({ category: 'PAYROLL', totalAmount: 5400, memo: 'Provisão da folha de pagamento - competência 03/2026', documentRef: 'FOLHA-2026-03' });
+    expect(journalEntryProblem(draft!)).toBeNull();
+  });
+
+  it('pró-labore, DAS, depreciação e faturamento a prazo', () => {
+    expect(codes(templateDraft(tpl('PRO_LABORE'), { gross: 3000, inss: 330 }, chart, '2026-03-31').draft!.lines)).toEqual([
+      ['3.3.2.02', 'DEBIT', 3000],
+      ['2.1.1.02', 'CREDIT', 2670],
+      ['2.1.1.03', 'CREDIT', 330],
+    ]);
+    expect(codes(templateDraft(tpl('DAS'), { amount: 812.4 }, chart, '2026-03-31').draft!.lines)).toEqual([
+      ['3.1.2.01', 'DEBIT', 812.4],
+      ['2.1.5.01', 'CREDIT', 812.4],
+    ]);
+    expect(codes(templateDraft(tpl('DEPRECIATION'), { amount: 150 }, chart, '2026-03-31').draft!.lines)).toEqual([
+      ['3.3.2.15', 'DEBIT', 150],
+      ['1.2.3.07', 'CREDIT', 150],
+    ]);
+    expect(codes(templateDraft(tpl('CREDIT_SALES'), { services: 2000, goods: 500 }, chart, '2026-03-31').draft!.lines)).toEqual([
+      ['1.1.2.01', 'DEBIT', 2500],
+      ['3.1.1.01', 'CREDIT', 2000],
+      ['3.1.1.02', 'CREDIT', 500],
+    ]);
+  });
+
+  it('recusa campo obrigatório vazio, descontos maiores que o bruto e conta fora do plano', () => {
+    expect(templateDraft(tpl('DAS'), {}, chart, '2026-03-31').problem).toMatch(/valor do das/i);
+    expect(templateDraft(tpl('PRO_LABORE'), { gross: 100, inss: 150 }, chart, '2026-03-31').problem).toMatch(/negativo/);
+    expect(templateDraft(tpl('CREDIT_SALES'), {}, chart, '2026-03-31').problem).not.toBeNull();
+    const semDepreciacao = chart.filter((a) => a.code !== '1.2.3.07');
+    expect(templateDraft(tpl('DEPRECIATION'), { amount: 10 }, semDepreciacao, '2026-03-31').problem).toMatch(/1\.2\.3\.07/);
+  });
+
+  it('o lançamento do modelo se repete no mês seguinte com a competência atualizada', () => {
+    const { draft } = templateDraft(tpl('DAS'), { amount: 812.4 }, chart, '2026-03-31');
+    const entry: JournalEntry = { ...draft!, id: 'j1', clientId: 'c', entryNumber: 1, createdAt: 'T', updatedAt: 'T', createdByUid: 'u' };
+    const copy = repeatDraft(entry, '2026-04');
+    expect(copy).toMatchObject({ date: '2026-04-30', memo: 'Provisão do Simples Nacional (DAS) - competência 04/2026', documentRef: 'DAS-2026-04' });
+    expect(repeatCandidates([entry], '2026-04', chart)[0].suggested).toBe(true);
   });
 });
