@@ -364,6 +364,8 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
    2. BALANCETE DE VERIFICAÇÃO (A4 Paisagem)
    ========================================================================= */
 
+const TB_PAD_Y = 1;
+
 function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   const issuedAt = ctx.issuedAt ?? new Date();
   const tb = ctx.trialBalance;
@@ -415,7 +417,8 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
       font: 'helvetica',
       fontSize: 7.2,
       textColor: INK,
-      cellPadding: { top: 1.2, bottom: 1.2, left: 1.5, right: 1.5 },
+      // Padding vertical enxuto: um balancete de até ~32 linhas cabe numa página com as assinaturas.
+      cellPadding: { top: TB_PAD_Y, bottom: TB_PAD_Y, left: 1.5, right: 1.5 },
       lineColor: RULE,
       overflow: 'linebreak',
     },
@@ -465,7 +468,7 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
 
       if (data.column.index === 1) {
         const indent = Math.max(0, row.level - 1) * 2.2;
-        data.cell.styles.cellPadding = { top: 1.2, bottom: 1.2, left: 1.5 + indent, right: 1.5 };
+        data.cell.styles.cellPadding = { top: TB_PAD_Y, bottom: TB_PAD_Y, left: 1.5 + indent, right: 1.5 };
       }
     },
   });
@@ -483,7 +486,8 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     nextY
   );
 
-  renderSignatures(doc, nextY + 2, issuedAt, ctx.signatories);
+  // A data de emissão vem 6 mm abaixo da nota (renderSignatures soma 8 ao início dado).
+  renderSignatures(doc, nextY - 2, issuedAt, ctx.signatories);
   addPageFooters(doc, 'BALANCETE DE VERIFICAÇÃO', ctx.client.name);
 }
 

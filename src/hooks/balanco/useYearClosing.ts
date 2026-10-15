@@ -7,7 +7,7 @@ import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { buildClosingDrafts, describeResult, missingClosingAccounts, openingAccountBalance, resultBalances, yearClosingState } from '@/lib/year-closing';
+import { buildClosingDrafts, closingEquity, describeResult, missingClosingAccounts, resultBalances, yearClosingState } from '@/lib/year-closing';
 
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -60,12 +60,17 @@ export function useYearClosing(args: {
       const missing = missingClosingAccounts(clientId, accounts);
       if (missing.length > 0) await repo.insertAccounts(missing);
       const chart = [...accounts, ...missing];
-      const drafts = buildClosingDrafts(year, resultBalances(postings, chart, year), chart, openingAccountBalance(postings, chart, year));
+      const drafts = buildClosingDrafts(year, resultBalances(postings, chart, year), chart, closingEquity(postings, chart, year));
       const actor = getActor();
       const now = new Date().toISOString();
+      const extras = [
+        state.openingTransfer ? `balanço de abertura de ${formatCurrency(state.openingTransfer)}` : '',
+        state.distributionTransfer ? `lucros distribuídos de ${formatCurrency(state.distributionTransfer)}` : '',
+        state.deficitTransfer ? `${formatCurrency(state.deficitTransfer)} de Lucros para Prejuízos Acumulados` : '',
+      ].filter(Boolean);
       await repo.closeYear(
         drafts.map((draft) => ({ ...draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: actor.uid })),
-        audit(`${clientId}_${year}_close_${Date.now().toString(36)}`, 'YEAR_CLOSE', `Exercício ${year} (${describeResult(state.netResult)}${state.openingTransfer ? `; balanço de abertura de ${formatCurrency(state.openingTransfer)}` : ''}) em ${drafts.length} lançamento(s)`)
+        audit(`${clientId}_${year}_close_${Date.now().toString(36)}`, 'YEAR_CLOSE', `Exercício ${year} (${[describeResult(state.netResult), ...extras].join('; ')}) em ${drafts.length} lançamento(s)`)
       );
     } catch (e) {
       console.error('Erro ao encerrar o exercício:', e);

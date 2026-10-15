@@ -34,6 +34,18 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
                 Abertura contra {state.openingTransfer > 0 ? '2.3.3.01 Lucros Acumulados' : '2.3.3.02 Prejuízos Acumulados'}.
               </>
             )}
+            {state.distributionTransfer !== 0 && (
+              <>
+                {' '}
+                Baixa os {formatCurrency(Math.abs(state.distributionTransfer))} da 2.3.3.03 (-) Lucros Distribuídos contra 2.3.3.01 Lucros Acumulados.
+              </>
+            )}
+            {state.deficitTransfer !== 0 && (
+              <>
+                {' '}
+                O saldo devedor de {formatCurrency(state.deficitTransfer)} que sobra em Lucros Acumulados vai para 2.3.3.02 Prejuízos Acumulados.
+              </>
+            )}
           </p>
         </div>
         {state.closed ? (

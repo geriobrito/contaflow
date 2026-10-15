@@ -100,6 +100,24 @@ describe('PDF do Balanço Patrimonial', () => {
   });
 });
 
+describe('PDF do Balancete', () => {
+  const bs: BalanceSheet = { date: '2025-12-31', assets: [], liabilities: [], equity: [], totalAssets: 0, totalLiabilitiesAndEquity: 0, difference: 0 } as unknown as BalanceSheet;
+  const tbOf = (n: number) => ({
+    rows: Array.from({ length: n }, (_, i) => ({ accountId: `a${i}`, code: `1.1.1.${String(i + 1).padStart(2, '0')}`, name: `Conta ${i + 1}`, level: 4, synthetic: false, kind: 'ASSET' as const, previous: 0, debits: 10, credits: 0, final: 10 })),
+    totals: { previous: 0, debits: 10 * n, credits: 0, final: 10 * n },
+    balanced: true,
+  });
+  const pages = async (n: number) => {
+    const pdf = await pdfText(generateLedgerPdf({ client, range: { start: '2025-01-01', end: '2025-12-31' }, balanceSheet: bs, trialBalance: tbOf(n), documentType: 'tb', signatories }).blob);
+    return drawn(pdf).filter((t) => /^Página \d+ de \d+$/.test(t)).length;
+  };
+
+  it('até 32 linhas cabe numa página com as assinaturas', async () => {
+    expect(await pages(32)).toBe(1);
+    expect(await pages(60)).toBe(2);
+  });
+});
+
 describe('PDF da DLPA', () => {
   it('usa o mesmo cabeçalho das demais demonstrações', async () => {
     const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, openingBalance: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };

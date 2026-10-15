@@ -7,9 +7,9 @@ import { journalEntryProblem, MAX_JOURNAL_LINES } from '@/lib/journal';
 import {
   buildClosingDrafts,
   buildDLPA,
+  closingEquity,
   closingTransfer,
   missingClosingAccounts,
-  openingAccountBalance,
   resultBalances,
   withoutClosingOf,
   yearClosingState,
@@ -30,7 +30,9 @@ const base: Posting[] = [...p('3.1.1.01', '2024-06-01', -500), ...p('3.1.1.01', 
 const lock = (month: string): PeriodLock => ({ id: `c_${month}`, clientId: 'c', month, lockedAt: 'x', lockedByUid: 'u' });
 const asEntries = (drafts: ClosingDraft[]): JournalEntry[] =>
   drafts.map((d, i) => ({ ...d, id: `je_${i}`, clientId: 'c', entryNumber: 10 + i, createdAt: '', updatedAt: '', createdByUid: 'u' }));
-const close = (postings: Posting[], accounts: ChartAccount[] = chart) => asEntries(buildClosingDrafts('2025', resultBalances(postings, accounts, '2025'), accounts));
+const close = (postings: Posting[], accounts: ChartAccount[] = chart) =>
+  asEntries(buildClosingDrafts('2025', resultBalances(postings, accounts, '2025'), accounts, closingEquity(postings, accounts, '2025')));
+const linesOf = (d: ClosingDraft) => d.lines.map((l) => [l.accountCode, l.type, l.amount]);
 const sheetAt = (date: string, postings: Posting[], entries: JournalEntry[]) => buildBalanceSheet(buildPostings([], [], chart, date, null, entries, postings), chart, date);
 const equity = (sheet: ReturnType<typeof buildBalanceSheet>, accountId: string) => sheet.equity.find((l) => l.accountId === accountId)?.value ?? 0;
 
@@ -164,12 +166,64 @@ describe('DLPA', () => {
   });
 });
 
+describe('lucros distribuídos (2.3.3.03) no encerramento', () => {
+  // Lucro de 700 em 2025 e retiradas de 200.
+  const year = [...p('3.1.1.01', '2025-03-10', -1000), ...p('3.3.2.06', '2025-04-10', 300), ...p('2.3.3.03', '2025-11-01', 200)];
+  // Lucro de 100 e retiradas de 300: Lucros Acumulados terminaria devedora em 200.
+  const over = [...p('3.1.1.01', '2025-03-10', -400), ...p('3.3.2.06', '2025-04-10', 300), ...p('2.3.3.03', '2025-11-01', 300)];
+
+  it('baixa a 2.3.3.03 contra Lucros Acumulados em 31/12', () => {
+    const entries = close(year);
+    expect(linesOf(entries.at(-1)!)).toEqual([
+      ['2.3.3.01', 'DEBIT', 200],
+      ['2.3.3.03', 'CREDIT', 200],
+    ]);
+    for (const e of entries) expect(journalEntryProblem(e)).toBeNull();
+    const sheet = sheetAt('2025-12-31', year, entries);
+    expect(equity(sheet, id('2.3.3.03'))).toBe(0);
+    expect(equity(sheet, id('2.3.3.01'))).toBe(500);
+    expect(sheet.difference).toBe(0);
+  });
+
+  it('saldo devedor que sobra em Lucros Acumulados vai para Prejuízos Acumulados', () => {
+    const entries = close(over);
+    expect(entries.slice(-2).map(linesOf)).toEqual([
+      [['2.3.3.01', 'DEBIT', 300], ['2.3.3.03', 'CREDIT', 300]],
+      [['2.3.3.02', 'DEBIT', 200], ['2.3.3.01', 'CREDIT', 200]],
+    ]);
+    const sheet = sheetAt('2025-12-31', over, entries);
+    expect(equity(sheet, id('2.3.3.01'))).toBe(0);
+    expect(equity(sheet, id('2.3.3.03'))).toBe(0);
+    const s = yearClosingState({ year: '2025', postings: over, accounts: chart, journalEntries: [], locks: [lock('2025-12')] });
+    expect(s).toMatchObject({ netResult: 100, distributionTransfer: 300, deficitTransfer: 200 });
+  });
+
+  it('a DLPA mostra as mesmas retiradas antes e depois do encerramento, e confere com o balanço', () => {
+    for (const postings of [year, over]) {
+      const rows = [[], close(postings)].map((entries) => {
+        const d = buildDLPA(buildPostings([], [], chart, '2025-12-31', null, entries, postings), chart, entries, '2025-12-31');
+        const sheet = sheetAt('2025-12-31', postings, entries);
+        expect(d.closing).toBe(equity(sheet, id('2.3.3')) + equity(sheet, VIRTUAL.CURRENT_RESULT));
+        return d.rows;
+      });
+      expect(rows[1]).toEqual(rows[0]);
+      expect(rows[0].find((r) => r.label === '(-) Lucros distribuídos')!.value).toBe(postings === year ? -200 : -300);
+    }
+  });
+
+  it('encerramento sem a baixa da 2.3.3.03 fica desatualizado', () => {
+    const old = asEntries(buildClosingDrafts('2025', resultBalances(year, chart, '2025'), chart));
+    expect(yearClosingState({ year: '2025', postings: year, accounts: chart, journalEntries: old, locks: [lock('2025-12')] }).stale).toBe(true);
+    expect(yearClosingState({ year: '2025', postings: year, accounts: chart, journalEntries: close(year), locks: [lock('2025-12')] }).stale).toBe(false);
+  });
+});
+
 describe('balanço de abertura (2.3.3.04) no encerramento e na DLPA', () => {
   // Abertura em 01/01/2025: banco 3.000 e capital 1.000 → 2.000 credora na 2.3.3.04. Lucro de 700 no ano.
   // `p` já debita o banco pelo capital (1.000); os outros 2.000 do banco têm contrapartida na 2.3.3.04.
   const opening = [...p('2.3.1.01', '2025-01-01', -1000), { accountId: BANK, date: '2025-01-01', value: 2000 }, { accountId: id('2.3.3.04'), date: '2025-01-01', value: -2000 }];
   const year = [...opening, ...p('3.1.1.01', '2025-03-10', -1000), ...p('3.3.2.06', '2025-04-10', 300)];
-  const drafts = (postings: Posting[]) => buildClosingDrafts('2025', resultBalances(postings, chart, '2025'), chart, openingAccountBalance(postings, chart, '2025'));
+  const drafts = (postings: Posting[]) => buildClosingDrafts('2025', resultBalances(postings, chart, '2025'), chart, closingEquity(postings, chart, '2025'));
 
   it('zera a 2.3.3.04 em 31/12 contra Lucros Acumulados (credora) ou Prejuízos Acumulados (devedora)', () => {
     const last = drafts(year).at(-1)!;
@@ -205,5 +259,19 @@ describe('balanço de abertura (2.3.3.04) no encerramento e na DLPA', () => {
     const closed = sheetAt('2025-12-31', year, asEntries(drafts(year)));
     expect(equity(closed, id('2.3.3.04'))).toBe(0);
     expect(equity(closed, id('2.3.3.01'))).toBe(2700);
+  });
+
+  it('abertura antes de 1º de janeiro também sai na linha própria, fora do saldo inicial', () => {
+    const shift = (ps: Posting[]) => ps.map((x) => (x.date === '2025-01-01' ? { ...x, date: '2024-12-31' } : x));
+    const early = shift(year);
+    for (const entries of [[], asEntries(drafts(early))]) {
+      const d = buildDLPA(buildPostings([], [], chart, '2025-12-31', null, entries, early), chart, entries, '2025-12-31');
+      expect(d).toMatchObject({ opening: 0, openingBalance: 2000, netResult: 700, closing: 2700 });
+      expect(d.rows[1]).toEqual({ kind: 'movement', label: '(+/-) Balanço de abertura (2.3.3.04)', value: 2000 });
+    }
+    // Encerrado em 2025, no ano seguinte os 2.000 já são saldo anterior em Lucros Acumulados.
+    const entries = asEntries(drafts(early));
+    const next = buildDLPA(buildPostings([], [], chart, '2026-12-31', null, entries, early), chart, entries, '2026-12-31');
+    expect(next).toMatchObject({ opening: 2700, openingBalance: 0 });
   });
 });
