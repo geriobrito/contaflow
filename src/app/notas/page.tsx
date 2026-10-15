@@ -8,6 +8,7 @@ import { accountingStandard } from '@/lib/accounting-standard';
 import { placeholdersIn } from '@/lib/notes';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { AccountantNotice } from '@/components/ui/AccountantNotice';
 
 const thisYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => String(thisYear - i));
@@ -74,6 +75,8 @@ export default function NotasPage() {
       />
 
       {(error ?? saveError) && <p role="alert" className="text-[13px] text-rose-600">{error ?? saveError}</p>}
+
+      <AccountantNotice org={org} ready={Boolean(list)} />
 
       {!currentClient ? (
         <section className={`${SURFACE} rounded-[22px]`}>

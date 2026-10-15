@@ -8,10 +8,11 @@ import { getLatestTransactionDate, getRepository } from '@/lib/services/data-ser
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
-import { buildBalanceSheet, buildPostings, buildTrialBalance, type BalanceSheetLine, type Posting } from '@/lib/ledger';
+import { EQUITY_GROUP_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine, type Posting } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
+import { CAPITAL_GROUP_CODE, invertedBalances, missingShareCapital } from '@/lib/balance-sheet-checks';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { accountingStandardCode, porteOf } from '@/lib/accounting-standard';
+import { porteOf } from '@/lib/accounting-standard';
 import { openingStatus } from '@/lib/opening';
 import { monthOf } from '@/lib/periods';
 import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
@@ -21,6 +22,8 @@ import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
+import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 
 type View = 'bs' | 'tb' | 'dlpa';
 
@@ -159,6 +162,8 @@ export default function BalancoPage() {
     [loading, txs, banks, accounts, range.end, static_?.openings, static_?.journalEntries]
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
+  const inverted = useMemo(() => invertedBalances(bs), [bs]);
+  const missingCapital = useMemo(() => missingShareCapital(bs), [bs]);
   // Balancete antes (padrão) ou depois do encerramento do exercício que cai no período: antes, as
   // contas de resultado aparecem com os saldos do ano; depois, zeradas contra a ARE.
   const [ignoreClosing, setIgnoreClosing] = useState(true);
@@ -368,6 +373,8 @@ export default function BalancoPage() {
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
 
+      <AccountantNotice org={static_?.org} ready={ready} />
+
       <OpeningStatusNotice status={opening} />
 
       {view !== 'tb' && porteOf(currentClient) === 'PEQUENA_EMPRESA' && (
@@ -398,6 +405,32 @@ export default function BalancoPage() {
             <p className="flex items-start gap-2 text-[13px] text-amber-700">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               Sem saldo inicial: {missingOpening.map((b) => b.nickname).join(', ')}. O saldo dos bancos parte de zero até ser informado em Contas e extratos.
+            </p>
+          )}
+          {view === 'bs' && inverted.length > 0 && (
+            <div role="note" className="flex items-start gap-2 text-[13px] text-amber-700">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <div>
+                <p>Saldo invertido: confira {inverted.length === 1 ? 'a conta abaixo' : `as ${inverted.length} contas abaixo`}, com saldo contrário à natureza do grupo.</p>
+                <ul className="mt-1 space-y-0.5">
+                  {inverted.map(({ line, side }) => (
+                    <li key={line.accountId}>
+                      <span className="font-mono tabular-nums">{line.code}</span> {line.name}: {formatCurrency(-line.value)}{' '}
+                      {side === 'ASSET' ? 'credor no ativo' : 'devedor no passivo'}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {view === 'bs' && missingCapital && (
+            <p role="note" className="flex items-start gap-2 text-[12px] text-stone-500 dark:text-stone-400">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                Capital social ({CAPITAL_GROUP_CODE}) sem saldo. Registre-o na{' '}
+                <Link href="/abertura" className="underline underline-offset-2 hover:text-stone-800 dark:hover:text-stone-200">Abertura</Link> ou por{' '}
+                <Link href="/lancamentos" className="underline underline-offset-2 hover:text-stone-800 dark:hover:text-stone-200">lançamento contábil</Link>.
+              </span>
             </p>
           )}
           <p className={`flex items-center gap-2 text-[13px] ${(view !== 'tb' ? bs.difference === 0 : tb.balanced) ? 'text-emerald-700' : 'text-rose-700'}`}>
@@ -440,11 +473,11 @@ export default function BalancoPage() {
       ) : view === 'bs' ? (
         <div className="grid lg:grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Ativo" lines={bs.assets} total={bs.totalAssets} onSelectAccount={setDrawerAccountId} />
+            <Side title="Ativo" lines={sectionLines(bs.assets)} total={bs.totalAssets} onSelectAccount={setDrawerAccountId} />
           </section>
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Passivo" lines={bs.liabilities} total={bs.totalLiabilities} onSelectAccount={setDrawerAccountId} />
-            <Side title="Patrimônio líquido" lines={bs.equity} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
+            <Side title="Passivo" lines={sectionLines(bs.liabilities)} total={bs.totalLiabilities} onSelectAccount={setDrawerAccountId} />
+            <Side title="Patrimônio líquido" lines={sectionLines(bs.equity, EQUITY_GROUP_CODE)} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
             <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/[0.08] text-[13px] font-semibold">
               <span>Total do passivo e do PL</span>
               <span className="font-mono tabular-nums">{money(bs.totalLiabilities + bs.totalEquity)}</span>
@@ -537,35 +570,7 @@ export default function BalancoPage() {
       )}
 
       {/* Assinaturas contábeis oficiais para impressão (Balanço e Balancete) */}
-      {hasData && (
-        <section aria-label="Assinaturas contábeis" className="hidden print:block pt-8 print-avoid-break">
-          <div className="text-[9px] text-stone-500 mb-6 text-center">
-            {accountingStandardCode(currentClient)} — Relatório emitido em {new Date().toLocaleDateString('pt-BR')} via ContaFlow
-          </div>
-          <div className="grid grid-cols-2 gap-8 pt-4">
-            <div className="text-center">
-              <div className="border-t border-stone-800 pt-1.5 w-64 mx-auto">
-                <p className="text-[10px] font-semibold text-stone-900 uppercase">
-                  {currentClient?.legalRepresentativeName || currentClient?.name || 'Representante Legal'}
-                </p>
-                <p className="text-[9px] text-stone-600">
-                  {currentClient?.legalRepresentativeCpf ? `CPF: ${currentClient.legalRepresentativeCpf}` : 'Representante Legal'}
-                </p>
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="border-t border-stone-800 pt-1.5 w-64 mx-auto">
-                <p className="text-[10px] font-semibold text-stone-900 uppercase">
-                  {static_?.org?.accountantName || 'Contador Responsável'}
-                </p>
-                <p className="text-[9px] text-stone-600">
-                  {static_?.org?.accountantCrc ? `CRC: ${static_.org.accountantCrc}` : 'Contador'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+      {hasData && <LedgerPrintSignatures client={currentClient} org={static_?.org} document={TITLE[view]} />}
 
       <AccountLedgerDrawer
         isOpen={Boolean(drawerAccountId)}

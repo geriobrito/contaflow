@@ -4,8 +4,19 @@ import ExcelJS from 'exceljs';
 import type { ClientCompany } from '@/types/firestore';
 import type { DLPA } from '@/lib/year-closing';
 import { accountingStandard } from '@/lib/accounting-standard';
-import { cnpjLabel } from '@/lib/export/dre-rows';
-import { GRAND_TOTAL_FILL, HEADER_FILL, INK, MARGIN_X, MUTED, RULE, addPageFooters, renderSignatures, sanitizeFileName, type LedgerPdfExportContext } from '@/lib/export/ledger-pdf';
+import {
+  GRAND_TOTAL_FILL,
+  HEADER_FILL,
+  INK,
+  MARGIN_X,
+  MUTED,
+  RULE,
+  addPageFooters,
+  renderSignatures,
+  renderStatementHeader,
+  sanitizeFileName,
+  type LedgerPdfExportContext,
+} from '@/lib/export/ledger-pdf';
 import { renderSheetHeader, renderSignatures as renderSheetSignatures } from '@/lib/export/ledger-excel';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -26,40 +37,11 @@ const fileBase = (ctx: DLPAExportContext) => `DLPA_${sanitizeFileName(ctx.client
 
 export function generateDLPAPdf(ctx: DLPAExportContext): { blob: Blob; fileName: string } {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const center = pageWidth / 2;
   const standard = accountingStandard(ctx.client);
   const issuedAt = ctx.issuedAt ?? new Date();
   doc.setProperties({ title: `DLPA - ${ctx.client.name}`, subject: `${periodOf(ctx.dlpa)} - ${standard}`, creator: 'ContaFlow' });
 
-  let y = 18;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11.5);
-  doc.text(ctx.client.name.toUpperCase(), center, y, { align: 'center', maxWidth: pageWidth - MARGIN_X * 2 });
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...MUTED);
-  doc.text(cnpjLabel(ctx.client.cnpj), center, y, { align: 'center' });
-  y += 8;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(DLPA_TITLE, center, y, { align: 'center', maxWidth: pageWidth - MARGIN_X * 2 });
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...MUTED);
-  doc.text(standard, center, y, { align: 'center' });
-  y += 7;
-  doc.setTextColor(...INK);
-  doc.text(periodOf(ctx.dlpa), MARGIN_X, y);
-  doc.text('Em Reais - R$', pageWidth - MARGIN_X, y, { align: 'right' });
-  y += 2.5;
-  doc.setDrawColor(...INK);
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN_X, y, pageWidth - MARGIN_X, y);
+  const y = renderStatementHeader(doc, { client: ctx.client, title: DLPA_TITLE, standard, period: periodOf(ctx.dlpa) });
 
   const rows = ctx.dlpa.rows;
   autoTable(doc, {

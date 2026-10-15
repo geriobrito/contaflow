@@ -221,7 +221,7 @@ export function daybookTerms(args: {
   const { clientName, cnpj, book, range, pages, entryCount, total } = args;
   const sheets = `Contém este livro ${pages} página(s), numeradas de 1 a ${pages}, emitidas por processamento eletrônico de dados`;
   const company = [
-    `${clientName}, inscrita no CNPJ sob o nº ${cnpj || '—'}`,
+    cnpj ? `${clientName}, inscrita no CNPJ sob o nº ${cnpj}` : `${clientName}, CNPJ não informado`,
     book.registry?.trim() && `registrada sob o nº ${book.registry.trim()}`,
     book.city?.trim() && `com sede em ${book.city.trim()}`,
   ]

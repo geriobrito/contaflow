@@ -36,8 +36,8 @@ export function accountingStandardCode(client?: Pick<ClientCompany, 'porte'> | n
 }
 
 /**
- * Norma citada no cabeçalho do Balanço, Balancete, DRE e Razão ("NBC TG 1002 - Microentidades").
- * Hífen simples: as fontes padrão do jsPDF não têm travessão.
+ * Norma citada no cabeçalho do Balanço, Balancete, DRE e Razão ("NBC TG 1002 - Microentidades"),
+ * com hífen entre espaços.
  */
 export function accountingStandard(client?: Pick<ClientCompany, 'porte'> | null): string {
   const { code, scope } = STANDARD[porteOf(client)];

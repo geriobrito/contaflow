@@ -13,6 +13,7 @@ import { DREConsistencyCard } from '@/components/dre/DREConsistencyCard';
 import { DREResultCard } from '@/components/dre/DREResultCard';
 import { DREStatement } from '@/components/dre/DREStatement';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
+import { AccountantNotice } from '@/components/ui/AccountantNotice';
 
 /**
  * Demonstração do resultado. Os dados vêm de `useDREData`, e o resultado em destaque, o
@@ -121,6 +122,8 @@ export default function DREPage() {
         }
       />
 
+      <AccountantNotice org={org} ready={!isLoading} />
+
       {/* Seletor de período e visão */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
         <PeriodPicker period={period} />
@@ -143,7 +146,6 @@ export default function DREPage() {
             : lockStatus.closed > 0
               ? `${lockStatus.closed} de ${lockStatus.total} competência(s) fechada(s); as demais ainda podem mudar.`
               : 'Nenhuma competência deste período foi fechada; os valores ainda podem mudar.'}
-          {!org && ' Cadastre o contador em Escritório para assinar a DRE exportada.'}
         </p>
       )}
       {blockingError && (

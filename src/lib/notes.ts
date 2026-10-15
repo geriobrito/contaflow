@@ -67,7 +67,7 @@ export function defaultNotes(
 ): NoteBlock[] {
   const regime = client.regime ?? client.taxRegime;
   const small = porteOf(client) === 'PEQUENA_EMPRESA';
-  // "NBC TG 1002 - Contabilidade para Microentidades" (hífen: as fontes padrão do PDF não têm travessão).
+  // "NBC TG 1002 - Contabilidade para Microentidades".
   const standard = accountingStandard(client).replace(' - ', ' - Contabilidade para ');
   const end = `31 de dezembro de ${year}`;
   const cnpj = client.cnpj ? formatCNPJ(client.cnpj) : '[CNPJ]';

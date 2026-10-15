@@ -13,6 +13,7 @@ import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { openingStatus } from '@/lib/opening';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
+import { AccountantNotice } from '@/components/ui/AccountantNotice';
 
 /** Lançamentos por página na tela (o PDF traz o período inteiro). */
 const PAGE_SIZE = 50;
@@ -156,6 +157,8 @@ export default function DiarioPage() {
       <PeriodPicker period={period} />
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+
+      <AccountantNotice org={static_?.org} ready={Boolean(static_)} />
 
       {/* Dados que só os termos usam */}
       <section className={`${SURFACE} rounded-[22px] p-5 space-y-3`} aria-label="Dados dos termos de abertura e encerramento">

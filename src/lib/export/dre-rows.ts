@@ -79,16 +79,20 @@ export function buildDREExportRows(statement: DREStatement): DREExportRow[] {
    ========================================================================= */
 
 const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const PCT = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-/** `1.234,56` e negativos entre parênteses: `(1.234,56)`. */
+/** `1.234,56` e negativos entre parênteses: `(1.234,56)`. Quase zero (inclusive `-0`) sai `0,00`. */
 export function formatAccounting(value: number): string {
+  if (Math.abs(value) < 0.005) return BRL.format(0);
   const abs = BRL.format(Math.abs(value));
   return value < 0 ? `(${abs})` : abs;
 }
 
+/** `12,3%` colado ao símbolo; `-0` (linha redutora zerada) e arredondamentos para zero saem `0,0%`. */
 export function formatPercent(value: number | null): string {
   if (value === null) return '-';
-  return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  const pct = Math.abs(value) < 0.05 ? 0 : value;
+  return `${PCT.format(pct).replace(/\s+/g, '')}%`;
 }
 
 export const periodLabel = (range: DateRange): string =>

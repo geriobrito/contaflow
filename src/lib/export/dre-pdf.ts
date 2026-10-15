@@ -2,27 +2,19 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import {
   buildDREExportRows,
-  cnpjLabel,
-  DRE_CURRENCY,
   DRE_TITLE,
   dreFileBaseName,
   formatAccounting,
-  formatIssueDate,
   formatPercent,
   periodLabel,
   type DREExportContext,
 } from '@/lib/export/dre-rows';
+import { INK, MARGIN_X, MUTED, RULE, addPageFooters, renderSignatures, renderStatementHeader } from '@/lib/export/ledger-pdf';
 import { accountingStandard } from '@/lib/accounting-standard';
 
-/* Paleta sóbria em tons de cinza (RGB) — imprime bem em P&B. */
-const INK: [number, number, number] = [28, 25, 23];
-const MUTED: [number, number, number] = [110, 105, 100];
-const RULE: [number, number, number] = [200, 196, 190];
+/* Preenchimentos em tons de cinza (RGB) — imprime bem em P&B. */
 const SUBTOTAL_FILL: [number, number, number] = [242, 242, 242];
 const RESULT_FILL: [number, number, number] = [228, 228, 228];
-
-const MARGIN_X = 18; // mm
-const PAGE_BOTTOM = 280; // mm úteis em A4 retrato (297 - margem)
 
 /**
  * Gera a DRE oficial em PDF vetorial (A4 retrato), no layout da NBC TG 1002,
@@ -30,8 +22,6 @@ const PAGE_BOTTOM = 280; // mm úteis em A4 retrato (297 - margem)
  */
 export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: string } {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const center = pageWidth / 2;
   const issuedAt = ctx.issuedAt ?? new Date();
   const standard = accountingStandard(ctx.client);
 
@@ -41,45 +31,15 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
     creator: 'ContaFlow',
   });
 
-  /* ── Cabeçalho ─────────────────────────────────────────────────────── */
-  let y = 20;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(ctx.client.name.toUpperCase(), center, y, { align: 'center', maxWidth: pageWidth - MARGIN_X * 2 });
-  y += 5.5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9.5);
-  doc.setTextColor(...MUTED);
-  doc.text(cnpjLabel(ctx.client.cnpj), center, y, { align: 'center' });
-
-  y += 10;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text(DRE_TITLE, center, y, { align: 'center' });
-  y += 5.5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...MUTED);
-  doc.text(standard, center, y, { align: 'center' });
-
-  y += 8;
-  doc.setFontSize(9);
-  doc.setTextColor(...INK);
-  doc.text(periodLabel(ctx.range), MARGIN_X, y);
-  doc.text(DRE_CURRENCY, pageWidth - MARGIN_X, y, { align: 'right' });
-  y += 2.5;
-  doc.setDrawColor(...INK);
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN_X, y, pageWidth - MARGIN_X, y);
+  /* ── Cabeçalho (o mesmo do Balanço, Balancete e DLPA) ──────────────── */
+  const y = renderStatementHeader(doc, { client: ctx.client, title: DRE_TITLE, standard, period: periodLabel(ctx.range) });
 
   /* ── Tabela ────────────────────────────────────────────────────────── */
   const rows = buildDREExportRows(ctx.statement);
 
   autoTable(doc, {
     startY: y + 2,
-    margin: { left: MARGIN_X, right: MARGIN_X, bottom: 20 },
+    margin: { left: MARGIN_X, right: MARGIN_X, bottom: 18 },
     theme: 'plain',
     head: [['Descrição', '% s/ Receita Bruta', 'Valor (R$)']],
     body: rows.map((r) => [
@@ -145,57 +105,9 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
   const finalY =
     (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y + 20;
 
-  /* ── Encerramento e assinaturas (Anexo 9) ──────────────────────────── */
-  const SIGNATURE_BLOCK = 52;
-  let sy = finalY + 12;
-  if (sy + SIGNATURE_BLOCK > PAGE_BOTTOM) {
-    doc.addPage();
-    sy = 30;
-  }
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...INK);
-  doc.text(`Emitido em ${formatIssueDate(issuedAt)}.`, MARGIN_X, sy);
-
-  const colWidth = (pageWidth - MARGIN_X * 2 - 16) / 2;
-  const leftX = MARGIN_X;
-  const rightX = MARGIN_X + colWidth + 16;
-  const lineY = sy + 30;
-
-  const legal = ctx.signatories?.legalRepresentative;
-  const accountant = ctx.signatories?.accountant;
-  const blank = '______________________';
-
-  const signature = (x: number, role: string, name: string | undefined, idLabel: string, id: string | undefined) => {
-    doc.setDrawColor(...INK);
-    doc.setLineWidth(0.3);
-    doc.line(x, lineY, x + colWidth, lineY);
-    const cx = x + colWidth / 2;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.text(name?.trim() || 'Nome:  ' + blank, cx, lineY + 5, { align: 'center' });
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8.5);
-    doc.setTextColor(...MUTED);
-    doc.text(role, cx, lineY + 10, { align: 'center' });
-    doc.text(`${idLabel}: ${id?.trim() || blank}`, cx, lineY + 15, { align: 'center' });
-    doc.setTextColor(...INK);
-  };
-
-  signature(leftX, 'Representante Legal / Administrador', legal?.name, 'CPF', legal?.cpf);
-  signature(rightX, 'Profissional da Contabilidade', accountant?.name, 'CRC', accountant?.crc);
-
-  /* ── Rodapé com paginação ──────────────────────────────────────────── */
-  const pages = doc.getNumberOfPages();
-  for (let i = 1; i <= pages; i++) {
-    doc.setPage(i);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
-    doc.setTextColor(...MUTED);
-    doc.text(`${ctx.client.name} - ${DRE_TITLE}`, MARGIN_X, 290);
-    doc.text(`Página ${i} de ${pages}`, pageWidth - MARGIN_X, 290, { align: 'right' });
-  }
+  /* ── Encerramento, assinaturas (Anexo 9) e paginação ───────────────── */
+  renderSignatures(doc, finalY, issuedAt, ctx.signatories);
+  addPageFooters(doc, DRE_TITLE, ctx.client.name);
 
   return {
     blob: doc.output('blob'),

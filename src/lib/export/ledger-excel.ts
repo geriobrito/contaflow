@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { ClientCompany } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import type { AccountLedger, BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
+import { EQUITY_GROUP_CODE, sectionLines, type AccountLedger, type BalanceSheet, type BalanceSheetLine, type TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { round2 } from '@/lib/money';
@@ -251,9 +251,10 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
     curBsRow++;
   };
 
-  renderBsSection('ATIVO', '1', bs.assets, 'TOTAL DO ATIVO', bs.totalAssets);
-  renderBsSection('PASSIVO', '2', bs.liabilities, 'TOTAL DO PASSIVO', bs.totalLiabilities);
-  renderBsSection('PATRIMÔNIO LÍQUIDO', '2.3', bs.equity, 'TOTAL DO PATRIMÔNIO LÍQUIDO', bs.totalEquity);
+  // As raízes e o grupo do PL são os títulos das seções; não se repetem nas linhas.
+  renderBsSection('ATIVO', '1', sectionLines(bs.assets), 'TOTAL DO ATIVO', bs.totalAssets);
+  renderBsSection('PASSIVO', '', sectionLines(bs.liabilities), 'TOTAL DO PASSIVO', bs.totalLiabilities);
+  renderBsSection('PATRIMÔNIO LÍQUIDO', EQUITY_GROUP_CODE, sectionLines(bs.equity, EQUITY_GROUP_CODE), 'TOTAL DO PATRIMÔNIO LÍQUIDO', bs.totalEquity);
 
   // TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO
   const totalPassivoPL = bs.totalLiabilities + bs.totalEquity;

@@ -380,6 +380,17 @@ export function buildBalanceSheet(postings: readonly Posting[], accounts: readon
   };
 }
 
+/** Grupo do patrimônio líquido no plano do CFC: vira o título da seção do PL nos relatórios. */
+export const EQUITY_GROUP_CODE = '2.3';
+
+/**
+ * Linhas de um lado do balanço sem as que os relatórios já mostram como título de seção: as
+ * raízes (1 Ativo; 2 Passivo e PL, que se repetiria no passivo e no PL) e o grupo da seção.
+ */
+export function sectionLines(lines: readonly BalanceSheetLine[], sectionCode?: string): BalanceSheetLine[] {
+  return lines.filter((l) => !l.code || (l.code.includes('.') && l.code !== sectionCode));
+}
+
 /** Contas patrimoniais (para validações de tela). */
 export const isPatrimonial = (a: Pick<ChartAccount, 'type'>) => PATRIMONIAL.has(a.type);
 

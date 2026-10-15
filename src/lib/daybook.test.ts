@@ -150,7 +150,7 @@ describe('Livro Diário', () => {
     expect(terms.closing).toMatch(/totalizam R\$\s2\.903,60 a débito e a crédito\.$/);
     // Sem registro nem sede informados, o texto não deixa lacunas.
     expect(daybookTerms({ clientName: 'BETA', cnpj: '', book: { number: '' }, range: { start: '2025-01-01', end: '2025-01-31' }, pages: 3, entryCount: 0, total: 0 }).opening).toContain(
-      'Livro Diário nº 1 de BETA, inscrita no CNPJ sob o nº —, para a escrituração'
+      'Livro Diário nº 1 de BETA, CNPJ não informado, para a escrituração'
     );
   });
 });

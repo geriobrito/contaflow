@@ -94,7 +94,7 @@ export default function EscritorioPage() {
     <main className={PAGE}>
       <PageHeader
         title="Escritório"
-        description="Dados do escritório e do profissional da contabilidade responsável. Preenchem automaticamente as assinaturas da DRE (PDF e Excel)."
+        description="Dados do escritório e do profissional da contabilidade responsável. Preenchem automaticamente as assinaturas do Balanço, Balancete, DRE, DLPA, Livro Diário e Notas explicativas (PDF e Excel)."
       />
 
       {loadError && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar: {loadError}</p>}

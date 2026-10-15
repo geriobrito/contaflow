@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import type { ClientCompany } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import type { BalanceSheet, BalanceSheetLine, TrialBalance } from '@/lib/ledger';
+import { EQUITY_GROUP_CODE, sectionLines, type BalanceSheet, type BalanceSheetLine, type TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { accountingStandard } from '@/lib/accounting-standard';
@@ -34,9 +34,12 @@ export interface LedgerPdfExportContext {
   };
 }
 
-/** Formata saldo de balancete com indicador de natureza: D (devedor) ou C (credor). */
+/**
+ * Formata saldo de balancete com indicador de natureza: D (devedor) ou C (credor). Zero sai
+ * "R$ 0,00", para a linha de uma conta movimentada no período não parecer truncada.
+ */
 const formatDC = (v: number): string => {
-  if (Math.abs(v) < 0.005) return '—';
+  if (Math.abs(v) < 0.005) return formatCurrency(0);
   return `${formatCurrency(Math.abs(v))} ${v > 0 ? 'D' : 'C'}`;
 };
 
@@ -50,6 +53,55 @@ export function sanitizeFileName(name: string): string {
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^A-Za-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Cabeçalho padrão das demonstrações no topo da página 1: razão social, CNPJ, título, norma
+ * e a linha do período com a moeda. Retorna o Y da régua, onde a tabela começa.
+ */
+export function renderStatementHeader(
+  doc: jsPDF,
+  head: { client: Pick<ClientCompany, 'name' | 'cnpj'>; title: string; standard: string; period: string }
+): number {
+  const marginX = MARGIN_X;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const center = pageWidth / 2;
+  const maxWidth = pageWidth - marginX * 2;
+
+  let y = 18;
+  doc.setTextColor(...INK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11.5);
+  doc.text(head.client.name.toUpperCase(), center, y, { align: 'center', maxWidth });
+
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text(cnpjLabel(head.client.cnpj), center, y, { align: 'center' });
+
+  y += 8;
+  doc.setTextColor(...INK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.text(head.title, center, y, { align: 'center', maxWidth });
+
+  y += 5;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...MUTED);
+  doc.text(head.standard, center, y, { align: 'center', maxWidth });
+
+  y += 7;
+  doc.setTextColor(...INK);
+  doc.text(head.period, marginX, y);
+  doc.text('Em Reais - R$', pageWidth - marginX, y, { align: 'right' });
+
+  y += 2.5;
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.4);
+  doc.line(marginX, y, pageWidth - marginX, y);
+  return y;
 }
 
 /**
@@ -152,8 +204,6 @@ interface BSExportRow {
 }
 
 function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const center = pageWidth / 2;
   const issuedAt = ctx.issuedAt ?? new Date();
   const bs = ctx.balanceSheet;
   const standard = accountingStandard(ctx.client);
@@ -164,41 +214,7 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     creator: 'ContaFlow',
   });
 
-  /* ── Cabeçalho do Balanço ── */
-  let y = 18;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11.5);
-  doc.text(ctx.client.name.toUpperCase(), center, y, { align: 'center', maxWidth: pageWidth - MARGIN_X * 2 });
-
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...MUTED);
-  doc.text(cnpjLabel(ctx.client.cnpj), center, y, { align: 'center' });
-
-  y += 8;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text('BALANÇO PATRIMONIAL', center, y, { align: 'center' });
-
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...MUTED);
-  doc.text(standard, center, y, { align: 'center' });
-
-  y += 7;
-  doc.setFontSize(8.5);
-  doc.setTextColor(...INK);
-  doc.text(`Posição em ${formatDateBR(bs.date)}`, MARGIN_X, y);
-  doc.text('Em Reais - R$', pageWidth - MARGIN_X, y, { align: 'right' });
-
-  y += 2.5;
-  doc.setDrawColor(...INK);
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN_X, y, pageWidth - MARGIN_X, y);
+  const y = renderStatementHeader(doc, { client: ctx.client, title: 'BALANÇO PATRIMONIAL', standard, period: `Posição em ${formatDateBR(bs.date)}` });
 
   /* ── Montagem das linhas estruturadas ── */
   const rows: BSExportRow[] = [];
@@ -216,19 +232,19 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     }
   };
 
-  // Seção 1: ATIVO
+  // Seção 1: ATIVO (a raiz 1 é o próprio título)
   rows.push({ kind: 'section', code: '1', name: 'ATIVO', level: 1, synthetic: true, value: bs.totalAssets });
-  addLines(bs.assets);
+  addLines(sectionLines(bs.assets));
   rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO ATIVO', level: 1, synthetic: true, value: bs.totalAssets });
 
-  // Seção 2: PASSIVO
-  rows.push({ kind: 'section', code: '2', name: 'PASSIVO', level: 1, synthetic: true, value: bs.totalLiabilities });
-  addLines(bs.liabilities);
+  // Seção 2: PASSIVO (sem código: a raiz 2 é "Passivo e patrimônio líquido", coberta pelo total geral)
+  rows.push({ kind: 'section', code: '', name: 'PASSIVO', level: 1, synthetic: true, value: bs.totalLiabilities });
+  addLines(sectionLines(bs.liabilities));
   rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO PASSIVO', level: 1, synthetic: true, value: bs.totalLiabilities });
 
-  // Seção 3: PATRIMÔNIO LÍQUIDO
-  rows.push({ kind: 'section', code: '2.3', name: 'PATRIMÔNIO LÍQUIDO', level: 1, synthetic: true, value: bs.totalEquity });
-  addLines(bs.equity);
+  // Seção 3: PATRIMÔNIO LÍQUIDO (o grupo 2.3 é o próprio título)
+  rows.push({ kind: 'section', code: EQUITY_GROUP_CODE, name: 'PATRIMÔNIO LÍQUIDO', level: 1, synthetic: true, value: bs.totalEquity });
+  addLines(sectionLines(bs.equity, EQUITY_GROUP_CODE));
   rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO PATRIMÔNIO LÍQUIDO', level: 1, synthetic: true, value: bs.totalEquity });
 
   // TOTAL GERAL
@@ -349,8 +365,6 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
    ========================================================================= */
 
 function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const center = pageWidth / 2;
   const issuedAt = ctx.issuedAt ?? new Date();
   const tb = ctx.trialBalance;
   const rows = ctx.showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
@@ -362,49 +376,20 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     creator: 'ContaFlow',
   });
 
-  /* ── Cabeçalho do Balancete ── */
-  let y = 16;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(ctx.client.name.toUpperCase(), center, y, { align: 'center', maxWidth: pageWidth - MARGIN_X * 2 });
-
-  y += 5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...MUTED);
-  doc.text(cnpjLabel(ctx.client.cnpj), center, y, { align: 'center' });
-
-  y += 7.5;
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.text('BALANCETE DE VERIFICAÇÃO', center, y, { align: 'center' });
-
-  y += 4.5;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(...MUTED);
-  doc.text(ctx.trialBalanceStage ? `${standard} - ${ctx.trialBalanceStage}` : standard, center, y, { align: 'center' });
-
-  y += 6.5;
-  doc.setFontSize(8.5);
-  doc.setTextColor(...INK);
-  doc.text(periodLabel(ctx.range), MARGIN_X, y);
-  doc.text('Em Reais - R$', pageWidth - MARGIN_X, y, { align: 'right' });
-
-  y += 2.5;
-  doc.setDrawColor(...INK);
-  doc.setLineWidth(0.4);
-  doc.line(MARGIN_X, y, pageWidth - MARGIN_X, y);
+  const y = renderStatementHeader(doc, {
+    client: ctx.client,
+    title: 'BALANCETE DE VERIFICAÇÃO',
+    standard: ctx.trialBalanceStage ? `${standard} - ${ctx.trialBalanceStage}` : standard,
+    period: periodLabel(ctx.range),
+  });
 
   /* ── Tabela de 6 colunas perfeitamente calibrada em A4 Retrato (186mm úteis) ── */
   const bodyRows = rows.map((r) => [
     r.code,
     r.name,
     formatDC(r.previous),
-    r.debits ? formatAccounting(r.debits) : '—',
-    r.credits ? formatAccounting(r.credits) : '—',
+    formatAccounting(r.debits),
+    formatAccounting(r.credits),
     formatDC(r.final),
   ]);
 
