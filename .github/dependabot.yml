@@ -8,6 +8,13 @@ updates:
       day: monday
     open-pull-requests-limit: 5
     groups:
+      # O SDK e o pacote de testes de regras exigem a mesma versão maior (peer dependency):
+      # atualizados em PRs separados, o `npm install` falha com ERESOLVE. Vêm sempre juntos,
+      # inclusive em versão maior. Fica antes de `menores` porque vale o primeiro grupo que casar.
+      firebase:
+        patterns:
+          - firebase
+          - '@firebase/rules-unit-testing'
       # Correções e versões menores chegam juntas; versões maiores, uma por PR.
       menores:
         update-types: [minor, patch]
