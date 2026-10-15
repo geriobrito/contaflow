@@ -282,8 +282,16 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async getOpeningBalances(clientId) {
       return read<OpeningBalances>(LOCAL_KEYS.openings).find((o) => o.clientId === clientId) ?? null;
     },
-    async saveOpeningBalances(balances, audit) {
+    async saveOpeningBalances(balances, audit, related = {}) {
+      // Monta todas as listas antes de gravar qualquer uma.
       const others = read<OpeningBalances>(LOCAL_KEYS.openings).filter((o) => o.clientId !== balances.clientId);
+      const newAccounts = related.accounts ?? [];
+      const knownAccounts = new Set(newAccounts.map((a) => a.id));
+      const accounts = [...read<ChartAccount>(LOCAL_KEYS.accounts).filter((a) => !knownAccounts.has(a.id)), ...newAccounts.map(stamp)];
+      const replaced = new Set((related.bankAccounts ?? []).map((b) => b.id));
+      const banks = [...read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => !replaced.has(b.id)), ...(related.bankAccounts ?? []).map(stamp)];
+      if (newAccounts.length) write(LOCAL_KEYS.accounts, accounts);
+      if (replaced.size) write(LOCAL_KEYS.bankAccounts, banks);
       write(LOCAL_KEYS.openings, [...others, stamp({ ...balances, id: balances.clientId })]);
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },

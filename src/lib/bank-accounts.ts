@@ -1,5 +1,5 @@
 import type { BankAccount, BankTransaction, ChartAccount, ImportBatch } from '@/types/firestore';
-import { addDays } from '@/lib/statement';
+import { countsAfterOpening } from '@/lib/ledger';
 import { round2 } from '@/lib/money';
 
 /**
@@ -19,7 +19,7 @@ export function defaultNickname(meta: Pick<BankAccount, 'bankName' | 'bankId' | 
 
 /**
  * Saldo inicial sugerido pelo extrato mais antigo com saldo informado: saldo final do
- * banco menos a movimentação do arquivo, no dia anterior ao início do extrato.
+ * banco menos a movimentação do arquivo, no início do primeiro dia do extrato.
  */
 export function suggestOpening(
   batches: readonly (Pick<ImportBatch, 'accountKey' | 'startDate' | 'endDate' | 'ledgerDate' | 'ledgerBalance' | 'fileNet'> & { status?: string })[],
@@ -38,13 +38,13 @@ export function suggestOpening(
     )
     .sort((a, b) => (a.startDate ?? '').localeCompare(b.startDate ?? ''))[0];
   if (!first?.startDate || first.ledgerBalance === undefined || first.fileNet === undefined) return null;
-  return { openingBalance: round2(first.ledgerBalance - first.fileNet), openingDate: addDays(first.startDate, -1) };
+  return { openingBalance: round2(first.ledgerBalance - first.fileNet), openingDate: first.startDate };
 }
 
 
 /**
- * Saldo da conta ao fim do dia `date`: saldo inicial + movimentação posterior à data do
- * saldo inicial. Sem saldo inicial, considera toda a movimentação importada.
+ * Saldo da conta ao fim do dia `date`: saldo inicial (início do dia `openingDate`) + movimentação
+ * desse dia em diante. Sem saldo inicial, considera toda a movimentação importada.
  *
  * `carried` é a movimentação já consolidada da conta (`LedgerWindow.carriedBanks`), quando
  * `transactions` traz só o que veio depois do consolidado; `date` não pode ser anterior a ele.
@@ -55,9 +55,8 @@ export function bankBalanceAt(
   date: string,
   carried = 0
 ): number {
-  const from = account.openingDate ?? '';
   const movement = transactions
-    .filter((t) => t.accountKey === account.accountKey && t.date > from && t.date <= date)
+    .filter((t) => t.accountKey === account.accountKey && countsAfterOpening(t.date, account.openingDate) && t.date <= date)
     .reduce((s, t) => s + t.amount, 0);
   return round2((account.openingBalance ?? 0) + carried + movement);
 }

@@ -9,6 +9,7 @@ import {
   buildDLPA,
   closingTransfer,
   missingClosingAccounts,
+  openingAccountBalance,
   resultBalances,
   withoutClosingOf,
   yearClosingState,
@@ -123,7 +124,9 @@ describe('situação do exercício', () => {
     const s = state([], [lock('2025-12')], base, { monthsWithData: ['2025-03', '2025-04', '2025-12'] });
     expect(s.warnings.join(' ')).toMatch(/março.*abril/);
     expect(s.canClose).toBe(true);
-    expect(state([], [lock('2025-12')], base, { implantation: '2025-12-31' }).canClose).toBe(false);
+    // Implantação no início do dia: um exercício que termina antes dela não se encerra no sistema.
+    expect(state([], [lock('2025-12')], base, { implantation: '2026-01-01' }).canClose).toBe(false);
+    expect(state([], [lock('2025-12')], base, { implantation: '2025-01-01' }).canClose).toBe(true);
   });
 
   it('encerrado e em dia; lançamento posterior o deixa desatualizado', () => {
@@ -158,5 +161,49 @@ describe('DLPA', () => {
     const fromSheet = equity(sheet, id('2.3.3')) + equity(sheet, VIRTUAL.PRIOR_RESULTS) + equity(sheet, VIRTUAL.CURRENT_RESULT);
     const postings = buildPostings([], [], chart, '2025-12-31', null, entries, withDistribution);
     expect(buildDLPA(postings, chart, entries, '2025-12-31').closing).toBe(fromSheet);
+  });
+});
+
+describe('balanço de abertura (2.3.3.04) no encerramento e na DLPA', () => {
+  // Abertura em 01/01/2025: banco 3.000 e capital 1.000 → 2.000 credora na 2.3.3.04. Lucro de 700 no ano.
+  // `p` já debita o banco pelo capital (1.000); os outros 2.000 do banco têm contrapartida na 2.3.3.04.
+  const opening = [...p('2.3.1.01', '2025-01-01', -1000), { accountId: BANK, date: '2025-01-01', value: 2000 }, { accountId: id('2.3.3.04'), date: '2025-01-01', value: -2000 }];
+  const year = [...opening, ...p('3.1.1.01', '2025-03-10', -1000), ...p('3.3.2.06', '2025-04-10', 300)];
+  const drafts = (postings: Posting[]) => buildClosingDrafts('2025', resultBalances(postings, chart, '2025'), chart, openingAccountBalance(postings, chart, '2025'));
+
+  it('zera a 2.3.3.04 em 31/12 contra Lucros Acumulados (credora) ou Prejuízos Acumulados (devedora)', () => {
+    const last = drafts(year).at(-1)!;
+    expect(last.lines.map((l) => [l.accountCode, l.type, l.amount])).toEqual([
+      ['2.3.3.04', 'DEBIT', 2000],
+      ['2.3.3.01', 'CREDIT', 2000],
+    ]);
+    expect(journalEntryProblem(last)).toBeNull();
+    // Empréstimo de sócios 5.000 e banco 1.000: 4.000 devedora na 2.3.3.04.
+    const debit = [...p('2.2.2.02', '2025-01-01', -5000), { accountId: BANK, date: '2025-01-01', value: -4000 }, { accountId: id('2.3.3.04'), date: '2025-01-01', value: 4000 }];
+    expect(drafts(debit).at(-1)!.lines.map((l) => [l.accountCode, l.type, l.amount])).toEqual([
+      ['2.3.3.02', 'DEBIT', 4000],
+      ['2.3.3.04', 'CREDIT', 4000],
+    ]);
+  });
+
+  it('encerra mesmo sem resultado no ano, quando só a 2.3.3.04 tem saldo', () => {
+    const s = yearClosingState({ year: '2025', postings: opening, accounts: chart, journalEntries: [], locks: [lock('2025-12')] });
+    expect(s).toMatchObject({ canClose: true, netResult: 0, openingTransfer: 2000 });
+    expect(drafts(opening)).toHaveLength(1);
+  });
+
+  it('a DLPA mostra a linha do balanço de abertura e confere com o balanço, antes e depois do encerramento', () => {
+    for (const entries of [[], asEntries(drafts(year))]) {
+      const postings = buildPostings([], [], chart, '2025-12-31', null, entries, year);
+      const d = buildDLPA(postings, chart, entries, '2025-12-31');
+      expect(d).toMatchObject({ opening: 0, openingBalance: 2000, adjustments: 0, netResult: 700, closing: 2700 });
+      expect(d.rows.map((r) => r.label)).toContain('(+/-) Balanço de abertura (2.3.3.04)');
+      const sheet = sheetAt('2025-12-31', year, entries);
+      expect(d.closing).toBe(equity(sheet, id('2.3.3')) + equity(sheet, VIRTUAL.CURRENT_RESULT));
+    }
+    // Depois do encerramento, a 2.3.3.04 fica zerada e os 2.000 estão em Lucros Acumulados.
+    const closed = sheetAt('2025-12-31', year, asEntries(drafts(year)));
+    expect(equity(closed, id('2.3.3.04'))).toBe(0);
+    expect(equity(closed, id('2.3.3.01'))).toBe(2700);
   });
 });

@@ -13,6 +13,7 @@ import type {
 import { addDays, findCoverageGaps, type CoverageGap } from '@/lib/statement';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { openingStatus } from '@/lib/opening';
+import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
 import { answerAt } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -268,13 +269,17 @@ export function buildDashboard(input: DashboardInput): Dashboard {
     const opening = openingStatus(openings, accounts, banks);
     if (!openings) {
       add({ id: 'opening-none', severity: 'medium', title: 'Saldos de abertura não informados', detail: 'Sem eles o balanço patrimonial só tem os bancos.', href: '/abertura' });
-    } else if (!opening.summary.balanced) {
-      // Abertura que não fecha deixa o balanço inteiro com a diferença em "a detalhar".
+    } else if (Math.abs(opening.pending) >= 0.005) {
+      // Abertura que não fecha deixa o balanço inteiro com a diferença em "a detalhar". No balanço
+      // de abertura, a diferença vai para a 2.3.3.04 e não é problema.
       add({
         id: 'opening-gap',
         severity: 'high',
         title: 'Abertura não conferida: os saldos não fecham',
-        detail: `Faltam ${formatCurrency(Math.abs(opening.summary.difference))} para ativo = passivo + patrimônio líquido.`,
+        detail:
+          opening.mode === 'OPENING_BALANCE'
+            ? `Salve a abertura de novo para criar a conta ${OPENING_ACCOUNT_CODE} Balanço de Abertura e lançar nela os ${formatCurrency(Math.abs(opening.pending))}.`
+            : `Faltam ${formatCurrency(Math.abs(opening.pending))} para ativo = passivo + patrimônio líquido.`,
         href: '/abertura',
       });
     }

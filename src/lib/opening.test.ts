@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { BankAccount } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
-import { implantationDate, implantationProblem, openingAccounts, openingStatus, parseMoneyInput, summarizeOpening } from '@/lib/opening';
+import {
+  defaultOpeningDate,
+  describePlug,
+  implantationDate,
+  implantationProblem,
+  missingOpeningAccounts,
+  openingAccounts,
+  openingModeOf,
+  openingStatus,
+  parseMoneyInput,
+  parseSignedMoneyInput,
+  summarizeOpening,
+} from '@/lib/opening';
 
 const chart = buildITG1000Chart('c');
 const id = (code: string) => `c_itg22_${code}`;
@@ -78,11 +90,66 @@ describe('data de implantação e conferência', () => {
     expect(gap.problems.join(' ')).toMatch(/Faltam R\$\s600,00/);
   });
 
-  it('lançamento manual só depois da implantação', () => {
-    expect(implantationProblem('2024-12-31', '2024-12-31')).toMatch(/31\/12\/2024/);
-    expect(implantationProblem('2024-06-01', '2024-12-31')).not.toBeNull();
-    expect(implantationProblem('2025-01-01', '2024-12-31')).toBeNull();
+  it('lançamento manual a partir do próprio dia da implantação (posição no início do dia)', () => {
+    expect(implantationProblem('2025-01-01', '2025-01-01')).toBeNull();
+    expect(implantationProblem('2024-12-31', '2025-01-01')).toMatch(/01\/01\/2025/);
+    expect(implantationProblem('2024-06-01', '2025-01-01')).not.toBeNull();
+    expect(implantationProblem('2025-01-02', '2025-01-01')).toBeNull();
     expect(implantationProblem('2020-01-01', null)).toBeNull();
+  });
+});
+
+describe('balanço de abertura (sem contabilidade anterior)', () => {
+  const opening = (entries: { accountId: string; amount: number }[]) =>
+    ({ id: 'c', clientId: 'c', date: '2025-01-01', mode: 'OPENING_BALANCE' as const, entries, updatedAt: '' });
+  const bankAt = (balance: number): BankAccount => ({
+    id: 'a', clientId: 'c', accountKey: 'a', nickname: 'a', ledgerAccountId: id('1.1.1.02'), openingBalance: balance, openingDate: '2025-01-01', createdAt: '', updatedAt: '',
+  });
+
+  it('a diferença vai para a 2.3.3.04 e a abertura fica conferida', () => {
+    // Banco 1.500 + imobilizado 4.000 − depreciação 1.000 = 4.500; DAS 200 + capital 1.000 = 1.200 → 3.300 credora.
+    const s = openingStatus(
+      opening([{ accountId: id('1.2.3.03'), amount: 4000 }, { accountId: id('1.2.3.07'), amount: 1000 }, { accountId: id('2.1.5.01'), amount: 200 }, { accountId: id('2.3.1.01'), amount: 1000 }]),
+      chart,
+      [bankAt(1500)]
+    );
+    expect(s).toMatchObject({ mode: 'OPENING_BALANCE', verified: true, problems: [], pending: 0, plug: { amount: 3300, nature: 'C' } });
+    expect(describePlug(s.plug!)).toMatch(/2\.3\.3\.04 Balanço de Abertura: R\$\s3\.300,00 \(Credor\)/);
+    // Passivo maior que o ativo: contrapartida devedora.
+    expect(openingStatus(opening([{ accountId: id('2.2.2.02'), amount: 5000 }]), chart, [bankAt(1000)]).plug).toEqual({ amount: 4000, nature: 'D' });
+  });
+
+  it('sem a 2.3.3.04 no plano, a diferença segue a detalhar', () => {
+    const withoutPlug = chart.filter((a) => a.code !== '2.3.3.04');
+    const s = openingStatus(opening([{ accountId: id('2.3.1.01'), amount: 1000 }]), withoutPlug, [bankAt(400)]);
+    expect(s.verified).toBe(false);
+    expect(s.pending).toBe(-600);
+    expect(s.problems.join(' ')).toMatch(/2\.3\.3\.04.*não está no plano/);
+    expect(missingOpeningAccounts('c', withoutPlug).map((a) => a.code)).toEqual(['2.3.3.04']);
+    expect(missingOpeningAccounts('c', chart)).toEqual([]);
+  });
+
+  it('documento sem o tipo de implantação continua como transferência com balanço anterior', () => {
+    expect(openingModeOf({})).toBe('CONTINUITY');
+    expect(openingModeOf(null)).toBe('CONTINUITY');
+  });
+
+  it('a 2.3.3.04 não recebe digitação; retificadoras aparecem, inclusive pelo nome', () => {
+    const codes = new Set(openingAccounts(chart, []).map((a) => a.code));
+    expect(codes.has('2.3.3.04')).toBe(false);
+    expect(codes.has('1.2.3.07')).toBe(true);
+    expect(codes.has('2.3.1.02')).toBe(true);
+    const handmade = { ...chart.find((a) => a.code === '1.2.3.07')!, isContra: undefined, name: 'Depreciação Acumulada de Veículos' };
+    const s = summarizeOpening([{ accountId: id('1.2.3.04'), amount: 50000 }, { accountId: handmade.id, amount: 10000 }], chart.map((a) => (a.id === handmade.id ? handmade : a)), []);
+    expect(s.assets).toBe(40000);
+  });
+
+  it('data padrão: o saldo bancário mais antigo ou 1º de janeiro do primeiro extrato, nunca o ano corrente com movimento anterior', () => {
+    const today = new Date('2026-10-14T12:00:00Z');
+    expect(defaultOpeningDate([{ openingDate: '2025-03-01' }, { openingDate: '2025-01-01' }], '2025-01-02', today)).toBe('2025-01-01');
+    expect(defaultOpeningDate([{ openingDate: '2026-02-01' }], '2025-01-15', today)).toBe('2025-01-01');
+    expect(defaultOpeningDate([], '2025-04-10', today)).toBe('2025-01-01');
+    expect(defaultOpeningDate([], null, today)).toBe('2026-01-01');
   });
 });
 
@@ -95,5 +162,12 @@ describe('parseMoneyInput', () => {
     expect(parseMoneyInput('')).toBe(0);
     expect(parseMoneyInput('abc')).toBeNull();
     expect(parseMoneyInput('-5')).toBeNull();
+  });
+
+  it('saldo de banco aceita negativo', () => {
+    expect(parseSignedMoneyInput('-1.234,56')).toBe(-1234.56);
+    expect(parseSignedMoneyInput('250')).toBe(250);
+    expect(parseSignedMoneyInput('-')).toBeNull();
+    expect(parseSignedMoneyInput('')).toBe(0);
   });
 });

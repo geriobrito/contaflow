@@ -429,7 +429,7 @@ export interface BankAccount {
   ledgerAccountId?: string;
   ledgerAccountCode?: string;
   ledgerAccountName?: string;
-  /** Saldo no fim do dia `openingDate`; os lançamentos posteriores somam a partir dele. */
+  /** Saldo no início do dia `openingDate`; os lançamentos desse dia em diante somam a partir dele. */
   openingBalance?: number;
   openingDate?: string;
   createdAt: string;
@@ -495,16 +495,29 @@ export interface OpeningEntry {
 }
 
 /**
- * Saldos de abertura do cliente (coleção `opening_balances`, id = clientId): posição em `date`
- * das contas patrimoniais que não são bancos (clientes, fornecedores, estoque, imobilizado,
- * capital…). Os bancos têm o saldo inicial em `bank_accounts`.
+ * Tipo de implantação:
+ * - OPENING_BALANCE: balanço de abertura sem contabilidade anterior (MEI, Simples). A diferença
+ *   entre débitos e créditos vai, como contrapartida, para a conta 2.3.3.04 Balanço de Abertura.
+ * - CONTINUITY: transferência de saldos de um balanço anterior já fechado; débitos = créditos
+ *   são conferidos, e a diferença fica em "Saldos de abertura (a detalhar)".
+ */
+export type OpeningMode = 'OPENING_BALANCE' | 'CONTINUITY';
+
+/**
+ * Saldos de abertura do cliente (coleção `opening_balances`, id = clientId): posição no início
+ * do dia `date` das contas patrimoniais que não são bancos (clientes, fornecedores, estoque,
+ * imobilizado, capital…). Os bancos têm o saldo inicial em `bank_accounts`, na mesma data.
  */
 export interface OpeningBalances {
   id: string;
   orgId?: string;
   clientId: string;
-  /** Data do saldo (YYYY-MM-DD), normalmente o último dia do exercício anterior. */
+  /** Data do balanço de abertura (YYYY-MM-DD): posição no início do dia; os lançamentos começam nela. */
   date: string;
+  /** Sem o campo (documentos anteriores a ele): CONTINUITY. */
+  mode?: OpeningMode;
+  /** Histórico do lançamento de abertura no Diário. */
+  memo?: string;
   entries: OpeningEntry[];
   updatedAt: string;
   updatedByUid?: string;

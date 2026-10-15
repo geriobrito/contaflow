@@ -239,5 +239,28 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     expect((await download).suggestedFilename()).toMatch(/^Notas_Explicativas_.*\.pdf$/);
   });
 
+  await test.step('Balanço de abertura (sem contabilidade anterior)', async () => {
+    await page.goto('/abertura');
+    await expect(page.getByRole('heading', { name: 'Balanço de abertura' })).toBeVisible();
+    await expect(page.getByRole('radio', { name: /Balanço de abertura \(sem contabilidade anterior/ })).toBeChecked();
+    // Movimento em 2025: a data sugerida nunca é do ano corrente.
+    await expect(page.getByLabel(/Data do balanço de abertura/)).toHaveValue(/^2025-/);
+    // Banco 1.500 e capital 1.000: os 500 de diferença vão, credores, para a 2.3.3.04.
+    await page.locator('input[id^="bank-"]').first().fill('1.500,00');
+    await page.getByLabel(/^Capital Subscrito$/).fill('1.000,00');
+    await expect(page.getByText(/Contrapartida automática na conta 2\.3\.3\.04 Balanço de Abertura: R\$\s500,00 \(Credor\)/)).toBeVisible();
+    await page.getByRole('button', { name: 'Salvar' }).click();
+    await expect(page.getByRole('status').filter({ hasText: /Abertura salva às/ })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel(/^Capital Subscrito$/)).toHaveValue('1000,00');
+    await expect(page.locator('input[id^="bank-"]').first()).toHaveValue('1500,00');
+    // Abertura conferida: o balanço não avisa de diferença, e a 2.3.3.04 aparece no PL.
+    await page.goto('/balanco');
+    await expect(page.getByRole('heading', { name: 'Balanço patrimonial' })).toBeVisible();
+    await expect(page.getByText('Abertura não conferida')).toHaveCount(0);
+    await expect(page.getByRole('main').getByText('Balanço de Abertura', { exact: true })).toBeVisible();
+    await expect(page.getByText('Ativo = Passivo + Patrimônio líquido')).toBeVisible();
+  });
+
   expect(pageErrors).toEqual([]);
 });

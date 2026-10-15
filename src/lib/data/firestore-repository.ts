@@ -388,8 +388,14 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.openings, clientId));
       return snap.exists() ? ({ ...(snap.data() as OpeningBalances), id: snap.id }) : null;
     },
-    async saveOpeningBalances(balances, audit) {
+    async saveOpeningBalances(balances, audit, related = {}) {
+      const banks = related.bankAccounts ?? [];
+      const accounts = related.accounts ?? [];
+      if (banks.length + accounts.length + 2 > BATCH_LIMIT) throw new Error('Abertura maior que o limite de uma gravação.');
       const b = writeBatch(db);
+      for (const acc of accounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc));
+      // Substitui o documento, como `saveBankAccount`.
+      for (const bank of banks) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
       b.set(doc(db, COL.openings, balances.clientId), stamp({ ...balances, id: balances.clientId }));
       b.set(doc(db, COL.audit, audit.id), stamp(audit));
       await b.commit();

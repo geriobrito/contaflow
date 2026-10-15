@@ -1,5 +1,5 @@
 import type { BankAccount, BankTransaction, ChartAccount, MonthCounts, PeriodLock, PeriodSnapshot } from '@/types/firestore';
-import { buildPostings, type Posting } from '@/lib/ledger';
+import { buildPostings, countsAfterOpening, type Posting } from '@/lib/ledger';
 import { monthOf } from '@/lib/periods';
 import { toCents } from '@/lib/money';
 
@@ -25,8 +25,9 @@ import { toCents } from '@/lib/money';
 /**
  * Muda quando a forma de calcular as partidas ou o conteúdo do snapshot muda: os antigos
  * deixam de valer. v2: movimentação por conta bancária e contagem de lançamentos sem conta.
+ * v3: o extrato conta a partir do próprio dia do saldo inicial (posição no início do dia).
  */
-const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_VERSION = 3;
 
 export const snapshotId = (clientId: string, month: string): string => `${clientId}_${month}`;
 
@@ -82,12 +83,12 @@ function tally(
   for (const p of buildPostings(transactions, banksWithoutOpening, accounts)) {
     balances.set(p.accountId, (balances.get(p.accountId) ?? 0) + toCents(p.value));
   }
-  // O mesmo corte de `bankBalanceAt`: o que veio até a data do saldo inicial já está nele.
-  const openingDate = new Map(banks.map((b) => [b.accountKey, b.openingDate ?? ''] as const));
+  // O mesmo corte de `bankBalanceAt`: o que veio antes da data do saldo inicial já está nele.
+  const openingDate = new Map(banks.map((b) => [b.accountKey, b.openingDate] as const));
   let unlinked = 0;
   for (const t of transactions) {
     if (!t.accountKey) unlinked++;
-    else if (t.date > (openingDate.get(t.accountKey) ?? '')) {
+    else if (countsAfterOpening(t.date, openingDate.get(t.accountKey))) {
       bankMovements.set(t.accountKey, (bankMovements.get(t.accountKey) ?? 0) + toCents(t.amount));
     }
     const month = monthOf(t.date);

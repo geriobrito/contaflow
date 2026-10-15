@@ -27,6 +27,13 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
           <p className="text-[12px] text-stone-500">
             Zera as contas de resultado em 31/12 contra a ARE e leva o {describeResult(state.netResult)} para o patrimônio líquido (2.3.3.01 Lucros
             Acumulados ou 2.3.3.02 Prejuízos Acumulados).
+            {state.openingTransfer !== 0 && (
+              <>
+                {' '}
+                Zera também o saldo {state.openingTransfer > 0 ? 'credor' : 'devedor'} de {formatCurrency(Math.abs(state.openingTransfer))} da 2.3.3.04 Balanço de
+                Abertura contra {state.openingTransfer > 0 ? '2.3.3.01 Lucros Acumulados' : '2.3.3.02 Prejuízos Acumulados'}.
+              </>
+            )}
           </p>
         </div>
         {state.closed ? (
@@ -51,7 +58,7 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
       {state.stale && (
         <p className="flex items-start gap-2 text-[13px] text-rose-700">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-          Encerramento desatualizado: sobram {formatCurrency(Math.abs(state.residual))} nas contas de resultado de {year} (lançamentos alterados depois do
+          Encerramento desatualizado: {state.residual !== 0 ? `sobram ${formatCurrency(Math.abs(state.residual))} nas contas de resultado de ${year}` : 'a 2.3.3.04 Balanço de Abertura ainda tem saldo'} (lançamentos alterados depois do
           encerramento). Reabra o exercício e encerre de novo.
         </p>
       )}

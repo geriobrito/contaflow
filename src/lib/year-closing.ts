@@ -1,5 +1,5 @@
 import type { ChartAccount, JournalEntry, JournalEntryLine, PeriodLock } from '@/types/firestore';
-import { accountKind, type Posting } from '@/lib/ledger';
+import { OPENING_ACCOUNT_CODE, accountKind, type Posting } from '@/lib/ledger';
 import { MAX_JOURNAL_LINES } from '@/lib/journal';
 import { missingTemplateAccounts } from '@/lib/chart/itg1000';
 import { formatMonth, monthsBetween } from '@/lib/periods';
@@ -11,7 +11,9 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
  *
  * Em 31/12 as contas de resultado são zeradas contra a ARE (Apuração do Resultado do
  * Exercício), e o saldo da ARE vai para Lucros Acumulados (lucro) ou Prejuízos Acumulados
- * (prejuízo). São lançamentos manuais comuns no Diário (`category: 'CLOSING'`), marcados com
+ * (prejuízo). A 2.3.3.04 Balanço de Abertura, se tiver saldo, também é zerada: credora, contra
+ * Lucros Acumulados; devedora, contra Prejuízos Acumulados.
+ * São lançamentos manuais comuns no Diário (`category: 'CLOSING'`), marcados com
  * `yearClosing`, divididos em partes de até MAX_JOURNAL_LINES partidas e gravados todos numa
  * única operação, com um só registro de auditoria (`closeYear` no repositório). O razão não precisa de
  * tratamento próprio: com as contas de resultado do ano zeradas, o resultado daquele ano deixa
@@ -78,14 +80,28 @@ export function resultBalances(postings: readonly Posting[], accounts: readonly 
     .sort((a, b) => code(a.accountId).localeCompare(code(b.accountId), undefined, { numeric: true }));
 }
 
+/**
+ * Saldo acumulado da 2.3.3.04 Balanço de Abertura em 31/12 de `year`, em centavos (positivo =
+ * devedor). `postings` não deve conter o encerramento do próprio exercício.
+ */
+export function openingAccountBalance(postings: readonly Posting[], accounts: readonly ChartAccount[], year: string): number {
+  const acc = accounts.find((a) => a.code === OPENING_ACCOUNT_CODE);
+  if (!acc) return 0;
+  const end = yearEndOf(year);
+  return postings.reduce((s, p) => (p.accountId === acc.id && p.date <= end ? s + toCents(p.value) : s), 0);
+}
+
 export type ClosingDraft = Pick<JournalEntry, 'date' | 'memo' | 'category' | 'lines' | 'totalAmount' | 'yearClosing'>;
 
 /**
  * Lançamentos de encerramento de `year`: partes que zeram as contas de resultado contra a ARE
  * (até MAX_JOURNAL_LINES − 1 contas cada, mais a partida da ARE) e, por fim, a transferência do
- * saldo da ARE para Lucros Acumulados ou Prejuízos Acumulados. Sem resultado, nada a lançar.
+ * saldo da ARE para Lucros Acumulados ou Prejuízos Acumulados. Com saldo na 2.3.3.04 Balanço de
+ * Abertura (`openingCents`, positivo = devedor; ver `openingAccountBalance`), um último lançamento
+ * a zera contra Lucros Acumulados (credora) ou Prejuízos Acumulados (devedora). Sem resultado
+ * nem saldo de abertura, nada a lançar.
  */
-export function buildClosingDrafts(year: string, balances: readonly ResultBalance[], accounts: readonly ChartAccount[]): ClosingDraft[] {
+export function buildClosingDrafts(year: string, balances: readonly ResultBalance[], accounts: readonly ChartAccount[], openingCents = 0): ClosingDraft[] {
   const byCode = new Map(accounts.map((a) => [a.code, a] as const));
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
   const are = byCode.get(ARE_CODE);
@@ -132,6 +148,16 @@ export function buildClosingDrafts(year: string, balances: readonly ResultBalanc
   } else if (total > 0) {
     drafts.push(draft(`Encerramento do exercício de ${year}: prejuízo do exercício para Prejuízos Acumulados`, [line(losses, total, 'DEBIT'), line(are, total, 'CREDIT')]));
   }
+
+  if (openingCents !== 0) {
+    const opening = byCode.get(OPENING_ACCOUNT_CODE);
+    if (!opening) throw new Error(`O plano precisa da conta ${OPENING_ACCOUNT_CODE} para zerar o balanço de abertura.`);
+    drafts.push(
+      openingCents < 0
+        ? draft(`Encerramento do exercício de ${year}: saldo do Balanço de Abertura para Lucros Acumulados`, [line(opening, openingCents, 'DEBIT'), line(retained, openingCents, 'CREDIT')])
+        : draft(`Encerramento do exercício de ${year}: saldo do Balanço de Abertura para Prejuízos Acumulados`, [line(losses, openingCents, 'DEBIT'), line(opening, openingCents, 'CREDIT')])
+    );
+  }
   return drafts;
 }
 
@@ -149,6 +175,8 @@ export interface YearClosingState {
   netResult: number;
   /** O que ainda sobra nas contas de resultado depois do encerramento (lançamentos posteriores a ele). */
   residual: number;
+  /** Saldo da 2.3.3.04 Balanço de Abertura levado a Lucros ou Prejuízos Acumulados (credor positivo). */
+  openingTransfer: number;
   /** Encerrado, mas as contas de resultado não estão zeradas: precisa reabrir e encerrar de novo. */
   stale: boolean;
   /** Motivos que impedem encerrar agora. */
@@ -177,31 +205,35 @@ export function yearClosingState(args: {
   const entries = closingEntriesOf(journalEntries, year);
   const balances = resultBalances(postings, accounts, year);
   const netCents = balances.reduce((s, b) => s - b.cents, 0);
+  const openingCents = openingAccountBalance(postings, accounts, year);
 
-  // Efeito do encerramento gravado sobre as contas de resultado: o que sobra é o residual.
+  // Efeito do encerramento gravado sobre as contas de resultado e a 2.3.3.04: o que sobra é o residual.
   const after = new Map(balances.map((b) => [b.accountId, b.cents] as const));
+  let openingAfter = openingCents;
   for (const e of entries) {
     for (const l of e.lines) {
       const acc = byId.get(l.accountId);
+      const signed = (l.type === 'DEBIT' ? 1 : -1) * toCents(l.amount);
+      if (acc?.code === OPENING_ACCOUNT_CODE) openingAfter += signed;
       if (!acc || accountKind(acc) !== 'RESULT') continue;
-      after.set(acc.id, (after.get(acc.id) ?? 0) + (l.type === 'DEBIT' ? 1 : -1) * toCents(l.amount));
+      after.set(acc.id, (after.get(acc.id) ?? 0) + signed);
     }
   }
   const leftover = [...after.values()].filter((c) => c !== 0);
   const residual = leftover.reduce((s, c) => s - c, 0);
   const closed = entries.length > 0;
-  const stale = closed && leftover.length > 0;
+  const stale = closed && (leftover.length > 0 || openingAfter !== 0);
 
   const lockedMonths = new Set(locks.map((l) => l.month));
   const decemberLocked = lockedMonths.has(`${year}-12`);
   const blockers: string[] = [];
   const warnings: string[] = [];
-  if (implantation && yearEndOf(year) <= implantation) {
-    blockers.push(`O exercício de ${year} termina até a data de implantação (${formatDateBR(implantation)}): o resultado dele já está nos saldos de abertura.`);
+  if (implantation && yearEndOf(year) < implantation) {
+    blockers.push(`O exercício de ${year} termina antes da data de implantação (${formatDateBR(implantation)}): o resultado dele já está nos saldos de abertura.`);
   }
   if (!decemberLocked) blockers.push(`Feche a competência de ${formatMonth(`${year}-12`)} antes de encerrar o exercício.`);
-  if (balances.length === 0) blockers.push(`Sem resultado a encerrar em ${year}: as contas de resultado não têm saldo.`);
-  for (const code of [ARE_CODE, RETAINED_EARNINGS_CODE, ACCUMULATED_LOSSES_CODE]) {
+  if (balances.length === 0 && openingCents === 0) blockers.push(`Sem resultado a encerrar em ${year}: as contas de resultado e o Balanço de Abertura não têm saldo.`);
+  for (const code of [ARE_CODE, RETAINED_EARNINGS_CODE, ACCUMULATED_LOSSES_CODE, ...(openingCents !== 0 ? [OPENING_ACCOUNT_CODE] : [])]) {
     const acc = accounts.find((a) => a.code === code);
     if (acc && acc.nature !== 'ANALYTIC') blockers.push(`A conta ${code} (${acc.name}) precisa ser analítica para receber o encerramento.`);
   }
@@ -219,6 +251,7 @@ export function yearClosingState(args: {
     decemberLocked,
     netResult: fromCents(netCents),
     residual: fromCents(residual),
+    openingTransfer: fromCents(-openingCents),
     stale,
     blockers,
     warnings,
@@ -264,6 +297,8 @@ export interface DLPA {
   start: string;
   end: string;
   opening: number;
+  /** Contrapartida do balanço de abertura (2.3.3.04) lançada no exercício, credor positivo. */
+  openingBalance: number;
   adjustments: number;
   netResult: number;
   distributions: number;
@@ -277,17 +312,22 @@ const isDistribution = (a: ChartAccount) => a.code === DISTRIBUTED_PROFITS_CODE 
 /**
  * DLPA do exercício de `end` (1º de janeiro até `end`), sobre as partidas completas (com o
  * encerramento, se houver). Lucros ou Prejuízos Acumulados são o grupo 2.3.3 mais o resultado
- * ainda não encerrado de exercícios anteriores. O saldo final é a soma das linhas.
+ * ainda não encerrado de exercícios anteriores. A contrapartida do balanço de abertura (2.3.3.04)
+ * lançada no exercício sai em linha própria; a transferência dela para Lucros ou Prejuízos
+ * Acumulados no encerramento fica dentro do grupo e não altera o saldo. O saldo final é a soma
+ * das linhas.
  */
 export function buildDLPA(postings: readonly Posting[], accounts: readonly ChartAccount[], journalEntries: readonly JournalEntry[] | null | undefined, end: string): DLPA {
   const year = end.slice(0, 4);
   const start = yearStartOf(year);
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
+  const isOpening = (a: ChartAccount) => a.code === OPENING_ACCOUNT_CODE;
   let groupBefore = 0;
   let resultBefore = 0;
   let resultInYear = 0;
   let distribution = 0;
   let otherRetained = 0;
+  let openingInYear = 0;
   for (const p of postings) {
     if (p.date > end) continue;
     const acc = byId.get(p.accountId);
@@ -299,13 +339,15 @@ export function buildDLPA(postings: readonly Posting[], accounts: readonly Chart
       else if (isRetained(acc)) groupBefore += credit;
     } else if (result) resultInYear += credit;
     else if (isRetained(acc)) {
-      if (isDistribution(acc)) distribution += credit;
+      if (isOpening(acc)) openingInYear += credit;
+      else if (isDistribution(acc)) distribution += credit;
       else otherRetained += credit;
     }
   }
 
   // Encerramento do próprio exercício: tira-se o efeito dele para mostrar o resultado e os ajustes.
   let closingOnResult = 0;
+  let closingOnOpening = 0;
   let transferred = 0;
   for (const e of journalEntries ?? []) {
     if (e.yearClosing !== year || e.date > end) continue;
@@ -314,16 +356,19 @@ export function buildDLPA(postings: readonly Posting[], accounts: readonly Chart
       if (!acc) continue;
       const credit = (l.type === 'CREDIT' ? 1 : -1) * toCents(l.amount);
       if (accountKind(acc) === 'RESULT') closingOnResult += credit;
+      else if (isOpening(acc)) closingOnOpening += credit;
       else if (isRetained(acc)) transferred += credit;
     }
   }
 
   const opening = groupBefore + resultBefore;
+  const openingBalance = openingInYear - closingOnOpening;
   const netResult = resultInYear - closingOnResult;
   const adjustments = otherRetained - transferred;
-  const closing = opening + adjustments + netResult + distribution;
+  const closing = opening + openingBalance + adjustments + netResult + distribution;
   const rows: DLPARow[] = [
     { kind: 'balance', label: `Saldo em ${formatDateBR(start)}`, value: fromCents(opening) },
+    ...(openingBalance !== 0 ? [{ kind: 'movement' as const, label: `(+/-) Balanço de abertura (${OPENING_ACCOUNT_CODE})`, value: fromCents(openingBalance) }] : []),
     { kind: 'movement', label: '(+/-) Ajustes e outras movimentações', value: fromCents(adjustments) },
     { kind: 'movement', label: '(+/-) Lucro ou prejuízo líquido do exercício', value: fromCents(netResult) },
     { kind: 'movement', label: '(-) Lucros distribuídos', value: fromCents(distribution) },
@@ -334,6 +379,7 @@ export function buildDLPA(postings: readonly Posting[], accounts: readonly Chart
     start,
     end,
     opening: fromCents(opening),
+    openingBalance: fromCents(openingBalance),
     adjustments: fromCents(adjustments),
     netResult: fromCents(netResult),
     distributions: fromCents(distribution),

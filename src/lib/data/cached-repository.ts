@@ -80,6 +80,7 @@ export function withReadCache(
     insertAccounts: writing(repo.insertAccounts, accounts),
     saveChartSetup: writing(repo.saveChartSetup, accounts, banks),
     saveBankAccount: writing(repo.saveBankAccount, banks),
+    saveOpeningBalances: writing(repo.saveOpeningBalances, accounts, banks),
     closePeriod: writing(repo.closePeriod, locks),
     reopenPeriod: writing(repo.reopenPeriod, locks),
     deleteClient: writing(repo.deleteClient, accounts, banks, locks),

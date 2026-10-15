@@ -121,6 +121,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '2.3.3.01', name: 'Lucros Acumulados' },
   { code: '2.3.3.02', name: '(-) Prejuízos Acumulados', contra: true },
   { code: '2.3.3.03', name: '(-) Lucros Distribuídos', contra: true },
+  // Contrapartida do balanço de abertura sem contabilidade anterior (src/lib/opening.ts): aceita
+  // saldo credor ou devedor e é zerada contra Lucros ou Prejuízos Acumulados no encerramento.
+  { code: '2.3.3.04', name: 'Balanço de Abertura' },
 
   /* ───────────────────────────── 3 RESULTADO ───────────────────────────── */
   { code: '3', name: 'CONTAS DE RESULTADO' },

@@ -47,7 +47,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: '/plano-de-contas', label: 'Plano de Contas', icon: BookOpen },
   { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
   { href: '/dre', label: 'DRE', icon: LineChart },
-  { href: '/abertura', label: 'Saldos de Abertura', icon: ClipboardList },
+  { href: '/abertura', label: 'Balanço de Abertura', icon: ClipboardList },
   { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine },
   { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
   { href: '/diario', label: 'Livro Diário', icon: BookText },

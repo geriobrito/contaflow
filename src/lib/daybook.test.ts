@@ -43,7 +43,8 @@ const tx = (id: string, date: string, amount: number, extra: Partial<BankTransac
   ...extra,
 });
 const transactions = [
-  tx('t0', '2025-01-01', 50, { accountId: 'receita' }), // até a data do saldo inicial: já está nele
+  tx('tx0', '2024-12-31', 999, { accountId: 'receita' }), // antes da data do saldo inicial: já está nele
+  tx('t0', '2025-01-01', 50, { accountId: 'receita' }), // no próprio dia do saldo inicial (início do dia): conta
   tx('t1', '2025-01-10', 800.1, { accountId: 'receita' }),
   tx('t2', '2025-01-10', -300, { isSplit: true, splits: [{ id: 's1', accountId: 'despesa', amount: -200.5, memo: 'aluguel' }, { id: 's2', accountId: 'tarifas', amount: -99.5, memo: '' }] }),
   tx('t3', '2025-02-05', -75, { status: 'PENDING' }),
@@ -80,29 +81,57 @@ describe('Livro Diário', () => {
       [1, '2025-01-01', 'OPENING', 'SALDO INICIAL'],
       [2, '2025-01-01', 'OPENING', 'ABERTURA'],
       [3, '2025-01-01', 'OPENING', 'ABERTURA'],
-      [4, '2025-01-10', 'BANK', 'Ft1'],
-      [5, '2025-01-10', 'BANK', 'Ft2'],
-      [6, '2025-01-31', 'MANUAL', 'L1 · FOLHA-2025-01'],
-      [7, '2025-01-31', 'MANUAL', 'L2'],
-      [8, '2025-02-05', 'BANK', 'Ft3'],
-      [9, '2025-02-20', 'BANK', 'Ft4'],
-      [10, '2025-02-28', 'MANUAL', 'L3'],
-      [11, '2025-03-03', 'BANK', 'Ft5'],
+      [4, '2025-01-01', 'BANK', 'Ft0'],
+      [5, '2025-01-10', 'BANK', 'Ft1'],
+      [6, '2025-01-10', 'BANK', 'Ft2'],
+      [7, '2025-01-31', 'MANUAL', 'L1 · FOLHA-2025-01'],
+      [8, '2025-01-31', 'MANUAL', 'L2'],
+      [9, '2025-02-05', 'BANK', 'Ft3'],
+      [10, '2025-02-20', 'BANK', 'Ft4'],
+      [11, '2025-02-28', 'MANUAL', 'L3'],
+      [12, '2025-03-03', 'BANK', 'Ft5'],
     ]);
     // Entrada no banco: debita o banco, credita a receita.
-    expect(book.entries[3].lines).toEqual([
+    expect(book.entries[4].lines).toEqual([
       { accountId: 'banco', code: '1.1', name: 'banco', debit: 800.1, credit: 0 },
       { accountId: 'receita', code: '3.1', name: 'receita', debit: 0, credit: 800.1 },
     ]);
     // Saída rateada: uma partida por conta do rateio, a crédito do banco.
-    expect(book.entries[4].lines.map((l) => [l.accountId, l.debit, l.credit, l.memo])).toEqual([
+    expect(book.entries[5].lines.map((l) => [l.accountId, l.debit, l.credit, l.memo])).toEqual([
       ['despesa', 200.5, 0, 'aluguel'],
       ['tarifas', 99.5, 0, undefined],
       ['banco', 0, 300, undefined],
     ]);
     // Lançamento manual gravado com o crédito primeiro sai com o débito primeiro.
-    expect(book.entries[6].lines.map((l) => l.accountId)).toEqual(['despesa', 'fornecedores']);
-    expect(book.entries.map((e) => e.total)).toEqual([1000, 300, 1000, 800.1, 300, 120, 250, 75, 60, 80, 18]);
+    expect(book.entries[7].lines.map((l) => l.accountId)).toEqual(['despesa', 'fornecedores']);
+    expect(book.entries.map((e) => e.total)).toEqual([1000, 300, 1000, 50, 800.1, 300, 120, 250, 75, 60, 80, 18]);
+    // O extrato anterior à data do saldo inicial fica de fora, mesmo dentro do período emitido.
+    expect(build('2024-12-01', '2025-01-01').entries.map((e) => e.document)).not.toContain('Ftx0');
+  });
+
+  it('balanço de abertura: um lançamento composto, com a 2.3.3.04 pela diferença e o histórico informado', () => {
+    const plug = account('plug', '2.3.3.04', 'EQUITY');
+    const book = buildDaybook({
+      transactions: [],
+      bankAccounts: banks,
+      accounts: [...accounts, plug],
+      range: { start: '2025-01-01', end: '2025-01-31' },
+      openings: { ...openings, mode: 'OPENING_BALANCE', memo: 'Balanço de abertura conforme contrato social' },
+    });
+    expect(book.entries).toHaveLength(1);
+    const [entry] = book.entries;
+    expect(entry).toMatchObject({ origin: 'OPENING', document: 'ABERTURA', memo: 'Balanço de abertura conforme contrato social', total: 1300 });
+    // Banco 1.000 + clientes 300 = 1.300 a débito; capital 1.000 e a 2.3.3.04 com os 300 de diferença a crédito.
+    expect(entry.lines.map((l) => [l.accountId, l.debit, l.credit])).toEqual([
+      ['banco', 1000, 0],
+      ['clientes', 300, 0],
+      ['capital', 0, 1000],
+      ['plug', 0, 300],
+    ]);
+    const trial = buildTrialBalance(buildPostings([], banks, [...accounts, plug], '2025-01-31', { ...openings, mode: 'OPENING_BALANCE' }), [...accounts, plug], { start: '2025-01-01', end: '2025-01-31' });
+    expect(book.totals).toEqual({ debits: trial.totals.debits, credits: trial.totals.credits });
+    expect(trial.rows.find((r) => r.accountId === 'plug')?.final).toBe(-300);
+    expect(trial.rows.some((r) => r.accountId === VIRTUAL.OPENING)).toBe(false);
   });
 
   it('pendentes e contas removidas vão para "a classificar" e marcam o livro como provisório', () => {
@@ -128,8 +157,8 @@ describe('Livro Diário', () => {
 
   it('o número de ordem é contado desde o início do exercício, qualquer que seja o mês emitido', () => {
     expect(build('2025-02-01', '2025-02-28').entries.map((e) => e.number)).toEqual([1, 2, 3]);
-    expect(build('2025-02-01', '2025-02-28', '2025-01-01').entries.map((e) => e.number)).toEqual([8, 9, 10]);
-    expect(build('2025-03-01', '2025-03-31', '2025-01-01').entries.map((e) => e.number)).toEqual([11]);
+    expect(build('2025-02-01', '2025-02-28', '2025-01-01').entries.map((e) => e.number)).toEqual([9, 10, 11]);
+    expect(build('2025-03-01', '2025-03-31', '2025-01-01').entries.map((e) => e.number)).toEqual([12]);
   });
 
   it('termos de abertura e de encerramento trazem empresa, período, páginas e totais', () => {

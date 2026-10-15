@@ -593,15 +593,31 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-30' }))).entryNumber).toBe(2);
   });
 
-  it('nenhum lançamento manual até a data de implantação (saldos de abertura)', async () => {
+  it('nenhum lançamento manual antes da data de implantação (saldos de abertura); no próprio dia, sim', async () => {
     const db = asUser('alice');
     const repo = createFirestoreRepository(db, () => ORG_A);
     const saved = await repo.createJournalEntry(draft('j1', { date: '2025-04-30' }));
-    await repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-03-31', entries: [], updatedAt: 'T' }, { id: 'au-op', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: 'T' });
+    await repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-04-01', entries: [], updatedAt: 'T' }, { id: 'au-op', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: 'T' });
     await expect(repo.createJournalEntry(draft('j2', { date: '2025-03-31' }))).rejects.toThrow();
     await expect(repo.createJournalEntry(draft('j2', { date: '2025-01-10' }))).rejects.toThrow();
     await expect(repo.updateJournalEntry({ ...saved, date: '2025-03-15' })).rejects.toThrow();
     expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-01' }))).entryNumber).toBe(2);
+  });
+
+  it('abertura, bancos, conta nova do plano e auditoria numa única gravação', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    const now = 'T';
+    const plug = { id: 'cA_itg22_2.3.3.04', clientId: 'cA', code: '2.3.3.04', name: 'Balanço de Abertura', type: 'EQUITY', nature: 'ANALYTIC', level: 4, createdAt: now, updatedAt: now } as const;
+    const bank = { id: 'cA_k1', clientId: 'cA', accountKey: 'k1', nickname: 'Itaú', openingBalance: 500, openingDate: '2025-01-01', createdAt: now, updatedAt: now };
+    await repo.saveOpeningBalances(
+      { id: 'cA', clientId: 'cA', date: '2025-01-01', mode: 'OPENING_BALANCE', memo: 'Balanço de abertura', entries: [], updatedAt: now },
+      { id: 'au-op-batch', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: now },
+      { bankAccounts: [bank], accounts: [plug] }
+    );
+    expect((await repo.getOpeningBalances('cA'))?.mode).toBe('OPENING_BALANCE');
+    expect((await repo.listBankAccounts('cA')).map((b) => b.openingDate)).toEqual(['2025-01-01']);
+    expect((await repo.listAccounts('cA')).some((a) => a.code === '2.3.3.04')).toBe(true);
   });
 
   describe('encerramento do exercício', () => {

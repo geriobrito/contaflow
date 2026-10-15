@@ -17,7 +17,7 @@ describe('contas bancárias', () => {
         ],
         'k'
       )
-    ).toEqual({ openingBalance: 1250.5, openingDate: '2024-12-31' });
+    ).toEqual({ openingBalance: 1250.5, openingDate: '2025-01-01' });
     expect(suggestOpening([], 'k')).toBeNull();
   });
 
@@ -25,14 +25,14 @@ describe('contas bancárias', () => {
     const after = { accountKey: 'k', startDate: '2026-09-01', endDate: '2026-09-30', ledgerDate: '2026-10-05', ledgerBalance: 778.68, fileNet: -393.1 };
     expect(suggestOpening([after], 'k')).toBeNull();
     const ok = { accountKey: 'k', startDate: '2026-10-01', endDate: '2026-10-31', ledgerDate: '2026-10-31', ledgerBalance: 900, fileNet: 100 };
-    expect(suggestOpening([after, ok], 'k')).toEqual({ openingBalance: 800, openingDate: '2026-09-30' });
+    expect(suggestOpening([after, ok], 'k')).toEqual({ openingBalance: 800, openingDate: '2026-10-01' });
   });
 
-  it('saldo na data = saldo inicial + movimentação posterior', () => {
+  it('saldo na data = saldo inicial (início do dia) + movimentação desse dia em diante', () => {
     const t = (date: string, amount: number, accountKey = 'k') => ({ date, amount, accountKey }) as BankTransaction;
-    const txs = [t('2024-12-31', 999), t('2025-01-05', 100), t('2025-01-20', -30), t('2025-01-10', 5, 'outra')];
-    expect(bankBalanceAt({ accountKey: 'k', openingBalance: 1000, openingDate: '2024-12-31' }, txs, '2025-01-10')).toBe(1100);
-    expect(bankBalanceAt({ accountKey: 'k', openingBalance: 1000, openingDate: '2024-12-31' }, txs, '2025-01-31')).toBe(1070);
+    const txs = [t('2024-12-31', 999), t('2025-01-01', 100), t('2025-01-20', -30), t('2025-01-10', 5, 'outra')];
+    expect(bankBalanceAt({ accountKey: 'k', openingBalance: 1000, openingDate: '2025-01-01' }, txs, '2025-01-10')).toBe(1100);
+    expect(bankBalanceAt({ accountKey: 'k', openingBalance: 1000, openingDate: '2025-01-01' }, txs, '2025-01-31')).toBe(1070);
   });
 
   it('próximo código de subconta livre', () => {

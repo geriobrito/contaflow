@@ -40,7 +40,7 @@ rules_version = '2';
 //  14. Encerramento do exercício: todos os lançamentos dele (yearClosing, em 31/12) entram
 //      juntos, com dezembro fechado, numa gravação com um único registro em audit_log, e só
 //      saem juntos pela reabertura (administrador), também auditada. Nenhum lançamento manual
-//      até a data de implantação.
+//      antes da data de implantação.
 //  15. explanatory_notes guarda o texto das notas explicativas por cliente e exercício.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
@@ -191,11 +191,11 @@ service cloud.firestore {
             || get(journalCounter(entry.clientId)).data.last < entry.entryNumber);
     }
 
-    // Até a data de implantação (opening_balances.date) o movimento já está nos saldos de
-    // abertura: nenhum lançamento manual nela ou antes.
+    // Antes da data de implantação (opening_balances.date, posição no início do dia) o movimento
+    // já está nos saldos de abertura: nenhum lançamento manual antes dela; no próprio dia, sim.
     function afterImplantation(entry) {
       let opening = /databases/$(database)/documents/opening_balances/$(entry.clientId);
-      return !exists(opening) || entry.date > get(opening).data.date;
+      return !exists(opening) || entry.date >= get(opening).data.date;
     }
 
     // Encerramento do exercício (src/lib/year-closing.ts): todos os lançamentos dele (marcados

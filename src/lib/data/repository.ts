@@ -120,8 +120,16 @@ export interface DataRepository {
 
   /* Saldos de abertura (contas patrimoniais que não são bancos) */
   getOpeningBalances(clientId: string): Promise<OpeningBalances | null>;
-  /** Grava os saldos de abertura e o registro de auditoria juntos. */
-  saveOpeningBalances(balances: OpeningBalances, audit: AuditEntry): Promise<void>;
+  /**
+   * Grava numa única operação os saldos de abertura, o registro de auditoria e, se informados, os
+   * bancos com o saldo inicial na data da abertura (documentos substituídos, como em
+   * `saveBankAccount`) e as contas que faltam no plano (ex.: 2.3.3.04 Balanço de Abertura).
+   */
+  saveOpeningBalances(
+    balances: OpeningBalances,
+    audit: AuditEntry,
+    related?: { bankAccounts?: readonly BankAccount[]; accounts?: readonly ChartAccount[] }
+  ): Promise<void>;
 
   /* Contas bancárias */
   listBankAccounts(clientId: string): Promise<BankAccount[]>;

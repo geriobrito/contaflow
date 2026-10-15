@@ -1,6 +1,6 @@
 import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import { VIRTUAL, VIRTUAL_LABEL, accountKind, isVirtual, openingSign } from '@/lib/ledger';
+import { VIRTUAL, VIRTUAL_LABEL, countsAfterOpening, isVirtual, openingJournals } from '@/lib/ledger';
 import { toCents } from '@/lib/money';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
@@ -86,47 +86,16 @@ export function buildDaybook(args: {
 
   const drafts: Draft[] = [];
 
-  for (const b of bankAccounts) {
-    if (!b.openingBalance || !b.openingDate || !inWindow(b.openingDate)) continue;
-    drafts.push({
-      id: `opening_bank_${b.id}`,
-      date: b.openingDate,
-      origin: 'OPENING',
-      document: 'SALDO INICIAL',
-      memo: `Saldo inicial — ${b.nickname || b.accountNumber || 'conta bancária'}`,
-      order: `0_${b.id}`,
-      postings: [
-        { accountId: ledgerOf(b.accountKey), value: b.openingBalance },
-        { accountId: VIRTUAL.OPENING, value: -b.openingBalance },
-      ],
-    });
-  }
-
-  if (openings && inWindow(openings.date)) {
-    for (const e of openings.entries) {
-      const acc = byId.get(e.accountId);
-      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
-      const value = openingSign(acc) * e.amount;
-      drafts.push({
-        id: `opening_${acc.id}`,
-        date: openings.date,
-        origin: 'OPENING',
-        document: 'ABERTURA',
-        memo: `Saldo de abertura — ${acc.name}`,
-        order: `1_${acc.code}`,
-        postings: [
-          { accountId: acc.id, value },
-          { accountId: VIRTUAL.OPENING, value: -value },
-        ],
-      });
-    }
+  // Saldos de abertura: no balanço de abertura, um lançamento composto contra a 2.3.3.04.
+  for (const j of openingJournals(openings, bankAccounts, accounts)) {
+    if (!inWindow(j.date)) continue;
+    drafts.push({ id: j.id, date: j.date, origin: 'OPENING', document: j.document, memo: j.memo, order: j.order, postings: j.lines });
   }
 
   for (const t of transactions) {
     if (!inWindow(t.date)) continue;
     // Movimento anterior ao saldo inicial informado já está contido nele.
-    const opening = t.accountKey ? bankByKey.get(t.accountKey)?.openingDate : undefined;
-    if (opening && t.date <= opening) continue;
+    if (!countsAfterOpening(t.date, t.accountKey ? bankByKey.get(t.accountKey)?.openingDate : undefined)) continue;
     const counter =
       t.status !== 'RECONCILED'
         ? [{ accountId: VIRTUAL.SUSPENSE as string, value: -t.amount }]

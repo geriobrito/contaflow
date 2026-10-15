@@ -102,7 +102,7 @@ describe('PDF do Balanço Patrimonial', () => {
 
 describe('PDF da DLPA', () => {
   it('usa o mesmo cabeçalho das demais demonstrações', async () => {
-    const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };
+    const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, openingBalance: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };
     const texts = drawn(await pdfText(generateDLPAPdf({ client, dlpa, signatories }).blob));
     expect(texts.slice(0, 4)).toEqual(['EMPRESA TESTE LTDA', 'CNPJ: 11.222.333/0001-81', 'DEMONSTRAÇÃO DE LUCROS OU PREJUÍZOS ACUMULADOS', 'NBC TG 1002 - Microentidades']);
   });

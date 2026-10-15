@@ -23,6 +23,7 @@ describe('DLPA em PDF e Excel', () => {
     start: '2025-01-01',
     end: '2025-12-31',
     opening: 500,
+    openingBalance: 0,
     adjustments: 0,
     netResult: 700,
     distributions: -200,

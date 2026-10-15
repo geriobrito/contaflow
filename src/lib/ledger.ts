@@ -65,13 +65,133 @@ const VIRTUAL_KIND: Record<VirtualId, AccountKind> = {
 export const isVirtual = (id: string): id is VirtualId => id in VIRTUAL_LABEL;
 
 /**
- * Sinal da partida de um saldo de abertura informado no lado natural da conta:
- * +1 débito, -1 crédito. Ativo é devedor; passivo e PL, credores; retificadoras invertem.
+ * Retificadora (saldo contrário ao do grupo): marcada no plano (`isContra`) ou reconhecida pelo
+ * nome, para planos montados à mão: "(-) Capital a Integralizar", "Depreciação Acumulada"…
  */
-export function openingSign(account: Pick<ChartAccount, 'type' | 'isContra'>): 1 | -1 {
-  const debitNature = accountKind(account) === 'ASSET';
-  return debitNature !== Boolean(account.isContra) ? 1 : -1;
+export function isContraAccount(account: Pick<ChartAccount, 'isContra'> & { name?: string }): boolean {
+  if (account.isContra) return true;
+  const name = account.name?.trim() ?? '';
+  return /^\(-\)/.test(name) || /(deprecia|amortiza|exaust)\S*\s+acumulad/i.test(name);
 }
+
+/**
+ * Sinal da partida de um saldo de abertura informado no lado natural da conta:
+ * +1 débito, -1 crédito. Ativo é devedor; passivo e PL, credores; retificadoras invertem
+ * (depreciação acumulada a crédito, capital a integralizar a débito).
+ */
+export function openingSign(account: Pick<ChartAccount, 'type' | 'isContra'> & { name?: string }): 1 | -1 {
+  const debitNature = accountKind(account) === 'ASSET';
+  return debitNature !== isContraAccount(account) ? 1 : -1;
+}
+
+/** Conta do PL que recebe a diferença do balanço de abertura sem contabilidade anterior. */
+export const OPENING_ACCOUNT_CODE = '2.3.3.04';
+export const DEFAULT_OPENING_MEMO = 'Balanço de abertura conforme documentação suporte';
+
+/**
+ * Contrapartida dos saldos de abertura: no balanço de abertura (modo OPENING_BALANCE), a conta
+ * 2.3.3.04 do plano; na implantação com balanço anterior (ou sem a conta no plano), a virtual
+ * "Saldos de abertura (a detalhar)", que zera quando ativo = passivo + PL.
+ */
+export function openingContraId(openings: Pick<OpeningBalances, 'mode'> | null | undefined, accounts: readonly ChartAccount[]): string {
+  if (openings?.mode !== 'OPENING_BALANCE') return VIRTUAL.OPENING;
+  return accounts.find((a) => a.code === OPENING_ACCOUNT_CODE && a.nature === 'ANALYTIC')?.id ?? VIRTUAL.OPENING;
+}
+
+/** Lançamento gerado pela abertura (saldo inicial de banco ou saldos das demais contas). */
+export interface OpeningJournal {
+  id: string;
+  date: string;
+  /** 'SALDO INICIAL' (banco) ou 'ABERTURA'. */
+  document: string;
+  memo: string;
+  /** Desempate estável no mesmo dia. */
+  order: string;
+  /** Partidas assinadas (positivo = débito), que somam zero. */
+  lines: { accountId: string; value: number; memo?: string }[];
+  /** No lançamento composto do balanço de abertura: a conta 2.3.3.04, que recebe a diferença. */
+  plugAccountId?: string;
+}
+
+/**
+ * Lançamentos da abertura, usados igualmente pelo razão, pelo balancete e pelo Diário.
+ * - Balanço de abertura (contrapartida 2.3.3.04): um lançamento composto na data da abertura,
+ *   com os bancos dessa data e as demais contas, e a 2.3.3.04 pela diferença (credora quando o
+ *   ativo supera passivo + PL). Bancos com saldo inicial em outra data saem à parte.
+ * - Demais casos: um lançamento por banco e por conta, contra "Saldos de abertura (a detalhar)".
+ */
+export function openingJournals(
+  openings: OpeningBalances | null | undefined,
+  bankAccounts: readonly BankAccount[],
+  accounts: readonly ChartAccount[]
+): OpeningJournal[] {
+  const byId = new Map(accounts.map((a) => [a.id, a] as const));
+  const ledgerOf = (b: BankAccount) => (b.ledgerAccountId && byId.has(b.ledgerAccountId) ? b.ledgerAccountId : VIRTUAL.BANK_UNLINKED);
+  const contra = openingContraId(openings, accounts);
+  const composite = openings && contra !== VIRTUAL.OPENING ? openings : null;
+  const out: OpeningJournal[] = [];
+  const main: OpeningJournal['lines'] = [];
+
+  for (const b of bankAccounts) {
+    if (!b.openingBalance || !b.openingDate) continue;
+    const label = b.nickname || b.accountNumber || 'conta bancária';
+    if (composite && b.openingDate === composite.date) {
+      main.push({ accountId: ledgerOf(b), value: b.openingBalance, memo: `Saldo inicial — ${label}` });
+      continue;
+    }
+    out.push({
+      id: `opening_bank_${b.id}`,
+      date: b.openingDate,
+      document: 'SALDO INICIAL',
+      memo: `Saldo inicial — ${label}`,
+      order: `0_${b.id}`,
+      lines: [
+        { accountId: ledgerOf(b), value: b.openingBalance },
+        { accountId: contra, value: -b.openingBalance },
+      ],
+    });
+  }
+
+  if (openings) {
+    for (const e of openings.entries) {
+      const acc = byId.get(e.accountId);
+      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
+      const value = openingSign(acc) * e.amount;
+      if (composite) {
+        main.push({ accountId: acc.id, value });
+        continue;
+      }
+      out.push({
+        id: `opening_${acc.id}`,
+        date: openings.date,
+        document: 'ABERTURA',
+        memo: `Saldo de abertura — ${acc.name}`,
+        order: `1_${acc.code}`,
+        lines: [
+          { accountId: acc.id, value },
+          { accountId: contra, value: -value },
+        ],
+      });
+    }
+  }
+
+  if (composite && main.length > 0) {
+    const net = main.reduce((s, l) => s + Math.round(l.value * 100), 0);
+    out.push({
+      id: `opening_${composite.clientId}`,
+      date: composite.date,
+      document: 'ABERTURA',
+      memo: composite.memo?.trim() || DEFAULT_OPENING_MEMO,
+      order: '0',
+      lines: net === 0 ? main : [...main, { accountId: contra, value: -net / 100 }],
+      plugAccountId: contra,
+    });
+  }
+  return out;
+}
+
+/** O movimento do extrato conta a partir do dia do saldo inicial (posição no início do dia). */
+export const countsAfterOpening = (date: string, openingDate: string | undefined): boolean => !openingDate || date >= openingDate;
 
 /**
  * Partidas de todos os lançamentos (e dos saldos iniciais dos bancos) até `until`.
@@ -95,31 +215,16 @@ export function buildPostings(
   );
   const out: Posting[] = carry ? carry.filter((p) => !until || p.date <= until) : [];
 
-  for (const b of bankAccounts) {
-    if (!b.openingBalance || !b.openingDate || (until && b.openingDate > until)) continue;
-    const bank = ledgerByKey.get(b.accountKey) ?? VIRTUAL.BANK_UNLINKED;
-    out.push({ accountId: bank, date: b.openingDate, value: b.openingBalance });
-    out.push({ accountId: VIRTUAL.OPENING, date: b.openingDate, value: -b.openingBalance });
-  }
-
-  // Saldos de abertura das demais contas patrimoniais; a contrapartida é a conta virtual de abertura,
-  // que zera quando ativo = passivo + PL na data de abertura.
-  if (openings && (!until || openings.date <= until)) {
-    const byId = new Map(accounts.map((a) => [a.id, a] as const));
-    for (const e of openings.entries) {
-      const acc = byId.get(e.accountId);
-      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
-      const value = openingSign(acc) * e.amount;
-      out.push({ accountId: acc.id, date: openings.date, value });
-      out.push({ accountId: VIRTUAL.OPENING, date: openings.date, value: -value });
-    }
+  // Saldos iniciais dos bancos e das demais contas patrimoniais (ver `openingJournals`).
+  for (const j of openingJournals(openings, bankAccounts, accounts)) {
+    if (until && j.date > until) continue;
+    for (const l of j.lines) out.push({ accountId: l.accountId, date: j.date, value: l.value });
   }
 
   for (const t of transactions) {
     if (until && t.date > until) continue;
     // Movimento anterior ao saldo inicial informado já está contido nele.
-    const opening = bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate;
-    if (opening && t.date <= opening) continue;
+    if (!countsAfterOpening(t.date, bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate)) continue;
     const bank = (t.accountKey && ledgerByKey.get(t.accountKey)) || VIRTUAL.BANK_UNLINKED;
     out.push({ accountId: bank, date: t.date, value: t.amount });
 
@@ -443,15 +548,15 @@ export interface AccountLedger {
  * Passivo, Patrimônio Líquido e Receitas são normalmente credores (exceto retificadoras).
  */
 export function accountNaturalNature(
-  account: Pick<ChartAccount, 'type' | 'isContra'> | VirtualId
+  account: (Pick<ChartAccount, 'type' | 'isContra'> & { name?: string }) | VirtualId
 ): 'D' | 'C' {
   if (typeof account === 'string') {
     if (account === VIRTUAL.BANK_UNLINKED || account === VIRTUAL.SUSPENSE) return 'D';
     return 'C';
   }
   const kind = accountKind(account);
-  if (kind === 'ASSET') return account.isContra ? 'C' : 'D';
-  if (kind === 'LIABILITY' || kind === 'EQUITY') return account.isContra ? 'D' : 'C';
+  if (kind === 'ASSET') return isContraAccount(account) ? 'C' : 'D';
+  if (kind === 'LIABILITY' || kind === 'EQUITY') return isContraAccount(account) ? 'D' : 'C';
   if (account.type === 'REVENUE' || account.type === 'RECEITA') return 'C';
   return 'D';
 }
@@ -553,80 +658,34 @@ export function buildAccountLedger({
   }
   const rawEntries: RawEntry[] = [];
 
-  // 2.1. Saldo de abertura de contas bancárias no período
-  for (const b of bankAccounts) {
-    if (!b.openingBalance || !b.openingDate) continue;
-    if (b.openingDate >= range.start && b.openingDate <= range.end) {
-      const bankLedgerId = ledgerByKey.get(b.accountKey) ?? VIRTUAL.BANK_UNLINKED;
-      if (targetAccountIds.has(bankLedgerId)) {
-        rawEntries.push({
-          id: `opening_bank_${b.id}`,
-          date: b.openingDate,
-          documentId: 'SALDO_INI',
-          memo: `Saldo inicial (${b.nickname || b.accountNumber || 'Banco'})`,
-          contraAccountId: VIRTUAL.OPENING,
-          contraAccountCode: '',
-          contraAccountName: VIRTUAL_LABEL[VIRTUAL.OPENING],
-          debit: b.openingBalance > 0 ? b.openingBalance : 0,
-          credit: b.openingBalance < 0 ? -b.openingBalance : 0,
-        });
-      }
-      if (targetAccountIds.has(VIRTUAL.OPENING)) {
-        rawEntries.push({
-          id: `opening_bank_contra_${b.id}`,
-          date: b.openingDate,
-          documentId: 'SALDO_INI',
-          memo: `Contrapartida saldo inicial (${b.nickname || b.accountNumber || 'Banco'})`,
-          contraAccountId: bankLedgerId,
-          contraAccountCode: byId.get(bankLedgerId)?.code ?? '',
-          contraAccountName: byId.get(bankLedgerId)?.name ?? (b.nickname || 'Banco'),
-          debit: b.openingBalance < 0 ? -b.openingBalance : 0,
-          credit: b.openingBalance > 0 ? b.openingBalance : 0,
-        });
-      }
-    }
+  // 2.1. Saldos de abertura (bancos e demais contas) no período
+  const nameOf = (id: string) => byId.get(id)?.name ?? (isVirtual(id) ? VIRTUAL_LABEL[id] : 'Conta removida');
+  for (const j of openingJournals(openings, bankAccounts, accounts)) {
+    if (j.date < range.start || j.date > range.end) continue;
+    j.lines.forEach((l, i) => {
+      if (!targetAccountIds.has(l.accountId)) return;
+      const others = j.lines.filter((_, k) => k !== i);
+      // Duas partidas: a outra. No lançamento composto, a 2.3.3.04 (ou "Diversos", para ela própria).
+      const plug = j.plugAccountId && others.some((o) => o.accountId === j.plugAccountId) ? j.plugAccountId : null;
+      const contraId = others.length === 1 ? others[0].accountId : plug;
+      rawEntries.push({
+        id: `${j.id}_${i}`,
+        date: j.date,
+        documentId: j.document,
+        memo: l.memo ?? j.memo,
+        contraAccountId: contraId ?? 'SPLIT',
+        contraAccountCode: contraId ? (byId.get(contraId)?.code ?? '') : '',
+        contraAccountName: contraId ? nameOf(contraId) : `Diversos (${others.length} contas)`,
+        debit: l.value > 0 ? l.value : 0,
+        credit: l.value < 0 ? -l.value : 0,
+      });
+    });
   }
 
-  // 2.2. Saldos de abertura patrimoniais gerais
-  if (openings && openings.date >= range.start && openings.date <= range.end) {
-    for (const e of openings.entries) {
-      const acc = byId.get(e.accountId);
-      if (!acc || !e.amount || accountKind(acc) === 'RESULT') continue;
-      const val = openingSign(acc) * e.amount;
-      if (targetAccountIds.has(acc.id)) {
-        rawEntries.push({
-          id: `opening_entry_${acc.id}`,
-          date: openings.date,
-          documentId: 'ABERTURA',
-          memo: 'Saldo de abertura patrimonial',
-          contraAccountId: VIRTUAL.OPENING,
-          contraAccountCode: '',
-          contraAccountName: VIRTUAL_LABEL[VIRTUAL.OPENING],
-          debit: val > 0 ? val : 0,
-          credit: val < 0 ? -val : 0,
-        });
-      }
-      if (targetAccountIds.has(VIRTUAL.OPENING)) {
-        rawEntries.push({
-          id: `opening_entry_contra_${acc.id}`,
-          date: openings.date,
-          documentId: 'ABERTURA',
-          memo: `Contrapartida saldo de abertura — ${acc.name}`,
-          contraAccountId: acc.id,
-          contraAccountCode: acc.code,
-          contraAccountName: acc.name,
-          debit: val < 0 ? -val : 0,
-          credit: val > 0 ? val : 0,
-        });
-      }
-    }
-  }
-
-  // 2.3. Transações bancárias
+  // 2.2. Transações bancárias
   for (const t of transactions) {
     if (t.date < range.start || t.date > range.end) continue;
-    const openingDate = bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate;
-    if (openingDate && t.date <= openingDate) continue;
+    if (!countsAfterOpening(t.date, bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate)) continue;
 
     const bankLedgerId = (t.accountKey && ledgerByKey.get(t.accountKey)) || VIRTUAL.BANK_UNLINKED;
     const bankAcc = byId.get(bankLedgerId);
