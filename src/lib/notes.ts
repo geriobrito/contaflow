@@ -20,7 +20,10 @@ const REGIME_LABEL: Record<TaxRegime, string> = {
   MEI: 'Simples Nacional, como Microempreendedor Individual (MEI)',
 };
 
-/** Regime normal (fora do Simples): é a ele que se aplicam CBS e IBS destacados por fora. */
+/**
+ * Regime normal (fora do Simples): é a ele que se aplicam CBS e IBS destacados por fora. As alíquotas-teste
+ * de 2026 não se aplicam aos optantes pelo Simples Nacional (art. 348, III, "c", da Lei Complementar nº 214/2025).
+ */
 export const isNormalRegime = (regime: TaxRegime | undefined) => regime === 'LUCRO_PRESUMIDO' || regime === 'LUCRO_REAL';
 
 /** Trechos ainda por preencher. */
@@ -71,7 +74,7 @@ export function defaultNotes(
 
   const consumption =
     Number(year) >= 2026
-      ? `A Emenda Constitucional nº 132/2023 e a Lei Complementar nº 214/2025 instituíram a Contribuição sobre Bens e Serviços (CBS) e o Imposto sobre Bens e Serviços (IBS), que substituirão gradualmente o PIS, a COFINS, o IPI, o ICMS e o ISS. Em ${year}, período de teste da transição, a CBS (0,9%) e o IBS (0,1%) são destacados nos documentos fiscais, com recolhimento dispensado quando cumpridas as obrigações acessórias, sem efeito no resultado do exercício, conforme a Orientação Técnica CFC nº 01/2026 e o art. 493 da Lei Complementar nº 214/2025. A entidade [descreva as providências adotadas e os efeitos esperados da transição sobre preços, sistemas e capital de giro].`
+      ? `A Emenda Constitucional nº 132/2023 e a Lei Complementar nº 214/2025 instituíram a Contribuição sobre Bens e Serviços (CBS) e o Imposto sobre Bens e Serviços (IBS), que substituirão gradualmente o PIS, a COFINS, o IPI, o ICMS e o ISS. Em ${year}, período de teste da transição, a CBS (0,9%) e o IBS (0,1%) são destacados nos documentos fiscais, com recolhimento dispensado quando cumpridas as obrigações acessórias, sem efeito no resultado do exercício, nos termos dos arts. 343, 346 e 348, § 1º, da Lei Complementar nº 214/2025 e dos itens 17, 29.5 e 29.7 da Orientação Técnica CFC nº 01/2026 (combinados com a NBC TG 25). A entidade [descreva as providências adotadas e os efeitos esperados da transição sobre preços, sistemas e capital de giro].`
       : `A Emenda Constitucional nº 132/2023 e a Lei Complementar nº 214/2025 instituíram a Contribuição sobre Bens e Serviços (CBS) e o Imposto sobre Bens e Serviços (IBS), que substituirão gradualmente o PIS, a COFINS, o IPI, o ICMS e o ISS a partir de 2026. A entidade [descreva os efeitos esperados da transição].`;
 
   return [

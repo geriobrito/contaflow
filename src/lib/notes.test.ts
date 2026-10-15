@@ -27,7 +27,8 @@ describe('notas explicativas', () => {
     const presumido = defaultNotes({ ...client, regime: 'LUCRO_PRESUMIDO' }, '2026').find((n) => n.id === 'consumption-taxes')!;
     expect(presumido.enabled).toBe(true);
     expect(presumido.text).toMatch(/CBS \(0,9%\) e o IBS \(0,1%\)/);
-    expect(presumido.text).toMatch(/Orientação Técnica CFC nº 01\/2026 e o art\. 493 da Lei Complementar nº 214\/2025/);
+    expect(presumido.text).toMatch(/arts\. 343, 346 e 348, § 1º, da Lei Complementar nº 214\/2025 e dos itens 17, 29\.5 e 29\.7 da Orientação Técnica CFC nº 01\/2026 \(combinados com a NBC TG 25\)/);
+    expect(presumido.text).not.toMatch(/493/);
     expect(defaultNotes({ ...client, regime: 'LUCRO_REAL' }, '2025').find((n) => n.id === 'consumption-taxes')!.text).toMatch(/a partir de 2026/);
   });
 
