@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useState } from 'react';
 import { Search, X } from 'lucide-react';
+import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 
 /* =========================================================================
    Tokens de superfície e controles
@@ -64,14 +65,25 @@ interface SegmentedControlProps<T extends string> {
   ariaLabel: string;
 }
 
+/** Destaque deslizante dos controles segmentados (o "relevo" da opção marcada). */
+export const SEGMENT_PILL = `${SLIDING_INDICATOR} rounded-[10px] bg-white dark:bg-stone-700 shadow-[0_1px_3px_rgba(0,0,0,0.08)]`;
+
+/** Classes de uma opção de controle segmentado; o fundo da marcada vem do destaque deslizante. */
+export const segmentClass = (active: boolean) =>
+  `relative z-10 px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-[color,transform] duration-150 active:scale-[0.97] ${
+    active ? 'text-stone-900 dark:text-white' : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
+  }`;
+
 export function SegmentedControl<T extends string>({
   value,
   onChange,
   options,
   ariaLabel,
 }: SegmentedControlProps<T>) {
+  const { containerRef, indicatorRef } = useSlidingIndicator<HTMLDivElement>(value);
   return (
-    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex p-0.5 rounded-xl bg-black/[0.05] dark:bg-white/[0.06]">
+    <div ref={containerRef} role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-0.5 rounded-xl bg-black/[0.05] dark:bg-white/[0.06]">
+      <span ref={indicatorRef} aria-hidden className={SEGMENT_PILL} />
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -80,12 +92,9 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
+            data-active={active}
             onClick={() => onChange(o.value)}
-            className={`px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-all duration-150 active:scale-[0.97] ${
-              active
-                ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-            }`}
+            className={segmentClass(active)}
           >
             {o.label}
           </button>

@@ -13,7 +13,8 @@ import { useImportFlow } from '@/hooks/reconciliation/useImportFlow';
 import { usePagination } from '@/hooks/usePagination';
 import { useTableKeyboard } from '@/hooks/useTableKeyboard';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { PAGE, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { PAGE, SEGMENT_PILL, SearchField, SegmentedControl, SURFACE, segmentClass } from '@/components/ui/primitives';
+import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 import { DuplicateImportModal } from '@/components/ui/DuplicateImportModal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
@@ -65,6 +66,7 @@ export default function ConciliacaoPage() {
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [filter, setFilter] = useState<Filter>('ALL');
+  const { containerRef: filterTabsRef, indicatorRef: filterPillRef } = useSlidingIndicator<HTMLDivElement>(filter);
   const [searchQuery, setSearchQuery] = useState('');
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -324,19 +326,21 @@ export default function ConciliacaoPage() {
                 { value: 'payee', label: 'Por favorecido' },
               ]}
             />
-            <div role="tablist" className={`${view === 'list' ? 'inline-flex' : 'hidden'} p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}>
+            <div
+              ref={filterTabsRef}
+              role="tablist"
+              className={`${view === 'list' ? 'inline-flex' : 'hidden'} relative p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}
+            >
+              <span ref={filterPillRef} aria-hidden className={SEGMENT_PILL} />
               {FILTERS.map((f) => (
                 <button
                   key={f.value}
                   type="button"
                   role="tab"
                   aria-selected={filter === f.value}
+                  data-active={filter === f.value}
                   onClick={() => setFilter(f.value)}
-                  className={`px-3 py-1 rounded-[10px] text-[12px] font-medium tracking-tight transition-all duration-150 active:scale-[0.97] ${
-                    filter === f.value
-                      ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
-                      : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
-                  }`}
+                  className={segmentClass(filter === f.value)}
                 >
                   {f.label}
                 </button>

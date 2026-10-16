@@ -33,6 +33,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { APP_VERSION, versionDetail, versionLabel } from '@/lib/app-version';
+import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 
 interface NavItem {
   href: string;
@@ -179,6 +180,8 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
   const { user, signOut } = useAuth();
   const connected = isFirebaseConfigured();
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Usuário';
+  const activeHref = NAV_ITEMS.find(({ href }) => (href === '/' ? pathname === '/' : pathname.startsWith(href)))?.href ?? null;
+  const { containerRef: navRef, indicatorRef: navPillRef } = useSlidingIndicator<HTMLElement>(activeHref);
 
   return (
     <div className="flex flex-col h-full">
@@ -203,10 +206,15 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
 
       <div className="mx-4 my-3 border-t border-black/[0.05] dark:border-white/[0.06]" />
 
-      {/* Navegação */}
-      <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto">
+      {/* Navegação: o destaque da página atual desliza até a próxima */}
+      <nav ref={navRef} className="relative flex-1 px-2 space-y-0.5 overflow-y-auto">
+        <span
+          ref={navPillRef}
+          aria-hidden
+          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.04] dark:border-white/[0.06]`}
+        />
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+          const active = href === activeHref;
           return (
             <Link
               key={href}
@@ -214,12 +222,13 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
               onClick={onNavigate}
               title={collapsed ? label : undefined}
               aria-current={active ? 'page' : undefined}
-              className={`flex items-center gap-3 rounded-xl px-2.5 py-2 text-[13px] tracking-tight transition-all duration-150 active:scale-[0.98] ${
+              data-active={active}
+              className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-2 text-[13px] tracking-tight border border-transparent transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
                 collapsed ? 'justify-center' : ''
               } ${
                 active
-                  ? 'bg-white dark:bg-white/[0.08] text-stone-900 dark:text-white font-medium shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.04] dark:border-white/[0.06]'
-                  : 'text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-stone-900 dark:hover:text-stone-100 border border-transparent'
+                  ? 'text-stone-900 dark:text-white font-medium'
+                  : 'text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-stone-900 dark:hover:text-stone-100'
               }`}
             >
               <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-[#0071E3]' : ''}`} strokeWidth={1.75} />
