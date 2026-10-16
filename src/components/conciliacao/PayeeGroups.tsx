@@ -34,12 +34,12 @@ export function PayeeGroupList({ groups, onOpen }: PayeeGroupListProps) {
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-3 border-b border-black/[0.04] dark:border-white/[0.06]">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-black/[0.04] dark:border-white/[0.06]">
         <p className="flex-1 text-[13px] text-stone-500">
           <span className="font-mono tabular-nums text-stone-800 dark:text-stone-200">{pending}</span> lançamento(s) pendente(s) em{' '}
           <span className="font-mono tabular-nums text-stone-800 dark:text-stone-200">{groups.length}</span> favorecido(s). Classifique um grupo de uma vez.
         </p>
-        <SearchField value={search} onChange={setSearch} placeholder="Buscar favorecido" className="sm:w-64" />
+        <SearchField value={search} onChange={setSearch} placeholder="Buscar favorecido" className="w-64" />
       </div>
       <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
         {visible.map((g) => {

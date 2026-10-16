@@ -54,7 +54,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
               <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
                 <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
                 <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
-                <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell w-32">Criada em</th>
+                <th scope="col" className="font-medium px-3 py-2.5 w-32">Criada em</th>
                 <th
                   scope="col"
                   title={`Pendentes de qualquer período e lançamentos dos últimos ${RULE_SAMPLE_MONTHS} meses`}

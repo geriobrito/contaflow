@@ -83,9 +83,9 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
   };
 
   return (
-    <form onSubmit={handleAdd} className={`${SURFACE} rounded-[22px] p-4 sm:p-5 space-y-3`}>
+    <form onSubmit={handleAdd} className={`${SURFACE} rounded-[22px] p-5 space-y-3`}>
       <p className="text-[13px] font-medium text-stone-700 dark:text-stone-300">Nova regra</p>
-      <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,3fr)_auto] gap-2.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_minmax(0,3fr)_auto] gap-2.5">
         <MatchTypeSelect value={newType} onChange={setNewType} />
         <input
           value={newPattern}
@@ -107,7 +107,7 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
             </option>
           ))}
         </select>
-        <button type="submit" disabled={adding || !clientId} className={`${BUTTON.primary} h-11 md:px-5`}>
+        <button type="submit" disabled={adding || !clientId} className={`${BUTTON.primary} h-11 px-5`}>
           <Plus className="w-4 h-4" strokeWidth={2} />
           {adding ? 'Adicionando…' : 'Adicionar'}
         </button>

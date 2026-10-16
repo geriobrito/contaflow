@@ -16,7 +16,7 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
   }, [accounts, accountSearch]);
 
   return (
-    <div className="relative min-w-[280px] sm:min-w-[360px]">
+    <div className="relative min-w-[360px]">
       <button
         type="button"
         onClick={() => setIsAccountDropdownOpen((prev) => !prev)}
@@ -36,7 +36,7 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
       </button>
 
       {isAccountDropdownOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-full sm:w-[420px] max-h-[380px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-xl z-30 flex flex-col overflow-hidden animate-fade-in">
+        <div className="absolute right-0 top-full mt-1.5 w-[420px] max-h-[380px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-xl z-30 flex flex-col overflow-hidden animate-fade-in">
           <div className="p-2 border-b border-black/[0.05] dark:border-white/[0.06]">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />

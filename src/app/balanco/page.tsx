@@ -476,7 +476,7 @@ export default function BalancoPage() {
           )}
         </div>
       ) : view === 'bs' ? (
-        <div className="grid lg:grid-cols-2 gap-6 items-start">
+        <div className="grid grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
             <Side title="Ativo" lines={sectionLines(bs.assets)} total={bs.totalAssets} onSelectAccount={setDrawerAccountId} />
           </section>

@@ -158,7 +158,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
           {account?.name ?? rule.accountName ?? 'Conta removida'}
         </p>
       </td>
-      <td className="px-3 py-3 hidden md:table-cell font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
+      <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
         {rule.createdAt ? formatDateBR(rule.createdAt.slice(0, 10)) : '—'}
       </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-[13px] text-stone-600 dark:text-stone-400 whitespace-nowrap">
@@ -204,7 +204,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={() => setEditing(true)}
                 aria-label={`Editar termo ${rule.pattern}`}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/[0.05] sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/[0.05] opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>

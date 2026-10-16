@@ -96,7 +96,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                     {e.documentId || '—'}
                   </td>
                   <td className="px-3 py-2 text-stone-800 dark:text-stone-200 font-medium">
-                    <div className="max-w-md truncate" title={e.memo}>
+                    <div className="whitespace-normal break-words" title={e.memo}>
                       {e.memo}
                     </div>
                   </td>

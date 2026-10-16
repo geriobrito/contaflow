@@ -78,8 +78,8 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
           if (!client) return null;
           const current = row.clientId === currentClientId;
           return (
-            <li key={row.clientId} className="group flex flex-col md:flex-row md:items-center gap-x-4 gap-y-2 px-5 py-3.5">
-              <div className="min-w-0 md:w-[28%] flex items-center gap-2.5">
+            <li key={row.clientId} className="group flex items-center gap-x-4 gap-y-2 px-5 py-3.5">
+              <div className="min-w-0 w-[28%] flex items-center gap-2.5">
                 <span
                   aria-hidden
                   className={`w-2 h-2 rounded-full shrink-0 ${row.upToDate ? 'bg-emerald-500' : row.tasks.some((t) => t.severity === 'high') ? 'bg-rose-500' : 'bg-amber-500'}`}
@@ -91,7 +91,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
                 </button>
                 {current && <span className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.06em] text-stone-400">Atual</span>}
               </div>
-              <div className="md:w-[150px] shrink-0">
+              <div className="w-[150px] shrink-0">
                 <FocusPill row={row} />
               </div>
               <div className="flex-1 min-w-0 flex flex-wrap gap-1.5">
@@ -116,7 +116,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
                 type="button"
                 onClick={() => onOpenClient(client)}
                 aria-label={`Abrir o painel de ${row.name}`}
-                className="hidden md:flex w-8 h-8 shrink-0 items-center justify-center rounded-full text-stone-300 group-hover:text-stone-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+                className="flex w-8 h-8 shrink-0 items-center justify-center rounded-full text-stone-300 group-hover:text-stone-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -135,7 +135,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
           ) : (
             <li key={c.id} role="status" aria-busy="true" className="flex items-center gap-4 px-5 py-3.5">
               <span className="sr-only">Carregando {c.tradeName || c.name}…</span>
-              <span className="md:w-[28%] text-[14px] font-medium tracking-tight text-stone-400 truncate">{c.tradeName || c.name}</span>
+              <span className="w-[28%] text-[14px] font-medium tracking-tight text-stone-400 truncate">{c.tradeName || c.name}</span>
               <Skeleton className="h-3 w-24 shrink-0" />
               <Skeleton className="h-5 w-40 rounded-full" />
             </li>

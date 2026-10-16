@@ -8,7 +8,7 @@ import { SURFACE } from '@/components/ui/primitives';
 /** Resumo do período: quantidade de lançamentos manuais, volume movimentado e onde eles aparecem. */
 export function JournalSummaryCards({ stats }: { stats: { count: number; totalVolume: number } }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div className="grid grid-cols-3 gap-4">
       <div className={`${SURFACE} p-5 rounded-2xl flex items-center gap-4`}>
         <div className="w-12 h-12 rounded-xl bg-accent/10 text-accent-ink flex items-center justify-center shrink-0">
           <Calculator className="w-6 h-6" />

@@ -214,7 +214,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="journal-entry-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div
         className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden"
@@ -274,7 +274,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             {template && (
               <div className="rounded-xl bg-white dark:bg-stone-900 border border-black/[0.06] dark:border-white/[0.08] p-3 space-y-3">
                 <p className="text-stone-500">{template.description} Competência pela data do lançamento.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {template.fields.map((f) => (
                     <label key={f.key} className="block space-y-1">
                       <span className="block font-medium text-stone-600 dark:text-stone-300">
@@ -282,7 +282,6 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                         {f.optional && <span className="font-normal text-stone-400"> (opcional)</span>}
                       </span>
                       <input
-                        inputMode="decimal"
                         value={templateValues[f.key] ?? ''}
                         onChange={(e) => setTemplateValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
                         placeholder="0,00"
@@ -320,7 +319,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           )}
 
           {/* Dados Gerais */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
                 Data do Lançamento
@@ -548,7 +547,6 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             <input
               id="journal-attachment"
               type="text"
-              inputMode="url"
               autoComplete="off"
               placeholder="Link de compartilhamento do documento na nuvem (Drive, OneDrive, Dropbox…)"
               value={attachmentUrl}

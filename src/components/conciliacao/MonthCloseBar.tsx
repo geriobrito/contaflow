@@ -126,7 +126,7 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
         {armed
           ? openItems > 0
             ? `Fechar mesmo com ${openItems} não conciliado(s)?`
-            : 'Toque para confirmar o fechamento'
+            : 'Clique para confirmar o fechamento'
           : 'Fechar competência'}
       </button>
     </div>

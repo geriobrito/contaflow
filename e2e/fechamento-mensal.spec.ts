@@ -134,7 +134,7 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
 
   await test.step('fechamento da competência', async () => {
     await page.getByRole('button', { name: 'Fechar competência' }).click();
-    await page.getByRole('button', { name: 'Toque para confirmar o fechamento' }).click();
+    await page.getByRole('button', { name: 'Clique para confirmar o fechamento' }).click();
     await expect(page.getByText('Competência fechada', { exact: true })).toBeVisible();
     // Mês fechado: o lançamento abre só para consulta, sem botão de conciliar.
     await page.getByRole('row', { name: /ALUGUEL SALA COMERCIAL/ }).click();

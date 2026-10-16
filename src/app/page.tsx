@@ -246,7 +246,7 @@ export default function ConciliacaoPage() {
       {/* Cabeçalho editorial */}
       <header className="space-y-1.5">
         <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
-        <h1 className="text-[28px] sm:text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        <h1 className="text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
           Conciliação bancária
         </h1>
         <p className="text-[14px] text-stone-500 max-w-xl">
@@ -318,7 +318,7 @@ export default function ConciliacaoPage() {
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
-        <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+        <div className="flex flex-wrap items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
           <div className="flex flex-wrap items-center gap-3">
             <SegmentedControl
               ariaLabel="Visão dos lançamentos"
@@ -353,20 +353,20 @@ export default function ConciliacaoPage() {
 
           <div className="flex flex-wrap items-center gap-2">
             {view === 'list' && (
-              <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
+              <div className="flex items-center gap-1.5">
                 <SearchField
                   inputRef={searchInputRef}
                   value={searchQuery}
                   onChange={setSearchQuery}
                   placeholder="Buscar histórico, valor, conta ou fitid (pressione /)"
-                  className="w-full sm:w-64 md:w-80"
+                  className="w-80"
                 />
                 <button
                   type="button"
                   onClick={() => setShowKeyboardHelp(true)}
                   title="Atalhos de teclado (?)"
                   aria-label="Atalhos de teclado"
-                  className="hidden sm:inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] transition-colors"
+                  className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] transition-colors"
                 >
                   <kbd className="font-mono text-[12px] font-semibold">?</kbd>
                 </button>

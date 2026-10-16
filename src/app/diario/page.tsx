@@ -170,9 +170,9 @@ export default function DiarioPage() {
             (cadastrados em Clientes e em Escritório).
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-[8rem_1fr_1fr] gap-3">
+        <div className="grid grid-cols-[8rem_1fr_1fr] gap-3">
           <Field label="Livro nº">
-            <input inputMode="numeric" value={book.number} onChange={(e) => updateBook({ number: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={`${INPUT} font-mono tabular-nums`} />
+            <input value={book.number} onChange={(e) => updateBook({ number: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={`${INPUT} font-mono tabular-nums`} />
           </Field>
           <Field label="Sede (município/UF)" hint="Opcional">
             <input value={book.city ?? ''} onChange={(e) => updateBook({ city: e.target.value })} placeholder="ex.: Recife/PE" className={INPUT} />
@@ -205,7 +205,7 @@ export default function DiarioPage() {
         </section>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08]">
+          <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08]">
             <div className="bg-white dark:bg-stone-900 p-4">
               <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Lançamentos</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{daybook.entries.length}</p>

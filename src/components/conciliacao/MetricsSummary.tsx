@@ -39,7 +39,7 @@ export function MetricsSummary({ metrics, periodLabel }: { metrics: Reconciliati
   return (
     <section
       aria-label="Resumo"
-      className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+      className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
     >
       <Metric label={`Lançamentos · ${periodLabel}`} value={String(metrics.total)} caption={`${metrics.pending} pendente(s)`} />
       <Metric label="Conciliado" value={`${metrics.reconciledPercent}%`} tone="accent" progress={metrics.reconciledPercent} />

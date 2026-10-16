@@ -226,7 +226,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
             e.stopPropagation();
             handleLoadSample();
           }}
-          className="hidden sm:inline-flex shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.97]"
+          className="inline-flex shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.97]"
         >
           Usar arquivo modelo
         </button>

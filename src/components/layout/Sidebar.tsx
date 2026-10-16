@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Check, ChevronsUpDown, LogOut, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sparkles, Sun, X, type LucideIcon } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sparkles, Sun, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
@@ -172,16 +172,15 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
 }
 
 /* =========================================================================
-   Conteúdo da sidebar (compartilhado entre desktop e gaveta mobile)
+   Conteúdo da sidebar
    ========================================================================= */
 
 interface SidebarBodyProps {
   collapsed: boolean;
-  onNavigate?: () => void;
   headerAction?: React.ReactNode;
 }
 
-function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) {
+function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
   const connected = isFirebaseConfigured();
@@ -194,7 +193,7 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
       {/* Marca */}
       <div className={`flex items-center h-14 px-3 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
-          <Link href="/" onClick={onNavigate} className="flex items-center gap-2 px-1">
+          <Link href="/" className="flex items-center gap-2 px-1">
             <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
               <Sparkles className="w-3.5 h-3.5 text-white" />
             </span>
@@ -206,10 +205,7 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            onClick={() => {
-              onNavigate?.();
-              openCommandPalette();
-            }}
+            onClick={openCommandPalette}
             title={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
             aria-label={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
             aria-keyshortcuts="Control+K Meta+K"
@@ -249,7 +245,6 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
                 <Link
                   key={href}
                   href={href}
-                  onClick={onNavigate}
                   title={collapsed ? label : undefined}
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
@@ -324,13 +319,11 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
 }
 
 /* =========================================================================
-   Sidebar (desktop fixa/colapsável + gaveta mobile)
+   Sidebar (fixa/colapsável)
    ========================================================================= */
 
 export function Sidebar() {
-  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Restaura preferência de colapso (fora do corpo síncrono do effect).
   useEffect(() => {
@@ -354,107 +347,32 @@ export function Sidebar() {
     });
   };
 
-  // Fecha a gaveta ao navegar.
-  const [lastPath, setLastPath] = useState(pathname);
-  if (lastPath !== pathname) {
-    setLastPath(pathname);
-    setMobileOpen(false);
-  }
-
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileOpen(false);
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
-  }, [mobileOpen]);
-
   return (
-    <>
-      {/* Barra superior mobile */}
-      <header className="lg:hidden print:hidden sticky top-0 z-30 flex items-center gap-3 h-14 px-4 backdrop-blur-xl bg-[#F9F9F8]/80 dark:bg-stone-950/80 border-b border-black/[0.05] dark:border-white/[0.06]">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Abrir menu"
-          className="p-2 -ml-2 rounded-xl text-stone-700 dark:text-stone-300 hover:bg-black/[0.04] active:scale-[0.96] transition-all duration-150"
-        >
-          <Menu className="w-5 h-5" strokeWidth={1.75} />
-        </button>
-        <span className="flex-1 text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">ContaFlow</span>
-        <button
-          type="button"
-          onClick={openCommandPalette}
-          aria-label="Buscar telas e empresas"
-          className="p-2 -mr-2 rounded-xl text-stone-700 dark:text-stone-300 hover:bg-black/[0.04] active:scale-[0.96] transition-all duration-150"
-        >
-          <Search className="w-5 h-5" strokeWidth={1.75} />
-        </button>
-      </header>
-
-      {/* Desktop */}
-      <aside
-        className={`hidden lg:block print:hidden sticky top-0 h-screen shrink-0 p-3 transition-[width] duration-200 ease-out ${
-          collapsed ? 'w-[84px]' : 'w-[272px]'
-        }`}
-      >
-        <div className="h-full rounded-[22px] backdrop-blur-xl bg-white/60 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
-          <SidebarBody
-            collapsed={collapsed}
-            headerAction={
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
-                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
-              >
-                {collapsed ? (
-                  <PanelLeftOpen className="w-4 h-4" strokeWidth={1.75} />
-                ) : (
-                  <PanelLeftClose className="w-4 h-4" strokeWidth={1.75} />
-                )}
-              </button>
-            }
-          />
-        </div>
-      </aside>
-
-      {/* Gaveta mobile */}
-      {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-stone-900/20 backdrop-blur-sm animate-fade-in"
-            onClick={() => setMobileOpen(false)}
-          />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label="Menu de navegação"
-            className="absolute inset-y-0 left-0 w-[288px] max-w-[85vw] p-2 animate-drawer-in"
-          >
-            <div className="h-full rounded-[22px] bg-[#F9F9F8] dark:bg-stone-900 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
-              <SidebarBody
-                collapsed={false}
-                onNavigate={() => setMobileOpen(false)}
-                headerAction={
-                  <button
-                    type="button"
-                    onClick={() => setMobileOpen(false)}
-                    aria-label="Fechar menu"
-                    className="p-1.5 rounded-lg text-stone-400 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                }
-              />
-            </div>
-          </aside>
-        </div>
-      )}
-    </>
+    <aside
+      className={`block print:hidden sticky top-0 h-screen shrink-0 p-3 transition-[width] duration-200 ease-out ${
+        collapsed ? 'w-[84px]' : 'w-[272px]'
+      }`}
+    >
+      <div className="h-full rounded-[22px] backdrop-blur-xl bg-white/60 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+        <SidebarBody
+          collapsed={collapsed}
+          headerAction={
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="w-4 h-4" strokeWidth={1.75} />
+              ) : (
+                <PanelLeftClose className="w-4 h-4" strokeWidth={1.75} />
+              )}
+            </button>
+          }
+        />
+      </div>
+    </aside>
   );
 }
 

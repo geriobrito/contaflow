@@ -125,7 +125,7 @@ export function BankAccountSheet({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Saldo inicial" error={openingError}>
-            <input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
           </Field>
           <Field label="No início do dia">
             <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />

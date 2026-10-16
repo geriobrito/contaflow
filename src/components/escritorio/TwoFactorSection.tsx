@@ -60,7 +60,7 @@ export function TwoFactorSection() {
   };
 
   return (
-    <section className={`${SURFACE} rounded-[22px] p-5 sm:p-7 max-w-3xl space-y-4`} aria-label="Verificação em duas etapas">
+    <section className={`${SURFACE} rounded-[22px] p-7 max-w-3xl space-y-4`} aria-label="Verificação em duas etapas">
       <div className="flex items-start gap-3">
         <span
           className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${
@@ -141,7 +141,6 @@ export function TwoFactorSection() {
             <div className="w-44">
               <Field label="Código">
                 <input
-                  inputMode="numeric"
                   autoComplete="one-time-code"
                   maxLength={6}
                   value={code}

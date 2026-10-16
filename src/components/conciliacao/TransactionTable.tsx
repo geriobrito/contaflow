@@ -65,7 +65,7 @@ export function TransactionTable({
             </th>
             <th scope="col" className="font-medium px-3 py-2.5 w-24">Data</th>
             <th scope="col" className="font-medium px-3 py-2.5">Descrição</th>
-            <th scope="col" className="font-medium px-3 py-2.5 hidden md:table-cell">Conta</th>
+            <th scope="col" className="font-medium px-3 py-2.5">Conta</th>
             <th scope="col" className="font-medium px-3 py-2.5 w-28">Status</th>
             <th scope="col" className="font-medium pl-3 pr-5 py-2.5 text-right w-36">Valor</th>
           </tr>
@@ -120,13 +120,11 @@ export function TransactionTable({
                   </td>
                   <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">{formatDateBR(t.date)}</td>
                   <td className="px-3 py-3 max-w-0 w-full">
-                    <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 truncate lg:whitespace-normal lg:break-words">
+                    <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 whitespace-normal break-words">
                       {t.memo}
                     </p>
-                    {t.accountName && <p className="md:hidden text-[12px] text-stone-400 truncate">{t.accountName}</p>}
-                    {splitBadge && <div className="md:hidden mt-1">{splitBadge}</div>}
                   </td>
-                  <td className="px-3 py-3 hidden md:table-cell max-w-[240px] xl:max-w-[380px]">
+                  <td className="px-3 py-3 max-w-[240px] xl:max-w-[380px]">
                     {splitBadge ? (
                       splitBadge
                     ) : t.accountName ? (

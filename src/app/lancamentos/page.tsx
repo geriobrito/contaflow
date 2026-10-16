@@ -198,7 +198,7 @@ export default function LancamentosPage() {
       )}
 
       {/* Seletor de Período */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <PeriodPicker period={period} />
         {monthLocked ? (
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-200 text-[13px]">
@@ -217,7 +217,7 @@ export default function LancamentosPage() {
       <JournalSummaryCards stats={stats} />
 
       {/* Barra de Filtros */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+      <div className="flex items-center gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
           <input

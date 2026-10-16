@@ -126,7 +126,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="csv-mapping-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
     >
       <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
         {/* Header */}
@@ -164,7 +164,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
           )}
 
           {/* Seleção de Conta Bancária e Delimitador */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5 flex items-center gap-1.5">
                 <Landmark className="w-3.5 h-3.5 text-stone-400" />
@@ -256,7 +256,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
               Mapeamento de Campos
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-accent-ink" />
@@ -345,7 +345,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
               </div>
 
               {mapping.valueMode === 'single' ? (
-                <div className="w-full sm:w-1/2">
+                <div className="w-1/2">
                   <label className="block text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
                     Coluna do Valor *
@@ -363,7 +363,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                   </select>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
                       <DollarSign className="w-3.5 h-3.5 text-rose-600" />

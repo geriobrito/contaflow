@@ -236,7 +236,7 @@ export default function PainelPage() {
       {!dash ? (
         !error && (
           <>
-            <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando painel…" />
+            <CardsSkeleton count={4} className="grid grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando painel…" />
             <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
               <TableSkeleton rows={4} />
             </section>
@@ -244,7 +244,7 @@ export default function PainelPage() {
         )
       ) : (
         <>
-          <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+          <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
             <Tile
               label="Pendentes de classificação"
               value={String(dash.totals.pending)}
@@ -312,7 +312,7 @@ export default function PainelPage() {
               years.map(([year, list]) => (
                 <div key={year} className="space-y-2">
                   <p className="text-[12px] font-medium text-stone-500">{year}</p>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-12 gap-2">
+                  <div className="grid grid-cols-6 xl:grid-cols-12 gap-2">
                     {list.map((m) => (
                       <MonthCard key={m.month} m={m} />
                     ))}

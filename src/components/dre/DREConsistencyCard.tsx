@@ -20,7 +20,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
     return (
       <aside
         aria-label="Consistência contábil"
-        className="print-avoid-break rounded-[20px] border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 sm:p-5 transition-all"
+        className="print-avoid-break rounded-[20px] border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/50 dark:bg-emerald-950/20 p-5 transition-all"
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
@@ -44,7 +44,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
           </div>
           <Link
             href="/balanco"
-            className="hidden sm:inline-flex items-center gap-1 text-[12px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline shrink-0"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-emerald-700 dark:text-emerald-400 hover:underline shrink-0"
           >
             Ver no Balanço <ExternalLink className="w-3.5 h-3.5" />
           </Link>
@@ -59,7 +59,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
   return (
     <aside
       aria-label="Conferência de consistência contábil"
-      className={`print-avoid-break rounded-[20px] border p-4 sm:p-5 transition-all ${
+      className={`print-avoid-break rounded-[20px] border p-5 transition-all ${
         hasDivergence
           ? 'border-rose-200/70 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20'
           : 'border-amber-200/70 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/20'
@@ -116,7 +116,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
       </div>
 
       {/* Painel comparativo de valores */}
-      <div className="mt-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.08] grid grid-cols-2 sm:grid-cols-3 gap-3 text-[12px]">
+      <div className="mt-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.08] grid grid-cols-3 gap-3 text-[12px]">
         <div>
           <span className="text-stone-500">DRE do Exercício</span>
           <p className="mt-0.5 font-mono font-semibold tabular-nums text-stone-800 dark:text-stone-100">
@@ -129,7 +129,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
             {formatCurrency(balanceCurrentResult)}
           </p>
         </div>
-        <div className="col-span-2 sm:col-span-1">
+        <div>
           <span className="text-stone-500">Divergência Contábil</span>
           <p
             className={`mt-0.5 font-mono font-semibold tabular-nums ${

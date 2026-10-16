@@ -25,7 +25,7 @@ export function DREStatement({ dre, failed, isLoading, hasData, profit }: DRESta
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
         <div className="flex items-baseline gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
           <span className="flex-1">Demonstrativo</span>
-          <span className="hidden md:inline w-20 text-right">% RB</span>
+          <span className="inline w-20 text-right">% RB</span>
           <span className="w-36 xl:w-44 text-right">R$</span>
         </div>
 

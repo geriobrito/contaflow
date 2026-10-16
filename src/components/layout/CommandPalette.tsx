@@ -179,7 +179,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
             placeholder="Buscar telas, empresas e ações…"
             className="flex-1 min-w-0 bg-transparent text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
           />
-          <kbd className="hidden sm:inline-flex h-6 px-1.5 items-center rounded-md border border-black/[0.08] dark:border-white/[0.12] bg-black/[0.03] dark:bg-white/[0.06] font-mono text-[10.5px] text-stone-500">Esc</kbd>
+          <kbd className="inline-flex h-6 px-1.5 items-center rounded-md border border-black/[0.08] dark:border-white/[0.12] bg-black/[0.03] dark:bg-white/[0.06] font-mono text-[10.5px] text-stone-500">Esc</kbd>
         </div>
 
         <ul ref={listRef} id={listId} role="listbox" aria-label="Resultados" className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain p-2">

@@ -19,7 +19,6 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
     <div className="relative">
       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-stone-400 pointer-events-none">R$</span>
       <input
-        inputMode="numeric"
         aria-label={label}
         value={cents === 0 ? '' : formatCents(cents)}
         placeholder="0,00"
@@ -219,7 +218,7 @@ function GrossNetPanel({
           <AccountPicker accounts={accounts} value={pickedId} onChange={setPickedId} label="Conta do valor bruto" />
         )}
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 gap-2.5">
         {available.map(({ preset: p, options }) => {
           const code = codeOf(p.key, options);
           return (

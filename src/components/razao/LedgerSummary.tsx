@@ -34,7 +34,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
       </div>
 
       {/* 4 Cards de Resumo */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06]">
+      <div className="grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06]">
         <div className="bg-white dark:bg-stone-900 p-4">
           <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
           <div className="mt-1 flex items-baseline gap-1.5">

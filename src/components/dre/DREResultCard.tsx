@@ -42,7 +42,7 @@ export function DREResultCard({ dre, tone, profit, isLoading, failed, periodLabe
   const TONE = TONES[tone];
   return (
     <section
-      className={`print-avoid-break rounded-[22px] p-6 sm:p-7 border ${TONE.card}`}
+      className={`print-avoid-break rounded-[22px] p-7 border ${TONE.card}`}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
@@ -50,7 +50,7 @@ export function DREResultCard({ dre, tone, profit, isLoading, failed, periodLabe
             Resultado líquido do exercício · {periodLabel}
           </p>
           <p
-            className={`mt-2 text-[32px] sm:text-[40px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE.value}`}
+            className={`mt-2 text-[40px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE.value}`}
           >
             {isLoading || failed ? '—' : formatCurrency(dre.netResult)}
           </p>

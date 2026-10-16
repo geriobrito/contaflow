@@ -256,7 +256,7 @@ export default function AberturaPage() {
           <fieldset className={`${SURFACE} rounded-[22px] p-5 space-y-3`}>
             <legend className="sr-only">Tipo de implantação</legend>
             <p className="text-[14px] font-semibold tracking-tight">Tipo de implantação</p>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 grid-cols-2">
               {(['OPENING_BALANCE', 'CONTINUITY'] as const).map((m) => (
                 <label
                   key={m}
@@ -275,7 +275,7 @@ export default function AberturaPage() {
           </fieldset>
 
           {/* Data, resumo e fechamento */}
-          <section className={`${SURFACE} rounded-[22px] p-5 grid gap-5 lg:grid-cols-[minmax(0,240px)_1fr] items-start`}>
+          <section className={`${SURFACE} rounded-[22px] p-5 grid gap-5 grid-cols-[240px_1fr] items-start`}>
             <div className="space-y-4">
               <Field label="Data do balanço de abertura" hint="Posição no início do dia. Os lançamentos do extrato e os manuais contam a partir dela, inclusive.">
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
@@ -287,7 +287,7 @@ export default function AberturaPage() {
               )}
             </div>
             <div className="space-y-3">
-              <dl className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[13px]">
+              <dl className="grid grid-cols-4 gap-3 text-[13px]">
                 {[
                   ['Ativo (contas)', summary.assets],
                   ['Bancos', summary.banks],
@@ -380,7 +380,6 @@ export default function AberturaPage() {
                       <div className="w-40 shrink-0">
                         <input
                           id={`bank-${b.id}`}
-                          inputMode="decimal"
                           value={bankValues[b.id] ?? ''}
                           onChange={(e) => setBankValues((v) => ({ ...v, [b.id]: e.target.value }))}
                           placeholder={b.openingBalance === undefined ? 'não informado' : '0,00'}
@@ -395,7 +394,7 @@ export default function AberturaPage() {
             )}
           </section>
 
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="flex items-center gap-3">
             <SearchField value={search} onChange={setSearch} placeholder="Buscar conta por código ou nome" className="flex-1" />
             <label className="flex items-center gap-2 text-[13px] text-stone-600">
               <input type="checkbox" checked={onlyFilled} onChange={(e) => setOnlyFilled(e.target.checked)} /> Só as preenchidas
@@ -431,7 +430,6 @@ export default function AberturaPage() {
                           <div className="w-40 shrink-0">
                             <input
                               id={`op-${a.id}`}
-                              inputMode="decimal"
                               value={values[a.id] ?? ''}
                               onChange={(e) => setValues((v) => ({ ...v, [a.id]: e.target.value }))}
                               placeholder="0,00"

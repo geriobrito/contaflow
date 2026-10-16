@@ -91,12 +91,12 @@ export default function AuditoriaPage() {
         title="Auditoria"
         description={`Registro imutável das alterações de classificação e dos fechamentos de competência (últimos ${LIMIT}).`}
       />
-      <div className="flex flex-col md:flex-row gap-3 md:items-center">
+      <div className="flex items-center gap-3">
         <SegmentedControl ariaLabel="Filtrar ações" value={filter} onChange={setFilter} options={FILTERS} />
         <SearchField value={search} onChange={setSearch} placeholder="Buscar por histórico, usuário, conta ou motivo" className="flex-1" />
       </div>
       {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar a auditoria: {error}</p>}
-      <section className={`${SURFACE} rounded-[22px] p-5 sm:p-6`}>
+      <section className={`${SURFACE} rounded-[22px] p-6`}>
         {loading ? (
           <TableSkeleton rows={6} dense label="Carregando auditoria…" />
         ) : (

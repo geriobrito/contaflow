@@ -10,7 +10,7 @@ import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidi
 
 /** Container fluido das páginas: ocupa o espaço útil ao lado da sidebar, com teto para monitores ultrawide. */
 export const PAGE =
-  'w-full max-w-[1680px] mx-auto px-4 sm:px-6 md:px-10 lg:px-12 py-8 sm:py-10 space-y-8';
+  'w-full max-w-[1680px] mx-auto px-8 py-8 space-y-8';
 
 export const SURFACE =
   'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
@@ -41,10 +41,10 @@ interface PageHeaderProps {
 
 export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
   return (
-    <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <header className="flex items-end justify-between gap-4">
       <div className="space-y-1.5 min-w-0">
         {eyebrow && <p className="text-[13px] font-medium text-stone-500 truncate">{eyebrow}</p>}
-        <h1 className="text-[28px] sm:text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+        <h1 className="text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
           {title}
         </h1>
         {description && <p className="text-[14px] text-stone-500 max-w-2xl">{description}</p>}
@@ -172,7 +172,7 @@ export function IOSSwitch({
 }
 
 /* =========================================================================
-   Sheet (modal centralizado / bottom sheet no mobile, ou painel lateral)
+   Sheet (modal centralizado ou painel lateral)
    ========================================================================= */
 
 interface SheetProps {
@@ -202,7 +202,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
   return (
     <div
       className={`fixed inset-0 z-50 flex ${
-        right ? 'items-end sm:items-stretch justify-center sm:justify-end sm:p-3' : 'items-end sm:items-center justify-center sm:p-6'
+        right ? 'items-stretch justify-end p-3' : 'items-center justify-center p-6'
       }`}
     >
       <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
@@ -210,15 +210,12 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full flex flex-col bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] rounded-t-[28px] max-h-[92vh] ${
+        className={`relative w-full flex flex-col bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
           right
-            ? 'sm:max-w-[420px] sm:rounded-[24px] sm:max-h-none animate-sheet-in sm:animate-panel-in'
-            : 'sm:max-w-[460px] sm:rounded-[28px] animate-sheet-in'
+            ? 'max-w-[420px] rounded-[24px] animate-panel-in'
+            : 'max-w-[460px] rounded-[28px] max-h-[92vh] animate-sheet-in'
         }`}
       >
-        <div className="sm:hidden flex justify-center pt-2">
-          <span className="w-9 h-[5px] rounded-full bg-black/15 dark:bg-white/20" />
-        </div>
         <div className="flex items-start gap-3 px-6 pt-5 pb-4">
           <div className="flex-1 min-w-0">
             <h2 id={titleId} className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
@@ -236,7 +233,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2">{children}</div>
-        {footer && <div className="px-6 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">{footer}</div>}
+        {footer && <div className="px-6 pt-4 pb-5">{footer}</div>}
       </div>
     </div>
   );

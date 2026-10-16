@@ -130,19 +130,15 @@ export function ClassifySheet({
   const negative = transaction.amount < 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
 
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'sm:max-w-[640px]' : 'sm:max-w-[440px]'} max-h-[92vh] flex flex-col transition-[max-width] duration-200 rounded-t-[28px] sm:rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
+        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[92vh] flex flex-col transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
-        <div className="sm:hidden flex justify-center pt-2">
-          <span className="w-9 h-[5px] rounded-full bg-black/15 dark:bg-white/20" />
-        </div>
-
         {/* Cabeçalho */}
         <div className="flex items-start gap-3 px-6 pt-5 pb-4">
           <div className="flex-1 min-w-0">
@@ -308,7 +304,7 @@ export function ClassifySheet({
         </div>
         )}
 
-        <div className="px-6 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+        <div className="px-6 pt-4 pb-5">
           {mode === 'history' ? (
             <button
               type="button"
@@ -376,7 +372,7 @@ export function ClassifySheet({
                     : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
                 }`}
               >
-                {confirmUndo ? 'Toque para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
+                {confirmUndo ? 'Clique para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
               </button>
             </div>
           )}

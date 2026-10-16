@@ -32,9 +32,9 @@ export function BulkActionBar({
   return (
     <aside
       aria-label="Ações em massa para lançamentos selecionados"
-      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[94vw] sm:max-w-2xl w-full px-4 animate-fade-in"
+      className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-3xl w-full px-4 animate-fade-in"
     >
-      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-4 py-2.5 rounded-2xl sm:rounded-full bg-stone-900/95 dark:bg-stone-100/95 text-white dark:text-stone-900 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl border border-white/10 dark:border-black/10 text-[13px]">
+      <div className="flex flex-nowrap items-center justify-between gap-3 px-4 py-2.5 rounded-full bg-stone-900/95 dark:bg-stone-100/95 text-white dark:text-stone-900 shadow-[0_12px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl border border-white/10 dark:border-black/10 text-[13px]">
         {/* Contagem e totais */}
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="flex items-center justify-center w-6 h-6 rounded-full bg-white/20 dark:bg-black/10 font-mono text-[12px] font-semibold tabular-nums shrink-0">
@@ -44,7 +44,7 @@ export function BulkActionBar({
             {selectedCount === 1 ? 'lançamento selecionado' : 'lançamentos selecionados'}
           </span>
           {(totalDebits > 0 || totalCredits > 0) && (
-            <span className="hidden md:inline-flex items-center gap-1.5 font-mono text-[12px] opacity-80 border-l border-white/20 dark:border-black/20 pl-2.5">
+            <span className="inline-flex items-center gap-1.5 shrink-0 font-mono text-[12px] opacity-80 border-l border-white/20 dark:border-black/20 pl-2.5">
               {totalDebits > 0 && <span className="text-rose-300 dark:text-rose-600">-{formatCurrency(totalDebits)}</span>}
               {totalDebits > 0 && totalCredits > 0 && <span>·</span>}
               {totalCredits > 0 && <span className="text-emerald-300 dark:text-emerald-600">+{formatCurrency(totalCredits)}</span>}
@@ -73,7 +73,7 @@ export function BulkActionBar({
             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-white/10 dark:bg-black/10 hover:bg-white/20 dark:hover:bg-black/20 active:scale-[0.97] transition-all font-medium text-[12px]"
           >
             <MessageCircleQuestion className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Perguntar ao</span> cliente
+            Perguntar ao cliente
           </button>
 
           <button

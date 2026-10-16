@@ -174,7 +174,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
         </button>
 
-        <span className={`w-24 lg:w-32 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
+        <span className={`w-32 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
           {account.code}
         </span>
         <span
@@ -189,22 +189,21 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           {account.name}
         </span>
 
-        <span className="hidden sm:flex items-center gap-1.5 shrink-0">
-        {depth === 0 && <span className="lg:hidden text-[11px] text-stone-400">{TYPE_LABEL[account.type]}</span>}
+        <span className="flex items-center gap-1.5 shrink-0">
         {account.isContra && (
-          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+          <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
             Redutora
           </span>
         )}
         {!synthetic && account.clientId === 'global' && (
-          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
+          <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
             Compartilhada
           </span>
         )}
         </span>
 
-        {/* Colunas de detalhe no desktop */}
-        <span className="hidden lg:block w-28 shrink-0 text-[12px] text-stone-500">
+        {/* Colunas de detalhe */}
+        <span className="block w-28 shrink-0 text-[12px] text-stone-500">
           {depth === 0 ? (
             <span className="font-medium text-stone-600 dark:text-stone-300">{TYPE_LABEL[account.type]}</span>
           ) : synthetic ? (
@@ -215,13 +214,13 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
             </span>
           )}
         </span>
-        <span className="hidden lg:block w-56 xl:w-64 shrink-0 truncate text-[12px] text-stone-500">
+        <span className="block w-56 xl:w-64 shrink-0 truncate text-[12px] text-stone-500">
           {!synthetic ? dreLabel(account) ?? <span className="text-stone-300 dark:text-stone-600">Patrimonial</span> : null}
         </span>
 
         <span className="w-8 shrink-0 flex justify-end">
         {!synthetic && !hasChildren && (
-          <span className="sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <span className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <ConfirmButton
               ariaLabel={`Excluir ${account.name}`}
               label={<Trash2 className="w-3.5 h-3.5" />}
@@ -567,7 +566,7 @@ export default function PlanoDeContasPage() {
           <>
           <div
             aria-hidden
-            className="hidden lg:flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400"
+            className="flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400"
           >
             <span className="w-32 shrink-0">Código</span>
             <span className="flex-1">Conta</span>

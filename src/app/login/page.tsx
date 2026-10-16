@@ -60,7 +60,7 @@ function Brand() {
 /** Painel de apresentação (telas largas): folha de livro-razão com um exemplo de conciliação. */
 function Showcase() {
   return (
-    <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden p-12 xl:p-16 bg-[#EFEDE5] dark:bg-[#181715] border-r border-black/[0.06] dark:border-white/[0.06]">
+    <aside className="relative flex flex-col justify-between overflow-hidden p-12 xl:p-16 bg-[#EFEDE5] dark:bg-[#181715] border-r border-black/[0.06] dark:border-white/[0.06]">
       {/* Pautas de livro contábil, esmaecendo para baixo, e a margem em terracota */}
       <div
         aria-hidden
@@ -198,15 +198,11 @@ export default function LoginPage() {
   const error = errorMessage ?? authError;
 
   return (
-    <div className="min-h-screen w-full grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-[#F5F4EF] dark:bg-[#1F1E1C] text-stone-900 dark:text-stone-100">
+    <div className="min-h-screen w-full min-w-[1080px] grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-[#F5F4EF] dark:bg-[#1F1E1C] text-stone-900 dark:text-stone-100">
       <Showcase />
 
       <div className="relative flex flex-col min-h-screen">
-        <header className="lg:hidden flex items-center px-5 sm:px-8 h-16">
-          <Brand />
-        </header>
-
-        <main className="flex-1 flex items-center justify-center px-5 sm:px-8 py-10">
+        <main className="flex-1 flex items-center justify-center px-8 py-10">
           <div className="w-full max-w-[380px] animate-sheet-in">
             <div className="mb-8">
               <h1 className="font-serif text-[30px] leading-tight tracking-tight">{secondFactorPending ? 'Verificação em duas etapas' : 'Bem-vindo de volta'}</h1>
@@ -242,7 +238,6 @@ export default function LoginPage() {
                 <div className="relative">
                   <input
                     id="code"
-                    inputMode="numeric"
                     autoComplete="one-time-code"
                     autoFocus
                     maxLength={6}
@@ -344,7 +339,7 @@ export default function LoginPage() {
           </div>
         </main>
 
-        <footer className="flex items-center justify-between gap-4 px-5 sm:px-8 h-14 text-[11px] text-stone-400">
+        <footer className="flex items-center justify-between gap-4 px-8 h-14 text-[11px] text-stone-400">
           <span>© {new Date().getFullYear()} ContaFlow</span>
           <span className="font-mono tabular-nums">{versionLabel(APP_VERSION)}</span>
         </footer>

@@ -211,7 +211,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </header>
 
         {/* Resumo dos Saldos e Movimentação */}
-        <section className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-black/[0.06] dark:bg-white/[0.08] border-b border-black/[0.06] dark:border-white/[0.08]">
+        <section className="grid grid-cols-4 gap-px bg-black/[0.06] dark:bg-white/[0.08] border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="bg-white dark:bg-stone-900 p-4">
             <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
             <div className="mt-1 flex items-baseline gap-1.5">

@@ -100,7 +100,7 @@ export default function EscritorioPage() {
       {loadError && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar: {loadError}</p>}
 
       <form
-        className={`${SURFACE} rounded-[22px] p-5 sm:p-7 max-w-3xl space-y-6 ${loaded ? '' : 'opacity-60 pointer-events-none'}`}
+        className={`${SURFACE} rounded-[22px] p-7 max-w-3xl space-y-6 ${loaded ? '' : 'opacity-60 pointer-events-none'}`}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -108,14 +108,13 @@ export default function EscritorioPage() {
       >
         <fieldset className="space-y-4">
           <legend className="text-[13px] font-semibold text-stone-800 dark:text-stone-200 mb-1">Escritório</legend>
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <Field label="Nome do escritório">
               <input value={officeName} onChange={(e) => setOfficeName(e.target.value)} className={INPUT} placeholder="ex.: Brito Contabilidade" />
             </Field>
             <Field label="CNPJ do escritório" hint="Opcional" error={cnpjOk === false ? 'CNPJ inválido.' : null}>
               <div className="relative">
                 <input
-                  inputMode="numeric"
                   value={officeCnpj}
                   onChange={(e) => setOfficeCnpj(maskCNPJ(e.target.value))}
                   placeholder="00.000.000/0000-00"
@@ -132,7 +131,7 @@ export default function EscritorioPage() {
           <Field label="Nome completo">
             <input value={accountantName} onChange={(e) => setAccountantName(e.target.value)} className={INPUT} />
           </Field>
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <Field
               label="Registro no CRC"
               hint="UF e número; categoria opcional (ex.: SP-123456/O-5)"
@@ -152,7 +151,6 @@ export default function EscritorioPage() {
             <Field label="CPF" hint="Opcional" error={cpfOk === false ? 'CPF inválido.' : null}>
               <div className="relative">
                 <input
-                  inputMode="numeric"
                   value={accountantCpf}
                   onChange={(e) => setAccountantCpf(maskCPF(e.target.value))}
                   placeholder="000.000.000-00"

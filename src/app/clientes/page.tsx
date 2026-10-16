@@ -312,7 +312,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
           <p className="text-[11px] text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Field label="E-mail" error={emailError}>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
           </Field>
@@ -325,13 +325,12 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
           <span className="block text-[13px] font-semibold text-stone-800 dark:text-stone-200 px-0.5">Representante legal</span>
           <p className="text-[12px] text-stone-400 px-0.5">Assina a DRE exportada (PDF e Excel) ao lado do contador.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <Field label="Nome do representante" hint="Opcional">
             <input value={repName} onChange={(e) => setRepName(e.target.value)} className={INPUT} />
           </Field>
           <Field label="CPF do representante" hint="Opcional" error={cpfError}>
             <input
-              inputMode="numeric"
               value={repCpf}
               onChange={(e) => setRepCpf(maskCPF(e.target.value))}
               placeholder="000.000.000-00"

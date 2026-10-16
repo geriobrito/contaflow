@@ -79,7 +79,7 @@ export function PeriodPicker({ period, className = '' }: { period: PeriodState; 
         />
       )}
       {mode === 'month' && (
-        <div className="w-full sm:w-auto overflow-x-auto">
+        <div className="w-auto overflow-x-auto">
           <SegmentedControl
             ariaLabel="Mês"
             value={String(month)}
