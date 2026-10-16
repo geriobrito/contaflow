@@ -32,6 +32,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
+import { APP_VERSION, versionDetail, versionLabel } from '@/lib/app-version';
 
 interface NavItem {
   href: string;
@@ -240,6 +241,18 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
           </span>
           {!collapsed && <span>{connected ? 'Firestore conectado' : 'Modo local'}</span>}
         </div>
+
+        {!collapsed && (
+          <div className="px-2.5 text-[10.5px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
+            {APP_VERSION.commitUrl ? (
+              <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
+                {versionLabel(APP_VERSION)}
+              </a>
+            ) : (
+              versionLabel(APP_VERSION)
+            )}
+          </div>
+        )}
 
         <div className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? 'flex-col' : ''}`}>
           <span className="w-7 h-7 shrink-0 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 flex items-center justify-center text-[11px] font-semibold">

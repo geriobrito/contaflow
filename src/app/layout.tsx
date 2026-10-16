@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ClientProvider } from '@/contexts/ClientContext';
 import { AppShell } from '@/components/layout/AppShell';
+import { SessionTimeout } from '@/components/layout/SessionTimeout';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -40,6 +41,7 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-[#F9F9F8] dark:bg-stone-950 text-stone-900 dark:text-stone-100">
         <AuthProvider>
+          <SessionTimeout />
           <ProtectedRoute>
             <ClientProvider>
               <AppShell>{children}</AppShell>

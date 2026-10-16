@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { secondFactorMessage } from '@/lib/auth/two-factor';
-import { AlertCircle, ArrowRight, CheckCircle2, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Clock, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
 
 function friendlyError(code?: string): string {
   switch (code) {
@@ -41,7 +41,7 @@ const FLOAT_LABEL =
   'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-[#0071E3]';
 
 export default function LoginPage() {
-  const { signIn, isMockAuth, authError, secondFactorPending, confirmSecondFactor, cancelSecondFactor, resetPassword } = useAuth();
+  const { signIn, isMockAuth, authError, sessionNotice, secondFactorPending, confirmSecondFactor, cancelSecondFactor, resetPassword } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -146,6 +146,13 @@ export default function LoginPage() {
               <div role="alert" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200/60 text-[13px] text-rose-700 dark:text-rose-300 animate-fade-in">
                 <AlertCircle className="w-4 h-4 mt-px shrink-0" />
                 <span>{errorMessage ?? authError}</span>
+              </div>
+            )}
+
+            {sessionNotice && !notice && !(errorMessage ?? authError) && (
+              <div role="status" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/60 text-[13px] text-amber-800 dark:text-amber-300 animate-fade-in">
+                <Clock className="w-4 h-4 mt-px shrink-0" />
+                <span>{sessionNotice}</span>
               </div>
             )}
 

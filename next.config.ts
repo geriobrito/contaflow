@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
 
 const isDev = process.env.NODE_ENV !== "production";
+
+/** Commit do build: na Vercel vem da variável do sistema; fora dela, do git local. */
+function buildCommit(): string {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA;
+  try {
+    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    return "";
+  }
+}
+
+const { VERCEL_ENV, VERCEL_GIT_REPO_OWNER, VERCEL_GIT_REPO_SLUG } = process.env;
+const commit = buildCommit();
 
 /**
  * Content-Security-Policy sem nonce (as páginas são estáticas): scripts e estilos só da própria
@@ -24,6 +38,14 @@ const csp = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Versão publicada, exibida no rodapé da barra lateral (src/lib/app-version.ts).
+  env: {
+    NEXT_PUBLIC_APP_COMMIT: commit,
+    NEXT_PUBLIC_APP_BUILT_AT: new Date().toISOString(),
+    NEXT_PUBLIC_APP_ENV: VERCEL_ENV ?? (isDev ? "development" : "local"),
+    NEXT_PUBLIC_APP_COMMIT_URL:
+      commit && VERCEL_GIT_REPO_OWNER && VERCEL_GIT_REPO_SLUG ? `https://github.com/${VERCEL_GIT_REPO_OWNER}/${VERCEL_GIT_REPO_SLUG}/commit/${commit}` : "",
+  },
   async headers() {
     return [
       {
