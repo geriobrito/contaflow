@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import type { DREStatement as DREData } from '@/lib/dre/build';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
 import { Amount, GrossRevenueContext, Pct, Row, Section } from '@/components/dre/DREStatementParts';
+import { StatementSkeleton } from '@/components/ui/Skeleton';
 
 interface DREStatementProps {
   dre: DREData;
@@ -31,11 +32,7 @@ export function DREStatement({ dre, failed, isLoading, hasData, profit }: DRESta
         {failed ? (
           <EmptyState title="DRE indisponível" description="Os dados não puderam ser carregados. Corrija o erro indicado acima e recarregue a página." />
         ) : isLoading ? (
-          <div className="p-5 space-y-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
-            ))}
-          </div>
+          <StatementSkeleton rows={12} label="Carregando DRE…" />
         ) : !hasData ? (
           <EmptyState title="Sem lançamentos conciliados" description="Não há movimentação conciliada neste período." />
         ) : (

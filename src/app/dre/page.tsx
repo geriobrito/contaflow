@@ -14,6 +14,7 @@ import { DREResultCard } from '@/components/dre/DREResultCard';
 import { DREStatement } from '@/components/dre/DREStatement';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { StatementSkeleton } from '@/components/ui/Skeleton';
 
 /**
  * Demonstração do resultado. Os dados vêm de `useDREData`, e o resultado em destaque, o
@@ -196,7 +197,7 @@ export default function DREPage() {
           {failed ? (
             <p className="px-5 py-10 text-center text-[13px] text-stone-500">DRE indisponível: os dados não puderam ser carregados.</p>
           ) : isLoading || (view === 'yoy' && !prevDre) ? (
-            <p className="px-5 py-10 text-center text-[13px] text-stone-400">Carregando…</p>
+            <StatementSkeleton rows={12} label="Carregando DRE…" />
           ) : view === 'monthly' && months.length < 2 ? (
             <p className="px-5 py-10 text-center text-[13px] text-stone-500">Selecione Trimestre ou Ano para comparar os meses.</p>
           ) : view === 'monthly' ? (

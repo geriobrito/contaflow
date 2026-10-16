@@ -13,6 +13,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
@@ -171,7 +172,7 @@ export default function PendenciasPage() {
 
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
         {loadedFor !== clientId ? (
-          <p className="px-5 py-10 text-center text-[13px] text-stone-400">Carregando…</p>
+          <TableSkeleton rows={5} label="Carregando pendências…" />
         ) : queries.length === 0 ? (
           <EmptyState
             title="Nenhuma pendência em aberto"

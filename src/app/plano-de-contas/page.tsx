@@ -10,6 +10,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { resolveDREGroup } from '@/lib/dre/build';
 import { missingTemplateAccounts } from '@/lib/chart/itg1000';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
+import { StatementSkeleton } from '@/components/ui/Skeleton';
 
 /* =========================================================================
    Rótulos
@@ -548,11 +549,7 @@ export default function PlanoDeContasPage() {
             Não foi possível carregar o plano de contas ({loadFailure}). Recarregue a página para tentar de novo.
           </p>
         ) : isLoading ? (
-          <div className="p-5 space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" style={{ marginLeft: (i % 4) * 22 }} />
-            ))}
-          </div>
+          <StatementSkeleton rows={10} label="Carregando plano de contas…" />
         ) : isEmpty ? (
           <EmptyState
             title="Plano de contas vazio"

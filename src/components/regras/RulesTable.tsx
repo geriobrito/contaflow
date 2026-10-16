@@ -7,6 +7,7 @@ import type { RuleListRow } from '@/hooks/regras/useRulesData';
 import { RULE_SAMPLE_MONTHS } from '@/lib/services/reconciliation-service';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
 import { RuleRow } from '@/components/regras/RuleRow';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 interface RulesTableProps {
   /** Motivo de a carga ter falhado, ou null. */
@@ -36,11 +37,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
           Não foi possível carregar as regras ({loadFailure}). Recarregue a página para tentar de novo.
         </p>
       ) : isLoading ? (
-        <div className="p-5 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-4 rounded bg-black/[0.05] animate-pulse" />
-          ))}
-        </div>
+        <TableSkeleton rows={5} label="Carregando regras…" />
       ) : rows.length === 0 ? (
         <EmptyState
           title={ruleCount === 0 ? 'Nenhuma regra ainda' : 'Nenhuma regra encontrada'}

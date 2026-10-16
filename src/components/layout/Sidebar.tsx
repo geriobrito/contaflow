@@ -3,79 +3,68 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  ArrowLeftRight,
-  BookMarked,
-  BookOpen,
-  BookText,
-  Building2,
-  Check,
-  ChevronsUpDown,
-  LineChart,
-  LogOut,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Sparkles,
-  X,
-  type LucideIcon,
-  History,
-  Landmark,
-  MessageCircleQuestion,
-  Scale,
-  Wallet,
-  ClipboardList,
-  LayoutDashboard,
-  FilePenLine,
-  NotebookPen,
-} from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Menu, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sparkles, Sun, X, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { APP_VERSION, versionDetail, versionShort } from '@/lib/app-version';
 import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
+import { useTheme } from '@/components/ui/useTheme';
+import { NAV_SECTIONS, activeNavHref } from '@/components/layout/nav';
+import { openCommandPalette, SHORTCUT_LABEL } from '@/components/layout/CommandPalette';
+import { THEME_OPTIONS, nextPreference, type ThemePreference } from '@/lib/theme';
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
+const THEME_ICON: Record<ThemePreference, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
+
+/** Seletor de tema (Claro, Escuro, Sistema); no menu recolhido, um botão que alterna entre os três. */
+function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
+  const [pref, setPref] = useTheme();
+  const { containerRef, indicatorRef } = useSlidingIndicator<HTMLDivElement>(pref);
+  const label = (p: ThemePreference) => `Tema: ${THEME_OPTIONS.find((o) => o.value === p)!.label}`;
+  if (collapsed) {
+    const Icon = THEME_ICON[pref];
+    return (
+      <button
+        type="button"
+        onClick={() => setPref(nextPreference(pref))}
+        title={`${label(pref)} (clique para trocar)`}
+        aria-label={`${label(pref)}. Trocar tema`}
+        className="mx-auto flex w-8 h-8 items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+      >
+        <Icon className="w-4 h-4" strokeWidth={1.75} />
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center justify-between gap-2 px-2.5">
+      <span className="text-[11px] text-stone-500">Tema</span>
+      <div ref={containerRef} role="radiogroup" aria-label="Tema" className="relative inline-flex p-0.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.06]">
+        <span ref={indicatorRef} aria-hidden className={`${SLIDING_INDICATOR} rounded-md bg-white dark:bg-stone-700 shadow-[0_1px_2px_rgba(0,0,0,0.08)]`} />
+        {THEME_OPTIONS.map((o) => {
+          const Icon = THEME_ICON[o.value];
+          const active = o.value === pref;
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              aria-label={o.label}
+              title={o.label}
+              data-active={active}
+              onClick={() => setPref(o.value)}
+              className={`relative z-10 w-7 h-6 flex items-center justify-center rounded-md transition-colors duration-150 ${
+                active ? 'text-stone-900 dark:text-white' : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" strokeWidth={1.9} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
-
-/** Menu em três seções: a rotina do mês, as demonstrações e os cadastros. */
-const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }[] = [
-  {
-    title: 'Rotina',
-    items: [
-      { href: '/painel', label: 'Painel', icon: LayoutDashboard },
-      { href: '/', label: 'Conciliação', icon: ArrowLeftRight },
-      { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion },
-      { href: '/contas', label: 'Contas e Extratos', icon: Wallet },
-      { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine },
-    ],
-  },
-  {
-    title: 'Demonstrações',
-    items: [
-      { href: '/dre', label: 'DRE', icon: LineChart },
-      { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
-      { href: '/diario', label: 'Livro Diário', icon: BookText },
-      { href: '/razao', label: 'Livro Razão', icon: BookMarked },
-      { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },
-      { href: '/abertura', label: 'Balanço de Abertura', icon: ClipboardList },
-    ],
-  },
-  {
-    title: 'Cadastros',
-    items: [
-      { href: '/clientes', label: 'Clientes', icon: Building2 },
-      { href: '/plano-de-contas', label: 'Plano de Contas', icon: BookOpen },
-      { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
-      { href: '/escritorio', label: 'Escritório', icon: Landmark },
-      { href: '/auditoria', label: 'Auditoria', icon: History },
-    ],
-  },
-];
-const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
 
 const COLLAPSE_KEY = 'contaflow_sidebar_collapsed';
 
@@ -197,7 +186,7 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
   const { user, signOut } = useAuth();
   const connected = isFirebaseConfigured();
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Usuário';
-  const activeHref = NAV_ITEMS.find(({ href }) => (href === '/' ? pathname === '/' : pathname.startsWith(href)))?.href ?? null;
+  const activeHref = activeNavHref(pathname);
   const { containerRef: navRef, indicatorRef: navPillRef } = useSlidingIndicator<HTMLElement>(activeHref);
 
   return (
@@ -214,7 +203,22 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
             </span>
           </Link>
         )}
-        {headerAction}
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={() => {
+              onNavigate?.();
+              openCommandPalette();
+            }}
+            title={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
+            aria-label={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
+            aria-keyshortcuts="Control+K Meta+K"
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+          >
+            <Search className="w-4 h-4" strokeWidth={1.75} />
+          </button>
+          {headerAction}
+        </div>
       </div>
 
       <div className="px-2">
@@ -249,7 +253,7 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
                   title={collapsed ? label : undefined}
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
-                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-1.5 text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
+                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[5px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
                     collapsed ? 'justify-center' : ''
                   } ${
                     active
@@ -266,8 +270,11 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
         ))}
       </nav>
 
-      {/* Rodapé: conexão e versão numa linha só */}
-      <div className="p-2 space-y-0.5 border-t border-black/[0.05] dark:border-white/[0.06]">
+      {/* Rodapé: tema, conexão e versão, usuário */}
+      <div className="p-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.06]">
+        <div className="pt-1">
+          <ThemeSwitcher collapsed={collapsed} />
+        </div>
         <div className={`flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-stone-500 ${collapsed ? 'justify-center' : ''}`}>
           <span className="relative flex w-2 h-2 shrink-0" title={connected ? 'Conectado ao Firestore' : 'Modo local (sem Firebase)'}>
             <span className={`absolute inset-0 rounded-full ${connected ? 'bg-emerald-500 animate-ping opacity-40' : ''}`} />
@@ -377,7 +384,15 @@ export function Sidebar() {
         >
           <Menu className="w-5 h-5" strokeWidth={1.75} />
         </button>
-        <span className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">ContaFlow</span>
+        <span className="flex-1 text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">ContaFlow</span>
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          aria-label="Buscar telas e empresas"
+          className="p-2 -mr-2 rounded-xl text-stone-700 dark:text-stone-300 hover:bg-black/[0.04] active:scale-[0.96] transition-all duration-150"
+        >
+          <Search className="w-5 h-5" strokeWidth={1.75} />
+        </button>
       </header>
 
       {/* Desktop */}

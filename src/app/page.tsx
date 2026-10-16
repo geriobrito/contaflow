@@ -35,6 +35,7 @@ import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
 import { matchTransaction } from '@/lib/utils/search';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /** Linhas por página na tabela de lançamentos. */
 const PAGE_SIZE = 50;
@@ -386,15 +387,7 @@ export default function ConciliacaoPage() {
         {view === 'payee' && !isLoading ? (
           <PayeeGroupList groups={payeeGroups} onOpen={flow.openGroup} />
         ) : isLoading ? (
-          <div className="divide-y divide-black/[0.04]">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-14 px-5 flex items-center gap-4">
-                <div className="h-3 w-16 rounded bg-black/[0.05] animate-pulse" />
-                <div className="h-3 flex-1 rounded bg-black/[0.05] animate-pulse" />
-                <div className="h-3 w-20 rounded bg-black/[0.05] animate-pulse" />
-              </div>
-            ))}
-          </div>
+          <TableSkeleton rows={6} label="Carregando lançamentos…" />
         ) : visible.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <p className="text-[15px] font-medium tracking-tight text-stone-800 dark:text-stone-200">

@@ -37,6 +37,9 @@ export function useTableKeyboard<T>({
     if (disabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Combinações com Ctrl/⌘/Alt são de outros atalhos (ex.: Ctrl+K abre a busca rápida, não sobe a linha).
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
       // Ignora se estiver digitando em campo de texto
       if (isInputElement(document.activeElement)) {
         if (e.key === 'Escape') {

@@ -212,6 +212,16 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async countTransactions(clientId, until) {
       return read<BankTransaction>(LOCAL_KEYS.transactions).filter((t) => t.clientId === clientId && t.date <= until).length;
     },
+    async countTransactionsByStatus(clientId, status) {
+      return read<BankTransaction>(LOCAL_KEYS.transactions).filter((t) => t.clientId === clientId && t.status === status).length;
+    },
+    async oldestTransactionDate(clientId, status) {
+      const dates = read<BankTransaction>(LOCAL_KEYS.transactions)
+        .filter((t) => t.clientId === clientId && t.status === status)
+        .map((t) => t.date)
+        .sort();
+      return dates[0] ?? null;
+    },
     async isAccountUsedInTransactions(clientId, accountId) {
       return read<BankTransaction>(LOCAL_KEYS.transactions).some(
         (t) => t.clientId === clientId && (t.accountId === accountId || Boolean(t.isSplit && t.splits?.some((s) => s.accountId === accountId)))

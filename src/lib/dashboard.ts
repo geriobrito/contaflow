@@ -98,8 +98,44 @@ export interface Dashboard {
 
 const SEVERITY_ORDER: Record<Severity, number> = { high: 0, medium: 1, low: 2 };
 
-const lastDayOfPrevMonth = (today: string): string => addDays(`${today.slice(0, 7)}-01`, -1);
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+export const lastDayOfPrevMonth = (today: string): string => addDays(`${today.slice(0, 7)}-01`, -1);
+export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Situação dos extratos de cada conta: último período importado, lacunas, divergências e atraso. */
+export function accountStatuses(banks: readonly BankAccount[], batches: readonly ImportBatch[], today: string): AccountStatus[] {
+  const keys = new Set([...banks.map((b) => b.accountKey), ...batches.map((b) => b.accountKey).filter((k): k is string => Boolean(k))]);
+  const prevMonthEnd = lastDayOfPrevMonth(today);
+  return [...keys].sort().map((accountKey) => {
+    const own = batches.filter((b) => b.accountKey === accountKey);
+    const lastEnd = own.map((b) => b.endDate).filter((d): d is string => Boolean(d)).sort().pop();
+    const lastWithBalance = [...own].filter((b) => b.ledgerBalance !== undefined).sort((a, b) => (b.ledgerDate ?? '').localeCompare(a.ledgerDate ?? ''))[0];
+    return {
+      accountKey,
+      nickname: banks.find((b) => b.accountKey === accountKey)?.nickname ?? accountKey,
+      lastEnd,
+      lastLedgerBalance: lastWithBalance?.ledgerBalance,
+      gaps: findCoverageGaps(own),
+      mismatches: own.filter((b) => b.balanceCheck?.status === 'MISMATCH'),
+      missingSince: lastEnd && lastEnd < prevMonthEnd ? addDays(lastEnd, 1) : undefined,
+    };
+  });
+}
+
+/**
+ * Perguntas ao cliente em aberto (`asked`) por situação: respondidas (a classificar), aguardando
+ * num link válido, ou ainda sem link.
+ */
+export function summarizeQueries(asked: readonly BankTransaction[], requests: readonly ClientRequest[], nowMs: number): Dashboard['queries'] {
+  const inOpenLink = new Set(requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs).flatMap((r) => r.items.map((i) => i.transactionId)));
+  const answeredIds = new Set(requests.flatMap((r) => r.items.filter((_, i) => answerAt(r, i)).map((i) => i.transactionId)));
+  const queries = { notSent: 0, waiting: 0, answered: 0 };
+  for (const t of asked) {
+    if (answeredIds.has(t.id)) queries.answered++;
+    else if (inOpenLink.has(t.id)) queries.waiting++;
+    else queries.notSent++;
+  }
+  return queries;
+}
 
 export function buildDashboard(input: DashboardInput): Dashboard {
   const { client, accounts, transactions, carriedMonths = [], batches, banks, locks, requests, org, openings, today, nowMs } = input;
@@ -144,33 +180,10 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   };
 
   /* ── Extratos por conta ────────────────────────────────────────────── */
-  const keys = new Set([...banks.map((b) => b.accountKey), ...batches.map((b) => b.accountKey).filter((k): k is string => Boolean(k))]);
-  const prevMonthEnd = lastDayOfPrevMonth(today);
-  const accountStatus: AccountStatus[] = [...keys].sort().map((accountKey) => {
-    const own = batches.filter((b) => b.accountKey === accountKey);
-    const lastEnd = own.map((b) => b.endDate).filter((d): d is string => Boolean(d)).sort().pop();
-    const lastWithBalance = [...own].filter((b) => b.ledgerBalance !== undefined).sort((a, b) => (b.ledgerDate ?? '').localeCompare(a.ledgerDate ?? ''))[0];
-    return {
-      accountKey,
-      nickname: banks.find((b) => b.accountKey === accountKey)?.nickname ?? accountKey,
-      lastEnd,
-      lastLedgerBalance: lastWithBalance?.ledgerBalance,
-      gaps: findCoverageGaps(own),
-      mismatches: own.filter((b) => b.balanceCheck?.status === 'MISMATCH'),
-      missingSince: lastEnd && lastEnd < prevMonthEnd ? addDays(lastEnd, 1) : undefined,
-    };
-  });
+  const accountStatus = accountStatuses(banks, batches, today);
 
   /* ── Perguntas ao cliente ──────────────────────────────────────────── */
-  const asked = input.openQueries ?? transactions.filter((t) => t.clientQuery?.status === 'OPEN');
-  const inOpenLink = new Set(requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs).flatMap((r) => r.items.map((i) => i.transactionId)));
-  const answeredIds = new Set(requests.flatMap((r) => r.items.filter((_, i) => answerAt(r, i)).map((i) => i.transactionId)));
-  const queries = { notSent: 0, waiting: 0, answered: 0 };
-  for (const t of asked) {
-    if (answeredIds.has(t.id)) queries.answered++;
-    else if (inOpenLink.has(t.id)) queries.waiting++;
-    else queries.notSent++;
-  }
+  const queries = summarizeQueries(input.openQueries ?? transactions.filter((t) => t.clientQuery?.status === 'OPEN'), requests, nowMs);
 
   /* ── Alertas ───────────────────────────────────────────────────────── */
   if (accounts.length === 0) {

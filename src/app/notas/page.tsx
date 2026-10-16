@@ -9,6 +9,7 @@ import { placeholdersIn } from '@/lib/notes';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { TextSkeleton } from '@/components/ui/Skeleton';
 
 const thisYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => String(thisYear - i));
@@ -83,7 +84,9 @@ export default function NotasPage() {
           <EmptyState title="Nenhuma empresa selecionada" description="Escolha a empresa em Clientes para preparar as notas." />
         </section>
       ) : !list ? (
-        <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
+        <section className={`${SURFACE} rounded-[22px] p-6`}>
+          <TextSkeleton paragraphs={3} label="Carregando notas explicativas…" />
+        </section>
       ) : (
         <>
           <div className="flex flex-wrap items-end gap-4">

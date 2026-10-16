@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, CheckCircle2, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
 import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
@@ -11,9 +12,29 @@ import { buildDashboard, type Alert, type MonthState, type MonthStatus } from '@
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
-import { EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { PortfolioView } from '@/components/painel/PortfolioView';
+import { usePortfolio } from '@/hooks/painel/usePortfolio';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
+
+/** Aba do Painel: a carteira inteira (ponto de partida do dia) ou a empresa ativa em detalhe. */
+type PanelView = 'carteira' | 'empresa';
+const VIEW_KEY = 'contaflow_painel_view';
+const VIEWS: readonly { value: PanelView; label: string }[] = [
+  { value: 'carteira', label: 'Carteira' },
+  { value: 'empresa', label: 'Empresa atual' },
+];
+
+function readView(): PanelView | null {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === 'carteira' || v === 'empresa' ? v : null;
+  } catch {
+    return null;
+  }
+}
 const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 interface Loaded {
@@ -93,13 +114,29 @@ function MonthCard({ m }: { m: MonthStatus }) {
 }
 
 export default function PainelPage() {
-  const { currentClient, isLoading: clientsLoading } = useClient();
+  const router = useRouter();
+  const { clients, currentClient, selectClient, isLoading: clientsLoading } = useClient();
   const clientId = currentClient?.id;
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Com uma empresa só, a carteira é ela mesma: vai direto ao detalhe.
+  const [chosenView, setChosenView] = useState<PanelView | null>(readView);
+  const multiple = clients.filter((c) => !c.deletingAt).length > 1;
+  const view: PanelView = multiple ? (chosenView ?? 'carteira') : 'empresa';
+  const chooseView = (v: PanelView) => {
+    setChosenView(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      /* armazenamento indisponível */
+    }
+  };
+  const portfolio = usePortfolio(clients, view === 'carteira');
+
   useEffect(() => {
-    if (!clientId) return;
+    // O detalhe (razão do período aberto) só é lido na aba da empresa.
+    if (!clientId || view !== 'empresa') return;
     let active = true;
     const repo = getRepository();
     Promise.all([
@@ -137,7 +174,7 @@ export default function PainelPage() {
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, view]);
 
   const ready = data?.id === clientId ? data : null;
   const dash = useMemo(
@@ -162,16 +199,49 @@ export default function PainelPage() {
     );
   }
 
+  const viewSwitch = multiple ? <SegmentedControl ariaLabel="Visão do painel" value={view} onChange={chooseView} options={VIEWS} /> : undefined;
+
+  if (view === 'carteira') {
+    return (
+      <main className={PAGE}>
+        <PageHeader title="Painel" description="Ponto de partida do dia: o que falta fazer em cada empresa da carteira." actions={viewSwitch} />
+        <PortfolioView
+          clients={clients}
+          entries={portfolio.entries}
+          currentClientId={clientId ?? null}
+          onOpenClient={(c) => {
+            selectClient(c);
+            chooseView('empresa');
+            window.scrollTo({ top: 0 });
+          }}
+          onTask={(c, href) => {
+            selectClient(c);
+            router.push(href);
+          }}
+          onRefresh={portfolio.refresh}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className={PAGE}>
       <PageHeader
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Painel"
         description="O que precisa de atenção nesta empresa: classificação, meses, extratos, perguntas ao cliente e cadastros."
+        actions={viewSwitch}
       />
       {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel: {error}</p>}
       {!dash ? (
-        !error && <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
+        !error && (
+          <>
+            <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando painel…" />
+            <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+              <TableSkeleton rows={4} />
+            </section>
+          </>
+        )
       ) : (
         <>
           <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">

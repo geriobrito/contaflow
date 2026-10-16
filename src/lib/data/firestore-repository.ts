@@ -305,6 +305,16 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       );
       return snap.data().count;
     },
+    async countTransactionsByStatus(clientId, status) {
+      // Mesma consulta de `listPendingTransactions` (só igualdades): uma leitura a cada mil.
+      const snap = await getCountFromServer(scoped(COL.transactions, where('clientId', '==', clientId), where('status', '==', status)));
+      return snap.data().count;
+    },
+    async oldestTransactionDate(clientId, status) {
+      // Índice (orgId, clientId, status, date asc) em firestore.indexes.json.
+      const snap = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('status', '==', status), orderBy('date', 'asc'), limit(1)));
+      return snap.empty ? null : ((snap.docs[0].data() as BankTransaction).date ?? null);
+    },
     async isAccountUsedInTransactions(clientId, accountId) {
       const direct = await getDocs(scoped(COL.transactions, where('clientId', '==', clientId), where('accountId', '==', accountId), limit(1)));
       if (!direct.empty) return true;

@@ -24,6 +24,7 @@ import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
+import { StatementSkeleton } from '@/components/ui/Skeleton';
 
 type View = 'bs' | 'tb' | 'dlpa';
 
@@ -458,7 +459,11 @@ export default function BalancoPage() {
 
       {loading ? (
         // Falha de carga: fica só o erro acima, sem relatório parcial nem "carregando" eterno.
-        error ? null : <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
+        error ? null : (
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <StatementSkeleton rows={14} label="Carregando balanço…" />
+          </section>
+        )
       ) : !hasData ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem movimento até esta data" description="Importe extratos e concilie lançamentos para gerar o balanço e o balancete." />

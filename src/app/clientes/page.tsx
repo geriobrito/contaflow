@@ -9,6 +9,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { CardsSkeleton } from '@/components/ui/Skeleton';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
@@ -508,11 +509,7 @@ export default function ClientesPage() {
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por razão social, nome fantasia ou CNPJ" />
 
       {isLoading ? (
-        <div className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-52 rounded-[22px] bg-black/[0.04] animate-pulse" />
-          ))}
-        </div>
+        <CardsSkeleton count={3} className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6" label="Carregando clientes…" />
       ) : visible.length === 0 ? (
         <div className="rounded-[22px] border border-dashed border-black/[0.10]">
           <EmptyState

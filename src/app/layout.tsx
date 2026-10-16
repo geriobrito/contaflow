@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ClientProvider } from '@/contexts/ClientContext';
 import { AppShell } from '@/components/layout/AppShell';
 import { SessionTimeout } from '@/components/layout/SessionTimeout';
+import { THEME_SCRIPT } from '@/lib/theme';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -38,7 +39,12 @@ export default function RootLayout({
     <html
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
+      // O script do tema grava `data-theme` antes da hidratação; a diferença no <html> é esperada.
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full bg-[#F9F9F8] dark:bg-stone-950 text-stone-900 dark:text-stone-100">
         <AuthProvider>
           <SessionTimeout />

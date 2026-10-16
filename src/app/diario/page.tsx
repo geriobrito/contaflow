@@ -14,6 +14,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { openingStatus } from '@/lib/opening';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /** Lançamentos por página na tela (o PDF traz o período inteiro). */
 const PAGE_SIZE = 50;
@@ -193,7 +194,11 @@ export default function DiarioPage() {
 
       {loading ? (
         // Falha de carga: fica só o erro acima, sem Diário parcial nem "carregando" eterno.
-        error ? null : <p className="py-16 text-center text-[13px] text-stone-400">Carregando lançamentos…</p>
+        error ? null : (
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <TableSkeleton rows={8} label="Carregando lançamentos…" />
+          </section>
+        )
       ) : !daybook || daybook.entries.length === 0 ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem lançamentos no período" description="Importe extratos ou registre lançamentos manuais para compor o Diário." />

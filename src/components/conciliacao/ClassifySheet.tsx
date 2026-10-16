@@ -13,6 +13,7 @@ import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEdit
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
 import { splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /* =========================================================================
    Sheet de classificação: conta única, rateio e histórico (auditoria)
@@ -225,7 +226,7 @@ export function ClassifySheet({
             {auditError ? (
               <p role="alert" className="text-[13px] text-rose-600">{auditError}</p>
             ) : audit === null ? (
-              <p className="py-6 text-center text-[13px] text-stone-400">Carregando histórico…</p>
+              <TableSkeleton rows={3} dense label="Carregando histórico…" />
             ) : (
               <AuditTimeline entries={audit} emptyText="Nenhuma alteração registrada para este lançamento." />
             )}

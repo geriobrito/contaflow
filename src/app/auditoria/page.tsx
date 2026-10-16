@@ -7,6 +7,7 @@ import { useClient } from '@/contexts/ClientContext';
 import { AUDIT_LABEL } from '@/lib/audit';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
 import { PAGE, PageHeader, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 type Filter = 'ALL' | 'MANUAL' | 'AUTO' | 'PERIOD';
 
@@ -97,7 +98,7 @@ export default function AuditoriaPage() {
       {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar a auditoria: {error}</p>}
       <section className={`${SURFACE} rounded-[22px] p-5 sm:p-6`}>
         {loading ? (
-          <p className="py-8 text-center text-[13px] text-stone-400">Carregando…</p>
+          <TableSkeleton rows={6} dense label="Carregando auditoria…" />
         ) : (
           <AuditTimeline entries={visible} showTransaction emptyText="Nenhum registro encontrado." />
         )}

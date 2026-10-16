@@ -18,6 +18,7 @@ const SHORTCUTS = [
   { keys: ['/'], description: 'Focar no campo de busca' },
   { keys: ['Esc'], description: 'Limpar busca / seleção em lote ou fechar' },
   { keys: ['?'], description: 'Abrir este painel de atalhos' },
+  { keys: ['Ctrl', 'K'], description: 'Busca rápida: telas, empresas e tema (em qualquer tela)' },
 ];
 
 export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {

@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/*
+ * Tema escolhido pelo usuário (Claro, Escuro ou Sistema; ver src/lib/theme.ts): o script no <head>
+ * grava `data-theme` no <html> antes da primeira pintura, e `dark:` passa a depender dele.
+ */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
@@ -74,24 +80,51 @@
   --danger: #ff3b30;
   --neutral-subtle: #86868b;
   --neutral-surface: #f5f5f7;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #000000;
-    --foreground: #f5f5f7;
-    --card-bg: rgba(28, 28, 30, 0.8);
-    --card-border: rgba(255, 255, 255, 0.1);
-    --glass-bg: rgba(28, 28, 30, 0.75);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --accent: #E08A6B;
-    --accent-hover: #E89A7E;
-    --color-accent-ink: #E08A6B;
-    --success: #30d158;
-    --warning: #ffd60a;
-    --danger: #ff453a;
-    --neutral-subtle: #a1a1a6;
-    --neutral-surface: #161617;
+:root[data-theme="dark"] {
+  --background: #000000;
+  --foreground: #f5f5f7;
+  --card-bg: rgba(28, 28, 30, 0.8);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(28, 28, 30, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --accent: #E08A6B;
+  --accent-hover: #E89A7E;
+  --color-accent-ink: #E08A6B;
+  --success: #30d158;
+  --warning: #ffd60a;
+  --danger: #ff453a;
+  --neutral-subtle: #a1a1a6;
+  --neutral-surface: #161617;
+  /* Barras de rolagem, datas e outros controles nativos no tom escuro. */
+  color-scheme: dark;
+}
+
+/*
+ * Esqueleto de carregamento: um brilho que atravessa a forma cinza (só background-position, barato).
+ * Com "reduzir movimento", fica parado.
+ */
+.skeleton {
+  background-color: rgba(0, 0, 0, 0.055);
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+:root[data-theme="dark"] .skeleton {
+  background-color: rgba(255, 255, 255, 0.07);
+  background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.06) 50%, transparent 100%);
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none !important;
+    background-image: none;
   }
 }
 

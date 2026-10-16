@@ -24,6 +24,7 @@ import { isISODate } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 import { round2 } from '@/lib/money';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 const toInput = (n: number | undefined) => (n ? n.toFixed(2).replace('.', ',') : '');
@@ -242,7 +243,9 @@ export default function AberturaPage() {
       )}
 
       {!ready ? (
-        <p className="py-16 text-center text-[13px] text-stone-400">Carregando…</p>
+        <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+          <TableSkeleton rows={8} label="Carregando saldos de abertura…" />
+        </section>
       ) : rows.length === 0 ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Plano de contas vazio" description="Aplique o modelo de plano de contas (CFC) em Plano de Contas para informar os saldos de abertura." />

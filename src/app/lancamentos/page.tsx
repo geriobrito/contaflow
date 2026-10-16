@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { AlertCircle, Calculator, Filter, Loader2, Lock, Plus, Repeat, Search, Unlock } from 'lucide-react';
+import { AlertCircle, Calculator, Filter, Lock, Plus, Repeat, Search, Unlock } from 'lucide-react';
 import type { JournalEntry } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +18,7 @@ import { JournalEntriesTable } from '@/components/lancamentos/JournalEntriesTabl
 import { JournalEntryModal } from '@/components/lancamentos/JournalEntryModal';
 import { JournalSummaryCards } from '@/components/lancamentos/JournalSummaryCards';
 import { RepeatEntriesSheet } from '@/components/lancamentos/RepeatEntriesSheet';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /**
  * Lançamentos manuais de fechamento. A tela só compõe: os dados e as gravações vêm de
@@ -247,10 +248,9 @@ export default function LancamentosPage() {
 
       {/* Lista de Lançamentos */}
       {loading ? (
-        <div className={`${SURFACE} p-12 rounded-2xl flex flex-col items-center justify-center gap-3 text-stone-400`}>
-          <Loader2 className="w-6 h-6 animate-spin text-accent-ink" />
-          <span className="text-[14px]">Carregando lançamentos contábeis…</span>
-        </div>
+        <section className={`${SURFACE} rounded-2xl overflow-hidden`}>
+          <TableSkeleton rows={6} label="Carregando lançamentos contábeis…" />
+        </section>
       ) : filteredEntries.length === 0 ? (
         <div className={`${SURFACE} p-10 rounded-2xl text-center space-y-4`}>
           <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-400 mx-auto flex items-center justify-center">

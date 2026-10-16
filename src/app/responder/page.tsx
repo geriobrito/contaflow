@@ -6,6 +6,7 @@ import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { answerAt, MAX_ANSWER_LENGTH, tokenFromLocation } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { TextSkeleton } from '@/components/ui/Skeleton';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
@@ -89,7 +90,11 @@ export default function ResponderPage() {
           <span className="text-[13px] font-medium">{request?.officeName || 'ContaFlow'}</span>
         </header>
 
-        {state === 'loading' && <p className="text-center text-[14px] text-stone-400 py-20">Carregando…</p>}
+        {state === 'loading' && (
+          <div className="rounded-3xl bg-white dark:bg-stone-900 p-8">
+            <TextSkeleton paragraphs={2} label="Carregando…" />
+          </div>
+        )}
         {state === 'invalid' && (
           <div className="rounded-3xl bg-white dark:bg-stone-900 p-8 text-center">
             <h1 className="text-[20px] font-semibold tracking-tight">Link inválido</h1>

@@ -7,6 +7,7 @@ import type { ContasData } from '@/hooks/contas/useContasData';
 import { bankBalanceAt, lastReportedStatement } from '@/lib/bank-accounts';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, SURFACE } from '@/components/ui/primitives';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 interface BankAccountsTableProps {
   /** Dados da empresa, ou null enquanto carregam. */
@@ -32,7 +33,7 @@ export function BankAccountsTable({ current, unregistered, carriedByBank, unlink
         <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Contas bancárias</h2>
       </div>
       {!current ? (
-        <p className="px-5 py-10 text-center text-[13px] text-stone-400">Carregando…</p>
+        <TableSkeleton rows={3} label="Carregando contas bancárias…" />
       ) : current.banks.length === 0 && unregistered.length === 0 ? (
         <EmptyState title="Nenhuma conta bancária" description="As contas são cadastradas automaticamente ao importar um extrato OFX com banco e número de conta." />
       ) : (

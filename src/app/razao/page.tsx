@@ -13,6 +13,7 @@ import { AccountSelect } from '@/components/razao/AccountSelect';
 import { LedgerEntriesTable } from '@/components/razao/LedgerEntriesTable';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { LedgerSummary } from '@/components/razao/LedgerSummary';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /**
  * Livro Razão: ficha de uma conta no período. Os dados vêm de `useLedgerData` (o mesmo do
@@ -120,7 +121,11 @@ export default function RazaoPage() {
       {/* Conteúdo Principal do Livro Razão */}
       {loading ? (
         // Falha de carga: fica só o erro acima, sem razão parcial nem "carregando" eterno.
-        error ? null : <p className="py-16 text-center text-[13px] text-stone-400">Carregando movimentação contábil…</p>
+        error ? null : (
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <TableSkeleton rows={10} dense label="Carregando movimentação contábil…" />
+          </section>
+        )
       ) : !ledger ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Nenhuma conta selecionada" description="Escolha uma conta contábil no seletor acima para abrir sua ficha do Razão." />

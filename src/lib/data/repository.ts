@@ -14,6 +14,7 @@ import type {
   OrgSettings,
   PeriodLock,
   PeriodSnapshot,
+  ReconciliationStatus,
 } from '@/types/firestore';
 import type { Actor } from '@/lib/audit';
 
@@ -96,6 +97,10 @@ export interface DataRepository {
   latestTransactionDate(clientId: string): Promise<string | null>;
   /** Quantidade de lançamentos com data até `until`, contada no servidor (sem baixar os documentos). */
   countTransactions(clientId: string, until: string): Promise<number>;
+  /** Quantidade de lançamentos do cliente na situação `status`, contada no servidor (visão da carteira no Painel). */
+  countTransactionsByStatus(clientId: string, status: ReconciliationStatus): Promise<number>;
+  /** Data do lançamento mais antigo na situação `status` (lê um documento só), ou null. */
+  oldestTransactionDate(clientId: string, status: ReconciliationStatus): Promise<string | null>;
   /** Algum lançamento usa a conta (classificação, sugestão automática ou rateio)? Não baixa o histórico. */
   isAccountUsedInTransactions(clientId: string, accountId: string): Promise<boolean>;
   findExistingTransactionIds(clientId: string, ids: readonly string[]): Promise<Set<string>>;

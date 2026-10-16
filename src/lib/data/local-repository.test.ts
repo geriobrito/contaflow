@@ -217,6 +217,14 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect(await repo.isAccountUsedInTransactions('c1', 'rateada')).toBe(true);
     expect(await repo.isAccountUsedInTransactions('c1', 'livre')).toBe(false);
     expect(await repo.isAccountUsedInTransactions('c1', 'de-outro-cliente')).toBe(false);
+    // Contagem por situação, por cliente (visão da carteira).
+    expect(await repo.countTransactionsByStatus('c1', 'PENDING')).toBe(2);
+    expect(await repo.countTransactionsByStatus('c1', 'RECONCILED')).toBe(2);
+    expect(await repo.countTransactionsByStatus('c1', 'AUTO_CLASSIFIED')).toBe(0);
+    expect(await repo.countTransactionsByStatus('c2', 'PENDING')).toBe(1);
+    expect(await repo.oldestTransactionDate('c1', 'PENDING')).toBe('2025-01-10');
+    expect(await repo.oldestTransactionDate('c1', 'RECONCILED')).toBe('2025-04-01');
+    expect(await repo.oldestTransactionDate('c1', 'AUTO_CLASSIFIED')).toBeNull();
   });
 
   it('saldos consolidados: grava por competência (substitui) e some com o cliente', async () => {

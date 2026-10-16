@@ -1080,6 +1080,10 @@ describe('atomicidade e consultas pontuais', () => {
     expect(await repo.countTransactions('cA', '2025-03-31')).toBe(1);
     expect(await repo.countTransactions('cA', '2025-04-01')).toBe(2);
     expect(await repo.countTransactions('cA', '2025-12-31')).toBe(3);
+    expect(await repo.countTransactionsByStatus('cA', 'RECONCILED')).toBe(2);
+    expect(await repo.countTransactionsByStatus('cA', 'AUTO_CLASSIFIED')).toBe(0);
+    expect(await repo.oldestTransactionDate('cA', 'RECONCILED')).toBe('2025-04-01');
+    expect(await repo.oldestTransactionDate('cA', 'AUTO_CLASSIFIED')).toBeNull();
     expect(await repo.isAccountUsedInTransactions('cA', 'direta')).toBe(true);
     expect(await repo.isAccountUsedInTransactions('cA', 'rateada')).toBe(true);
     expect(await repo.isAccountUsedInTransactions('cA', 'livre')).toBe(false);
@@ -1087,6 +1091,8 @@ describe('atomicidade e consultas pontuais', () => {
     // Outro escritório não conta nem consulta os lançamentos do A.
     const forged = createFirestoreRepository(asUser('bob'), () => ORG_A);
     await expect(forged.countTransactions('cA', '2025-12-31')).rejects.toThrow();
+    await expect(forged.countTransactionsByStatus('cA', 'PENDING')).rejects.toThrow();
+    await expect(forged.oldestTransactionDate('cA', 'RECONCILED')).rejects.toThrow();
     await expect(forged.isAccountUsedInTransactions('cA', 'direta')).rejects.toThrow();
   });
 
