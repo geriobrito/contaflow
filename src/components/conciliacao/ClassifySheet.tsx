@@ -14,6 +14,7 @@ import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
 import { splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 /* =========================================================================
    Sheet de classificação: conta única, rateio e histórico (auditoria)
@@ -129,18 +130,18 @@ export function ClassifySheet({
 
   const negative = transaction.amount < 0;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-      <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+  const dialog = (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="fixed inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
 
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[92vh] flex flex-col transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
+        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
-        {/* Cabeçalho */}
-        <div className="flex items-start gap-3 px-6 pt-5 pb-4">
+        {/* Cabeçalho (fixo) */}
+        <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">
           <div className="flex-1 min-w-0">
             <h2 id="classify-title" className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
               {isEditing ? 'Editar classificação' : 'Classificar lançamento'}
@@ -169,142 +170,146 @@ export function ClassifySheet({
           </button>
         </div>
 
-        <div className="px-6 pb-4 flex items-baseline justify-between">
-          <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
-          <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
-            {formatCurrency(transaction.amount)}
-          </span>
-        </div>
-
-        {locked && (
-          <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/[0.04] dark:bg-white/[0.06] border border-black/[0.06] text-[12px] text-stone-600 dark:text-stone-300">
-            <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>
-              A competência de <b>{lockedMonthLabel}</b> está fechada. Para alterar este lançamento, reabra a competência em
-              “Reabrir competência”, logo abaixo do seletor de período (a reabertura fica registrada na auditoria).
+        {/* Corpo: rola por dentro quando a janela é baixa; cabeçalho e botão de confirmar ficam sempre visíveis */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
+          <div className="px-6 pb-4 flex items-baseline justify-between">
+            <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
+            <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
+              {formatCurrency(transaction.amount)}
             </span>
           </div>
-        )}
 
-        {transaction.transferPairId && (
-          <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 text-[12px] text-sky-800 dark:text-sky-300">
-            <ArrowLeftRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>Transferência entre contas próprias. Reclassificar, ratear ou desfazer este lançamento volta a outra perna para pendente.</span>
-          </div>
-        )}
-        {openQuery && mode !== 'ask' && (
-          <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 text-[12px] text-amber-800 dark:text-amber-300">
-            <MessageCircleQuestion className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>Aguardando o cliente: “{openQuery.question}”</span>
-          </div>
-        )}
+          {locked && (
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/[0.04] dark:bg-white/[0.06] border border-black/[0.06] text-[12px] text-stone-600 dark:text-stone-300">
+              <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                A competência de <b>{lockedMonthLabel}</b> está fechada. Para alterar este lançamento, reabra a competência em
+                “Reabrir competência”, logo abaixo do seletor de período (a reabertura fica registrada na auditoria).
+              </span>
+            </div>
+          )}
 
-        <div className="px-6 pb-4 overflow-x-auto">
-          <SegmentedControl
-            ariaLabel="Modo de classificação"
-            value={mode}
-            onChange={setMode}
-            options={[
-              ...(locked
-                ? []
-                : [
-                    { value: 'single' as const, label: 'Conta única' },
-                    { value: 'split' as const, label: 'Rateio / desdobrar' },
-                    ...(onAskClient ? [{ value: 'ask' as const, label: 'Perguntar ao cliente' }] : []),
-                  ]),
-              { value: 'history', label: 'Histórico' },
-            ]}
-          />
-        </div>
+          {transaction.transferPairId && (
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 text-[12px] text-sky-800 dark:text-sky-300">
+              <ArrowLeftRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Transferência entre contas próprias. Reclassificar, ratear ou desfazer este lançamento volta a outra perna para pendente.</span>
+            </div>
+          )}
+          {openQuery && mode !== 'ask' && (
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 text-[12px] text-amber-800 dark:text-amber-300">
+              <MessageCircleQuestion className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>Aguardando o cliente: “{openQuery.question}”</span>
+            </div>
+          )}
 
-        {mode === 'history' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2">
-            {auditError ? (
-              <p role="alert" className="text-[13px] text-rose-600">{auditError}</p>
-            ) : audit === null ? (
-              <TableSkeleton rows={3} dense label="Carregando histórico…" />
-            ) : (
-              <AuditTimeline entries={audit} emptyText="Nenhuma alteração registrada para este lançamento." />
-            )}
-          </div>
-        ) : mode === 'ask' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2 space-y-3">
-            <p className="text-[13px] text-stone-600 dark:text-stone-300">
-              A pergunta entra na lista de <b>Pendências do cliente</b>, de onde você gera um link para o cliente justificar o
-              lançamento por escrito, sem precisar de login.
-            </p>
-            <label className="block space-y-1.5">
-              <span className="block text-[12px] font-medium text-stone-500 px-0.5">Pergunta</span>
-              <textarea
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                rows={4}
-                maxLength={500}
-                className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
-              />
-            </label>
-            {openQuery && (
-              <p className="text-[12px] text-stone-400">
-                Perguntado por {openQuery.askedByEmail ?? openQuery.askedByUid} em {formatDateBR(openQuery.askedAt.slice(0, 10))}.
-              </p>
-            )}
-          </div>
-        ) : mode === 'split' ? (
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6">
-            <SplitEditor
-              transactionAmount={transaction.amount}
-              accounts={accounts}
-              drafts={drafts}
-              onChange={setDrafts}
-              defaultAccountId={accountId || undefined}
-              startWithGrossNet={grossNetFirst}
+          <div className="px-6 pb-4 overflow-x-auto">
+            <SegmentedControl
+              ariaLabel="Modo de classificação"
+              value={mode}
+              onChange={setMode}
+              options={[
+                ...(locked
+                  ? []
+                  : [
+                      { value: 'single' as const, label: 'Conta única' },
+                      { value: 'split' as const, label: 'Rateio / desdobrar' },
+                      ...(onAskClient ? [{ value: 'ask' as const, label: 'Perguntar ao cliente' }] : []),
+                    ]),
+                { value: 'history', label: 'Histórico' },
+              ]}
             />
           </div>
-        ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 space-y-5">
-          {/* Plano de contas */}
-          <section className="space-y-2">
-            <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-            <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
-            <button
-              type="button"
-              onClick={() => {
-                setGrossNetFirst(true);
-                setMode('split');
-              }}
-              className="px-1 text-[12px] font-medium text-accent-ink hover:underline"
-            >
-              {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
-            </button>
-          </section>
 
-          {/* Aprendizado */}
-          <RuleLearnPanel
-            checked={learnRule}
-            onChecked={setLearnRule}
-            title={isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
-            subtitle={sourceRule ? `A regra “${sourceRule.pattern}” passará a usar a nova conta` : 'Aplica a lançamentos semelhantes'}
-            term={customPattern}
-            onTerm={setCustomPattern}
-            matchType={matchType}
-            onMatchType={setMatchType}
-            assessment={assessment}
-            acknowledged={acknowledged}
-            onAcknowledged={setAcknowledged}
-            suggestion={payeeTerm}
-            memoSuggestion={suggestedTerm}
-            note={
-              matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
-                <p className="mt-1.5 text-[11px] text-amber-700">
-                  Com “É exatamente”, a regra só casa históricos idênticos ao termo — este lançamento não casaria.
+          {mode === 'history' ? (
+            <div className="px-6">
+              {auditError ? (
+                <p role="alert" className="text-[13px] text-rose-600">{auditError}</p>
+              ) : audit === null ? (
+                <TableSkeleton rows={3} dense label="Carregando histórico…" />
+              ) : (
+                <AuditTimeline entries={audit} emptyText="Nenhuma alteração registrada para este lançamento." />
+              )}
+            </div>
+          ) : mode === 'ask' ? (
+            <div className="px-6 space-y-3">
+              <p className="text-[13px] text-stone-600 dark:text-stone-300">
+                A pergunta entra na lista de <b>Pendências do cliente</b>, de onde você gera um link para o cliente justificar o
+                lançamento por escrito, sem precisar de login.
+              </p>
+              <label className="block space-y-1.5">
+                <span className="block text-[12px] font-medium text-stone-500 px-0.5">Pergunta</span>
+                <textarea
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  rows={4}
+                  maxLength={500}
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                />
+              </label>
+              {openQuery && (
+                <p className="text-[12px] text-stone-400">
+                  Perguntado por {openQuery.askedByEmail ?? openQuery.askedByUid} em {formatDateBR(openQuery.askedAt.slice(0, 10))}.
                 </p>
-              ) : null
-            }
-          />
-        </div>
-        )}
+              )}
+            </div>
+          ) : mode === 'split' ? (
+            <div className="px-6">
+              <SplitEditor
+                transactionAmount={transaction.amount}
+                accounts={accounts}
+                drafts={drafts}
+                onChange={setDrafts}
+                defaultAccountId={accountId || undefined}
+                startWithGrossNet={grossNetFirst}
+              />
+            </div>
+          ) : (
+          <div className="px-6 space-y-5">
+            {/* Plano de contas */}
+            <section className="space-y-2">
+              <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
+              <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
+              <button
+                type="button"
+                onClick={() => {
+                  setGrossNetFirst(true);
+                  setMode('split');
+                }}
+                className="px-1 text-[12px] font-medium text-accent-ink hover:underline"
+              >
+                {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
+              </button>
+            </section>
 
-        <div className="px-6 pt-4 pb-5">
+            {/* Aprendizado */}
+            <RuleLearnPanel
+              checked={learnRule}
+              onChecked={setLearnRule}
+              title={isEditing ? 'Atualizar regra de aprendizado' : 'Lembrar essa classificação'}
+              subtitle={sourceRule ? `A regra “${sourceRule.pattern}” passará a usar a nova conta` : 'Aplica a lançamentos semelhantes'}
+              term={customPattern}
+              onTerm={setCustomPattern}
+              matchType={matchType}
+              onMatchType={setMatchType}
+              assessment={assessment}
+              acknowledged={acknowledged}
+              onAcknowledged={setAcknowledged}
+              suggestion={payeeTerm}
+              memoSuggestion={suggestedTerm}
+              note={
+                matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
+                  <p className="mt-1.5 text-[11px] text-amber-700">
+                    Com “É exatamente”, a regra só casa históricos idênticos ao termo — este lançamento não casaria.
+                  </p>
+                ) : null
+              }
+            />
+          </div>
+          )}
+        </div>
+
+        {/* Rodapé (fixo) com a ação principal */}
+        <div className="shrink-0 px-6 pt-4 pb-5 border-t border-black/[0.05] dark:border-white/[0.06]">
           {mode === 'history' ? (
             <button
               type="button"
@@ -380,4 +385,6 @@ export function ClassifySheet({
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 }

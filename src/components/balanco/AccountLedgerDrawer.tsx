@@ -17,6 +17,7 @@ import { buildAccountLedger, type AccountLedger, type Posting } from '@/lib/ledg
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { generateAccountLedgerExcel } from '@/lib/export/ledger-excel';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface AccountLedgerDrawerProps {
   isOpen: boolean;
@@ -138,7 +139,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           ? 'Patrimônio Líquido'
           : 'Resultado';
 
-  return (
+  const drawer = (
     <div className="fixed inset-0 z-50 flex justify-end animate-fade-in print:static print:z-auto">
       {/* Backdrop */}
       <div
@@ -154,7 +155,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         aria-modal="true"
       >
         {/* Header */}
-        <header className="p-6 border-b border-black/[0.06] dark:border-white/[0.08] flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
+        <header className="shrink-0 p-6 border-b border-black/[0.06] dark:border-white/[0.08] flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-[13px] font-semibold text-stone-700 dark:text-stone-300 bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 rounded">
@@ -211,7 +212,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </header>
 
         {/* Resumo dos Saldos e Movimentação */}
-        <section className="grid grid-cols-4 gap-px bg-black/[0.06] dark:bg-white/[0.08] border-b border-black/[0.06] dark:border-white/[0.08]">
+        <section className="shrink-0 grid grid-cols-4 gap-px bg-black/[0.06] dark:bg-white/[0.08] border-b border-black/[0.06] dark:border-white/[0.08]">
           <div className="bg-white dark:bg-stone-900 p-4">
             <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
             <div className="mt-1 flex items-baseline gap-1.5">
@@ -264,7 +265,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </section>
 
         {/* Barra de Filtro de Texto */}
-        <div className="p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/[0.05] dark:border-white/[0.06] flex items-center gap-2 print:hidden">
+        <div className="shrink-0 p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/[0.05] dark:border-white/[0.06] flex items-center gap-2 print:hidden">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -289,7 +290,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </div>
 
         {/* Tabela de Lançamentos do Razão */}
-        <div className="flex-1 overflow-y-auto overflow-x-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
           {ledger.entries.length === 0 ? (
             <div className="py-20 text-center text-stone-400 space-y-2">
               <BookOpen className="w-8 h-8 mx-auto opacity-30" />
@@ -412,4 +413,6 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
       </div>
     </div>
   );
+
+  return <ModalPortal>{drawer}</ModalPortal>;
 };

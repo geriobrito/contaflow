@@ -3,6 +3,7 @@
 import React, { useEffect, useId, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 /* =========================================================================
    Tokens de superfície e controles
@@ -199,24 +200,24 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
 
   const right = side === 'right';
 
-  return (
+  const dialog = (
     <div
-      className={`fixed inset-0 z-50 flex ${
-        right ? 'items-stretch justify-end p-3' : 'items-center justify-center p-6'
+      className={`fixed inset-0 z-50 flex overflow-y-auto ${
+        right ? 'items-stretch justify-end p-3' : 'items-center justify-center p-4'
       }`}
     >
-      <div className="absolute inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      <div className="fixed inset-0 bg-stone-900/25 backdrop-blur-sm animate-fade-in" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full flex flex-col bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
+        className={`relative w-full flex flex-col overflow-hidden bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
           right
-            ? 'max-w-[420px] rounded-[24px] animate-panel-in'
-            : 'max-w-[460px] rounded-[28px] max-h-[92vh] animate-sheet-in'
+            ? 'max-w-[420px] max-h-[calc(100vh-1.5rem)] rounded-[24px] animate-panel-in'
+            : 'max-w-[460px] max-h-[calc(100vh-2rem)] my-auto rounded-[28px] animate-sheet-in'
         }`}
       >
-        <div className="flex items-start gap-3 px-6 pt-5 pb-4">
+        <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">
           <div className="flex-1 min-w-0">
             <h2 id={titleId} className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
               {title}
@@ -233,10 +234,12 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-2">{children}</div>
-        {footer && <div className="px-6 pt-4 pb-5">{footer}</div>}
+        {footer && <div className="shrink-0 px-6 pt-4 pb-5">{footer}</div>}
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 }
 
 /* =========================================================================

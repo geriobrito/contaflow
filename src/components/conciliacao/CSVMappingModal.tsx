@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 import {
   X,
   FileSpreadsheet,
@@ -121,16 +122,16 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
     onClose();
   };
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="csv-mapping-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
+      <div className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <FileSpreadsheet className="w-5 h-5" />
@@ -155,7 +156,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200 text-[13px] flex items-center gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
@@ -447,7 +448,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
           <button
             type="button"
             onClick={onClose}
@@ -467,4 +468,6 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 };

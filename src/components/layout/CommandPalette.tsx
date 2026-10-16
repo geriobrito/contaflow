@@ -10,6 +10,7 @@ import { useTheme } from '@/components/ui/useTheme';
 import { searchCommands, type CommandEntry } from '@/lib/command-search';
 import { THEME_OPTIONS, type ThemePreference } from '@/lib/theme';
 import { formatCNPJ } from '@/lib/utils/formatters';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 /** Atalho exibido nas dicas; no Mac, ⌘K também abre. */
 export const SHORTCUT_LABEL = 'Ctrl+K';
@@ -152,7 +153,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
 
   const optionId = (i: number) => `${listId}-${i}`;
 
-  return (
+  const palette = (
     <div className="fixed inset-0 z-[70] flex items-start justify-center px-4 pt-[12vh] print:hidden" role="presentation">
       <div className="absolute inset-0 bg-stone-900/25 dark:bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden />
       <div
@@ -235,4 +236,6 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+
+  return <ModalPortal>{palette}</ModalPortal>;
 }

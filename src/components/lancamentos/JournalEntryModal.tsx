@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/utils/formatters';
 import { JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
 import { parseMoneyInput } from '@/lib/opening';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
@@ -209,18 +210,18 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     }
   };
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="journal-entry-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
       <div
-        className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden"
+        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent-ink flex items-center justify-center">
               <Calculator className="w-5 h-5" />
@@ -247,7 +248,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
         {/* Modelos de provisão mensal */}
         {!initialEntry?.id && (
-          <div className="px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/[0.04] dark:border-white/[0.06] space-y-2.5 text-[12px]">
+          <div className="shrink-0 px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/[0.04] dark:border-white/[0.06] space-y-2.5 text-[12px]">
             <div role="group" aria-label="Modelos de lançamento" className="flex items-center gap-2 overflow-x-auto">
               <span className="font-medium text-stone-500 flex items-center gap-1 shrink-0">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Modelos:
@@ -301,36 +302,70 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
         )}
 
         {/* Form Body */}
-        <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6 space-y-6">
-          {locked && (
-            <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200 text-[13px] flex items-center gap-2.5">
-              <Lock className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>
-                <strong>Competência bloqueada:</strong> O mês {month} foi fechado e não aceita novos lançamentos ou edições.
-              </span>
-            </div>
-          )}
+        <form onSubmit={handleSave} className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
+            {locked && (
+              <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200 text-[13px] flex items-center gap-2.5">
+                <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>
+                  <strong>Competência bloqueada:</strong> O mês {month} foi fechado e não aceita novos lançamentos ou edições.
+                </span>
+              </div>
+            )}
 
-          {error && (
-            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200 text-[13px] flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-              <span>{error}</span>
-            </div>
-          )}
+            {error && (
+              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200 text-[13px] flex items-center gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{error}</span>
+              </div>
+            )}
 
-          {/* Dados Gerais */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-                Data do Lançamento
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+            {/* Dados Gerais */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                  Data do Lançamento
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    disabled={saving || locked}
+                    required
+                    className={INPUT}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                  Categoria
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as JournalEntryCategory)}
                   disabled={saving || locked}
-                  required
+                  className={INPUT}
+                >
+                  {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                  Documento / Ref. (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: FOLHA-05-2025"
+                  value={documentRef}
+                  onChange={(e) => setDocumentRef(e.target.value)}
+                  disabled={saving || locked}
                   className={INPUT}
                 />
               </div>
@@ -338,241 +373,209 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
             <div>
               <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-                Categoria
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as JournalEntryCategory)}
-                disabled={saving || locked}
-                className={INPUT}
-              >
-                {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-                Documento / Ref. (Opcional)
+                Histórico Contábil Geral (Memo) *
               </label>
               <input
                 type="text"
-                placeholder="Ex: FOLHA-05-2025"
-                value={documentRef}
-                onChange={(e) => setDocumentRef(e.target.value)}
+                placeholder="Ex: Provisão mensal de salários e ordenados referente a maio/2025"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
                 disabled={saving || locked}
+                required
                 className={INPUT}
               />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-              Histórico Contábil Geral (Memo) *
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Provisão mensal de salários e ordenados referente a maio/2025"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              disabled={saving || locked}
-              required
-              className={INPUT}
-            />
-          </div>
-
-          {/* Partidas Contábeis (Tabela Dinâmica) */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100">
-                  Partidas Contábeis (Débito e Crédito)
-                </h3>
-                <p className="text-[12px] text-stone-500">
-                  Todo débito deve corresponder a um crédito de igual valor.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                disabled={saving || locked}
-                className={`${BUTTON.secondary} !h-8 !text-[12px]`}
-              >
-                <Plus className="w-3.5 h-3.5" /> Adicionar Partida
-              </button>
-            </div>
-
-            <div className="border border-black/[0.08] dark:border-white/[0.1] rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-[13px] border-collapse">
-                  <thead>
-                    <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
-                      <th className="py-2.5 px-3 w-16 text-center">Tipo</th>
-                      <th className="py-2.5 px-3">Conta Contábil (Analítica)</th>
-                      <th className="py-2.5 px-3 w-40 text-right">Valor (R$)</th>
-                      <th className="py-2.5 px-3">Complemento / Memo</th>
-                      <th className="py-2.5 px-3 w-12 text-center"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
-                    {lines.map((line, idx) => (
-                      <tr key={line.id} className="hover:bg-white dark:hover:bg-stone-800/40 transition-colors">
-                        <td className="py-2 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleLineChange(line.id, 'type', line.type === 'DEBIT' ? 'CREDIT' : 'DEBIT')
-                            }
-                            disabled={saving || locked}
-                            className={`w-9 h-7 rounded-md font-mono text-[11px] font-bold transition-all shadow-sm ${
-                              line.type === 'DEBIT'
-                                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                : 'bg-amber-600 text-white hover:bg-amber-700'
-                            }`}
-                            title={line.type === 'DEBIT' ? 'Débito (Clique para alternar para Crédito)' : 'Crédito (Clique para alternar para Débito)'}
-                          >
-                            {line.type === 'DEBIT' ? 'D' : 'C'}
-                          </button>
-                        </td>
-
-                        <td className="py-2 px-3">
-                          <select
-                            value={line.accountId}
-                            onChange={(e) => handleLineChange(line.id, 'accountId', e.target.value)}
-                            disabled={saving || locked}
-                            required
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
-                          >
-                            <option value="">Selecione a conta analítica...</option>
-                            {analyticAccounts.map((acc) => (
-                              <option key={acc.id} value={acc.id}>
-                                {acc.code} — {acc.name} ({acc.type})
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="py-2 px-3">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            placeholder="0,00"
-                            value={line.amount || ''}
-                            onChange={(e) =>
-                              handleLineChange(line.id, 'amount', parseFloat(e.target.value) || 0)
-                            }
-                            disabled={saving || locked}
-                            required
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] font-mono text-right outline-none focus:border-accent/60"
-                          />
-                        </td>
-
-                        <td className="py-2 px-3">
-                          <input
-                            type="text"
-                            placeholder="Memo opcional..."
-                            value={line.memo ?? ''}
-                            onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
-                            disabled={saving || locked}
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
-                          />
-                        </td>
-
-                        <td className="py-2 px-3 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveLine(line.id)}
-                            disabled={saving || locked || lines.length <= 2}
-                            aria-label={`Remover partida #${idx + 1}`}
-                            className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Barra de Balanço das Partidas */}
-              <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-black/[0.06] dark:border-white/[0.08] flex flex-wrap items-center justify-between gap-4 text-[13px]">
-                <div className="flex items-center gap-6 font-mono">
-                  <div>
-                    <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Débitos</span>
-                    <span className="font-semibold text-blue-600 dark:text-blue-400">
-                      {formatCurrency(totalDebit)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Créditos</span>
-                    <span className="font-semibold text-amber-600 dark:text-amber-400">
-                      {formatCurrency(totalCredit)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-[11px] uppercase font-sans text-stone-500 block">Diferença</span>
-                    <span className={`font-semibold ${difference > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                      {formatCurrency(difference)}
-                    </span>
-                  </div>
-                </div>
-
+            {/* Partidas Contábeis (Tabela Dinâmica) */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <div>
-                  {isBalanced ? (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-[12px] font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      Partidas Equilibradas (Σ D = Σ C)
+                  <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100">
+                    Partidas Contábeis (Débito e Crédito)
+                  </h3>
+                  <p className="text-[12px] text-stone-500">
+                    Todo débito deve corresponder a um crédito de igual valor.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddLine}
+                  disabled={saving || locked}
+                  className={`${BUTTON.secondary} !h-8 !text-[12px]`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Adicionar Partida
+                </button>
+              </div>
+
+              <div className="border border-black/[0.08] dark:border-white/[0.1] rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[13px] border-collapse">
+                    <thead>
+                      <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                        <th className="py-2.5 px-3 w-16 text-center">Tipo</th>
+                        <th className="py-2.5 px-3">Conta Contábil (Analítica)</th>
+                        <th className="py-2.5 px-3 w-40 text-right">Valor (R$)</th>
+                        <th className="py-2.5 px-3">Complemento / Memo</th>
+                        <th className="py-2.5 px-3 w-12 text-center"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                      {lines.map((line, idx) => (
+                        <tr key={line.id} className="hover:bg-white dark:hover:bg-stone-800/40 transition-colors">
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleLineChange(line.id, 'type', line.type === 'DEBIT' ? 'CREDIT' : 'DEBIT')
+                              }
+                              disabled={saving || locked}
+                              className={`w-9 h-7 rounded-md font-mono text-[11px] font-bold transition-all shadow-sm ${
+                                line.type === 'DEBIT'
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                  : 'bg-amber-600 text-white hover:bg-amber-700'
+                              }`}
+                              title={line.type === 'DEBIT' ? 'Débito (Clique para alternar para Crédito)' : 'Crédito (Clique para alternar para Débito)'}
+                            >
+                              {line.type === 'DEBIT' ? 'D' : 'C'}
+                            </button>
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <select
+                              value={line.accountId}
+                              onChange={(e) => handleLineChange(line.id, 'accountId', e.target.value)}
+                              disabled={saving || locked}
+                              required
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
+                            >
+                              <option value="">Selecione a conta analítica...</option>
+                              {analyticAccounts.map((acc) => (
+                                <option key={acc.id} value={acc.id}>
+                                  {acc.code} — {acc.name} ({acc.type})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              placeholder="0,00"
+                              value={line.amount || ''}
+                              onChange={(e) =>
+                                handleLineChange(line.id, 'amount', parseFloat(e.target.value) || 0)
+                              }
+                              disabled={saving || locked}
+                              required
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] font-mono text-right outline-none focus:border-accent/60"
+                            />
+                          </td>
+
+                          <td className="py-2 px-3">
+                            <input
+                              type="text"
+                              placeholder="Memo opcional..."
+                              value={line.memo ?? ''}
+                              onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
+                              disabled={saving || locked}
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
+                            />
+                          </td>
+
+                          <td className="py-2 px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLine(line.id)}
+                              disabled={saving || locked || lines.length <= 2}
+                              aria-label={`Remover partida #${idx + 1}`}
+                              className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Barra de Balanço das Partidas */}
+                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-black/[0.06] dark:border-white/[0.08] flex flex-wrap items-center justify-between gap-4 text-[13px]">
+                  <div className="flex items-center gap-6 font-mono">
+                    <div>
+                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Débitos</span>
+                      <span className="font-semibold text-blue-600 dark:text-blue-400">
+                        {formatCurrency(totalDebit)}
+                      </span>
                     </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-[12px] font-medium">
-                      <AlertCircle className="w-4 h-4 text-rose-600" />
-                      Diferença de {formatCurrency(difference)}
+                    <div>
+                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Créditos</span>
+                      <span className="font-semibold text-amber-600 dark:text-amber-400">
+                        {formatCurrency(totalCredit)}
+                      </span>
                     </div>
-                  )}
+                    <div>
+                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Diferença</span>
+                      <span className={`font-semibold ${difference > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {formatCurrency(difference)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    {isBalanced ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-[12px] font-medium">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        Partidas Equilibradas (Σ D = Σ C)
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-[12px] font-medium">
+                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                        Diferença de {formatCurrency(difference)}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* Anexo / Link */}
+            <div>
+              <label htmlFor="journal-attachment" className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                Link do comprovante (opcional)
+              </label>
+              <input
+                id="journal-attachment"
+                type="text"
+                autoComplete="off"
+                placeholder="Link de compartilhamento do documento na nuvem (Drive, OneDrive, Dropbox…)"
+                value={attachmentUrl}
+                onChange={(e) => setAttachmentUrl(e.target.value)}
+                disabled={saving || locked}
+                aria-invalid={Boolean(attachment && 'problem' in attachment)}
+                className={INPUT}
+              />
+              {attachment && 'problem' in attachment ? (
+                <p className="mt-1.5 text-[12px] text-rose-600">{attachment.problem}</p>
+              ) : attachment ? (
+                <p className="mt-1.5 text-[12px] text-stone-500">
+                  Abre em <span className="font-mono">{attachment.host}</span> ·{' '}
+                  <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-accent-ink hover:underline">
+                    testar o link
+                  </a>
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[12px] text-stone-400">
+                  Cole o link de compartilhamento, não o caminho do arquivo no computador: assim o comprovante abre em qualquer aparelho.
+                </p>
+              )}
+            </div>
           </div>
 
-          {/* Anexo / Link */}
-          <div>
-            <label htmlFor="journal-attachment" className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
-              Link do comprovante (opcional)
-            </label>
-            <input
-              id="journal-attachment"
-              type="text"
-              autoComplete="off"
-              placeholder="Link de compartilhamento do documento na nuvem (Drive, OneDrive, Dropbox…)"
-              value={attachmentUrl}
-              onChange={(e) => setAttachmentUrl(e.target.value)}
-              disabled={saving || locked}
-              aria-invalid={Boolean(attachment && 'problem' in attachment)}
-              className={INPUT}
-            />
-            {attachment && 'problem' in attachment ? (
-              <p className="mt-1.5 text-[12px] text-rose-600">{attachment.problem}</p>
-            ) : attachment ? (
-              <p className="mt-1.5 text-[12px] text-stone-500">
-                Abre em <span className="font-mono">{attachment.host}</span> ·{' '}
-                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-accent-ink hover:underline">
-                  testar o link
-                </a>
-              </p>
-            ) : (
-              <p className="mt-1.5 text-[12px] text-stone-400">
-                Cole o link de compartilhamento, não o caminho do arquivo no computador: assim o comprovante abre em qualquer aparelho.
-              </p>
-            )}
-          </div>
-
-          {/* Rodapé / Ações */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-black/[0.06] dark:border-white/[0.08]">
+          {/* Rodapé / Ações (fixo) */}
+          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-black/[0.06] dark:border-white/[0.08]">
             <button
               type="button"
               onClick={onClose}
@@ -593,4 +596,6 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 };

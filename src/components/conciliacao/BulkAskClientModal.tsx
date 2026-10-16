@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Loader2, MessageCircleQuestion, X } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface BulkAskClientModalProps {
   isOpen: boolean;
@@ -31,16 +32,16 @@ export function BulkAskClientModal({
 
   const canSave = Boolean(question.trim()) && !isSaving;
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="bulk-ask-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -93,4 +94,6 @@ export function BulkAskClientModal({
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 }

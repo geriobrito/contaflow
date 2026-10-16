@@ -3,6 +3,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { BUTTON } from '@/components/ui/primitives';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface KeyboardHelpModalProps {
   isOpen: boolean;
@@ -24,16 +25,16 @@ const SHORTCUTS = [
 export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
   if (!isOpen) return null;
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="keyboard-help-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
+        className="w-full max-w-md max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -79,4 +80,6 @@ export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 }

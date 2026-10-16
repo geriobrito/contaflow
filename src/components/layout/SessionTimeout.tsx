@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { BUTTON } from '@/components/ui/primitives';
+import { ModalPortal } from '@/components/ui/ModalPortal';
 import { LAST_ACTIVITY_KEY, readLastActivity, sessionStatus, writeLastActivity, type SessionEndReason } from '@/lib/auth/session-policy';
 
 /** Uso da tela que mantém a sessão ativa. */
@@ -83,13 +84,13 @@ export function SessionTimeout() {
     setView(null);
   };
 
-  return (
+  const dialog = (
     <div
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="session-timeout-title"
       aria-describedby="session-timeout-text"
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in print:hidden"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in print:hidden"
     >
       <div className="w-full max-w-sm rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4">
         <div className="flex items-start gap-3">
@@ -132,4 +133,6 @@ export function SessionTimeout() {
       </div>
     </div>
   );
+
+  return <ModalPortal>{dialog}</ModalPortal>;
 }
