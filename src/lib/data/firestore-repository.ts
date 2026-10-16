@@ -148,8 +148,11 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
   const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), stamp(entry));
 
   /** Grupos de um ChangeSet: cada patch vai junto da sua auditoria, ordenados por competência. */
-  function changeGroups({ patches, rules = [], audits }: ChangeSet): Group[] {
-    const groups: Group[] = rules.map((rule) => single((b) => b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true })));
+  function changeGroups({ patches, rules = [], deleteRuleIds = [], audits }: ChangeSet): Group[] {
+    const groups: Group[] = [
+      ...rules.map((rule) => single((b) => b.set(doc(db, COL.rules, rule.id), stamp(rule), { merge: true }))),
+      ...deleteRuleIds.map((id) => single((b) => b.delete(doc(db, COL.rules, id)))),
+    ];
     const auditByTx = new Map<string, AuditEntry[]>();
     const loose: AuditEntry[] = [];
     for (const a of audits) {

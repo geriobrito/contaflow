@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { getRepository } from '@/lib/services/data-service';
 import { applyRuleToPending } from '@/lib/services/reconciliation-service';
 import { partnerResetChange } from '@/lib/services/accounting-service';
@@ -11,24 +11,32 @@ import { normalizePattern } from '@/lib/reconciliation';
 import { classifyAction, transactionAudit } from '@/lib/audit';
 import { newRuleId } from '@/lib/utils/id';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
-import { approveTransition, classifyTransition, queryTransition, resetTransition, splitTransition, transferTransition } from '@/lib/transitions';
+import { approveTransition, classifyTransition, queryTransition, resetTransition, restoreTransition, sameClassification, splitTransition, transferTransition } from '@/lib/transitions';
 import type { TransferPair } from '@/lib/transfers';
 import type { BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
-import type { ClassifyManyResult, ClassifyOptions, ClassifyResult, ReconciliationStore } from '@/hooks/reconciliation/types';
+import type { ApproveResult, ClassifyManyResult, ClassifyOptions, ClassifyResult, ReconciliationStore, UndoPlan } from '@/hooks/reconciliation/types';
 
 export interface ClassificationActions {
   classifyTransaction: (transactionId: string, accountId: string, options?: ClassifyOptions) => Promise<ClassifyResult>;
   /** Classifica vários lançamentos na mesma conta (ex.: todos de um favorecido), criando uma única regra. */
   classifyMany: (transactionIds: readonly string[], accountId: string, options?: ClassifyOptions) => Promise<ClassifyManyResult>;
-  splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<void>;
+  splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<UndoPlan>;
   unreconcileTransaction: (transactionId: string) => Promise<void>;
-  approveAutoClassified: () => Promise<number>;
+  approveAutoClassified: () => Promise<ApproveResult>;
   /** Concilia pares de transferência entre contas próprias na conta transitória. */
   reconcileTransfers: (pairs: readonly TransferPair[], transit: ChartAccount) => Promise<number>;
   /** Marca (ou remove, com pergunta vazia) uma pergunta ao cliente sobre o lançamento. */
   askClient: (transactionId: string, question: string) => Promise<void>;
   resolveClientQuery: (transactionId: string) => Promise<void>;
+  /** Desfaz a última classificação, rateio ou aprovação (ver UndoPlan). Devolve quantos lançamentos voltaram. */
+  undoChange: (plan: UndoPlan) => Promise<number>;
 }
+
+/** Semelhantes que a regra auto-classificou estavam pendentes: o estado anterior é o pendente limpo. */
+const propagatedChanges = (propagated: readonly BankTransaction[]) => propagated.map((after) => ({ before: resetTransition(after).after, after }));
+
+const ruleUndo = (rule: ClassificationRule | null, existingRule: ClassificationRule | undefined): UndoPlan['rule'] =>
+  !rule ? undefined : existingRule ? { kind: 'updated', previous: existingRule } : { kind: 'created', rule };
 
 /**
  * Classificação dos lançamentos carregados: conta única, rateio, transferência, desfazer,
@@ -36,6 +44,13 @@ export interface ClassificationActions {
  */
 export function useClassification(store: ReconciliationStore): ClassificationActions {
   const { clientId, accountsById, transactions, rules, lockedMonths, setRules, mutate, replaceLoaded } = store;
+
+  // O "Desfazer" é clicado depois de novos renders: confere o lançamento na lista atual, não na
+  // capturada quando o aviso foi criado (essa ainda tem o estado de antes da ação).
+  const latestTransactions = useRef(transactions);
+  useEffect(() => {
+    latestTransactions.current = transactions;
+  }, [transactions]);
 
   /** Recusa alterações em competência fechada (as regras do Firestore também recusam). */
   const assertOpen = useCallback(
@@ -130,7 +145,11 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
           });
           replaceLoaded(propagated);
         }
-        return { rule, propagated: propagated.length };
+        const undo: UndoPlan = {
+          changes: [{ before: target, after }, ...(partner ? [{ before: partner.before, after: partner.after }] : []), ...propagatedChanges(propagated)],
+          rule: ruleUndo(rule, existingRule),
+        };
+        return { rule, propagated: propagated.length, undo };
       }),
     [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange, buildLearnedRule, setRules]
   );
@@ -150,7 +169,7 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         // Competência fechada e pernas de transferência (que arrastariam a outra perna) ficam de fora.
         const targets = loaded.filter((t) => !isMonthLocked(t.date, lockedMonths) && !t.transferPairId);
         const skipped = loaded.length - targets.length;
-        if (!targets.length) return { rule: null, propagated: 0, classified: 0, skipped };
+        if (!targets.length) return { rule: null, propagated: 0, classified: 0, skipped, undo: { changes: [] } };
 
         const actor = getActor();
         const ref = { accountId, accountCode: account?.code ?? '', accountName: account?.name ?? '' };
@@ -183,7 +202,11 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
           });
           replaceLoaded(propagated);
         }
-        return { rule, propagated: propagated.length, classified: moves.length, skipped };
+        const undo: UndoPlan = {
+          changes: [...moves.map((m) => ({ before: m.tx, after: m.after })), ...propagatedChanges(propagated)],
+          rule: ruleUndo(rule, existingRule),
+        };
+        return { rule, propagated: propagated.length, classified: moves.length, skipped, undo };
       }),
     [clientId, accountsById, lockedMonths, mutate, findLoaded, replaceLoaded, buildLearnedRule, rules, setRules]
   );
@@ -212,7 +235,7 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
   /* Desdobramento (rateio)                                              */
   /* ------------------------------------------------------------------ */
   const splitTransaction = useCallback(
-    (transactionId: string, drafts: readonly SplitDraft[]): Promise<void> =>
+    (transactionId: string, drafts: readonly SplitDraft[]): Promise<UndoPlan> =>
       mutate('Não foi possível salvar o rateio', async () => {
         const target = findLoaded(transactionId);
         assertOpen(target);
@@ -227,6 +250,7 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
           audits: [transactionAudit('SPLIT', getActor(), target, after, now), ...(partner ? [partner.audit] : [])],
         });
         replaceLoaded([after, ...(partner ? [partner.after] : [])]);
+        return { changes: [{ before: target, after }, ...(partner ? [{ before: partner.before, after: partner.after }] : [])] };
       }),
     [accountsById, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
   );
@@ -314,12 +338,12 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
   /* Aprovação em lote dos auto-classificados (competências abertas)     */
   /* ------------------------------------------------------------------ */
   const approveAutoClassified = useCallback(
-    (): Promise<number> =>
+    (): Promise<ApproveResult> =>
       mutate('Não foi possível aprovar os lançamentos', async () => {
         const eligible = transactions.filter(
           (t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId) && !isMonthLocked(t.date, lockedMonths)
         );
-        if (!eligible.length) return 0;
+        if (!eligible.length) return { approved: 0, undo: null };
         const actor = getActor();
         const now = new Date().toISOString();
         const moves = eligible.map((tx) => ({ tx, ...approveTransition(tx, now) }));
@@ -328,9 +352,44 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
           audits: moves.map((m) => transactionAudit('APPROVE', actor, m.tx, m.after, now)),
         });
         replaceLoaded(moves.map((m) => m.after));
-        return moves.length;
+        return { approved: moves.length, undo: { changes: moves.map((m) => ({ before: m.tx, after: m.after })) } };
       }),
     [transactions, lockedMonths, mutate, replaceLoaded]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Desfazer a última ação (botão do aviso)                              */
+  /* ------------------------------------------------------------------ */
+  const undoChange = useCallback(
+    (plan: UndoPlan): Promise<number> =>
+      mutate('Não foi possível desfazer', async () => {
+        if (!plan.changes.length) return 0;
+        // Os da tela são conferidos no estado atual; os de outros períodos, pelo que a ação gravou.
+        const loaded = new Map(latestTransactions.current.map((t) => [t.id, t] as const));
+        const moves = plan.changes.map(({ before, after }) => {
+          const current = loaded.get(after.id) ?? after;
+          if (!sameClassification(current, after)) {
+            throw new Error('o lançamento foi alterado depois desta ação; ajuste-o pelo próprio lançamento');
+          }
+          assertOpen(current);
+          return { current, before, ...restoreTransition(current, before) };
+        });
+        const actor = getActor();
+        const now = new Date().toISOString();
+        const note = 'Desfeito pelo botão Desfazer: voltou à classificação anterior';
+        await getRepository().commitChanges({
+          patches: moves.map((m) => m.patch),
+          rules: plan.rule?.kind === 'updated' ? [plan.rule.previous] : [],
+          deleteRuleIds: plan.rule?.kind === 'created' ? [plan.rule.rule.id] : [],
+          audits: moves.map((m) => transactionAudit(m.before.status === 'PENDING' ? 'UNRECONCILE' : 'RECLASSIFY', actor, m.current, m.after, now, { note })),
+        });
+        replaceLoaded(moves.map((m) => m.after));
+        const ruleChange = plan.rule;
+        if (ruleChange?.kind === 'created') setRules((prev) => prev.filter((r) => r.id !== ruleChange.rule.id));
+        else if (ruleChange?.kind === 'updated') setRules((prev) => prev.map((r) => (r.id === ruleChange.previous.id ? ruleChange.previous : r)));
+        return moves.length;
+      }),
+    [mutate, assertOpen, replaceLoaded, setRules]
   );
 
   return {
@@ -342,5 +401,6 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
     reconcileTransfers,
     askClient,
     resolveClientQuery,
+    undoChange,
   };
 }

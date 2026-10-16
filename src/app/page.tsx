@@ -159,8 +159,9 @@ export default function ConciliacaoPage() {
     approveAutoClassified: recon.approveAutoClassified,
     reconcileTransfers: recon.reconcileTransfers,
     askClient: recon.askClient,
+    undoChange: recon.undoChange,
     onAccountCreated: (account) => setAccounts((prev) => [...prev, account]),
-    notify: setToast,
+    notify: (message, action) => setToast(action ? { message, action } : message),
   });
   const { selected } = flow;
 
@@ -202,6 +203,7 @@ export default function ConciliacaoPage() {
     askClient: recon.askClient,
     reconcileTransferPairs: flow.handleTransfers,
     notify: setToast,
+    offerUndo: flow.offerUndo,
   });
 
   /* ── Importação de extratos ────────────────────────────────────────── */
@@ -479,7 +481,7 @@ export default function ConciliacaoPage() {
 
       <KeyboardHelpModal isOpen={showKeyboardHelp} onClose={() => setShowKeyboardHelp(false)} />
 
-      <Toast message={toast} />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </main>
   );
 }

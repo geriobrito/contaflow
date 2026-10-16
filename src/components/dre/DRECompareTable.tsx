@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import type { DREStatement } from '@/lib/dre/build';
 import { compareRows, variation, type CompareRow } from '@/lib/dre/compare';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { AccountingAmount } from '@/components/ui/Amount';
 
 export type CompareMode = 'monthly' | 'yoy';
 
@@ -16,7 +16,6 @@ interface DRECompareTableProps {
   withAccounts: boolean;
 }
 
-const amount = (v: number) => (Math.abs(v) < 0.005 ? '—' : v < 0 ? `(${formatCurrency(-v)})` : formatCurrency(v));
 
 function Delta({ current, previous, favorable, small = false }: { current: number; previous: number; favorable: CompareRow['favorable']; small?: boolean }) {
   const pct = variation(current, previous);
@@ -79,7 +78,7 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
                 </td>
                 {r.values.slice(0, n).map((v, i) => (
                   <td key={i} className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap align-top">
-                    {amount(v)}
+                    <AccountingAmount value={v} zero="—" />
                     {mode === 'monthly' && i > 0 && strong && (
                       <span className="block leading-tight">
                         <Delta current={v} previous={r.values[i - 1]} favorable={r.favorable} small />
@@ -88,11 +87,11 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
                   </td>
                 ))}
                 {mode === 'monthly' && total && (
-                  <td className="pl-3 pr-5 py-2 text-right font-mono tabular-nums whitespace-nowrap align-top font-semibold">{amount(r.values[n])}</td>
+                  <td className="pl-3 pr-5 py-2 text-right font-mono tabular-nums whitespace-nowrap align-top font-semibold"><AccountingAmount value={r.values[n]} zero="—" /></td>
                 )}
                 {mode === 'yoy' && (
                   <>
-                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap">{amount(r.values[0] - r.values[1])}</td>
+                    <td className="px-3 py-2 text-right font-mono tabular-nums whitespace-nowrap"><AccountingAmount value={r.values[0] - r.values[1]} zero="—" /></td>
                     <td className="pl-3 pr-5 py-2 text-right whitespace-nowrap">
                       <Delta current={r.values[0]} previous={r.values[1]} favorable={r.favorable} />
                     </td>

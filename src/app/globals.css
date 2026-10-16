@@ -128,6 +128,15 @@
   }
 }
 
+/*
+ * Números de largura fixa em toda tabela: valores e totais alinhados à direita ficam com as
+ * vírgulas na mesma vertical, mesmo onde a célula não usa a fonte mono.
+ */
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);

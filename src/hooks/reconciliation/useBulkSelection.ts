@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { BankTransaction } from '@/types/firestore';
 import type { ClassifyOptions, UseReconciliationReturn } from '@/hooks/useReconciliation';
 import type { TransferPair } from '@/lib/transfers';
+import type { UndoPlan } from '@/hooks/reconciliation/types';
 
 interface BulkSelectionParams extends Pick<UseReconciliationReturn, 'classifyMany' | 'askClient'> {
   transactions: readonly BankTransaction[];
@@ -12,13 +13,15 @@ interface BulkSelectionParams extends Pick<UseReconciliationReturn, 'classifyMan
   /** Concilia pares de transferência (cria a conta transitória se faltar). */
   reconcileTransferPairs: (pairs: readonly TransferPair[]) => Promise<void>;
   notify: (message: string) => void;
+  /** Aviso com o botão "Desfazer" da classificação em lote. */
+  offerUndo: (message: string, plan: UndoPlan) => void;
 }
 
 /**
  * Seleção múltipla e ações em lote da tabela de conciliação: classificar vários, perguntar
  * ao cliente sobre vários e casar dois lançamentos como transferência entre contas próprias.
  */
-export function useBulkSelection({ transactions, pageRows, classifyMany, askClient, reconcileTransferPairs, notify }: BulkSelectionParams) {
+export function useBulkSelection({ transactions, pageRows, classifyMany, askClient, reconcileTransferPairs, notify, offerUndo }: BulkSelectionParams) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showBulkClassify, setShowBulkClassify] = useState(false);
   const [showBulkAsk, setShowBulkAsk] = useState(false);
@@ -86,7 +89,7 @@ export function useBulkSelection({ transactions, pageRows, classifyMany, askClie
       if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
       if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
       if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s)`);
-      notify(parts.join(' · '));
+      offerUndo(parts.join(' · '), r.undo);
     } catch {
       /* erro exposto pelo hook */
     }

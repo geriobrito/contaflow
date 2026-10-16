@@ -82,7 +82,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
   const stamp = <T extends object>(x: T): T => ({ ...x, orgId: LOCAL_ORG_ID });
 
   /** Valida tudo antes de gravar (equivalente à atomicidade do writeBatch). */
-  function applyChanges({ patches, rules = [], audits }: ChangeSet): void {
+  function applyChanges({ patches, rules = [], deleteRuleIds = [], audits }: ChangeSet): void {
     const txs = read<BankTransaction>(LOCAL_KEYS.transactions);
     const index = new Map(txs.map((t, i) => [t.id, i] as const));
     for (const p of patches) if (!index.has(p.id)) throw new Error(`Lançamento ${p.id} não encontrado.`);
@@ -96,7 +96,8 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       if (i >= 0) storedRules[i] = { ...storedRules[i], ...stamp(rule) };
       else storedRules.push(stamp(rule));
     }
-    write(LOCAL_KEYS.rules, storedRules);
+    const dropped = new Set(deleteRuleIds);
+    write(LOCAL_KEYS.rules, storedRules.filter((r) => !dropped.has(r.id)));
     write(LOCAL_KEYS.transactions, txs);
     write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), ...audits.map(stamp)]);
   }

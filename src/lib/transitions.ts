@@ -64,3 +64,33 @@ export const queryTransition = (tx: BankTransaction, query: BankTransaction['cli
 
 /** Aprovação de auto-classificado: mantém a conta e marca como conciliado. */
 export const approveTransition = (tx: BankTransaction, now: string) => make(tx, { status: 'RECONCILED', reconciledAt: now }, []);
+
+/** Campos que uma classificação altera (e que o "Desfazer" devolve). */
+const RESTORABLE_FIELDS: readonly Field[] = ['status', 'isSplit', 'reconciledAt', ...CLASSIFICATION_FIELDS];
+
+/**
+ * Desfazer uma ação: devolve o lançamento exatamente à classificação de `before` (conta,
+ * rateio, regra, par de transferência, situação e data de conciliação). O resto do lançamento
+ * (ex.: pergunta ao cliente) fica como está.
+ */
+export function restoreTransition(current: BankTransaction, before: BankTransaction): Transition {
+  const set: Partial<Record<Field, unknown>> = {};
+  const remove: Field[] = [];
+  for (const f of RESTORABLE_FIELDS) {
+    if (before[f] === undefined) remove.push(f);
+    else set[f] = before[f];
+  }
+  return make(current, set as Partial<BankTransaction>, remove);
+}
+
+/** Mesma classificação (situação, conta, rateio, regra e par)? Detecta alteração feita depois. */
+export function sameClassification(a: BankTransaction, b: BankTransaction): boolean {
+  return (
+    a.status === b.status &&
+    (a.accountId ?? null) === (b.accountId ?? null) &&
+    Boolean(a.isSplit) === Boolean(b.isSplit) &&
+    (a.matchedRuleId ?? null) === (b.matchedRuleId ?? null) &&
+    (a.transferPairId ?? null) === (b.transferPairId ?? null) &&
+    JSON.stringify(a.splits ?? null) === JSON.stringify(b.splits ?? null)
+  );
+}

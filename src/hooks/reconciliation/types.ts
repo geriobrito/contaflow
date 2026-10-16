@@ -75,11 +75,28 @@ export interface ClassifyOptions {
   matchType?: RuleMatchType;
 }
 
+/**
+ * Como desfazer a última ação de classificação: o estado de antes e o de depois de cada
+ * lançamento que ela mudou (inclusive a outra perna de transferência e os semelhantes
+ * classificados pela regra) e o que aconteceu com a regra.
+ */
+export interface UndoPlan {
+  changes: { before: BankTransaction; after: BankTransaction }[];
+  rule?: { kind: 'created'; rule: ClassificationRule } | { kind: 'updated'; previous: ClassificationRule };
+}
+
 export interface ClassifyResult {
   /** Regra criada ou atualizada, quando `learnRule` estiver ativo. */
   rule: ClassificationRule | null;
   /** Pendentes (de qualquer período) auto-classificados pela regra. */
   propagated: number;
+  undo: UndoPlan;
+}
+
+export interface ApproveResult {
+  approved: number;
+  /** Null quando não havia nada a aprovar. */
+  undo: UndoPlan | null;
 }
 
 export interface ClassifyManyResult extends ClassifyResult {

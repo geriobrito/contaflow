@@ -47,6 +47,8 @@ export interface TransactionPatch {
 export interface ChangeSet {
   patches: readonly TransactionPatch[];
   rules?: readonly ClassificationRule[];
+  /** Regras a apagar na mesma gravação (ex.: desfazer a regra que acabou de ser criada). */
+  deleteRuleIds?: readonly string[];
   audits: readonly AuditEntry[];
 }
 

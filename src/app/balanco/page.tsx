@@ -25,6 +25,7 @@ import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
+import { AccountingAmount } from '@/components/ui/Amount';
 
 type View = 'bs' | 'tb' | 'dlpa';
 
@@ -36,7 +37,6 @@ const TITLE: Record<View, string> = {
 
 const EMPTY_LOCKS: PeriodLock[] = [];
 
-const money = (v: number) => (v < 0 ? `(${formatCurrency(-v)})` : formatCurrency(v));
 /** Saldo de balancete com natureza: D (devedor) ou C (credor). */
 const dc = (v: number) => (Math.abs(v) < 0.005 ? '—' : `${formatCurrency(Math.abs(v))} ${v > 0 ? 'D' : 'C'}`);
 
@@ -55,7 +55,7 @@ function Side({
     <div className="print-avoid-break">
       <div className="flex items-baseline justify-between px-5 py-3 bg-black/[0.03] dark:bg-white/[0.04] border-b border-black/[0.05]">
         <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300">{title}</h3>
-        <span className="font-mono tabular-nums text-[14px] font-semibold">{money(total)}</span>
+        <AccountingAmount value={total} className="text-[13px] font-semibold" />
       </div>
       {lines.length === 0 ? (
         <p className="px-5 py-3 text-[12px] text-stone-400">Sem saldo.</p>
@@ -76,7 +76,7 @@ function Side({
               <span className="flex-1 min-w-0 truncate" style={{ paddingLeft: `${Math.max(0, l.level - 1) * 12}px` }}>
                 {l.name}
               </span>
-              <span className="font-mono tabular-nums whitespace-nowrap">{money(l.value)}</span>
+              <AccountingAmount value={l.value} />
             </li>
           ))}
         </ul>
@@ -485,7 +485,7 @@ export default function BalancoPage() {
             <Side title="Patrimônio líquido" lines={sectionLines(bs.equity, EQUITY_GROUP_CODE)} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
             <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/[0.08] text-[13px] font-semibold">
               <span>Total do passivo e do PL</span>
-              <span className="font-mono tabular-nums">{money(bs.totalLiabilities + bs.totalEquity)}</span>
+              <AccountingAmount value={bs.totalLiabilities + bs.totalEquity} />
             </div>
           </section>
         </div>

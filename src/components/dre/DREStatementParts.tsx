@@ -3,7 +3,7 @@
 import React, { createContext, useContext } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { DREAccountLine } from '@/lib/dre/build';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { AccountingAmount } from '@/components/ui/Amount';
 
 /* Linhas do demonstrativo da DRE: grupos recolhíveis, subtotais, valores e análise vertical. */
 
@@ -27,12 +27,8 @@ export function Pct({ value, strong = false }: { value: number; strong?: boolean
 
 /** Valor contábil: negativos entre parênteses, como em demonstrativos impressos. */
 export function Amount({ value, strong = false }: { value: number; strong?: boolean }) {
-  const abs = formatCurrency(Math.abs(value));
-  return (
-    <span className={`font-mono tabular-nums whitespace-nowrap ${strong ? 'font-semibold' : ''}`}>
-      {value < 0 ? `(${abs})` : abs}
-    </span>
-  );
+  // Um só tamanho na coluna de valores (a hierarquia fica no peso): as vírgulas alinham entre linhas.
+  return <AccountingAmount value={value} className={`text-[13px] ${strong ? 'font-semibold' : ''}`} />;
 }
 
 function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 }) {

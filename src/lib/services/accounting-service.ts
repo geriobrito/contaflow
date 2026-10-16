@@ -178,7 +178,7 @@ export async function partnerResetChange(
   lockedMonths: ReadonlySet<string>,
   now: string,
   note: string
-): Promise<{ patch: TransactionPatch; audit: AuditEntry; after: BankTransaction } | null> {
+): Promise<{ patch: TransactionPatch; audit: AuditEntry; before: BankTransaction; after: BankTransaction } | null> {
   if (!target.transferPairId) return null;
   const partner = loaded.find((t) => t.id === target.transferPairId) ?? (await getRepository().getTransaction(target.transferPairId));
   if (!partner || partner.transferPairId !== target.id) return null;
@@ -188,7 +188,7 @@ export async function partnerResetChange(
     );
   }
   const { patch, after } = resetTransition(partner);
-  return { patch, after, audit: transactionAudit('UNRECONCILE', getActor(), partner, after, now, { note }) };
+  return { patch, before: partner, after, audit: transactionAudit('UNRECONCILE', getActor(), partner, after, now, { note }) };
 }
 
 /* =========================================================================

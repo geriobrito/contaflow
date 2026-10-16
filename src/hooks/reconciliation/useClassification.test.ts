@@ -263,12 +263,12 @@ describe('useClassification', () => {
     await t.seed();
     await t.close('2025-02');
 
-    expect(await t.actions().approveAutoClassified()).toBe(1);
+    expect((await t.actions().approveAutoClassified()).approved).toBe(1);
     expect((await t.stored('a')).status).toBe('RECONCILED');
     expect((await t.stored('b')).status).toBe('AUTO_CLASSIFIED');
     expect((await t.stored('c')).status).toBe('PENDING');
     expect((await t.stored('d')).status).toBe('AUTO_CLASSIFIED');
-    expect(await t.actions().approveAutoClassified()).toBe(0);
+    expect(await t.actions().approveAutoClassified()).toEqual({ approved: 0, undo: null });
     expect(await t.audit()).toEqual(['APPROVE', 'PERIOD_CLOSE']);
   });
 
@@ -289,5 +289,76 @@ describe('useClassification', () => {
     expect((await t.stored('b')).clientQuery).toBeUndefined();
     expect(await t.repo.listOpenQueries(t.clientId)).toEqual([]);
     expect(await t.audit()).toEqual(['QUERY_ASK', 'QUERY_ASK', 'QUERY_ASK', 'QUERY_RESOLVE']);
+  });
+  describe('Desfazer', () => {
+    it('classificação com regra nova: volta o lançamento e os semelhantes a pendente e apaga a regra', async () => {
+      const t = setup((c) => [tx(c, 'a', '2025-03-10', -1200, 'ALUGUEL CENTRAL 03'), tx(c, 'b', '2025-02-10', -1200, 'ALUGUEL CENTRAL 02')]);
+      await t.seed((x) => x.date.startsWith('2025-03'));
+      const before = await t.stored('a');
+      const { undo, rule } = await t.actions().classifyTransaction(`${t.clientId}_a`, 'aluguel', { learnRule: true, customPattern: 'aluguel central' });
+      expect(undo.changes).toHaveLength(2);
+      expect(undo.rule).toEqual({ kind: 'created', rule });
+
+      expect(await t.actions().undoChange(undo)).toBe(2);
+      const a = await t.stored('a');
+      expect(a.status).toBe('PENDING');
+      expect([a.accountId, a.matchedRuleId, a.reconciledAt]).toEqual([undefined, undefined, undefined]);
+      expect(a.memo).toBe(before.memo);
+      expect((await t.stored('b')).status).toBe('PENDING');
+      expect(await t.repo.listRules(t.clientId)).toEqual([]);
+      expect(t.state.rules).toEqual([]);
+      expect(t.state.transactions.find((x) => x.fitid === 'a')?.status).toBe('PENDING');
+      expect(await t.audit()).toEqual(['AUTO_CLASSIFY', 'CLASSIFY', 'UNRECONCILE', 'UNRECONCILE']);
+      expect((await t.repo.listAudit(t.clientId)).find((e) => e.action === 'UNRECONCILE')?.note).toMatch(/Desfazer/);
+    });
+
+    it('reclassificação: volta à conta anterior e à versão anterior da regra', async () => {
+      const t = setup((c) => [tx(c, 'a', '2025-03-10', -300, 'ENERGISA FATURA 03')]);
+      await t.seed();
+      await t.actions().classifyTransaction(`${t.clientId}_a`, 'aluguel', { learnRule: true, customPattern: 'energisa' });
+      const reconciled = await t.stored('a');
+      const second = await t.actions().classifyTransaction(`${t.clientId}_a`, 'energia', { learnRule: true, customPattern: 'energisa fatura' });
+      expect(second.undo.rule).toMatchObject({ kind: 'updated', previous: { pattern: 'energisa', accountId: 'aluguel' } });
+
+      await t.actions().undoChange(second.undo);
+      expect(await t.stored('a')).toMatchObject({ status: 'RECONCILED', accountId: 'aluguel', matchedRuleId: reconciled.matchedRuleId, reconciledAt: reconciled.reconciledAt });
+      expect(await t.repo.listRules(t.clientId)).toMatchObject([{ pattern: 'energisa', accountId: 'aluguel' }]);
+      expect(t.state.rules).toMatchObject([{ pattern: 'energisa', accountId: 'aluguel' }]);
+      expect((await t.audit()).filter((a) => a === 'RECLASSIFY')).toHaveLength(2);
+    });
+
+    it('rateio e aprovação em lote também se desfazem', async () => {
+      const t = setup((c) => [
+        tx(c, 'a', '2025-03-10', -100, 'FATURA'),
+        tx(c, 'b', '2025-03-11', -10, 'B', { status: 'AUTO_CLASSIFIED', accountId: 'aluguel', accountCode: '3.3.01' }),
+      ]);
+      await t.seed();
+      const split = await t.actions().splitTransaction(`${t.clientId}_a`, [
+        { id: 's1', accountId: 'aluguel', cents: 6000, memo: '' },
+        { id: 's2', accountId: 'energia', cents: 4000, memo: '' },
+      ]);
+      await t.actions().undoChange(split);
+      const a = await t.stored('a');
+      expect(a.status).toBe('PENDING');
+      expect(Boolean(a.isSplit)).toBe(false);
+      expect(a.splits).toBeUndefined();
+
+      const approved = await t.actions().approveAutoClassified();
+      expect(approved.approved).toBe(1);
+      await t.actions().undoChange(approved.undo!);
+      const b = await t.stored('b');
+      expect(b).toMatchObject({ status: 'AUTO_CLASSIFIED', accountId: 'aluguel' });
+      expect(b.reconciledAt).toBeUndefined();
+    });
+
+    it('recusa desfazer se o lançamento mudou depois, sem gravar nada', async () => {
+      const t = setup((c) => [tx(c, 'a', '2025-03-10', -50, 'PIX')]);
+      await t.seed();
+      const first = await t.actions().classifyTransaction(`${t.clientId}_a`, 'aluguel');
+      await t.actions().classifyTransaction(`${t.clientId}_a`, 'energia');
+      await expect(t.actions().undoChange(first.undo)).rejects.toThrow(/alterado depois/);
+      expect(await t.stored('a')).toMatchObject({ status: 'RECONCILED', accountId: 'energia' });
+      expect(t.state.error).toMatch(/Não foi possível desfazer/);
+    });
   });
 });

@@ -8,6 +8,8 @@ import { isMonthLocked } from '@/lib/periods';
 import { ensureTransitAccount } from '@/lib/services/accounting-service';
 import type { SplitDraft } from '@/lib/splits';
 import type { TransferPair } from '@/lib/transfers';
+import type { UndoPlan } from '@/hooks/reconciliation/types';
+import type { ToastAction } from '@/components/ui/Toast';
 
 interface ClassificationFlowParams
   extends Pick<
@@ -19,13 +21,15 @@ interface ClassificationFlowParams
     | 'approveAutoClassified'
     | 'reconcileTransfers'
     | 'askClient'
+    | 'undoChange'
     | 'lockedMonths'
   > {
   clientId: string | null;
   accounts: readonly ChartAccount[];
   /** A conta transitória de transferências foi criada no plano: a tela a acrescenta às contas carregadas. */
   onAccountCreated: (account: ChartAccount) => void;
-  notify: (message: string) => void;
+  /** Aviso no rodapé, com uma ação opcional (o "Desfazer"). */
+  notify: (message: string, action?: ToastAction) => void;
 }
 
 /**
@@ -44,6 +48,7 @@ export function useClassificationFlow({
   approveAutoClassified,
   reconcileTransfers,
   askClient,
+  undoChange,
   onAccountCreated,
   notify,
 }: ClassificationFlowParams) {
@@ -58,6 +63,22 @@ export function useClassificationFlow({
     setSelected(null);
   }
 
+  /** Desfaz a última ação e avisa quantos lançamentos voltaram. */
+  const undo = async (plan: UndoPlan) => {
+    try {
+      const n = await undoChange(plan);
+      notify(n === 1 ? 'Desfeito · o lançamento voltou ao estado anterior' : `Desfeito · ${n} lançamentos voltaram ao estado anterior`);
+    } catch {
+      /* erro exposto pelo hook */
+    }
+  };
+
+  /** Aviso da ação com o botão "Desfazer" (quando houve o que desfazer). */
+  const offerUndo = (message: string, plan: UndoPlan | null | undefined) => {
+    if (!plan?.changes.length) notify(message);
+    else notify(message, { label: 'Desfazer', onClick: () => void undo(plan) });
+  };
+
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -69,14 +90,14 @@ export function useClassificationFlow({
   const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => {
     if (!selected) return;
     try {
-      const { propagated } = await classifyTransaction(selected.id, accountId, {
+      const { propagated, undo: plan } = await classifyTransaction(selected.id, accountId, {
         learnRule,
         customPattern: customPattern.trim() || undefined,
         matchType,
       });
       setSelected(null);
       const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
-      notify(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb);
+      offerUndo(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb, plan);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -85,10 +106,10 @@ export function useClassificationFlow({
   const handleSplit = async (drafts: SplitDraft[]) => {
     if (!selected) return;
     try {
-      await splitTransaction(selected.id, drafts);
+      const plan = await splitTransaction(selected.id, drafts);
       setExpanded((prev) => new Set(prev).add(selected.id));
       setSelected(null);
-      notify(`Lançamento rateado em ${drafts.length} contas`);
+      offerUndo(`Lançamento rateado em ${drafts.length} contas`, plan);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -123,8 +144,8 @@ export function useClassificationFlow({
 
   const handleApproveAll = async () => {
     try {
-      const n = await approveAutoClassified();
-      if (n > 0) notify(`${n} lançamento(s) aprovado(s)`);
+      const { approved, undo: plan } = await approveAutoClassified();
+      if (approved > 0) offerUndo(`${approved} lançamento(s) aprovado(s)`, plan);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -133,8 +154,12 @@ export function useClassificationFlow({
   /** Aprova um auto-classificado (atalho de teclado), se a competência dele estiver aberta. */
   const approveOne = async (t: BankTransaction) => {
     if (t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths)) {
-      await classifyTransaction(t.id, t.accountId);
-      notify('Lançamento auto-classificado aprovado');
+      try {
+        const { undo: plan } = await classifyTransaction(t.id, t.accountId);
+        offerUndo('Lançamento auto-classificado aprovado', plan);
+      } catch {
+        /* erro exposto pelo hook */
+      }
     }
   };
 
@@ -146,7 +171,7 @@ export function useClassificationFlow({
       if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
       if (r.propagated > 0) parts.push(`${r.propagated} semelhante(s) em outros lançamentos`);
       if (r.skipped > 0) parts.push(`${r.skipped} ignorado(s) (mês fechado ou transferência)`);
-      notify(parts.join(' · '));
+      offerUndo(parts.join(' · '), r.undo);
     } catch {
       /* erro exposto pelo hook */
     }
@@ -182,5 +207,6 @@ export function useClassificationFlow({
     approveOne,
     handleGroupConfirm,
     handleTransfers,
+    offerUndo,
   };
 }
