@@ -132,7 +132,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                 type="button"
                 disabled={busy}
                 onClick={info.memoUpdateCount > 0 ? onUpdateMemos : onClose}
-                className="bg-[#0071E3] hover:bg-[#0077ED] text-white font-medium rounded-xl py-2.5 px-6 disabled:opacity-50 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#0071E3]/25"
+                className="bg-accent hover:bg-accent-hover text-white font-medium rounded-xl py-2.5 px-6 disabled:opacity-50 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
               >
                 {info.memoUpdateCount > 0 ? (busy ? 'Atualizando…' : `Atualizar ${info.memoUpdateCount} descrições`) : 'Entendi'}
               </button>
@@ -152,7 +152,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                 type="button"
                 onClick={onImportNew}
                 disabled={busy}
-                className="flex-[1.4] whitespace-nowrap bg-[#0071E3] hover:bg-[#0077ED] text-white font-medium rounded-xl py-2.5 px-4 disabled:opacity-50 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#0071E3]/25"
+                className="flex-[1.4] whitespace-nowrap bg-accent hover:bg-accent-hover text-white font-medium rounded-xl py-2.5 px-4 disabled:opacity-50 transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-4 focus-visible:ring-accent/25"
               >
                 {busy ? 'Importando…' : 'Importar Apenas Novos'}
               </button>
@@ -164,7 +164,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
             type="button"
             disabled={busy}
             onClick={onUpdateMemos}
-            className="mt-3 w-full text-center text-[13px] font-medium text-[#0071E3] hover:underline disabled:opacity-40"
+            className="mt-3 w-full text-center text-[13px] font-medium text-accent-ink hover:underline disabled:opacity-40"
           >
             Só atualizar {info.memoUpdateCount} descrições já importadas
           </button>

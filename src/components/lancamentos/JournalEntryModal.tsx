@@ -222,7 +222,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent-ink flex items-center justify-center">
               <Calculator className="w-5 h-5" />
             </div>
             <div>
@@ -263,8 +263,8 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   }}
                   className={`px-2.5 py-1 rounded-lg border transition-colors shrink-0 ${
                     templateId === t.id
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-stone-700 border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-blue-500 hover:text-blue-600'
+                      ? 'bg-accent border-accent text-white'
+                      : 'bg-white dark:bg-stone-700 border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-accent/60 hover:text-accent-ink'
                   }`}
                 >
                   {t.label}
@@ -445,7 +445,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                             onChange={(e) => handleLineChange(line.id, 'accountId', e.target.value)}
                             disabled={saving || locked}
                             required
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-blue-500"
+                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
                           >
                             <option value="">Selecione a conta analítica...</option>
                             {analyticAccounts.map((acc) => (
@@ -468,7 +468,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                             }
                             disabled={saving || locked}
                             required
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] font-mono text-right outline-none focus:border-blue-500"
+                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] font-mono text-right outline-none focus:border-accent/60"
                           />
                         </td>
 
@@ -479,7 +479,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                             value={line.memo ?? ''}
                             onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
                             disabled={saving || locked}
-                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-blue-500"
+                            className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
                           />
                         </td>
 
@@ -562,7 +562,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             ) : attachment ? (
               <p className="mt-1.5 text-[12px] text-stone-500">
                 Abre em <span className="font-mono">{attachment.host}</span> ·{' '}
-                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                <a href={attachment.url} target="_blank" rel="noopener noreferrer" className="text-accent-ink hover:underline">
                   testar o link
                 </a>
               </p>

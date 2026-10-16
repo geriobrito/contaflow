@@ -131,7 +131,7 @@ export function TwoFactorSection() {
               <p className="mt-2 px-3.5 py-2.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[14px] tracking-wider text-stone-900 dark:text-stone-100 break-all select-all">
                 {grouped(secret.secretKey)}
               </p>
-              <a href={secret.generateQrCodeUrl(user.email ?? 'conta', 'ContaFlow')} className="mt-1.5 inline-block text-[12px] text-[#0071E3] hover:underline">
+              <a href={secret.generateQrCodeUrl(user.email ?? 'conta', 'ContaFlow')} className="mt-1.5 inline-block text-[12px] text-accent-ink hover:underline">
                 Ou abra direto no aplicativo deste aparelho
               </a>
             </li>

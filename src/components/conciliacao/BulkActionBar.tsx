@@ -80,7 +80,7 @@ export function BulkActionBar({
             type="button"
             disabled={isSaving}
             onClick={onClassify}
-            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full bg-[#0071E3] text-white hover:bg-[#0077ED] active:scale-[0.97] transition-all font-medium text-[12px] shadow-sm"
+            className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-full bg-accent text-white hover:bg-accent-hover active:scale-[0.97] transition-all font-medium text-[12px] shadow-sm"
           >
             {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
             Classificar

@@ -248,7 +248,7 @@ export default function LancamentosPage() {
       {/* Lista de Lançamentos */}
       {loading ? (
         <div className={`${SURFACE} p-12 rounded-2xl flex flex-col items-center justify-center gap-3 text-stone-400`}>
-          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-accent-ink" />
           <span className="text-[14px]">Carregando lançamentos contábeis…</span>
         </div>
       ) : filteredEntries.length === 0 ? (

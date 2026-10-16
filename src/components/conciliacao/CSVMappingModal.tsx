@@ -215,7 +215,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                   type="checkbox"
                   checked={mapping.hasHeader}
                   onChange={(e) => setMapping((m) => ({ ...m, hasHeader: e.target.checked }))}
-                  className="rounded border-stone-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-stone-300 text-accent-ink focus:ring-accent"
                 />
                 Primeira linha contém cabeçalhos
               </label>
@@ -259,7 +259,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <Calendar className="w-3.5 h-3.5 text-accent-ink" />
                   Coluna da Data *
                 </label>
                 <select
@@ -328,7 +328,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                     name="valueMode"
                     checked={mapping.valueMode === 'single'}
                     onChange={() => setMapping((m) => ({ ...m, valueMode: 'single' }))}
-                    className="text-blue-600"
+                    className="text-accent-ink"
                   />
                   Coluna Única com sinal (+ / -)
                 </label>
@@ -338,7 +338,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                     name="valueMode"
                     checked={mapping.valueMode === 'split'}
                     onChange={() => setMapping((m) => ({ ...m, valueMode: 'split' }))}
-                    className="text-blue-600"
+                    className="text-accent-ink"
                   />
                   Colunas Separadas (Débito e Crédito)
                 </label>

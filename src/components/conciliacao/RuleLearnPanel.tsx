@@ -77,12 +77,12 @@ export function RuleLearnPanel({
             className="w-full bg-transparent font-mono text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
           />
           {memoSuggestion && !sameTerm(memoSuggestion, term) && (
-            <button type="button" onClick={() => onTerm(memoSuggestion)} className="mt-1 mr-3 text-[11px] text-[#0071E3] hover:underline text-left">
+            <button type="button" onClick={() => onTerm(memoSuggestion)} className="mt-1 mr-3 text-[11px] text-accent-ink hover:underline text-left">
               Usar a descrição: {memoSuggestion}
             </button>
           )}
           {suggestion && !sameTerm(suggestion, term) && !(memoSuggestion && sameTerm(suggestion, memoSuggestion)) && (
-            <button type="button" onClick={() => onTerm(suggestion)} className="mt-1 text-[11px] text-[#0071E3] hover:underline text-left">
+            <button type="button" onClick={() => onTerm(suggestion)} className="mt-1 text-[11px] text-accent-ink hover:underline text-left">
               Usar só o favorecido: {suggestion}
             </button>
           )}

@@ -76,14 +76,14 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
     <article
       className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
         active
-          ? 'bg-white dark:bg-stone-900 border-[#0071E3]/30 shadow-[0_0_0_4px_rgba(0,113,227,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
+          ? 'bg-white dark:bg-stone-900 border-accent/30 shadow-[0_0_0_4px_rgba(181,85,47,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
           : 'bg-white/70 dark:bg-stone-900/60 border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
       }`}
     >
       <div className="flex items-start gap-3">
         <span
           className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center text-[13px] font-semibold tracking-tight ${
-            active ? 'bg-[#0071E3] text-white' : 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
+            active ? 'bg-accent text-white' : 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
           }`}
         >
           {initials(client.tradeName || client.name) || '—'}
@@ -132,7 +132,7 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
         )}
         <div className="flex items-center gap-1">
           {!active && (
-            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 whitespace-nowrap text-[#0071E3] hover:bg-blue-50 dark:hover:bg-blue-950/30`}>
+            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 whitespace-nowrap text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14]`}>
               Definir como ativo
             </button>
           )}

@@ -167,7 +167,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
                 {issue.type === 'SUSPENSE_ENTRIES' && (
                   <Link
                     href="/"
-                    className="shrink-0 self-center px-2 py-1 rounded-md text-[11px] font-medium bg-[#0071E3] text-white hover:bg-[#0077ED] transition-colors"
+                    className="shrink-0 self-center px-2 py-1 rounded-md text-[11px] font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
                   >
                     Conciliar
                   </Link>
@@ -175,7 +175,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
                 {issue.type === 'UNLINKED_BANKS' && (
                   <Link
                     href="/contas"
-                    className="shrink-0 self-center px-2 py-1 rounded-md text-[11px] font-medium bg-[#0071E3] text-white hover:bg-[#0077ED] transition-colors"
+                    className="shrink-0 self-center px-2 py-1 rounded-md text-[11px] font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
                   >
                     Vincular
                   </Link>

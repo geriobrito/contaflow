@@ -100,7 +100,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           onClick={() => onEdit(entry)}
                           disabled={monthLocked}
                           title={monthLocked ? 'Mês bloqueado' : 'Editar lançamento'}
-                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14] transition-colors disabled:opacity-30 disabled:pointer-events-none"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
@@ -146,7 +146,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   title={attachment.url}
-                                  className="inline-flex items-center gap-1 text-blue-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-accent-ink hover:underline"
                                 >
                                   <ExternalLink className="w-3 h-3" /> Ver comprovante ({attachment.host})
                                 </a>

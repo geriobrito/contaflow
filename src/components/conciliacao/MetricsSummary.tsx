@@ -13,7 +13,7 @@ const TONE: Record<NonNullable<MetricProps['tone']>, string> = {
   neutral: 'text-stone-900 dark:text-stone-100',
   positive: 'text-emerald-600 dark:text-emerald-400',
   negative: 'text-rose-600 dark:text-rose-400',
-  accent: 'text-[#0071E3]',
+  accent: 'text-accent-ink',
 };
 
 function Metric({ label, value, caption, tone = 'neutral', progress }: MetricProps) {
@@ -25,7 +25,7 @@ function Metric({ label, value, caption, tone = 'neutral', progress }: MetricPro
       </p>
       {progress !== undefined ? (
         <div className="mt-3 h-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08] overflow-hidden">
-          <div className="h-full rounded-full bg-[#0071E3] transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
+          <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
         </div>
       ) : (
         caption && <p className="mt-2 text-[11px] text-stone-400 truncate">{caption}</p>

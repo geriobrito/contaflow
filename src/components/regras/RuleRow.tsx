@@ -169,7 +169,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
             disabled={applying}
             onClick={() => void onApply(rule)}
             title="Classificar agora os lançamentos pendentes que esta regra vence (todos os períodos abertos)"
-            className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[11px] font-medium text-[#0071E3] bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
+            className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[11px] font-medium text-accent-ink bg-accent/[0.07] dark:bg-accent/[0.14] hover:bg-accent/[0.12] disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
           >
             <Wand2 className="w-3 h-3" />
             {applying ? 'Aplicando…' : `Aplicar a ${pending}`}
@@ -185,7 +185,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 onClick={() => void commit()}
                 disabled={Boolean(error)}
                 aria-label="Salvar termo"
-                className="w-8 h-8 rounded-full flex items-center justify-center bg-[#0071E3] text-white disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-accent text-white disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
               >
                 <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
               </button>

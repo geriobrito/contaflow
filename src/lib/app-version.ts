@@ -28,9 +28,13 @@ export function versionLabel(v: Pick<AppVersion, 'commit' | 'env'>): string {
   return `Versão ${short}${env ? ` (${env})` : ''}`;
 }
 
+/** Versão curta para espaços estreitos (o ambiente fica na dica): "Versão 139880e". */
+export const versionShort = (v: Pick<AppVersion, 'commit'>): string => `Versão ${v.commit ? v.commit.slice(0, 7) : 'sem commit'}`;
+
 /** Detalhe para a dica: commit completo e data do build no fuso do navegador. */
-export function versionDetail(v: Pick<AppVersion, 'commit' | 'builtAt'>): string {
+export function versionDetail(v: Pick<AppVersion, 'commit' | 'builtAt'> & Partial<Pick<AppVersion, 'env'>>): string {
   const built = v.builtAt ? new Date(v.builtAt) : null;
   const when = built && !Number.isNaN(built.getTime()) ? built.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : null;
-  return [v.commit && `Commit ${v.commit}`, when && `Publicado em ${when}`].filter(Boolean).join(' · ');
+  const env = v.env ? ENV_LABEL[v.env] : undefined;
+  return [v.commit && `Commit ${v.commit}`, when && `Publicado em ${when}`, env && `Ambiente: ${env}`].filter(Boolean).join(' · ');
 }

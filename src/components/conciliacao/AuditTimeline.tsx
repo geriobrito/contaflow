@@ -36,7 +36,7 @@ export function AuditTimeline({ entries, showTransaction = false, emptyText = 'N
                 e.action === 'UNRECONCILE' || e.action === 'PERIOD_REOPEN' || e.action === 'ACCOUNT_DELETE'
                   ? 'bg-rose-400'
                   : e.action === 'AUTO_CLASSIFY'
-                    ? 'bg-blue-400'
+                    ? 'bg-accent/70'
                     : e.action === 'QUERY_ASK' || e.action === 'QUERY_RESOLVE'
                       ? 'bg-amber-400'
                       : period

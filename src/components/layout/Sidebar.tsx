@@ -32,7 +32,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
-import { APP_VERSION, versionDetail, versionLabel } from '@/lib/app-version';
+import { APP_VERSION, versionDetail, versionShort } from '@/lib/app-version';
 import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 
 interface NavItem {
@@ -41,24 +41,41 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const NAV_ITEMS: readonly NavItem[] = [
-  { href: '/painel', label: 'Painel', icon: LayoutDashboard },
-  { href: '/', label: 'Conciliação', icon: ArrowLeftRight },
-  { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion },
-  { href: '/contas', label: 'Contas e Extratos', icon: Wallet },
-  { href: '/plano-de-contas', label: 'Plano de Contas', icon: BookOpen },
-  { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
-  { href: '/dre', label: 'DRE', icon: LineChart },
-  { href: '/abertura', label: 'Balanço de Abertura', icon: ClipboardList },
-  { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine },
-  { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
-  { href: '/diario', label: 'Livro Diário', icon: BookText },
-  { href: '/razao', label: 'Livro Razão', icon: BookMarked },
-  { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },
-  { href: '/clientes', label: 'Clientes', icon: Building2 },
-  { href: '/auditoria', label: 'Auditoria', icon: History },
-  { href: '/escritorio', label: 'Escritório', icon: Landmark },
+/** Menu em três seções: a rotina do mês, as demonstrações e os cadastros. */
+const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }[] = [
+  {
+    title: 'Rotina',
+    items: [
+      { href: '/painel', label: 'Painel', icon: LayoutDashboard },
+      { href: '/', label: 'Conciliação', icon: ArrowLeftRight },
+      { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion },
+      { href: '/contas', label: 'Contas e Extratos', icon: Wallet },
+      { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine },
+    ],
+  },
+  {
+    title: 'Demonstrações',
+    items: [
+      { href: '/dre', label: 'DRE', icon: LineChart },
+      { href: '/balanco', label: 'Balanço e Balancete', icon: Scale },
+      { href: '/diario', label: 'Livro Diário', icon: BookText },
+      { href: '/razao', label: 'Livro Razão', icon: BookMarked },
+      { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },
+      { href: '/abertura', label: 'Balanço de Abertura', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Cadastros',
+    items: [
+      { href: '/clientes', label: 'Clientes', icon: Building2 },
+      { href: '/plano-de-contas', label: 'Plano de Contas', icon: BookOpen },
+      { href: '/regras', label: 'Regras de Aprendizado', icon: Sparkles },
+      { href: '/escritorio', label: 'Escritório', icon: Landmark },
+      { href: '/auditoria', label: 'Auditoria', icon: History },
+    ],
+  },
 ];
+const NAV_ITEMS = NAV_SECTIONS.flatMap((s) => s.items);
 
 const COLLAPSE_KEY = 'contaflow_sidebar_collapsed';
 
@@ -154,7 +171,7 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
                     </span>
                     <span className="block text-[11px] font-mono tabular-nums text-stone-400">{c.cnpj}</span>
                   </span>
-                  {active && <Check className="w-3.5 h-3.5 text-[#0071E3] shrink-0" />}
+                  {active && <Check className="w-3.5 h-3.5 text-accent-ink shrink-0" />}
                 </button>
               </li>
             );
@@ -204,64 +221,73 @@ function SidebarBody({ collapsed, onNavigate, headerAction }: SidebarBodyProps) 
         <ClientSwitcher collapsed={collapsed} />
       </div>
 
-      <div className="mx-4 my-3 border-t border-black/[0.05] dark:border-white/[0.06]" />
+      <div className="mx-4 my-2 border-t border-black/[0.05] dark:border-white/[0.06]" />
 
-      {/* Navegação: o destaque da página atual desliza até a próxima */}
-      <nav ref={navRef} className="relative flex-1 px-2 space-y-0.5 overflow-y-auto">
+      {/* Navegação: o destaque da página atual desliza até a próxima, entre as seções também */}
+      <nav ref={navRef} className="relative flex-1 px-2 pb-2 overflow-y-auto">
         <span
           ref={navPillRef}
           aria-hidden
-          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.06)] border border-black/[0.04] dark:border-white/[0.06]`}
+          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] dark:ring-white/[0.06]`}
         />
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const active = href === activeHref;
-          return (
-            <Link
-              key={href}
-              href={href}
-              onClick={onNavigate}
-              title={collapsed ? label : undefined}
-              aria-current={active ? 'page' : undefined}
-              data-active={active}
-              className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-2 text-[13px] tracking-tight border border-transparent transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
-                collapsed ? 'justify-center' : ''
-              } ${
-                active
-                  ? 'text-stone-900 dark:text-white font-medium'
-                  : 'text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-stone-900 dark:hover:text-stone-100'
-              }`}
-            >
-              <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-[#0071E3]' : ''}`} strokeWidth={1.75} />
-              {!collapsed && <span className="truncate">{label}</span>}
-            </Link>
-          );
-        })}
+        {NAV_SECTIONS.map((section, s) => (
+          <div key={section.title} role="group" aria-label={section.title} className="space-y-px">
+            {collapsed ? (
+              s > 0 && <div aria-hidden className="mx-3 my-2 border-t border-black/[0.06] dark:border-white/[0.08]" />
+            ) : (
+              <p className={`px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-3' : 'pt-0.5'}`}>
+                {section.title}
+              </p>
+            )}
+            {section.items.map(({ href, label, icon: Icon }) => {
+              const active = href === activeHref;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={onNavigate}
+                  title={collapsed ? label : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  data-active={active}
+                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-1.5 text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
+                    collapsed ? 'justify-center' : ''
+                  } ${
+                    active
+                      ? 'text-stone-900 dark:text-white font-medium'
+                      : 'text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-stone-900 dark:hover:text-stone-100'
+                  }`}
+                >
+                  <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-accent-ink' : ''}`} strokeWidth={1.75} />
+                  {!collapsed && <span className="truncate">{label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      {/* Rodapé */}
-      <div className="p-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.06]">
-        <div
-          className={`flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-stone-500 ${collapsed ? 'justify-center' : ''}`}
-          title={connected ? 'Conectado ao Firestore' : 'Modo local (sem Firebase)'}
-        >
-          <span className="relative flex w-2 h-2">
+      {/* Rodapé: conexão e versão numa linha só */}
+      <div className="p-2 space-y-0.5 border-t border-black/[0.05] dark:border-white/[0.06]">
+        <div className={`flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-stone-500 ${collapsed ? 'justify-center' : ''}`}>
+          <span className="relative flex w-2 h-2 shrink-0" title={connected ? 'Conectado ao Firestore' : 'Modo local (sem Firebase)'}>
             <span className={`absolute inset-0 rounded-full ${connected ? 'bg-emerald-500 animate-ping opacity-40' : ''}`} />
             <span className={`relative w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-400'}`} />
           </span>
-          {!collapsed && <span>{connected ? 'Firestore conectado' : 'Modo local'}</span>}
+          {!collapsed && (
+            <>
+              <span className="shrink-0">{connected ? 'Firestore conectado' : 'Modo local'}</span>
+              <span className="ml-auto min-w-0 text-[10.5px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
+                {APP_VERSION.commitUrl ? (
+                  <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
+                    {versionShort(APP_VERSION)}
+                  </a>
+                ) : (
+                  versionShort(APP_VERSION)
+                )}
+              </span>
+            </>
+          )}
         </div>
-
-        {!collapsed && (
-          <div className="px-2.5 text-[10.5px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
-            {APP_VERSION.commitUrl ? (
-              <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
-                {versionLabel(APP_VERSION)}
-              </a>
-            ) : (
-              versionLabel(APP_VERSION)
-            )}
-          </div>
-        )}
 
         <div className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? 'flex-col' : ''}`}>
           <span className="w-7 h-7 shrink-0 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 flex items-center justify-center text-[11px] font-semibold">

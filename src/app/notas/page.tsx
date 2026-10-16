@@ -137,7 +137,7 @@ export default function NotasPage() {
                   value={n.text}
                   onChange={(e) => update(n.id, { text: e.target.value })}
                   rows={Math.min(12, Math.max(4, Math.ceil(n.text.length / 110) + n.text.split('\n').length))}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] leading-relaxed outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
                 />
               </section>
             );

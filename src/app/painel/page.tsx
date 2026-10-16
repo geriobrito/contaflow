@@ -156,7 +156,7 @@ export default function PainelPage() {
       <main className={PAGE}>
         <PageHeader title="Painel" />
         <section className={`${SURFACE} rounded-[22px]`}>
-          <EmptyState title="Nenhuma empresa cadastrada" description="Cadastre a primeira empresa para acompanhar pendências, meses e extratos." action={<Link href="/clientes" className="text-[#0071E3] text-[14px] font-medium">Cadastrar empresa</Link>} />
+          <EmptyState title="Nenhuma empresa cadastrada" description="Cadastre a primeira empresa para acompanhar pendências, meses e extratos." action={<Link href="/clientes" className="text-accent-ink text-[14px] font-medium">Cadastrar empresa</Link>} />
         </section>
       </main>
     );
@@ -256,7 +256,7 @@ export default function PainelPage() {
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
             <div className="flex items-center px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
               <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Extratos por conta</h2>
-              <Link href="/contas" className="text-[12px] text-[#0071E3] hover:underline">Contas e extratos</Link>
+              <Link href="/contas" className="text-[12px] text-accent-ink hover:underline">Contas e extratos</Link>
             </div>
             {dash.accounts.length === 0 ? (
               <p className="px-5 py-8 text-center text-[13px] text-stone-500">Nenhum extrato importado.</p>
@@ -302,7 +302,7 @@ export default function PainelPage() {
           {dash.queries.answered + dash.queries.waiting + dash.queries.notSent > 0 && (
             <p className="text-[12px] text-stone-500 flex items-center gap-1.5">
               <MessageCircleQuestion className="w-3.5 h-3.5" /> Perguntas ao cliente em aberto: veja em{' '}
-              <Link href="/pendencias" className="text-[#0071E3] hover:underline">Pendências do cliente</Link>.
+              <Link href="/pendencias" className="text-accent-ink hover:underline">Pendências do cliente</Link>.
             </p>
           )}
         </>

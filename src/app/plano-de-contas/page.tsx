@@ -196,7 +196,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           </span>
         )}
         {!synthetic && account.clientId === 'global' && (
-          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-[#0071E3] border border-blue-200/60">
+          <span className="hidden sm:inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
             Compartilhada
           </span>
         )}
@@ -534,7 +534,7 @@ export default function PlanoDeContasPage() {
       {notice && (
         <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
           {notice}
-          <button type="button" onClick={() => setNotice(null)} className="text-[#0071E3] font-medium">
+          <button type="button" onClick={() => setNotice(null)} className="text-accent-ink font-medium">
             OK
           </button>
         </div>

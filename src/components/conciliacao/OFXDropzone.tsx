@@ -174,9 +174,9 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
             void handleProcessFiles(e.dataTransfer.files);
           }
         }}
-        className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 cursor-pointer border border-dashed transition-all duration-150 active:scale-[0.995] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0071E3]/40 ${
+        className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 cursor-pointer border border-dashed transition-all duration-150 active:scale-[0.995] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
           isDragging
-            ? 'border-[#0071E3]/50 bg-blue-50/60 dark:bg-blue-950/20'
+            ? 'border-accent/50 bg-accent/[0.05] dark:bg-accent/[0.14]'
             : 'border-black/[0.10] dark:border-white/[0.12] bg-white/50 dark:bg-white/[0.02] hover:bg-white/80 dark:hover:bg-white/[0.04] hover:border-black/[0.16]'
         }`}
       >
@@ -196,10 +196,10 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
 
         <span
           className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center transition-colors ${
-            isDragging ? 'bg-[#0071E3] text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-200'
+            isDragging ? 'bg-accent text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-500 group-hover:text-stone-800 dark:group-hover:text-stone-200'
           }`}
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin text-[#0071E3]" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
+          {busy ? <Loader2 className="w-4 h-4 animate-spin text-accent-ink" /> : <Upload className="w-4 h-4" strokeWidth={1.75} />}
         </span>
 
         <span className="flex-1 min-w-0">

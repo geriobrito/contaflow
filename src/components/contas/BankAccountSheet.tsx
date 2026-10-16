@@ -138,7 +138,7 @@ export function BankAccountSheet({
               setOpening(String(suggestion.openingBalance).replace('.', ','));
               setOpeningDate(suggestion.openingDate);
             }}
-            className="text-[12px] text-[#0071E3] hover:underline"
+            className="text-[12px] text-accent-ink hover:underline"
           >
             Usar o saldo do primeiro extrato: {formatCurrency(suggestion.openingBalance)} em {formatDateBR(suggestion.openingDate)}
           </button>

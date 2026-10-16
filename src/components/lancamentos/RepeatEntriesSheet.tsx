@@ -79,7 +79,7 @@ export function RepeatEntriesSheet({ targetMonth, candidates, onConfirm, onClose
                   problem ? 'border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20' : 'border-black/[0.06] dark:border-white/[0.08] bg-white/70 dark:bg-stone-800/50 cursor-pointer'
                 }`}
               >
-                <input type="checkbox" className="mt-1 w-4 h-4 accent-[#0071E3]" disabled={Boolean(problem) || busy} checked={!problem && selected.has(entry.id)} onChange={() => toggle(entry.id)} />
+                <input type="checkbox" className="mt-1 w-4 h-4 accent-accent" disabled={Boolean(problem) || busy} checked={!problem && selected.has(entry.id)} onChange={() => toggle(entry.id)} />
                 <span className="flex-1 min-w-0">
                   <span className="flex items-baseline justify-between gap-3">
                     <span className="text-[13px] font-medium text-stone-900 dark:text-stone-100 truncate">{entry.memo}</span>

@@ -16,14 +16,14 @@ export const SURFACE =
   'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
 
 export const INPUT =
-  'w-full h-11 px-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-[#0071E3]/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]';
+  'w-full h-11 px-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]';
 
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full text-[13px] font-medium tracking-tight transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none';
 
 export const BUTTON = {
   primary: `${BUTTON_BASE} bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-white`,
-  accent: `${BUTTON_BASE} bg-[#0071E3] text-white hover:bg-[#0077ED] shadow-[0_4px_14px_rgba(0,113,227,0.22)]`,
+  accent: `${BUTTON_BASE} bg-accent text-white hover:bg-accent-hover shadow-[0_4px_14px_rgba(181,85,47,0.22)]`,
   ghost: `${BUTTON_BASE} text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]`,
   secondary: `${BUTTON_BASE} bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-black/[0.08] dark:border-white/[0.10] hover:bg-white`,
 } as const;
@@ -126,7 +126,7 @@ export function SearchField({ value, onChange, placeholder = 'Buscar', className
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-10 pr-9 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none border border-transparent transition-all duration-150 focus:bg-white dark:focus:bg-stone-800 focus:border-black/[0.08] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.10)] [&::-webkit-search-cancel-button]:hidden"
+        className="w-full h-10 pl-10 pr-9 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none border border-transparent transition-all duration-150 focus:bg-white dark:focus:bg-stone-800 focus:border-black/[0.08] focus:shadow-[0_0_0_4px_rgba(181,85,47,0.10)] [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
@@ -165,7 +165,7 @@ export function IOSSwitch({
         onChange={(e) => onChange(e.target.checked)}
         className="peer absolute inset-0 opacity-0 cursor-pointer z-10"
       />
-      <span className="absolute inset-0 rounded-full bg-[#E9E9EA] dark:bg-stone-700 transition-colors duration-200 peer-checked:bg-[#34C759] peer-focus-visible:ring-2 peer-focus-visible:ring-[#0071E3]/50 peer-focus-visible:ring-offset-2" />
+      <span className="absolute inset-0 rounded-full bg-[#E9E9EA] dark:bg-stone-700 transition-colors duration-200 peer-checked:bg-[#34C759] peer-focus-visible:ring-2 peer-focus-visible:ring-accent/50 peer-focus-visible:ring-offset-2" />
       <span className="absolute top-[2px] left-[2px] w-[27px] h-[27px] rounded-full bg-white shadow-[0_3px_8px_rgba(0,0,0,0.15),0_1px_1px_rgba(0,0,0,0.06)] transition-transform duration-200 ease-out peer-checked:translate-x-[20px]" />
     </span>
   );

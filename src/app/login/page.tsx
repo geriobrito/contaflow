@@ -36,10 +36,10 @@ function errorCode(err: unknown): string | undefined {
 }
 
 const FIELD =
-  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-white dark:bg-white/[0.04] border border-black/[0.09] dark:border-white/[0.10] text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none transition-all duration-150 hover:border-black/[0.16] dark:hover:border-white/[0.18] focus:border-[#C15F3C]/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
+  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-white dark:bg-white/[0.04] border border-black/[0.09] dark:border-white/[0.10] text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none transition-all duration-150 hover:border-black/[0.16] dark:hover:border-white/[0.18] focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
 
 const FLOAT_LABEL =
-  'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-[#C15F3C] dark:peer-focus:text-[#E08A6B]';
+  'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-accent-ink';
 
 const PRIMARY =
   'group w-full h-12 rounded-2xl bg-stone-900 dark:bg-[#F5F4EF] text-white dark:text-stone-900 text-[15px] font-medium tracking-tight flex items-center justify-center gap-2 shadow-[0_6px_20px_rgba(28,25,23,0.16)] hover:bg-stone-800 dark:hover:bg-white active:scale-[0.98] disabled:opacity-60 transition-all duration-150';
@@ -75,7 +75,7 @@ function Showcase() {
       <div className="relative max-w-[520px] space-y-10">
         <div className="space-y-5">
           <p className="font-serif text-[52px] xl:text-[60px] leading-[1.02] tracking-tight text-stone-900 dark:text-stone-50">
-            Contabilidade que <span className="italic text-[#C15F3C] dark:text-[#E08A6B]">aprende</span> com você.
+            Contabilidade que <span className="italic text-accent-ink">aprende</span> com você.
           </p>
           <p className="text-[15px] leading-relaxed text-stone-600 dark:text-stone-400 max-w-[440px]">
             Extratos OFX conciliados em partidas dobradas, regras que lembram das suas escolhas e demonstrações prontas para assinar.

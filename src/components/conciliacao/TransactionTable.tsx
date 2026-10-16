@@ -60,7 +60,7 @@ export function TransactionTable({
                   if (el) el.indeterminate = someSelected && !allSelected;
                 }}
                 onChange={onToggleSelectAllPage}
-                className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                className="rounded border-stone-300 dark:border-stone-600 text-accent-ink focus:ring-accent cursor-pointer"
               />
             </th>
             <th scope="col" className="font-medium px-3 py-2.5 w-24">Data</th>
@@ -106,8 +106,8 @@ export function TransactionTable({
                   }}
                   tabIndex={0}
                   className={`group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none ${
-                    isFocused ? 'ring-1 ring-inset ring-[#0071E3]/60 bg-blue-50/40 dark:bg-blue-950/20' : ''
-                  } ${isSelected ? 'bg-blue-50/60 dark:bg-blue-950/30' : ''}`}
+                    isFocused ? 'ring-1 ring-inset ring-accent/60 bg-accent/[0.05] dark:bg-accent/[0.14]' : ''
+                  } ${isSelected ? 'bg-accent/[0.05] dark:bg-accent/[0.14]' : ''}`}
                 >
                   <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
@@ -115,7 +115,7 @@ export function TransactionTable({
                       checked={isSelected}
                       onChange={() => onToggleSelect(t.id)}
                       aria-label={`Selecionar lançamento ${t.memo}`}
-                      className="rounded border-stone-300 dark:border-stone-600 text-[#0071E3] focus:ring-[#0071E3] cursor-pointer"
+                      className="rounded border-stone-300 dark:border-stone-600 text-accent-ink focus:ring-accent cursor-pointer"
                     />
                   </td>
                   <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">{formatDateBR(t.date)}</td>

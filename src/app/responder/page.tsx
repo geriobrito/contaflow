@@ -138,7 +138,7 @@ export default function ResponderPage() {
                     maxLength={MAX_ANSWER_LENGTH}
                     placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
                     aria-label={`Resposta ${idx + 1}`}
-                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[15px] outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)] disabled:opacity-60"
+                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[15px] outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-60"
                   />
                 </li>
               ))}
@@ -151,7 +151,7 @@ export default function ResponderPage() {
                   type="button"
                   disabled={sending || answered === 0}
                   onClick={() => void send()}
-                  className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium shadow-[0_8px_24px_rgba(0,113,227,0.3)] disabled:opacity-50 active:scale-[0.98] transition-all"
+                  className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium shadow-[0_8px_24px_rgba(181,85,47,0.3)] disabled:opacity-50 active:scale-[0.98] transition-all"
                 >
                   {sending ? 'Enviando…' : `Enviar respostas (${answered} de ${request.items.length})`}
                 </button>

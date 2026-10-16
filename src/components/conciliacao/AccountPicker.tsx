@@ -54,14 +54,14 @@ export function AccountPicker({ accounts, value, onChange, autoFocus = false }: 
                 aria-selected={selected}
                 onClick={() => onChange(a.id)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${
-                  selected ? 'bg-blue-50/70 dark:bg-blue-950/30' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
+                  selected ? 'bg-accent/[0.05] dark:bg-accent/[0.14]' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
                 }`}
               >
                 <span className="w-[96px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
-                <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-[#0071E3] font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
+                <span className={`flex-1 min-w-0 truncate text-[14px] tracking-tight ${selected ? 'text-accent-ink font-medium' : 'text-stone-800 dark:text-stone-200'}`}>
                   {a.name}
                 </span>
-                {selected && <Check className="w-4 h-4 text-[#0071E3] shrink-0" strokeWidth={2.5} />}
+                {selected && <Check className="w-4 h-4 text-accent-ink shrink-0" strokeWidth={2.5} />}
               </button>
             </li>
           );

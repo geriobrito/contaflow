@@ -178,7 +178,7 @@ export default function DREPage() {
 
       {!failed && dre.awaitingApproval > 0 && (
         <p className="text-[13px] text-stone-500 print:hidden">
-          <span className="font-mono tabular-nums text-[#0071E3]">{dre.awaitingApproval}</span> lançamento(s) auto-classificado(s)
+          <span className="font-mono tabular-nums text-accent-ink">{dre.awaitingApproval}</span> lançamento(s) auto-classificado(s)
           neste período aguardam aprovação na Conciliação e ainda não entram na DRE.
         </p>
       )}

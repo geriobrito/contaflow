@@ -27,7 +27,7 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
           const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
           onChange(digits ? Number(digits) : 0);
         }}
-        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
       />
     </div>
   );
@@ -90,7 +90,7 @@ function AccountPicker({
         }}
         className={`w-full h-10 px-3 flex items-center gap-2 rounded-xl border text-left transition-all duration-150 active:scale-[0.99] ${
           open
-            ? 'border-[#0071E3]/60 shadow-[0_0_0_4px_rgba(0,113,227,0.12)] bg-white dark:bg-stone-800'
+            ? 'border-accent/60 shadow-[0_0_0_4px_rgba(181,85,47,0.12)] bg-white dark:bg-stone-800'
             : 'border-black/[0.08] dark:border-white/[0.10] bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
         }`}
       >
@@ -133,7 +133,7 @@ function AccountPicker({
                 >
                   <span className="w-[86px] shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{a.code}</span>
                   <span className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200">{a.name}</span>
-                  {a.id === value && <Check className="w-3.5 h-3.5 text-[#0071E3] shrink-0" strokeWidth={2.5} />}
+                  {a.id === value && <Check className="w-3.5 h-3.5 text-accent-ink shrink-0" strokeWidth={2.5} />}
                 </button>
               </li>
             ))}
@@ -198,7 +198,7 @@ function GrossNetPanel({
               aria-checked={o.key === origin.key}
               onClick={() => setOriginKey(o.key)}
               className={`h-8 px-3 rounded-xl border text-[12px] font-medium ${
-                o.key === origin.key ? 'bg-[#0071E3] border-[#0071E3] text-white' : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-600 dark:text-stone-300'
+                o.key === origin.key ? 'bg-accent border-accent text-white' : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-600 dark:text-stone-300'
               }`}
             >
               {o.label}
@@ -272,7 +272,7 @@ function GrossNetPanel({
               })
             )
           }
-          className="h-8 px-3 rounded-xl bg-[#0071E3] text-white text-[12px] font-medium disabled:opacity-40"
+          className="h-8 px-3 rounded-xl bg-accent text-white text-[12px] font-medium disabled:opacity-40"
         >
           Montar rateio
         </button>
@@ -343,7 +343,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
         type="button"
         aria-expanded={grossNet}
         onClick={() => setGrossNet((v) => !v)}
-        className="text-[12px] font-medium text-[#0071E3] hover:underline"
+        className="text-[12px] font-medium text-accent-ink hover:underline"
       >
         {grossNet ? 'Fechar bruto × líquido' : 'Bruto × líquido (retenções, ISS, taxa de cartão)'}
       </button>
@@ -392,7 +392,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 onChange={(e) => update(d.id, { memo: e.target.value })}
                 placeholder="Descrição (ex.: Assinatura Canva)"
                 aria-label={`Descrição da linha ${i + 1}`}
-                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
               />
               <button
                 type="button"
@@ -417,7 +417,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 <button
                   type="button"
                   onClick={() => update(d.id, { cents: d.cents + Math.abs(summary.remainingCents) })}
-                  className="text-[11px] font-medium text-[#0071E3] hover:underline"
+                  className="text-[11px] font-medium text-accent-ink hover:underline"
                 >
                   {d.reduces ? 'Absorver o excedente nesta linha' : 'Alocar saldo restante nesta linha'}
                 </button>

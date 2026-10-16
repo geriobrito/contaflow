@@ -243,7 +243,7 @@ export function ClassifySheet({
                 onChange={(e) => setQuestion(e.target.value)}
                 rows={4}
                 maxLength={500}
-                className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-[#0071E3]/60 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+                className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
               />
             </label>
             {openQuery && (
@@ -275,7 +275,7 @@ export function ClassifySheet({
                 setGrossNetFirst(true);
                 setMode('split');
               }}
-              className="px-1 text-[12px] font-medium text-[#0071E3] hover:underline"
+              className="px-1 text-[12px] font-medium text-accent-ink hover:underline"
             >
               {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
             </button>
@@ -345,7 +345,7 @@ export function ClassifySheet({
                 type="button"
                 disabled={!canSaveSplit || isSaving}
                 onClick={() => void onSplit(drafts)}
-                className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
+                className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
               >
                 {isSaving ? 'Salvando…' : isEditing ? 'Salvar novo rateio' : 'Salvar rateio'}
               </button>
@@ -355,7 +355,7 @@ export function ClassifySheet({
             type="button"
             disabled={!accountId || isSaving || ruleBlocked}
             onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType)}
-            className="w-full h-12 rounded-2xl bg-[#0071E3] hover:bg-[#0077ED] text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(0,113,227,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
+            className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
           >
             {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
           </button>

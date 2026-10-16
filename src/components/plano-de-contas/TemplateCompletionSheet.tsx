@@ -52,7 +52,7 @@ export function TemplateCompletionSheet({ missing, ignoredCount, busy, onAdd, on
             Não oferecer mais as {unchecked.length} desmarcada(s)
           </button>
           {ignoredCount > 0 && (
-            <button type="button" disabled={busy} onClick={() => void onRestoreIgnored()} className="w-full text-[12px] text-[#0071E3] hover:underline">
+            <button type="button" disabled={busy} onClick={() => void onRestoreIgnored()} className="w-full text-[12px] text-accent-ink hover:underline">
               Voltar a oferecer {ignoredCount} conta(s) ignorada(s)
             </button>
           )}
@@ -61,7 +61,7 @@ export function TemplateCompletionSheet({ missing, ignoredCount, busy, onAdd, on
     >
       <div className="flex items-center justify-between pb-2 text-[12px] text-stone-500">
         <span>{selected.size} de {missing.length} marcada(s)</span>
-        <button type="button" onClick={() => setSelected(selected.size === missing.length ? new Set() : new Set(missing.map((a) => a.code)))} className="text-[#0071E3] hover:underline">
+        <button type="button" onClick={() => setSelected(selected.size === missing.length ? new Set() : new Set(missing.map((a) => a.code)))} className="text-accent-ink hover:underline">
           {selected.size === missing.length ? 'Desmarcar todas' : 'Marcar todas'}
         </button>
       </div>

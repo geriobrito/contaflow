@@ -3,7 +3,7 @@ import type { ReconciliationStatus } from '@/types/firestore';
 
 const STATUS_BADGE: Record<ReconciliationStatus, { label: string; className: string }> = {
   PENDING: { label: 'Pendente', className: 'bg-amber-50 text-amber-700 border-amber-200/60' },
-  AUTO_CLASSIFIED: { label: 'Auto', className: 'bg-blue-50 text-[#0071E3] border-blue-200/60' },
+  AUTO_CLASSIFIED: { label: 'Auto', className: 'bg-accent/[0.07] text-accent-ink border-accent/25' },
   RECONCILED: { label: 'Conciliado', className: 'bg-emerald-50 text-emerald-700 border-emerald-200/60' },
 };
 

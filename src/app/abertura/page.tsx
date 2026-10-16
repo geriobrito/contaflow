@@ -258,7 +258,7 @@ export default function AberturaPage() {
                 <label
                   key={m}
                   className={`flex gap-3 rounded-2xl border px-4 py-3 cursor-pointer transition-colors ${
-                    mode === m ? 'border-[#0071E3] bg-[#0071E3]/[0.04]' : 'border-black/[0.08] dark:border-white/[0.1] hover:bg-black/[0.02]'
+                    mode === m ? 'border-accent bg-accent/[0.04]' : 'border-black/[0.08] dark:border-white/[0.1] hover:bg-black/[0.02]'
                   }`}
                 >
                   <input type="radio" name="opening-mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1" />

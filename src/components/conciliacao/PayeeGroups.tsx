@@ -50,7 +50,7 @@ export function PayeeGroupList({ groups, onOpen }: PayeeGroupListProps) {
               <button
                 type="button"
                 onClick={() => onOpen(g)}
-                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-blue-50/50 transition-colors"
+                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-accent/[0.05] transition-colors"
               >
                 <span
                   className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${
@@ -158,7 +158,7 @@ export function GroupClassifySheet({ group, accounts, pool, isSaving, onClose, o
         <section className="space-y-2">
           <div className="flex items-center justify-between px-1">
             <p className="text-[12px] font-medium text-stone-500">Lançamentos</p>
-            <button type="button" onClick={() => setPicked(allPicked ? new Set() : new Set(group.transactions.map((t) => t.id)))} className="text-[12px] text-[#0071E3] hover:underline">
+            <button type="button" onClick={() => setPicked(allPicked ? new Set() : new Set(group.transactions.map((t) => t.id)))} className="text-[12px] text-accent-ink hover:underline">
               {allPicked ? 'Desmarcar todos' : 'Marcar todos'}
             </button>
           </div>
