@@ -160,6 +160,12 @@ export interface DataRepository {
   saveClientRequest(request: ClientRequest): Promise<void>;
   /** Encerra o link sem tocar nas respostas (que podem ter chegado depois da última leitura). */
   closeClientRequest(requestId: string): Promise<void>;
+  /** Reabre/prorroga um link vencido ou encerrado mantendo o mesmo token (`id`), perguntas e respostas. */
+  renewClientRequest(requestId: string, expiresAtMs: number): Promise<void>;
+  /** Marca links de pendências como visualizados pelo escritório (`seenAt`). */
+  markClientRequestsSeen(items: readonly { id: string; seenAt: string }[]): Promise<void>;
+  /** Todos os links `OPEN` do escritório (ativos ou recém-vencidos), para o indicador global de respostas novas. */
+  listOpenOrgClientRequests(): Promise<ClientRequest[]>;
 
   /* Lançamentos manuais de fechamento (Diário Avulso / Ajustes) */
   listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]>;

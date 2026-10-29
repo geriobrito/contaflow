@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCheck } from 'lucide-react';
+import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
 import type { BankAccount, ChartAccount, ReconciliationStatus } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
@@ -65,8 +65,13 @@ export default function ConciliacaoPage() {
   const clientId = currentClient?.id ?? null;
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [filter, setFilter] = useState<Filter>('ALL');
+  const [bankFilter, setBankFilter] = useState<string>('ALL');
+  const [lastBankClientId, setLastBankClientId] = useState<string | null>(clientId);
+  if (lastBankClientId !== clientId) {
+    setLastBankClientId(clientId);
+    setBankFilter('ALL');
+  }
   const { containerRef: filterTabsRef, indicatorRef: filterPillRef } = useSlidingIndicator<HTMLDivElement>(filter);
   const [searchQuery, setSearchQuery] = useState('');
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
@@ -83,19 +88,16 @@ export default function ConciliacaoPage() {
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    const repo = getRepository();
-
-    repo.listBankAccounts(clientId)
-      .then((banks) => active && setBankAccounts(banks))
-      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('as contas bancárias', e) }));
 
     getLatestTransactionDate(clientId)
       .then((latest) => {
         if (!active) return;
-        // Links do painel: /?mes=AAAA-MM[&filtro=PENDING|AUTO_CLASSIFIED] abrem o mês (e o filtro) pedidos.
+        // Links do painel: /?mes=AAAA-MM[&filtro=PENDING|AUTO_CLASSIFIED][&conta=KEY] abrem o mês e filtros pedidos.
         const params = new URLSearchParams(window.location.search);
         const mes = params.get('mes');
         const filtro = params.get('filtro');
+        const conta = params.get('conta');
+        if (conta) setBankFilter(conta);
         if (mes && /^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
           setMode('month');
           jumpTo(`${mes}-01`);
@@ -129,7 +131,7 @@ export default function ConciliacaoPage() {
     };
   }, [clientId]);
 
-  // Contas bancárias (nomes nas transferências); recarrega após cada importação.
+  // Contas bancárias e cartões (importação, filtro e nomes nas transferências); recarrega após cada importação.
   const [banks, setBanks] = useState<BankAccount[]>([]);
   useEffect(() => {
     if (!clientId) return;
@@ -142,6 +144,13 @@ export default function ConciliacaoPage() {
       active = false;
     };
   }, [clientId, statementsKey]);
+
+  const handleBankAccountUpdated = (updated: BankAccount) => {
+    setBanks((prev) => {
+      const idx = prev.findIndex((b) => b.id === updated.id);
+      return idx >= 0 ? prev.map((b, i) => (i === idx ? updated : b)) : [...prev, updated];
+    });
+  };
 
   // Históricos de importações antigas com acentuação quebrada: a correção fica em Contas e Extratos.
   const hasBrokenText = useMemo(() => transactions.some((t) => hasMojibake(t.memo)), [transactions]);
@@ -165,35 +174,89 @@ export default function ConciliacaoPage() {
   });
   const { selected } = flow;
 
-  /* ── Lista: filtro, busca, visão por favorecido e paginação ────────── */
+  /* ── Lista: filtro por conta, status, busca, visão por favorecido e paginação ── */
+  const bankNamesByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of banks) {
+      map.set(b.accountKey, b.nickname || b.bankName || b.accountKey);
+    }
+    return map;
+  }, [banks]);
+
+  const bankOptions = useMemo(() => {
+    const countsByKey = new Map<string, number>();
+    let unlinkedCount = 0;
+    for (const t of transactions) {
+      if (t.accountKey) {
+        countsByKey.set(t.accountKey, (countsByKey.get(t.accountKey) ?? 0) + 1);
+      } else {
+        unlinkedCount++;
+      }
+    }
+
+    const opts: { value: string; label: string; count: number }[] = [];
+    const seen = new Set<string>();
+    for (const b of banks) {
+      seen.add(b.accountKey);
+      const count = countsByKey.get(b.accountKey) ?? 0;
+      const prefix = b.kind === 'CARD' ? 'Cartão · ' : '';
+      opts.push({
+        value: b.accountKey,
+        label: `${prefix}${b.nickname || b.bankName || b.accountKey}`,
+        count,
+      });
+    }
+    for (const [key, count] of countsByKey) {
+      if (!seen.has(key)) {
+        opts.push({ value: key, label: key, count });
+      }
+    }
+    if (unlinkedCount > 0) {
+      opts.push({ value: '__unlinked__', label: 'Sem conta identificada', count: unlinkedCount });
+    }
+    return opts;
+  }, [banks, transactions]);
+
+  const byBank = useMemo(() => {
+    if (bankFilter === 'ALL') return transactions;
+    if (bankFilter === '__unlinked__') return transactions.filter((t) => !t.accountKey);
+    return transactions.filter((t) => t.accountKey === bankFilter);
+  }, [transactions, bankFilter]);
+
   const visible = useMemo(() => {
-    const byFilter = filter === 'ALL' ? transactions : transactions.filter((t) => t.status === filter);
+    const byFilter = filter === 'ALL' ? byBank : byBank.filter((t) => t.status === filter);
     return searchQuery.trim() ? byFilter.filter((t) => matchTransaction(t, searchQuery)) : byFilter;
-  }, [transactions, filter, searchQuery]);
+  }, [byBank, filter, searchQuery]);
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
   const [view, setView] = useState<'list' | 'payee'>('list');
   const payeeGroups = useMemo(
-    () => groupByPayee(transactions.filter((t) => t.status === 'PENDING' && !t.transferPairId && !isMonthLocked(t.date, lockedMonths))),
-    [transactions, lockedMonths]
+    () => groupByPayee(byBank.filter((t) => t.status === 'PENDING' && !t.transferPairId && !isMonthLocked(t.date, lockedMonths))),
+    [byBank, lockedMonths]
   );
   const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
 
-  // Volta à 1ª página ao trocar filtro, busca, período ou cliente.
+  // Volta à 1ª página ao trocar filtro, conta, busca, período ou cliente.
   const { currentPage, pageCount, rows: pageRows, setPage } = usePagination(
     visible,
     PAGE_SIZE,
-    `${clientId}|${filter}|${searchQuery}|${range?.start}|${range?.end}`
+    `${clientId}|${filter}|${bankFilter}|${searchQuery}|${range?.start}|${range?.end}`
   );
   const tableRef = useRef<HTMLElement>(null);
   const goToPage = (next: number) => {
     setPage(next);
     tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
-  const approvable = useMemo(
-    () => transactions.filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths)).length,
-    [transactions, lockedMonths]
+  const approvableIds = useMemo(
+    () =>
+      new Set(
+        byBank
+          .filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths))
+          .map((t) => t.id)
+      ),
+    [byBank, lockedMonths]
   );
+  const approvable = approvableIds.size;
 
   /* ── Seleção múltipla e ações em lote ──────────────────────────────── */
   const bulk = useBulkSelection({
@@ -286,8 +349,10 @@ export default function ConciliacaoPage() {
       <OFXDropzone
         onParsed={importFlow.handleOFXParsed}
         onParsedBatch={importFlow.handleOFXParsedBatch}
+        onBankAccountUpdated={handleBankAccountUpdated}
         isLoading={isSaving}
-        bankAccounts={bankAccounts}
+        bankAccounts={banks}
+        accounts={accounts}
         clientId={clientId || ''}
       />
       {duplicate && (
@@ -349,6 +414,24 @@ export default function ConciliacaoPage() {
                 </button>
               ))}
             </div>
+            {(bankOptions.length > 1 || bankFilter !== 'ALL') && (
+              <div className="relative inline-flex items-center">
+                <Landmark className="w-3.5 h-3.5 text-stone-400 absolute left-3 pointer-events-none" />
+                <select
+                  aria-label="Filtrar por conta bancária ou cartão"
+                  value={bankFilter}
+                  onChange={(e) => setBankFilter(e.target.value)}
+                  className="h-9 pl-8 pr-7 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[13px] font-medium text-stone-700 dark:text-stone-200 border border-transparent focus:border-accent/40 outline-none cursor-pointer transition-colors"
+                >
+                  <option value="ALL">Todas as contas ({transactions.length})</option>
+                  {bankOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label} ({opt.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -376,7 +459,7 @@ export default function ConciliacaoPage() {
             <button
               type="button"
               disabled={approvable === 0 || isSaving}
-              onClick={() => void flow.handleApproveAll()}
+              onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvableIds : undefined)}
               className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
             >
               <CheckCheck className="w-4 h-4" strokeWidth={2} />
@@ -415,6 +498,7 @@ export default function ConciliacaoPage() {
             currentPage={currentPage}
             pageCount={pageCount}
             onGoToPage={goToPage}
+            bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNamesByKey : undefined}
           />
         )}
       </section>

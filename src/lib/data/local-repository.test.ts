@@ -169,6 +169,20 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect(await repo.getPublicClientRequest(req.id)).toMatchObject({ status: 'CLOSED', answers: [{ text: 'Fornecedor' }] });
     await expect(repo.answerPublicClientRequest(req.id, [{ text: 'tarde' }], 'T4')).rejects.toThrow(/não aceita/);
     await expect(repo.closeClientRequest('inexistente')).rejects.toThrow(/não encontrado/);
+
+    // Renovar o link encerrado/vencido mantém o mesmo token e libera novas respostas.
+    const nextExpiry = Date.now() + 86_400_000;
+    await repo.renewClientRequest(req.id, nextExpiry);
+    expect((await repo.listOpenOrgClientRequests()).map((r) => r.id)).toEqual([req.id]);
+    await repo.answerPublicClientRequest(req.id, [{ text: 'Fornecedor atualizado', answeredAt: 'T5' }], 'T5');
+    await repo.markClientRequestsSeen([{ id: req.id, seenAt: 'T6' }]);
+    expect(await repo.getPublicClientRequest(req.id)).toMatchObject({
+      status: 'OPEN',
+      expiresAtMs: nextExpiry,
+      seenAt: 'T6',
+      answers: [{ text: 'Fornecedor atualizado', answeredAt: 'T5' }],
+    });
+    await expect(repo.renewClientRequest('inexistente', nextExpiry)).rejects.toThrow(/não encontrado/);
   });
 
   it('saldos de abertura: um por cliente, com auditoria; excluir o cliente apaga os saldos', async () => {

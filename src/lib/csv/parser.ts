@@ -1,3 +1,4 @@
+import type { CSVColumnMapping, CSVDelimiter } from '@/types/firestore';
 import type { OFXAccountInfo, OFXParseResult, OFXRawTransaction } from '@/lib/ofx/types';
 import { decodeOFXBytes } from '@/lib/ofx/encoding';
 
@@ -5,28 +6,7 @@ import { decodeOFXBytes } from '@/lib/ofx/encoding';
    Tipos do Parser CSV
    ========================================================================= */
 
-export type CSVDelimiter = ';' | ',' | '\t' | '|';
-
-export interface CSVColumnMapping {
-  /** Índice da coluna da data (0-based) */
-  dateCol: number;
-  /** Índice da coluna do histórico / descrição (0-based) */
-  memoCol: number;
-  /** Modo de leitura do valor: coluna única com sinal ou colunas separadas (débito/crédito) */
-  valueMode: 'single' | 'split';
-  /** Índice da coluna de valor único (quando valueMode === 'single') */
-  amountCol?: number;
-  /** Índice da coluna de saída/débito (quando valueMode === 'split') */
-  debitCol?: number;
-  /** Índice da coluna de entrada/crédito (quando valueMode === 'split') */
-  creditCol?: number;
-  /** Índice da coluna de documento / identificador (opcional) */
-  docCol?: number;
-  /** Inverter sinal (+/-): útil para faturas de cartão onde compras vêm positivas */
-  invertSigns?: boolean;
-  /** Se a primeira linha é cabeçalho */
-  hasHeader: boolean;
-}
+export type { CSVColumnMapping, CSVDelimiter };
 
 export interface CSVPreview {
   delimiter: CSVDelimiter;

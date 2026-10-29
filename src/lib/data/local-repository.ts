@@ -360,6 +360,27 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       write(LOCAL_KEYS.requests, all);
     },
 
+    async renewClientRequest(requestId, expiresAtMs) {
+      const all = read<ClientRequest>(LOCAL_KEYS.requests);
+      const i = all.findIndex((r) => r.id === requestId);
+      if (i < 0) throw new Error('Link não encontrado.');
+      all[i] = { ...all[i], status: 'OPEN', expiresAtMs };
+      write(LOCAL_KEYS.requests, all);
+    },
+    async markClientRequestsSeen(items) {
+      if (!items.length) return;
+      const seenMap = new Map(items.map((x) => [x.id, x.seenAt] as const));
+      const all = read<ClientRequest>(LOCAL_KEYS.requests).map((r) =>
+        seenMap.has(r.id) ? { ...r, seenAt: seenMap.get(r.id)! } : r
+      );
+      write(LOCAL_KEYS.requests, all);
+    },
+    async listOpenOrgClientRequests() {
+      return read<ClientRequest>(LOCAL_KEYS.requests)
+        .filter((r) => r.status === 'OPEN')
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
     /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
     async listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]> {
       return read<JournalEntry>(LOCAL_KEYS.journalEntries)

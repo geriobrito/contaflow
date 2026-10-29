@@ -1,8 +1,21 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import { AlertTriangle, Check, CheckCircle2, Download, Pencil, Plus, Trash2, XCircle } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Download,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Sparkles,
+  Trash2,
+  XCircle,
+} from 'lucide-react';
 import type { ClientCompany, CompanyPorte, TaxRegime } from '@/types/firestore';
+import type { CNPJLookupResult } from '@/lib/cnpj';
 import { saveClient } from '@/lib/services/data-service';
 import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { useClient } from '@/contexts/ClientContext';
@@ -118,6 +131,12 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
           <dt className="text-stone-400">Porte</dt>
           <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{PORTE_LABEL[porteOf(client)]}</dd>
         </div>
+        {client.city && (
+          <div className="min-w-0">
+            <dt className="text-stone-400">Município</dt>
+            <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{client.city}</dd>
+          </div>
+        )}
       </dl>
 
       <div className="mt-5 pt-4 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between gap-3">
@@ -176,9 +195,10 @@ interface ClientSheetProps {
 }
 
 function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
+  const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
   const [name, setName] = useState(client?.name ?? '');
   const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
-  const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
+  const [city, setCity] = useState(client?.city ?? '');
   const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
   const [porte, setPorte] = useState<CompanyPorte>(porteOf(client));
   const [email, setEmail] = useState(client?.email ?? '');
@@ -186,6 +206,11 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [repName, setRepName] = useState(client?.legalRepresentativeName ?? '');
   const [repCpf, setRepCpf] = useState(client?.legalRepresentativeCpf ? maskCPF(client.legalRepresentativeCpf) : '');
   const [saving, setSaving] = useState(false);
+
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupNotice, setLookupNotice] = useState<{ kind: 'ok' | 'warn' | 'info'; text: string } | null>(null);
+  const lastAutoQueriedRef = useRef<string | null>(client ? cleanCNPJ(client.cnpj) : null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const cnpjChars = cleanCNPJ(cnpj);
   const complete = cnpjChars.length === 14;
@@ -200,6 +225,85 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const lookupCNPJ = useCallback(async (targetCnpj: string, overwriteFilled: boolean) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setLookupLoading(true);
+    setLookupNotice(null);
+    try {
+      const response = await fetch(`/api/cnpj/${encodeURIComponent(targetCnpj)}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        setLookupNotice({
+          kind: 'info',
+          text: body?.error || 'Consulta automática indisponível — preencha os campos manualmente.',
+        });
+        return;
+      }
+
+      const data = (await response.json()) as CNPJLookupResult;
+      setName((prev) => (overwriteFilled || !prev.trim() ? data.name || prev : prev));
+      if (data.tradeName) {
+        setTradeName((prev) => (overwriteFilled || !prev.trim() ? data.tradeName! : prev));
+      }
+      if (data.city) {
+        setCity((prev) => (overwriteFilled || !prev.trim() ? data.city! : prev));
+      }
+      if (data.regime) {
+        setRegime(data.regime);
+      }
+      if (data.porte) {
+        setPorte(data.porte);
+      }
+      if (data.email) {
+        setEmail((prev) => (overwriteFilled || !prev.trim() ? data.email! : prev));
+      }
+      if (data.phone) {
+        setPhone((prev) => (overwriteFilled || !prev.trim() ? data.phone! : prev));
+      }
+      if (data.legalRepresentativeName) {
+        setRepName((prev) => (overwriteFilled || !prev.trim() ? data.legalRepresentativeName! : prev));
+      }
+
+      const sit = data.situacaoCadastral;
+      const isInactive = Boolean(sit && sit.toUpperCase() !== 'ATIVA');
+      setLookupNotice({
+        kind: isInactive ? 'warn' : 'ok',
+        text: isInactive
+          ? `Dados preenchidos · Atenção: situação cadastral "${sit}" na Receita Federal.`
+          : 'Dados preenchidos automaticamente via cadastro público do CNPJ.',
+      });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setLookupNotice({
+        kind: 'info',
+        text: 'Sem conexão com a consulta pública — preencha os dados manualmente.',
+      });
+    } finally {
+      if (abortRef.current === controller) {
+        setLookupLoading(false);
+      }
+    }
+  }, []);
+
+  // Dispara a busca automaticamente ao completar 14 caracteres válidos de um novo CNPJ
+  useEffect(() => {
+    if (!cnpjValid) return;
+    if (lastAutoQueriedRef.current === cnpjChars) return;
+    lastAutoQueriedRef.current = cnpjChars;
+    void lookupCNPJ(cnpjChars, false);
+  }, [cnpjValid, cnpjChars, lookupCNPJ]);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const submit = async () => {
     if (!valid) return;
     setSaving(true);
@@ -210,6 +314,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       name: name.trim(),
       tradeName: tradeName.trim() || undefined,
       cnpj: formatCNPJ(cnpjChars),
+      city: city.trim() || undefined,
       regime,
       taxRegime: regime,
       porte,
@@ -235,19 +340,19 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   return (
     <Sheet
       title={client ? 'Editar cliente' : 'Novo cliente'}
-      subtitle={client ? client.name : 'Cadastre a empresa para importar extratos e gerar a DRE.'}
+      subtitle={client ? client.name : 'Digite o CNPJ para preencher automaticamente ou informe os dados abaixo.'}
       onClose={onClose}
       footer={
         <>
-        {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
-        <button
-          type="button"
-          disabled={!valid || saving}
-          onClick={() => void submit()}
-          className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
-        >
-          {saving ? 'Salvando…' : client ? 'Salvar alterações' : 'Cadastrar cliente'}
-        </button>
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          <button
+            type="button"
+            disabled={!valid || saving}
+            onClick={() => void submit()}
+            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
+          >
+            {saving ? 'Salvando…' : client ? 'Salvar alterações' : 'Cadastrar cliente'}
+          </button>
         </>
       }
     >
@@ -258,34 +363,85 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
           void submit();
         }}
       >
-        <Field label="Razão social">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
-        </Field>
-        <Field label="Nome fantasia" hint="Opcional">
-          <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className={INPUT} />
-        </Field>
-
-        <Field label="CNPJ" error={cnpjError}>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between px-0.5">
+            <label htmlFor="client-cnpj" className="text-[12px] font-medium text-stone-500">
+              CNPJ
+            </label>
+            {cnpjValid && (
+              <button
+                type="button"
+                disabled={lookupLoading}
+                onClick={() => void lookupCNPJ(cnpjChars, true)}
+                className="inline-flex items-center gap-1 text-[12px] font-medium text-accent-ink hover:underline disabled:opacity-50"
+              >
+                {lookupLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
+                {client ? 'Atualizar pela Receita' : 'Consultar Receita'}
+              </button>
+            )}
+          </div>
           <div className="relative">
             <input
+              id="client-cnpj"
+              autoFocus={!client}
               autoCapitalize="characters"
               autoComplete="off"
               spellCheck={false}
               value={cnpj}
-              onChange={(e) => setCnpj(maskCNPJ(e.target.value))}
+              onChange={(e) => {
+                setCnpj(maskCNPJ(e.target.value));
+                if (lookupNotice) setLookupNotice(null);
+              }}
               placeholder="00.000.000/0000-00"
               aria-invalid={Boolean(cnpjError)}
               className={`${INPUT} pr-10 font-mono tabular-nums ${
                 cnpjError ? 'border-rose-300 focus:border-rose-400 focus:shadow-[0_0_0_4px_rgba(225,29,72,0.10)]' : ''
               } ${cnpjValid ? 'border-emerald-300' : ''}`}
             />
-            {complete && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 animate-pop-in">
-                {cnpjValid ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-rose-500" />}
+            {lookupLoading ? (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Loader2 className="w-4 h-4 animate-spin text-accent-ink" />
               </span>
+            ) : (
+              complete && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 animate-pop-in">
+                  {cnpjValid ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-rose-500" />}
+                </span>
+              )
             )}
           </div>
+          {cnpjError && <p className="text-[12px] text-rose-600 px-0.5">{cnpjError}</p>}
+          {!cnpjError && lookupLoading && (
+            <p className="text-[12px] text-stone-500 px-0.5">Consultando dados cadastrais do CNPJ…</p>
+          )}
+          {!cnpjError && !lookupLoading && lookupNotice && (
+            <p
+              className={`flex items-center gap-1.5 text-[12px] px-0.5 ${
+                lookupNotice.kind === 'ok'
+                  ? 'text-emerald-700 dark:text-emerald-400'
+                  : lookupNotice.kind === 'warn'
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-stone-500'
+              }`}
+            >
+              {lookupNotice.kind === 'ok' && <Sparkles className="w-3.5 h-3.5 shrink-0" />}
+              {lookupNotice.kind === 'warn' && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+              <span>{lookupNotice.text}</span>
+            </p>
+          )}
+        </div>
+
+        <Field label="Razão social">
+          <input autoFocus={Boolean(client)} value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
         </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Field label="Nome fantasia" hint="Opcional">
+            <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className={INPUT} />
+          </Field>
+          <Field label="Município/UF" hint="Opcional">
+            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="ex.: Recife/PE" className={INPUT} />
+          </Field>
+        </div>
 
         <div className="space-y-1.5">
           <span className="block text-[12px] font-medium text-stone-500 px-0.5">Regime tributário</span>

@@ -4,9 +4,9 @@ import React, { useRef, useState } from 'react';
 import { AlertCircle, FileText, Loader2, Upload } from 'lucide-react';
 import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
 import type { OFXParseResult } from '@/lib/ofx/types';
-import type { BankAccount } from '@/types/firestore';
+import type { BankAccount, ChartAccount } from '@/types/firestore';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
-import { CSVMappingModal } from '@/components/conciliacao/CSVMappingModal';
+import { CSVMappingModal, type CSVQueueFile } from '@/components/conciliacao/CSVMappingModal';
 import { readCSVFileContent } from '@/lib/csv/parser';
 
 export interface ParsedOFXItem {
@@ -17,16 +17,20 @@ export interface ParsedOFXItem {
 interface OFXDropzoneProps {
   onParsed: (result: OFXParseResult, fileName: string) => void;
   onParsedBatch?: (items: ParsedOFXItem[]) => void;
+  onBankAccountUpdated?: (bank: BankAccount) => void;
   isLoading?: boolean;
   bankAccounts?: readonly BankAccount[];
+  accounts?: readonly ChartAccount[];
   clientId?: string;
 }
 
 export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
   onParsed,
   onParsedBatch,
+  onBankAccountUpdated,
   isLoading = false,
   bankAccounts = [],
+  accounts = [],
   clientId = '',
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -35,7 +39,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [activeFileName, setActiveFileName] = useState<string | null>(null);
-  const [csvModalData, setCsvModalData] = useState<{ content: string; fileName: string } | null>(null);
+  const [csvQueue, setCsvQueue] = useState<CSVQueueFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleProcessFiles = async (fileList: FileList | File[]) => {
@@ -56,18 +60,28 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
     setErrorMessage(null);
     setWarnings([]);
 
-    // Se houver arquivo CSV / TXT, abre o modal interativo de mapeamento para o primeiro
+    const allWarnings: string[] = [];
+
+    // Lê todos os arquivos CSV / TXT para a fila do modal interativo
     if (csvFiles.length > 0) {
-      try {
-        const { text } = await readCSVFileContent(csvFiles[0]);
-        setCsvModalData({
-          content: text,
-          fileName: csvFiles[0].name,
-        });
-      } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : 'Falha ao ler arquivo CSV.');
+      const loadedCsvs: CSVQueueFile[] = [];
+      for (const csvFile of csvFiles) {
+        try {
+          const { text } = await readCSVFileContent(csvFile);
+          loadedCsvs.push({ content: text, fileName: csvFile.name });
+        } catch (err) {
+          allWarnings.push(`${csvFile.name}: ${err instanceof Error ? err.message : 'Falha ao ler arquivo CSV.'}`);
+        }
+      }
+      if (loadedCsvs.length > 0) {
+        setCsvQueue(loadedCsvs);
+      } else if (ofxFiles.length === 0) {
+        setWarnings(allWarnings);
+        setErrorMessage('Não foi possível ler nenhum dos arquivos CSV selecionados.');
+        return;
       }
       if (ofxFiles.length === 0) {
+        if (allWarnings.length > 0) setWarnings(allWarnings);
         return;
       }
     }
@@ -75,7 +89,6 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
     setIsProcessing(true);
 
     const parsedItems: ParsedOFXItem[] = [];
-    const allWarnings: string[] = [];
 
     try {
       for (let i = 0; i < ofxFiles.length; i++) {
@@ -110,7 +123,9 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
       setWarnings(allWarnings);
 
       if (parsedItems.length === 0) {
-        setErrorMessage('Nenhum dos arquivos enviados contém lançamentos válidos.');
+        if (csvFiles.length === 0) {
+          setErrorMessage('Nenhum dos arquivos enviados contém lançamentos válidos.');
+        }
         return;
       }
 
@@ -123,7 +138,6 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
       if (onParsedBatch) {
         onParsedBatch(parsedItems);
       } else {
-        // Fallback para manipulador de arquivo único
         for (const item of parsedItems) {
           onParsed(item.result, item.fileName);
         }
@@ -215,7 +229,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
                 <span className="truncate">{activeFileName}</span>
               </>
             ) : (
-              'Arraste arquivos OFX, CSV ou TXT aqui ou clique para selecionar'
+              'Arraste múltiplos arquivos OFX, CSV ou TXT aqui ou clique para selecionar'
             )}
           </span>
         </span>
@@ -251,21 +265,30 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
         </details>
       )}
 
-      {csvModalData && (
+      {csvQueue.length > 0 && (
         <CSVMappingModal
-          isOpen={Boolean(csvModalData)}
-          onClose={() => setCsvModalData(null)}
-          fileName={csvModalData.fileName}
-          fileContent={csvModalData.content}
+          key={csvQueue.map((f) => f.fileName).join('|')}
+          isOpen={csvQueue.length > 0}
+          onClose={() => setCsvQueue([])}
+          files={csvQueue}
           bankAccounts={bankAccounts}
+          accounts={accounts}
           clientId={clientId}
-          onConfirm={(result, fName) => {
-            setCsvModalData(null);
-            setActiveFileName(fName);
+          onBankAccountUpdated={onBankAccountUpdated}
+          onConfirmBatch={(items) => {
+            setCsvQueue([]);
+            if (items.length === 0) return;
+            setActiveFileName(
+              items.length === 1
+                ? items[0].fileName
+                : `${items.length} arquivos CSV lidos (${items.reduce((acc, it) => acc + it.result.transactions.length, 0)} lançamentos)`
+            );
             if (onParsedBatch) {
-              onParsedBatch([{ result, fileName: fName }]);
+              onParsedBatch(items);
             } else {
-              onParsed(result, fName);
+              for (const item of items) {
+                onParsed(item.result, item.fileName);
+              }
             }
           }}
         />

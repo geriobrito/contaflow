@@ -22,7 +22,7 @@ export interface ClassificationActions {
   classifyMany: (transactionIds: readonly string[], accountId: string, options?: ClassifyOptions) => Promise<ClassifyManyResult>;
   splitTransaction: (transactionId: string, drafts: readonly SplitDraft[]) => Promise<UndoPlan>;
   unreconcileTransaction: (transactionId: string) => Promise<void>;
-  approveAutoClassified: () => Promise<ApproveResult>;
+  approveAutoClassified: (onlyIds?: ReadonlySet<string>) => Promise<ApproveResult>;
   /** Concilia pares de transferência entre contas próprias na conta transitória. */
   reconcileTransfers: (pairs: readonly TransferPair[], transit: ChartAccount) => Promise<number>;
   /** Marca (ou remove, com pergunta vazia) uma pergunta ao cliente sobre o lançamento. */
@@ -338,10 +338,14 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
   /* Aprovação em lote dos auto-classificados (competências abertas)     */
   /* ------------------------------------------------------------------ */
   const approveAutoClassified = useCallback(
-    (): Promise<ApproveResult> =>
+    (onlyIds?: ReadonlySet<string>): Promise<ApproveResult> =>
       mutate('Não foi possível aprovar os lançamentos', async () => {
         const eligible = transactions.filter(
-          (t) => t.status === 'AUTO_CLASSIFIED' && Boolean(t.accountId) && !isMonthLocked(t.date, lockedMonths)
+          (t) =>
+            (!onlyIds || onlyIds.has(t.id)) &&
+            t.status === 'AUTO_CLASSIFIED' &&
+            Boolean(t.accountId) &&
+            !isMonthLocked(t.date, lockedMonths)
         );
         if (!eligible.length) return { approved: 0, undo: null };
         const actor = getActor();

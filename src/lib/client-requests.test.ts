@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { answerAt, answeredCount, latestAnswers, MAX_ANSWER_LENGTH, requestLink, tokenFromLocation } from '@/lib/client-requests';
+import {
+  answerAt,
+  answeredCount,
+  hasUnreadAnswers,
+  latestAnswers,
+  MAX_ANSWER_LENGTH,
+  requestLink,
+  tokenFromLocation,
+  unreadSummaryByClient,
+  unreadTransactionIds,
+} from '@/lib/client-requests';
 import type { ClientRequest } from '@/types/firestore';
 
 const request = (overrides: Partial<ClientRequest> = {}): ClientRequest => ({
@@ -59,5 +69,45 @@ describe('respostas do cliente', () => {
     expect(tokenFromLocation({ hash: '', search: `?t=${token}` })).toBe(token);
     expect(tokenFromLocation({ hash: '#t=novo', search: '?t=antigo' })).toBe('novo');
     expect(tokenFromLocation({ hash: '', search: '' })).toBe('');
+  });
+
+  it('detecta respostas não lidas e volta a alertar quando o cliente complementa depois de seenAt', () => {
+    const empty = request();
+    expect(hasUnreadAnswers(empty)).toBe(false);
+
+    const firstReply = request({
+      respondedAt: '2025-03-10T10:00:00.000Z',
+      answers: [{ text: 'Fornecedor X', answeredAt: '2025-03-10T10:00:00.000Z' }, { text: '' }],
+    });
+    expect(hasUnreadAnswers(firstReply)).toBe(true);
+    expect([...unreadTransactionIds([firstReply])]).toEqual(['a']);
+
+    const seen = { ...firstReply, seenAt: '2025-03-10T10:05:00.000Z' };
+    expect(hasUnreadAnswers(seen)).toBe(false);
+    expect([...unreadTransactionIds([seen])]).toEqual([]);
+
+    const secondReply = {
+      ...seen,
+      respondedAt: '2025-03-10T12:00:00.000Z',
+      answers: [
+        { text: 'Fornecedor X', answeredAt: '2025-03-10T10:00:00.000Z' },
+        { text: 'Reembolso viagem', answeredAt: '2025-03-10T12:00:00.000Z' },
+      ],
+    };
+    expect(hasUnreadAnswers(secondReply)).toBe(true);
+    expect([...unreadTransactionIds([secondReply])]).toEqual(['b']);
+
+    const otherClient = request({
+      id: 'z'.repeat(32),
+      clientId: 'c2',
+      respondedAt: '2025-03-11T09:00:00.000Z',
+      answers: [
+        { text: 'Item 1', answeredAt: '2025-03-11T09:00:00.000Z' },
+        { text: 'Item 2', answeredAt: '2025-03-11T09:00:00.000Z' },
+      ],
+    });
+    const summary = unreadSummaryByClient([secondReply, otherClient]);
+    expect(summary.get('c1')).toBe(1);
+    expect(summary.get('c2')).toBe(2);
   });
 });

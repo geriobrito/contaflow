@@ -142,9 +142,9 @@ export function useClassificationFlow({
     }
   };
 
-  const handleApproveAll = async () => {
+  const handleApproveAll = async (onlyIds?: ReadonlySet<string>) => {
     try {
-      const { approved, undo: plan } = await approveAutoClassified();
+      const { approved, undo: plan } = await approveAutoClassified(onlyIds);
       if (approved > 0) offerUndo(`${approved} lançamento(s) aprovado(s)`, plan);
     } catch {
       /* erro exposto pelo hook */

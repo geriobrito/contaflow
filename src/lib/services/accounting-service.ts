@@ -293,6 +293,22 @@ export async function closeClientRequest(request: ClientRequest): Promise<Client
   return { ...request, status: 'CLOSED' };
 }
 
+/**
+ * Renova a validade de um link vencido, encerrado ou próximo do vencimento mantendo o mesmo
+ * token (`id`) já enviado ao cliente, sem perder as perguntas nem as respostas anteriores.
+ */
+export async function renewClientRequest(
+  request: ClientRequest,
+  days = REQUEST_VALIDITY_DAYS,
+  nowMs = Date.now()
+): Promise<ClientRequest> {
+  const baseMs = request.status === 'OPEN' && request.expiresAtMs > nowMs ? request.expiresAtMs : nowMs;
+  const maxMs = nowMs + 60 * 86_400_000;
+  const expiresAtMs = Math.trunc(Math.min(baseMs + days * 86_400_000, maxMs));
+  await getRepository().renewClientRequest(request.id, expiresAtMs);
+  return { ...request, status: 'OPEN', expiresAtMs };
+}
+
 export { requestLink } from '@/lib/client-requests';
 
 /* =========================================================================

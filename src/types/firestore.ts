@@ -31,6 +31,8 @@ export interface ClientCompany {
   ignoredTemplateCodes?: string[];
   email?: string;
   phone?: string;
+  /** Município/UF da sede (ex.: "Recife/PE"), usado também nos termos do Livro Diário. */
+  city?: string;
   /** Representante legal / administrador que assina as demonstrações. */
   legalRepresentativeName?: string;
   legalRepresentativeCpf?: string;
@@ -413,12 +415,46 @@ export interface BalanceCheck {
  * Liga a conta do extrato (banco-agência-conta do OFX) a uma conta analítica do plano,
  * contrapartida bancária de todos os lançamentos dela no balancete e no balanço.
  */
+export type BankAccountKind = 'BANK' | 'CARD';
+
+export type CSVDelimiter = ';' | ',' | '\t' | '|';
+
+export interface CSVColumnMapping {
+  /** Índice da coluna da data (0-based) */
+  dateCol: number;
+  /** Índice da coluna do histórico / descrição (0-based) */
+  memoCol: number;
+  /** Modo de leitura do valor: coluna única com sinal ou colunas separadas (débito/crédito) */
+  valueMode: 'single' | 'split';
+  /** Índice da coluna de valor único (quando valueMode === 'single') */
+  amountCol?: number;
+  /** Índice da coluna de saída/débito (quando valueMode === 'split') */
+  debitCol?: number;
+  /** Índice da coluna de entrada/crédito (quando valueMode === 'split') */
+  creditCol?: number;
+  /** Índice da coluna de documento / identificador (opcional) */
+  docCol?: number;
+  /** Inverter sinal (+/-): útil para faturas de cartão onde compras vêm positivas */
+  invertSigns?: boolean;
+  /** Se a primeira linha é cabeçalho */
+  hasHeader: boolean;
+}
+
+export interface BankCSVPreset {
+  delimiter: CSVDelimiter;
+  mapping: CSVColumnMapping;
+  /** Cabeçalhos observados na última confirmação (para validar compatibilidade de lotes). */
+  headerSignature?: string[];
+}
+
 export interface BankAccount {
   id: string;
   orgId?: string;
   clientId: string;
   /** Chave do extrato (`accountKeyOf`): banco-agência-conta. */
   accountKey: string;
+  /** Conta movimento (padrão) ou cartão de crédito. */
+  kind?: BankAccountKind;
   bankId?: string;
   branchId?: string;
   accountNumber?: string;
@@ -432,6 +468,8 @@ export interface BankAccount {
   /** Saldo no início do dia `openingDate`; os lançamentos desse dia em diante somam a partir dele. */
   openingBalance?: number;
   openingDate?: string;
+  /** Formato de CSV memorizado para esta conta ou cartão. */
+  csvPreset?: BankCSVPreset;
   createdAt: string;
   updatedAt: string;
 }
@@ -479,6 +517,8 @@ export interface ClientRequest {
   /** Validade do link (epoch ms), comparada com `request.time` nas regras. */
   expiresAtMs: number;
   respondedAt?: string;
+  /** Última leitura das respostas pelo escritório (ISO); `respondedAt > seenAt` indica resposta nova. */
+  seenAt?: string;
 }
 
 /* =========================================================================

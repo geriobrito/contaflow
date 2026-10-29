@@ -13,6 +13,7 @@ import { useTheme } from '@/components/ui/useTheme';
 import { NAV_SECTIONS, activeNavHref } from '@/components/layout/nav';
 import { openCommandPalette, SHORTCUT_LABEL } from '@/components/layout/CommandPalette';
 import { THEME_OPTIONS, nextPreference, type ThemePreference } from '@/lib/theme';
+import { useUnreadClientResponses } from '@/hooks/pendencias/useUnreadClientResponses';
 
 const THEME_ICON: Record<ThemePreference, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
 
@@ -81,7 +82,15 @@ function initials(name: string): string {
    Seletor de cliente ativo (dropdown minimalista)
    ========================================================================= */
 
-function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
+function ClientSwitcher({
+  collapsed,
+  unreadByClient,
+  totalOtherClientsUnread,
+}: {
+  collapsed: boolean;
+  unreadByClient: ReadonlyMap<string, number>;
+  totalOtherClientsUnread: number;
+}) {
   const { clients: allClients, currentClient, selectClient } = useClient();
   // Empresas com exclusão incompleta só aparecem na tela de Clientes (para retomar).
   const clients = allClients.filter((c) => !c.deletingAt);
@@ -103,6 +112,10 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
   }, [open]);
 
   const label = currentClient?.tradeName || currentClient?.name || 'Nenhum cliente';
+  const otherUnreadHint =
+    totalOtherClientsUnread > 0
+      ? ` · ${totalOtherClientsUnread} resposta(s) nova(s) em outra(s) empresa(s)`
+      : '';
 
   return (
     <div ref={ref} className="relative">
@@ -111,18 +124,31 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title={collapsed ? label : undefined}
+        title={collapsed ? `${label}${otherUnreadHint}` : otherUnreadHint ? otherUnreadHint.slice(3) : undefined}
         className={`w-full flex items-center gap-3 rounded-2xl p-2 text-left transition-all duration-150 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:scale-[0.98] ${
           collapsed ? 'justify-center' : ''
         }`}
       >
-        <span className="w-8 h-8 shrink-0 rounded-xl bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 flex items-center justify-center text-[11px] font-semibold tracking-tight">
+        <span className="relative w-8 h-8 shrink-0 rounded-xl bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 flex items-center justify-center text-[11px] font-semibold tracking-tight">
           {currentClient ? initials(label) : '—'}
+          {totalOtherClientsUnread > 0 && (
+            <span
+              aria-hidden
+              className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-stone-900"
+            />
+          )}
         </span>
         {!collapsed && (
           <>
             <span className="flex-1 min-w-0">
-              <span className="block text-[11px] text-stone-400">Cliente ativo</span>
+              <span className="block text-[11px] text-stone-400">
+                Cliente ativo
+                {totalOtherClientsUnread > 0 && (
+                  <span className="ml-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                    · +{totalOtherClientsUnread} resp.
+                  </span>
+                )}
+              </span>
               <span className="block text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100 truncate">
                 {label}
               </span>
@@ -142,6 +168,7 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
           )}
           {clients.map((c) => {
             const active = c.id === currentClient?.id;
+            const unread = unreadByClient.get(c.id) ?? 0;
             return (
               <li key={c.id}>
                 <button
@@ -160,6 +187,14 @@ function ClientSwitcher({ collapsed }: { collapsed: boolean }) {
                     </span>
                     <span className="block text-[11px] font-mono tabular-nums text-stone-400">{c.cnpj}</span>
                   </span>
+                  {unread > 0 && (
+                    <span
+                      title={`${unread} resposta(s) nova(s) do cliente`}
+                      className="px-1.5 py-0.5 min-w-[18px] text-center rounded-full bg-emerald-600 text-white font-mono tabular-nums text-[10px] font-semibold leading-none shrink-0"
+                    >
+                      {unread}
+                    </span>
+                  )}
                   {active && <Check className="w-3.5 h-3.5 text-accent-ink shrink-0" />}
                 </button>
               </li>
@@ -183,6 +218,8 @@ interface SidebarBodyProps {
 function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { currentClient } = useClient();
+  const { currentUnreadCount, unreadByClient, totalOtherClientsUnread } = useUnreadClientResponses(currentClient?.id);
   const connected = isFirebaseConfigured();
   const displayName = user?.displayName || user?.email?.split('@')[0] || 'Usuário';
   const activeHref = activeNavHref(pathname);
@@ -218,7 +255,11 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
       </div>
 
       <div className="px-2">
-        <ClientSwitcher collapsed={collapsed} />
+        <ClientSwitcher
+          collapsed={collapsed}
+          unreadByClient={unreadByClient}
+          totalOtherClientsUnread={totalOtherClientsUnread}
+        />
       </div>
 
       <div className="mx-4 my-2 border-t border-black/[0.05] dark:border-white/[0.06]" />
@@ -241,11 +282,18 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
             )}
             {section.items.map(({ href, label, icon: Icon }) => {
               const active = href === activeHref;
+              const unreadBadge = href === '/pendencias' ? currentUnreadCount : 0;
               return (
                 <Link
                   key={href}
                   href={href}
-                  title={collapsed ? label : undefined}
+                  title={
+                    collapsed
+                      ? unreadBadge > 0
+                        ? `${label} (${unreadBadge} nova${unreadBadge > 1 ? 's' : ''})`
+                        : label
+                      : undefined
+                  }
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
                   className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[5px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
@@ -257,7 +305,21 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                   }`}
                 >
                   <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-accent-ink' : ''}`} strokeWidth={1.75} />
-                  {!collapsed && <span className="truncate">{label}</span>}
+                  {!collapsed && <span className="truncate flex-1">{label}</span>}
+                  {!collapsed && unreadBadge > 0 && (
+                    <span
+                      aria-label={`${unreadBadge} resposta(s) nova(s) não lida(s)`}
+                      className="ml-auto px-1.5 py-0.5 min-w-[18px] text-center rounded-full bg-emerald-600 text-white font-mono tabular-nums text-[10.5px] font-semibold leading-none"
+                    >
+                      {unreadBadge}
+                    </span>
+                  )}
+                  {collapsed && unreadBadge > 0 && (
+                    <span
+                      aria-hidden
+                      className="absolute top-1 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-stone-900"
+                    />
+                  )}
                 </Link>
               );
             })}

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, CheckCircle2, Link2, Pencil, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CreditCard, Link2, Pencil, Plus, Wallet } from 'lucide-react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
 import type { ContasData } from '@/hooks/contas/useContasData';
 import { bankBalanceAt, lastReportedStatement } from '@/lib/bank-accounts';
@@ -19,23 +19,42 @@ interface BankAccountsTableProps {
   /** Lançamentos de extratos sem identificação de conta. */
   unlinkedTx: number;
   busy: boolean;
+  onCreate?: () => void;
   onEdit: (bank: BankAccount) => void;
   onRegister: (batch: ImportBatch) => Promise<void>;
 }
 
-/** Contas bancárias da empresa: vínculo contábil, saldo inicial, saldo contábil e conferência com o último saldo do banco. */
-export function BankAccountsTable({ current, unregistered, carriedByBank, unlinkedTx, busy, onEdit, onRegister }: BankAccountsTableProps) {
+/** Contas bancárias e cartões da empresa: vínculo contábil, saldo inicial, saldo contábil e conferência com o último saldo do banco. */
+export function BankAccountsTable({
+  current,
+  unregistered,
+  carriedByBank,
+  unlinkedTx,
+  busy,
+  onCreate,
+  onEdit,
+  onRegister,
+}: BankAccountsTableProps) {
   const today = new Date().toISOString().slice(0, 10);
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
       <div className="flex items-center gap-3 px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
         <Wallet className="w-4 h-4 text-stone-400" />
-        <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Contas bancárias</h2>
+        <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Contas bancárias e cartões</h2>
+        {onCreate && current && (
+          <button type="button" onClick={onCreate} className={`${BUTTON.secondary} h-8`}>
+            <Plus className="w-3.5 h-3.5" />
+            Nova conta ou cartão
+          </button>
+        )}
       </div>
       {!current ? (
         <TableSkeleton rows={3} label="Carregando contas bancárias…" />
       ) : current.banks.length === 0 && unregistered.length === 0 ? (
-        <EmptyState title="Nenhuma conta bancária" description="As contas são cadastradas automaticamente ao importar um extrato OFX com banco e número de conta." />
+        <EmptyState
+          title="Nenhuma conta ou cartão cadastrado"
+          description="As contas OFX são registradas automaticamente ao importar um extrato, ou você pode cadastrar uma conta/cartão manualmente para importar CSVs."
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
@@ -60,8 +79,19 @@ export function BankAccountsTable({ current, unregistered, carriedByBank, unlink
                 return (
                   <tr key={b.id} className="border-b border-black/[0.04] last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-3">
-                      <p className="font-medium text-stone-900 dark:text-stone-100">{b.nickname}</p>
-                      <p className="font-mono text-[11px] text-stone-400">{b.accountKey}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-stone-900 dark:text-stone-100">{b.nickname}</p>
+                        {b.kind === 'CARD' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200/70 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800/40">
+                            <CreditCard className="w-2.5 h-2.5" />
+                            Cartão
+                          </span>
+                        )}
+                      </div>
+                      <p className="font-mono text-[11px] text-stone-400">
+                        {b.accountKey}
+                        {b.csvPreset ? ' · formato CSV memorizado' : ''}
+                      </p>
                     </td>
                     <td className="px-3 py-3">
                       {b.ledgerAccountId ? (

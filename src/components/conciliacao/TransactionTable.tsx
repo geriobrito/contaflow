@@ -24,6 +24,8 @@ interface TransactionTableProps {
   currentPage: number;
   pageCount: number;
   onGoToPage: (page: number) => void;
+  /** Mapa opcional `accountKey -> apelido` para identificar o banco/cartão quando há múltiplas contas. */
+  bankNamesByKey?: ReadonlyMap<string, string>;
 }
 
 /** Tabela de lançamentos da conciliação: seleção, status, detalhe do rateio e paginação. */
@@ -42,6 +44,7 @@ export function TransactionTable({
   currentPage,
   pageCount,
   onGoToPage,
+  bankNamesByKey,
 }: TransactionTableProps) {
   const allSelected = rows.length > 0 && rows.every((t) => selectedIds.has(t.id));
   const someSelected = rows.some((t) => selectedIds.has(t.id));
@@ -123,6 +126,11 @@ export function TransactionTable({
                     <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 whitespace-normal break-words">
                       {t.memo}
                     </p>
+                    {bankNamesByKey && t.accountKey && bankNamesByKey.has(t.accountKey) && (
+                      <span className="mt-0.5 inline-block text-[11px] text-stone-400 dark:text-stone-500">
+                        {bankNamesByKey.get(t.accountKey)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-3 max-w-[240px] xl:max-w-[380px]">
                     {splitBadge ? (

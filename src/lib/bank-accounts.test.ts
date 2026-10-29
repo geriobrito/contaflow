@@ -1,10 +1,49 @@
 import { describe, expect, it } from 'vitest';
-import type { BankTransaction } from '@/types/firestore';
-import { bankAccountId, bankBalanceAt, nextChildCode, suggestOpening } from '@/lib/bank-accounts';
+import type { BankTransaction, ChartAccount } from '@/types/firestore';
+import {
+  bankAccountId,
+  bankBalanceAt,
+  bankLedgerCandidates,
+  newManualAccountKey,
+  nextChildCode,
+  suggestOpening,
+} from '@/lib/bank-accounts';
 
 describe('contas bancárias', () => {
   it('id seguro para o Firestore', () => {
     expect(bankAccountId('c1', '0341-1234-55555/5')).toBe('c1_0341-1234-55555-5');
+  });
+
+  it('gera chave manual estável sem colisão para conta ou cartão', () => {
+    expect(newManualAccountKey('Banco Inter PJ')).toBe('manual-banco-inter-pj');
+    expect(newManualAccountKey('Cartão Nubank Sócios!', 'CARD')).toBe('card-cartao-nubank-socios');
+    expect(newManualAccountKey('   ', 'CARD')).toBe('card-cartao');
+
+    const used = new Set(['card-nubank', 'card-nubank-2']);
+    expect(newManualAccountKey('Nubank', 'CARD', used)).toBe('card-nubank-3');
+  });
+
+  it('filtra contas contábeis candidatas conforme o tipo (banco vs cartão)', () => {
+    const acc = (id: string, type: ChartAccount['type'], nature: ChartAccount['nature'] = 'ANALYTIC'): ChartAccount => ({
+      id,
+      clientId: 'c1',
+      code: id,
+      name: id,
+      type,
+      nature,
+      level: 3,
+      createdAt: '',
+      updatedAt: '',
+    });
+    const chart = [
+      acc('1.1.1', 'ASSET', 'SYNTHETIC'),
+      acc('1.1.1.02', 'ASSET', 'ANALYTIC'),
+      acc('2.1.1.05', 'LIABILITY', 'ANALYTIC'),
+      acc('3.1.1.01', 'EXPENSE', 'ANALYTIC'),
+    ];
+
+    expect(bankLedgerCandidates(chart, 'BANK').map((a) => a.id)).toEqual(['1.1.1.02']);
+    expect(bankLedgerCandidates(chart, 'CARD').map((a) => a.id)).toEqual(['2.1.1.05', '1.1.1.02']);
   });
 
   it('saldo inicial sugerido = saldo final do primeiro extrato − movimentação do arquivo', () => {

@@ -18,6 +18,7 @@ import { PAGE, PageHeader } from '@/components/ui/primitives';
 export default function ContasPage() {
   const { currentClient } = useClient();
   const { current, error, busy, lockedMonths, unregistered, textPlan, unlinkedTx, carriedByBank, reload, register, repairText } = useContasData(currentClient?.id);
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [deleting, setDeleting] = useState<ImportBatch | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export default function ContasPage() {
 
   /** Depois de uma gravação feita num dos painéis: fecha-o, avisa e recarrega. */
   const refresh = async (message: string) => {
+    setCreating(false);
     setEditing(null);
     setDeleting(null);
     setToast(message);
@@ -41,7 +43,7 @@ export default function ContasPage() {
       <PageHeader
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Contas e extratos"
-        description="Cada conta bancária do cliente ligada à sua conta contábil, com saldo inicial para o balanço, e o histórico dos extratos importados."
+        description="Cada conta bancária ou cartão do cliente ligado à sua conta contábil, com saldo inicial para o balanço, e o histórico dos extratos importados."
       />
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
 
@@ -51,6 +53,7 @@ export default function ContasPage() {
         carriedByBank={carriedByBank}
         unlinkedTx={unlinkedTx}
         busy={busy}
+        onCreate={() => setCreating(true)}
         onEdit={setEditing}
         onRegister={async (batch) => {
           if (await register(batch)) setToast('Conta bancária cadastrada');
@@ -72,7 +75,26 @@ export default function ContasPage() {
 
       <ImportHistoryTable current={current} onDelete={setDeleting} />
 
-      {editing && current && <BankAccountSheet key={editing.id} bank={editing} data={current} onClose={() => setEditing(null)} onSaved={refresh} />}
+      {creating && current && currentClient && (
+        <BankAccountSheet
+          key="new-bank"
+          clientId={currentClient.id}
+          bank={null}
+          data={current}
+          onClose={() => setCreating(false)}
+          onSaved={refresh}
+        />
+      )}
+      {editing && current && currentClient && (
+        <BankAccountSheet
+          key={editing.id}
+          clientId={currentClient.id}
+          bank={editing}
+          data={current}
+          onClose={() => setEditing(null)}
+          onSaved={refresh}
+        />
+      )}
       {deleting && <DeleteBatchSheet key={deleting.id} batch={deleting} lockedMonths={lockedMonths} onClose={() => setDeleting(null)} onDeleted={refresh} />}
 
       {toast && (

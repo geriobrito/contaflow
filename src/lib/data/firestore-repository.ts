@@ -474,6 +474,18 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       await updateDoc(doc(db, COL.requests, requestId), { status: 'CLOSED' });
     },
 
+    async renewClientRequest(requestId, expiresAtMs) {
+      await updateDoc(doc(db, COL.requests, requestId), { status: 'OPEN', expiresAtMs: Math.trunc(expiresAtMs) });
+    },
+    async markClientRequestsSeen(items) {
+      if (!items.length) return;
+      await run(items.map(({ id, seenAt }) => single((b) => b.update(doc(db, COL.requests, id), { seenAt }))));
+    },
+    async listOpenOrgClientRequests() {
+      const snap = await getDocs(scoped(COL.requests, where('status', '==', 'OPEN')));
+      return snap.docs.map((d) => ({ ...(d.data() as ClientRequest), id: d.id })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
+
     /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
     async listJournalEntries(clientId, range) {
       const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];

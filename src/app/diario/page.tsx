@@ -25,12 +25,16 @@ const ORIGIN_LABEL: Record<DaybookOrigin, string> = { OPENING: 'Abertura', BANK:
 const bookKey = (clientId: string) => `contaflow_daybook_${clientId}`;
 const EMPTY_BOOK: DaybookBookInfo = { number: '1', city: '', registry: '' };
 
-function readBook(clientId: string): DaybookBookInfo {
+function readBook(clientId: string, fallbackCity?: string): DaybookBookInfo {
   try {
     const saved = JSON.parse(localStorage.getItem(bookKey(clientId)) ?? 'null') as Partial<DaybookBookInfo> | null;
-    return { number: String(saved?.number ?? '1'), city: String(saved?.city ?? ''), registry: String(saved?.registry ?? '') };
+    return {
+      number: String(saved?.number ?? '1'),
+      city: String(saved?.city || fallbackCity || ''),
+      registry: String(saved?.registry ?? ''),
+    };
   } catch {
-    return EMPTY_BOOK;
+    return { ...EMPTY_BOOK, city: fallbackCity ?? '' };
   }
 }
 
@@ -55,11 +59,11 @@ export default function DiarioPage() {
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    void Promise.resolve().then(() => active && setBook(readBook(clientId)));
+    void Promise.resolve().then(() => active && setBook(readBook(clientId, currentClient?.city)));
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, [clientId, currentClient?.city]);
 
   const daybook = useMemo(() => {
     if (!transactions || !static_) return null;
