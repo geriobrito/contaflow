@@ -225,7 +225,7 @@ export default function LancamentosPage() {
             placeholder="Buscar por histórico, documento ou conta..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className={`${INPUT} !pl-10 !h-10 text-[13px]`}
+            className={`${INPUT} pl-10! h-10! text-[13px]`}
           />
         </div>
 
@@ -234,7 +234,7 @@ export default function LancamentosPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl bg-white/80 dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] text-stone-700 dark:text-stone-300 outline-none"
+            className="h-10 px-3 rounded-xl bg-white/80 dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] text-stone-700 dark:text-stone-300 outline-none"
           >
             <option value="ALL">Todas as categorias</option>
             {Object.entries(CATEGORY_CONFIG).map(([k, cfg]) => (

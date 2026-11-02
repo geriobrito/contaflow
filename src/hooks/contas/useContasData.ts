@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankAccount, ChartAccount, ClassificationRule, ImportBatch, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, ClassificationRule, ImportBatch, LockState, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { loadLedgerWindow, type LedgerWindow } from '@/lib/services/ledger-loader';
 import { applyTextRepair, ensureBankAccount } from '@/lib/services/accounting-service';
@@ -16,6 +16,7 @@ export interface ContasData {
   /** Lançamentos do período aberto e a movimentação já consolidada (competências fechadas). */
   ledger: LedgerWindow;
   locks: PeriodLock[];
+  lockState: LockState | null;
   rules: ClassificationRule[];
 }
 
@@ -31,18 +32,19 @@ export function useContasData(clientId: string | undefined) {
 
   const load = useCallback(async (id: string) => {
     const repo = getRepository();
-    const [accounts, banks, batches, locks, rules] = await Promise.all([
+    const [accounts, banks, batches, locks, lockState, rules] = await Promise.all([
       repo.listAccounts(id),
       repo.listBankAccounts(id),
       repo.listImportBatches(id),
       repo.listPeriodLocks(id),
+      repo.getLockState(id),
       repo.listRules(id),
     ]);
     // Competências fechadas entram consolidadas; só o período aberto é lido lançamento a
     // lançamento. O consolidado termina antes do saldo mais antigo a conferir com o banco.
     const reported = banks.flatMap((b) => lastReportedStatement(batches, b.accountKey)?.ledgerDate ?? []).sort();
     const ledger = await loadLedgerWindow({ clientId: id, accounts, banks, locks, from: reported[0] });
-    setData({ accounts, banks, batches, ledger, locks, rules });
+    setData({ accounts, banks, batches, ledger, locks, lockState, rules });
     setLoadedFor(id);
     setError(null);
   }, []);
@@ -114,7 +116,9 @@ export function useContasData(clientId: string | undefined) {
     try {
       const done = await applyTextRepair(clientId, textPlan);
       await reload();
-      return `Acentuação corrigida · ${done.memos} histórico(s), ${done.rules} regra(s)${done.removedRules ? `, ${done.removedRules} regra(s) duplicada(s) removida(s)` : ''}`;
+      const removed = done.removedRules ? `, ${done.removedRules} regra(s) duplicada(s) removida(s)` : '';
+      const kept = done.keptDuplicateRules ? `, ${done.keptDuplicateRules} duplicada(s) mantida(s) (criadas por outro usuário)` : '';
+      return `Acentuação corrigida · ${done.memos} histórico(s), ${done.rules} regra(s)${removed}${kept}`;
     } catch (e) {
       setError(`Não foi possível corrigir (${describeError(e)}).`);
       return null;

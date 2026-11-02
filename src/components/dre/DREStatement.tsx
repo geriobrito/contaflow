@@ -23,7 +23,7 @@ export function DREStatement({ dre, failed, isLoading, hasData, profit }: DRESta
     <GrossRevenueContext.Provider value={dre.grossRevenue}>
       {/* Demonstrativo */}
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        <div className="flex items-baseline gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400">
+        <div className="flex items-baseline gap-3 px-5 py-3 border-b border-black/5 dark:border-white/6 text-[11px] uppercase tracking-wider text-stone-400">
           <span className="flex-1">Demonstrativo</span>
           <span className="inline w-20 text-right">% RB</span>
           <span className="w-36 xl:w-44 text-right">R$</span>
@@ -36,7 +36,7 @@ export function DREStatement({ dre, failed, isLoading, hasData, profit }: DRESta
         ) : !hasData ? (
           <EmptyState title="Sem lançamentos conciliados" description="Não há movimentação conciliada neste período." />
         ) : (
-          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+          <div className="divide-y divide-black/4 dark:divide-white/5">
             <Section
               id="rob"
               label="Receita operacional bruta"

@@ -10,13 +10,23 @@ import type {
   ImportBatch,
   JournalCounter,
   JournalEntry,
+  LockState,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
+import { isAdminSession, peekActor } from '@/lib/data/scope';
 import { assertValidJournalEntry } from '@/lib/journal';
+import {
+  canDeleteRule,
+  initialLockState,
+  nextLockStateOnClose,
+  nextLockStateOnReopen,
+  nextLockStateOnYearClose,
+  prepareProtectedSave,
+} from '@/lib/lock-guard';
 import { periodAuditId } from '@/lib/periods';
 import { applyPatch } from '@/lib/transitions';
 
@@ -33,6 +43,7 @@ export const LOCAL_KEYS = {
   rules: 'contaflow_rules',
   batches: 'contaflow_batches',
   locks: 'contaflow_period_locks',
+  lockState: 'contaflow_lock_state',
   audit: 'contaflow_audit_log',
   org: 'contaflow_org',
   bankAccounts: 'contaflow_bank_accounts',
@@ -79,7 +90,27 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       read<T>(key).filter((x) => x.id !== id)
     );
   }
+  function replace<T extends { id: string }>(key: string, item: T): void {
+    const items = read<T>(key);
+    const i = items.findIndex((x) => x.id === item.id);
+    if (i >= 0) items[i] = item;
+    else items.push(item);
+    write(key, items);
+  }
   const stamp = <T extends object>(x: T): T => ({ ...x, orgId: LOCAL_ORG_ID });
+
+  function lockedMonthsOf(clientId: string): string[] {
+    return read<PeriodLock>(LOCAL_KEYS.locks)
+      .filter((l) => l.clientId === clientId)
+      .map((l) => l.month);
+  }
+
+  function readLockState(clientId: string): LockState {
+    const stored = read<LockState>(LOCAL_KEYS.lockState).find((s) => s.clientId === clientId);
+    if (stored) return stored;
+    const count = lockedMonthsOf(clientId).length;
+    return { id: clientId, clientId, count, seq: count };
+  }
 
   /** Valida tudo antes de gravar (equivalente à atomicidade do writeBatch). */
   function applyChanges({ patches, rules = [], deleteRuleIds = [], audits }: ChangeSet): void {
@@ -91,12 +122,23 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       txs[i] = applyPatch(txs[i], p);
     }
     const storedRules = read<ClassificationRule>(LOCAL_KEYS.rules);
+    const dropped = new Set(deleteRuleIds);
+    for (const r of storedRules) {
+      if (dropped.has(r.id) && !canDeleteRule(r, peekActor()?.uid, isAdminSession())) {
+        throw new Error('Operadores só podem excluir regras criadas por si mesmos.');
+      }
+    }
     for (const rule of rules) {
       const i = storedRules.findIndex((r) => r.id === rule.id);
-      if (i >= 0) storedRules[i] = { ...storedRules[i], ...stamp(rule) };
-      else storedRules.push(stamp(rule));
+      if (i >= 0) {
+        const prevAuthor = storedRules[i].createdByUid ?? '';
+        const nextAuthor = rule.createdByUid ?? prevAuthor;
+        if (nextAuthor !== prevAuthor) throw new Error('A autoria de uma regra não pode ser alterada.');
+        storedRules[i] = { ...storedRules[i], ...stamp(rule) };
+      } else {
+        storedRules.push(stamp(rule));
+      }
     }
-    const dropped = new Set(deleteRuleIds);
     write(LOCAL_KEYS.rules, storedRules.filter((r) => !dropped.has(r.id)));
     write(LOCAL_KEYS.transactions, txs);
     write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), ...audits.map(stamp)]);
@@ -118,10 +160,15 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       return read<ClientCompany>(LOCAL_KEYS.clients);
     },
     async saveClient(client) {
-      upsert(LOCAL_KEYS.clients, stamp(client));
+      const isNew = !read<ClientCompany>(LOCAL_KEYS.clients).some((c) => c.id === client.id);
+      replace(LOCAL_KEYS.clients, stamp(client));
+      if (isNew && !read<LockState>(LOCAL_KEYS.lockState).some((s) => s.clientId === client.id)) {
+        replace(LOCAL_KEYS.lockState, stamp(initialLockState(client.id)));
+      }
     },
     async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
+      if (!isAdminSession()) throw new Error('Somente o administrador do escritório pode excluir empresas.');
       // A trilha de auditoria é preservada, como no Firestore, e registra os fechamentos removidos.
       const now = new Date().toISOString();
       const reopened = read<PeriodLock>(LOCAL_KEYS.locks)
@@ -143,6 +190,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.transactions,
         LOCAL_KEYS.batches,
         LOCAL_KEYS.locks,
+        LOCAL_KEYS.lockState,
         LOCAL_KEYS.bankAccounts,
         LOCAL_KEYS.openings,
         LOCAL_KEYS.requests,
@@ -163,25 +211,47 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       return read<ChartAccount>(LOCAL_KEYS.accounts).filter((a) => inScope(a.clientId, clientId)).sort(byCode);
     },
     async saveAccount(account) {
-      upsert(LOCAL_KEYS.accounts, stamp(account));
+      const existing = read<ChartAccount>(LOCAL_KEYS.accounts).find((a) => a.id === account.id);
+      const ls = account.clientId === 'global' ? null : readLockState(account.clientId);
+      const months = account.clientId === 'global' ? undefined : lockedMonthsOf(account.clientId);
+      const prepared = prepareProtectedSave('chart_of_accounts', existing, account, ls, months);
+      replace(LOCAL_KEYS.accounts, stamp(prepared));
     },
     async deleteAccount(accountId, audit) {
+      if (!isAdminSession()) throw new Error('Somente o administrador do escritório pode excluir contas do plano.');
       remove<ChartAccount>(LOCAL_KEYS.accounts, accountId);
       if (audit) write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
     async insertAccounts(accounts) {
-      write(LOCAL_KEYS.accounts, [...read<ChartAccount>(LOCAL_KEYS.accounts), ...accounts.map(stamp)]);
+      if (!accounts.length) return;
+      const prepared = accounts.map((acc) => {
+        const ls = acc.clientId === 'global' ? null : readLockState(acc.clientId);
+        const months = acc.clientId === 'global' ? undefined : lockedMonthsOf(acc.clientId);
+        return stamp(prepareProtectedSave('chart_of_accounts', null, acc, ls, months));
+      });
+      write(LOCAL_KEYS.accounts, [...read<ChartAccount>(LOCAL_KEYS.accounts), ...prepared]);
     },
     async saveChartSetup({ accounts, bankAccounts }) {
-      // Monta as duas listas antes de gravar qualquer uma.
+      // Valida e monta as duas listas antes de gravar qualquer uma.
       const storedAccounts = read<ChartAccount>(LOCAL_KEYS.accounts);
       for (const acc of accounts) {
         const i = storedAccounts.findIndex((a) => a.id === acc.id);
-        if (i >= 0) storedAccounts[i] = { ...storedAccounts[i], ...stamp(acc) };
-        else storedAccounts.push(stamp(acc));
+        const existing = i >= 0 ? storedAccounts[i] : null;
+        const ls = acc.clientId === 'global' ? null : readLockState(acc.clientId);
+        const months = acc.clientId === 'global' ? undefined : lockedMonthsOf(acc.clientId);
+        const prepared = stamp(prepareProtectedSave('chart_of_accounts', existing, acc, ls, months));
+        if (i >= 0) storedAccounts[i] = prepared;
+        else storedAccounts.push(prepared);
       }
+      const existingBanks = read<BankAccount>(LOCAL_KEYS.bankAccounts);
+      const preparedBanks = bankAccounts.map((bank) => {
+        const existing = existingBanks.find((b) => b.id === bank.id);
+        return stamp(
+          prepareProtectedSave('bank_accounts', existing, bank, readLockState(bank.clientId), lockedMonthsOf(bank.clientId))
+        );
+      });
       const replaced = new Set(bankAccounts.map((b) => b.id));
-      const storedBanks = [...read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => !replaced.has(b.id)), ...bankAccounts.map(stamp)];
+      const storedBanks = [...existingBanks.filter((b) => !replaced.has(b.id)), ...preparedBanks];
       write(LOCAL_KEYS.accounts, storedAccounts);
       write(LOCAL_KEYS.bankAccounts, storedBanks);
     },
@@ -190,9 +260,19 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       return read<ClassificationRule>(LOCAL_KEYS.rules).filter((r) => inScope(r.clientId, clientId));
     },
     async saveRule(rule) {
+      const existing = read<ClassificationRule>(LOCAL_KEYS.rules).find((r) => r.id === rule.id);
+      if (existing) {
+        const prevAuthor = existing.createdByUid ?? '';
+        const nextAuthor = rule.createdByUid ?? prevAuthor;
+        if (nextAuthor !== prevAuthor) throw new Error('A autoria de uma regra não pode ser alterada.');
+      }
       upsert(LOCAL_KEYS.rules, stamp(rule));
     },
     async deleteRule(ruleId) {
+      const existing = read<ClassificationRule>(LOCAL_KEYS.rules).find((r) => r.id === ruleId);
+      if (existing && !canDeleteRule(existing, peekActor()?.uid, isAdminSession())) {
+        throw new Error('Operadores só podem excluir regras criadas por si mesmos.');
+      }
       remove<ClassificationRule>(LOCAL_KEYS.rules, ruleId);
     },
 
@@ -294,16 +374,40 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       return read<OpeningBalances>(LOCAL_KEYS.openings).find((o) => o.clientId === clientId) ?? null;
     },
     async saveOpeningBalances(balances, audit, related = {}) {
-      // Monta todas as listas antes de gravar qualquer uma.
-      const others = read<OpeningBalances>(LOCAL_KEYS.openings).filter((o) => o.clientId !== balances.clientId);
+      // Valida e monta todas as listas antes de gravar qualquer uma.
+      const clientId = balances.clientId;
+      const ls = readLockState(clientId);
+      const months = lockedMonthsOf(clientId);
+      const allOpenings = read<OpeningBalances>(LOCAL_KEYS.openings);
+      const existingOpening = allOpenings.find((o) => o.clientId === clientId);
+      const preparedOpening = stamp(
+        prepareProtectedSave('opening_balances', existingOpening, { ...balances, id: clientId }, ls, months)
+      );
+      const others = allOpenings.filter((o) => o.clientId !== clientId);
+
+      const allAccounts = read<ChartAccount>(LOCAL_KEYS.accounts);
       const newAccounts = related.accounts ?? [];
+      const preparedAccounts = newAccounts.map((acc) => {
+        const existingAcc = allAccounts.find((a) => a.id === acc.id);
+        return stamp(
+          prepareProtectedSave('chart_of_accounts', existingAcc, acc, acc.clientId === 'global' ? null : ls, months)
+        );
+      });
       const knownAccounts = new Set(newAccounts.map((a) => a.id));
-      const accounts = [...read<ChartAccount>(LOCAL_KEYS.accounts).filter((a) => !knownAccounts.has(a.id)), ...newAccounts.map(stamp)];
-      const replaced = new Set((related.bankAccounts ?? []).map((b) => b.id));
-      const banks = [...read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => !replaced.has(b.id)), ...(related.bankAccounts ?? []).map(stamp)];
+      const accounts = [...allAccounts.filter((a) => !knownAccounts.has(a.id)), ...preparedAccounts];
+
+      const allBanks = read<BankAccount>(LOCAL_KEYS.bankAccounts);
+      const nextBanks = related.bankAccounts ?? [];
+      const preparedBanks = nextBanks.map((bank) => {
+        const existingBank = allBanks.find((b) => b.id === bank.id);
+        return stamp(prepareProtectedSave('bank_accounts', existingBank, bank, ls, months));
+      });
+      const replaced = new Set(nextBanks.map((b) => b.id));
+      const banks = [...allBanks.filter((b) => !replaced.has(b.id)), ...preparedBanks];
+
       if (newAccounts.length) write(LOCAL_KEYS.accounts, accounts);
       if (replaced.size) write(LOCAL_KEYS.bankAccounts, banks);
-      write(LOCAL_KEYS.openings, [...others, stamp({ ...balances, id: balances.clientId })]);
+      write(LOCAL_KEYS.openings, [...others, preparedOpening]);
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
 
@@ -311,20 +415,36 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       return read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => b.clientId === clientId);
     },
     async saveBankAccount(account) {
-      const all = read<BankAccount>(LOCAL_KEYS.bankAccounts).filter((b) => b.id !== account.id);
-      write(LOCAL_KEYS.bankAccounts, [...all, stamp(account)]);
+      const all = read<BankAccount>(LOCAL_KEYS.bankAccounts);
+      const existing = all.find((b) => b.id === account.id);
+      const prepared = prepareProtectedSave(
+        'bank_accounts',
+        existing,
+        account,
+        readLockState(account.clientId),
+        lockedMonthsOf(account.clientId)
+      );
+      write(LOCAL_KEYS.bankAccounts, [...all.filter((b) => b.id !== account.id), stamp(prepared)]);
     },
 
     async listPeriodLocks(clientId) {
       return read<PeriodLock>(LOCAL_KEYS.locks).filter((l) => l.clientId === clientId);
     },
+    async getLockState(clientId) {
+      return readLockState(clientId);
+    },
     async closePeriod(lock, audit) {
       if (read<PeriodLock>(LOCAL_KEYS.locks).some((l) => l.id === lock.id)) throw new Error('Competência já está fechada.');
+      const nextLs = nextLockStateOnClose(readLockState(lock.clientId), lock.id);
       upsert(LOCAL_KEYS.locks, stamp(lock));
+      replace(LOCAL_KEYS.lockState, stamp(nextLs));
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp({ ...audit, id: periodAuditId(lock, 'close') })]);
     },
     async reopenPeriod(lock, audit) {
+      if (!isAdminSession()) throw new Error('Somente o administrador do escritório pode reabrir competências.');
+      const nextLs = nextLockStateOnReopen(readLockState(lock.clientId), lock.id);
       remove<PeriodLock>(LOCAL_KEYS.locks, lock.id);
+      replace(LOCAL_KEYS.lockState, stamp(nextLs));
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp({ ...audit, id: periodAuditId(lock, 'reopen') })]);
     },
 
@@ -437,7 +557,9 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         counters.find((c) => c.clientId === clientId)?.last ??
         list.filter((j) => j.clientId === clientId).reduce((max, j) => Math.max(max, j.entryNumber || 0), 0);
       const entries: JournalEntry[] = drafts.map((d, i) => ({ ...d, entryNumber: base + i + 1, closingAuditId: audit.id }));
+      const nextLs = nextLockStateOnYearClose(readLockState(clientId), audit.id);
       write(LOCAL_KEYS.journalCounters, [...counters.filter((c) => c.clientId !== clientId), stamp({ id: clientId, clientId, last: base + entries.length })]);
+      replace(LOCAL_KEYS.lockState, stamp(nextLs));
       write(LOCAL_KEYS.journalEntries, [...list, ...entries.map(stamp)]);
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
       return entries;

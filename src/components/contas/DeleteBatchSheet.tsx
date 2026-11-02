@@ -82,7 +82,7 @@ export function DeleteBatchSheet({
         <p className="py-8 text-center text-[13px] text-stone-400">{error ? '' : 'Verificando lançamentos…'}</p>
       ) : (
         <div className="space-y-4 pb-2 text-[13px] text-stone-600 dark:text-stone-300">
-          <dl className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.05] px-4 py-3 space-y-1.5 font-mono text-[12px]">
+          <dl className="rounded-2xl bg-black/3 dark:bg-white/4 border border-black/5 px-4 py-3 space-y-1.5 font-mono text-[12px]">
             <div className="flex justify-between gap-4"><dt className="text-stone-400">Período</dt><dd>{batch.startDate ? `${formatDateBR(batch.startDate)} – ${formatDateBR(batch.endDate)}` : '—'}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-stone-400">Lançamentos</dt><dd>{preview.transactions.length}</dd></div>
             <div className="flex justify-between gap-4"><dt className="text-stone-400">Já conciliados</dt><dd>{preview.reconciled}</dd></div>

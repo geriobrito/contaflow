@@ -3,8 +3,10 @@
 import React, { useState } from 'react';
 import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { deleteRule, saveRule } from '@/lib/services/data-service';
+import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { useRulesData } from '@/hooks/regras/useRulesData';
+import { canDeleteRule } from '@/lib/lock-guard';
 import { describeError } from '@/lib/utils/errors';
 import { PAGE, PageHeader, SearchField } from '@/components/ui/primitives';
 import { NewRuleForm } from '@/components/regras/NewRuleForm';
@@ -15,6 +17,7 @@ import { RulesTable } from '@/components/regras/RulesTable';
  * tabela e a linha editável ficam em src/components/regras/.
  */
 export default function RegrasPage() {
+  const { user, isAdmin } = useAuth();
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
   const [search, setSearch] = useState('');
@@ -112,6 +115,7 @@ export default function RegrasPage() {
         rulesById={rulesById}
         applyingId={applyingId}
         isDuplicate={isDuplicate}
+        canDelete={(rule) => canDeleteRule(rule, user?.uid, isAdmin)}
         onApply={handleApply}
         onSave={handleSave}
         onDelete={handleDelete}

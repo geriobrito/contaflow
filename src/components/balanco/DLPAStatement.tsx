@@ -9,7 +9,7 @@ import { AccountingAmount } from '@/components/ui/Amount';
 export function DLPAStatement({ dlpa }: { dlpa: DLPA }) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`} aria-label="Demonstração de lucros ou prejuízos acumulados">
-      <div className="px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+      <div className="px-5 py-3.5 border-b border-black/4 dark:border-white/6">
         <h2 className="text-[14px] font-semibold tracking-tight">Lucros ou prejuízos acumulados</h2>
         <p className="text-[12px] text-stone-500">
           Exercício de {dlpa.year}, de {formatDateBR(dlpa.start)} a {formatDateBR(dlpa.end)}. Valores negativos (entre parênteses) reduzem o saldo.
@@ -20,7 +20,7 @@ export function DLPAStatement({ dlpa }: { dlpa: DLPA }) {
           {dlpa.rows.map((r) => (
             <tr
               key={r.label}
-              className={r.kind === 'balance' ? 'bg-stone-50/70 dark:bg-stone-800/30 font-semibold' : 'border-t border-black/[0.04] dark:border-white/[0.05]'}
+              className={r.kind === 'balance' ? 'bg-stone-50/70 dark:bg-stone-800/30 font-semibold' : 'border-t border-black/4 dark:border-white/5'}
             >
               <td className={`py-2.5 ${r.kind === 'balance' ? 'px-5' : 'pl-8 pr-5 text-stone-700 dark:text-stone-300'}`}>{r.label}</td>
               <td className={`px-5 py-2.5 text-right font-mono tabular-nums whitespace-nowrap ${r.value < 0 ? 'text-rose-700 dark:text-rose-400' : ''}`}><AccountingAmount value={r.value} /></td>
@@ -28,7 +28,7 @@ export function DLPAStatement({ dlpa }: { dlpa: DLPA }) {
           ))}
         </tbody>
       </table>
-      <p className="px-5 py-3 border-t border-black/[0.04] dark:border-white/[0.06] text-[12px] text-stone-500">
+      <p className="px-5 py-3 border-t border-black/4 dark:border-white/6 text-[12px] text-stone-500">
         Lucros distribuídos são os lançamentos em 2.3.3.03 (-) Lucros Distribuídos: classifique a retirada no extrato ou lance-a em Lançamentos manuais.
       </p>
     </section>

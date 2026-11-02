@@ -64,7 +64,7 @@ export function TwoFactorSection() {
       <div className="flex items-start gap-3">
         <span
           className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${
-            enrolled ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700' : 'bg-black/[0.05] dark:bg-white/[0.08] text-stone-500'
+            enrolled ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700' : 'bg-black/5 dark:bg-white/8 text-stone-500'
           }`}
         >
           {enrolled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
@@ -128,7 +128,7 @@ export function TwoFactorSection() {
           <ol className="space-y-3 text-[13px] text-stone-600 dark:text-stone-300 list-decimal pl-5">
             <li>
               No aplicativo autenticador, adicione uma conta escolhendo <b>inserir chave de configuração</b> (tipo: baseada em tempo) e digite:
-              <p className="mt-2 px-3.5 py-2.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[14px] tracking-wider text-stone-900 dark:text-stone-100 break-all select-all">
+              <p className="mt-2 px-3.5 py-2.5 rounded-xl bg-black/4 dark:bg-white/6 font-mono text-[14px] tracking-wider text-stone-900 dark:text-stone-100 break-all select-all">
                 {grouped(secret.secretKey)}
               </p>
               <a href={secret.generateQrCodeUrl(user.email ?? 'conta', 'ContaFlow')} className="mt-1.5 inline-block text-[12px] text-accent-ink hover:underline">

@@ -190,8 +190,8 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
         }}
         className={`group flex items-center gap-4 rounded-2xl px-4 py-3.5 cursor-pointer border border-dashed transition-all duration-150 active:scale-[0.995] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 ${
           isDragging
-            ? 'border-accent/50 bg-accent/[0.05] dark:bg-accent/[0.14]'
-            : 'border-black/[0.10] dark:border-white/[0.12] bg-white/50 dark:bg-white/[0.02] hover:bg-white/80 dark:hover:bg-white/[0.04] hover:border-black/[0.16]'
+            ? 'border-accent/50 bg-accent/5 dark:bg-accent/[0.14]'
+            : 'border-black/10 dark:border-white/12 bg-white/50 dark:bg-white/2 hover:bg-white/80 dark:hover:bg-white/4 hover:border-black/16'
         }`}
       >
         <input
@@ -240,7 +240,7 @@ export const OFXDropzone: React.FC<OFXDropzoneProps> = ({
             e.stopPropagation();
             handleLoadSample();
           }}
-          className="inline-flex shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.97]"
+          className="inline-flex shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.97]"
         >
           Usar arquivo modelo
         </button>

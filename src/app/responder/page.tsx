@@ -81,10 +81,10 @@ export default function ResponderPage() {
   const answered = drafts.filter((d) => d.trim()).length;
 
   return (
-    <main className="min-h-screen bg-[#F5F5F7] dark:bg-stone-950 px-4 py-10">
+    <main className="min-h-screen bg-apple-bg dark:bg-stone-950 px-4 py-10">
       <div className="max-w-2xl mx-auto space-y-6">
         <header className="flex items-center gap-2 text-stone-500">
-          <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
+          <span className="w-6 h-6 rounded-lg bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
             <Sparkles className="w-3.5 h-3.5 text-white" />
           </span>
           <span className="text-[13px] font-medium">{request?.officeName || 'ContaFlow'}</span>
@@ -124,7 +124,7 @@ export default function ResponderPage() {
 
             <ol className="space-y-4">
               {request.items.map((item, idx) => (
-                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-5 space-y-3">
+                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-5 space-y-3">
                   <div className="flex items-baseline justify-between gap-4">
                     <span className="text-[12px] font-medium text-stone-400">
                       {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
@@ -133,7 +133,7 @@ export default function ResponderPage() {
                       {formatCurrency(item.amount)}
                     </span>
                   </div>
-                  <p className="font-mono text-[12px] text-stone-500 break-words">{item.memo}</p>
+                  <p className="font-mono text-[12px] text-stone-500 wrap-break-word">{item.memo}</p>
                   <p className="text-[15px] font-medium tracking-tight text-stone-900 dark:text-stone-100">{item.question}</p>
                   <textarea
                     value={drafts[idx] ?? ''}
@@ -143,7 +143,7 @@ export default function ResponderPage() {
                     maxLength={MAX_ANSWER_LENGTH}
                     placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
                     aria-label={`Resposta ${idx + 1}`}
-                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[15px] outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-60"
+                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[15px] outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-60"
                   />
                 </li>
               ))}

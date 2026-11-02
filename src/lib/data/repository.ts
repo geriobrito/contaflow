@@ -10,6 +10,7 @@ import type {
   ExplanatoryNotes,
   ImportBatch,
   JournalEntry,
+  LockState,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
@@ -144,6 +145,8 @@ export interface DataRepository {
 
   /* Fechamento de período */
   listPeriodLocks(clientId: string): Promise<PeriodLock[]>;
+  /** Resumo de fechamentos da empresa (`count` e `seq`), ou null se ainda não inicializado. */
+  getLockState(clientId: string): Promise<LockState | null>;
   /** Fecha/reabre a competência e grava o registro de auditoria juntos, sob o id `periodAuditId`. */
   closePeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;
   reopenPeriod(lock: PeriodLock, audit: AuditEntry): Promise<void>;

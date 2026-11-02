@@ -24,7 +24,7 @@ function Metric({ label, value, caption, tone = 'neutral', progress }: MetricPro
         {value}
       </p>
       {progress !== undefined ? (
-        <div className="mt-3 h-1 rounded-full bg-black/[0.05] dark:bg-white/[0.08] overflow-hidden">
+        <div className="mt-3 h-1 rounded-full bg-black/5 dark:bg-white/8 overflow-hidden">
           <div className="h-full rounded-full bg-accent transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
         </div>
       ) : (
@@ -39,7 +39,7 @@ export function MetricsSummary({ metrics, periodLabel }: { metrics: Reconciliati
   return (
     <section
       aria-label="Resumo"
-      className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+      className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
     >
       <Metric label={`Lançamentos · ${periodLabel}`} value={String(metrics.total)} caption={`${metrics.pending} pendente(s)`} />
       <Metric label="Conciliado" value={`${metrics.reconciledPercent}%`} tone="accent" progress={metrics.reconciledPercent} />

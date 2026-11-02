@@ -24,11 +24,11 @@ interface JournalEntriesTableProps {
 export function JournalEntriesTable({ entries, accountMap, monthLocked, deletingId, onEdit, onDuplicate, onDelete }: JournalEntriesTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   return (
-    <div className={`${SURFACE} rounded-2xl overflow-hidden border border-black/[0.08] dark:border-white/[0.1]`}>
+    <div className={`${SURFACE} rounded-2xl overflow-hidden border border-black/8 dark:border-white/10`}>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px] border-collapse">
           <thead>
-            <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-100/60 dark:bg-stone-800/60 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+            <tr className="border-b border-black/6 dark:border-white/8 bg-stone-100/60 dark:bg-stone-800/60 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
               <th className="py-3 px-4 w-12 text-center"></th>
               <th className="py-3 px-4 w-28">Data</th>
               <th className="py-3 px-4 w-44">Categoria</th>
@@ -38,7 +38,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
               <th className="py-3 px-4 w-36 text-center">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+          <tbody className="divide-y divide-black/4 dark:divide-white/6">
             {entries.map((entry) => {
               const isExpanded = expandedId === entry.id;
               const catCfg = CATEGORY_CONFIG[entry.category] ?? CATEGORY_CONFIG.OTHER;
@@ -50,13 +50,13 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
 
               return (
                 <React.Fragment key={entry.id}>
-                  <tr className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                  <tr className="hover:bg-black/2 dark:hover:bg-white/2 transition-colors">
                     <td className="py-3 px-4 text-center">
                       <button
                         type="button"
                         onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                         aria-label={isExpanded ? 'Recolher partidas' : 'Expandir partidas'}
-                        className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/[0.05] transition-colors"
+                        className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5 transition-colors"
                       >
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4" />
@@ -157,10 +157,10 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                               ))}
                           </div>
 
-                          <div className="border border-black/[0.06] dark:border-white/[0.08] rounded-xl overflow-hidden bg-white dark:bg-stone-900">
+                          <div className="border border-black/6 dark:border-white/8 rounded-xl overflow-hidden bg-white dark:bg-stone-900">
                             <table className="w-full text-left text-[12px]">
                               <thead>
-                                <tr className="border-b border-black/[0.04] bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-medium text-stone-500 uppercase">
+                                <tr className="border-b border-black/4 bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-medium text-stone-500 uppercase">
                                   <th className="py-2 px-3 w-16 text-center">Tipo</th>
                                   <th className="py-2 px-3 w-36">Código</th>
                                   <th className="py-2 px-3">Conta Contábil</th>
@@ -168,7 +168,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                                   <th className="py-2 px-3 w-36 text-right">Valor</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-black/[0.03] dark:divide-white/[0.04]">
+                              <tbody className="divide-y divide-black/3 dark:divide-white/4">
                                 {entry.lines.map((l) => {
                                   const acc = accountMap.get(l.accountId);
                                   return (

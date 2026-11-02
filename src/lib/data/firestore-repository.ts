@@ -30,6 +30,7 @@ import type {
   ExplanatoryNotes,
   ImportBatch,
   JournalEntry,
+  LockState,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
@@ -38,6 +39,15 @@ import type {
 import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
 import { assertValidJournalEntry } from '@/lib/journal';
 import { monthOf, periodAuditId } from '@/lib/periods';
+import {
+  frozenMessage,
+  initialLockState,
+  nextLockStateOnClose,
+  nextLockStateOnReopen,
+  nextLockStateOnYearClose,
+  prepareProtectedSave,
+} from '@/lib/lock-guard';
+import { rethrowPermissionDenied } from '@/lib/utils/errors';
 
 export const COL = {
   users: 'users',
@@ -48,6 +58,7 @@ export const COL = {
   transactions: 'transactions',
   batches: 'import_batches',
   locks: 'period_locks',
+  lockState: 'lock_state',
   audit: 'audit_log',
   bankAccounts: 'bank_accounts',
   openings: 'opening_balances',
@@ -147,6 +158,11 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), stamp(entry));
 
+  async function readLockState(clientId: string): Promise<LockState | null> {
+    const snap = await getDoc(doc(db, COL.lockState, clientId));
+    return snap.exists() ? ({ ...(snap.data() as LockState), id: snap.id }) : null;
+  }
+
   /** Grupos de um ChangeSet: cada patch vai junto da sua auditoria, ordenados por competência. */
   function changeGroups({ patches, rules = [], deleteRuleIds = [], audits }: ChangeSet): Group[] {
     const groups: Group[] = [
@@ -192,8 +208,16 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return snap.docs.map((d) => ({ ...(d.data() as ClientCompany), id: d.id }));
     },
     async saveClient(client) {
+      const clientRef = doc(db, COL.clients, client.id);
+      if (!(await getDoc(clientRef)).exists()) {
+        const b = writeBatch(db);
+        b.set(clientRef, stamp(client));
+        b.set(doc(db, COL.lockState, client.id), stamp(initialLockState(client.id)));
+        await b.commit();
+        return;
+      }
       // Substitui o documento: campos apagados no formulário (ex.: CPF do representante) somem de fato.
-      await setDoc(doc(db, COL.clients, client.id), stamp(client));
+      await setDoc(clientRef, stamp(client));
     },
     async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
@@ -234,9 +258,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
-      // A sequência dos lançamentos manuais só pode ser apagada depois da empresa (regra):
-      // enquanto a empresa existe, o contador nunca volta atrás.
+      // A sequência dos lançamentos manuais e o controle de fechamentos só podem ser apagados
+      // depois da empresa (regra): enquanto a empresa existe, nenhum contador volta atrás.
       await deleteByClient(COL.journalCounters, clientId);
+      await deleteByClient(COL.lockState, clientId);
     },
 
     /* ── Plano de contas ──────────────────────────────────────────────── */
@@ -245,24 +270,78 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return snap.docs.map((d) => ({ ...(d.data() as ChartAccount), id: d.id })).sort(byCode);
     },
     async saveAccount(account) {
-      await setDoc(doc(db, COL.accounts, account.id), stamp(account), { merge: true });
+      const ref = doc(db, COL.accounts, account.id);
+      const [existingSnap, ls] = await Promise.all([
+        getDoc(ref),
+        account.clientId === 'global' ? Promise.resolve(null) : readLockState(account.clientId),
+      ]);
+      const existing = existingSnap.exists() ? ({ ...(existingSnap.data() as ChartAccount), id: existingSnap.id }) : null;
+      const prepared = prepareProtectedSave('chart_of_accounts', existing, account, ls);
+      try {
+        await setDoc(ref, stamp(prepared));
+      } catch (e) {
+        rethrowPermissionDenied(e, frozenMessage('chart_of_accounts', { isGlobal: account.clientId === 'global' }));
+      }
     },
     async deleteAccount(accountId, audit) {
       const b = writeBatch(db);
       b.delete(doc(db, COL.accounts, accountId));
       if (audit) auditWrite(audit)(b);
-      await b.commit();
+      try {
+        await b.commit();
+      } catch (e) {
+        rethrowPermissionDenied(e, 'Somente o administrador do escritório pode excluir contas do plano.');
+      }
     },
     async insertAccounts(accounts) {
-      await run(accounts.map((acc) => single((b) => b.set(doc(db, COL.accounts, acc.id), stamp(acc)))));
+      if (!accounts.length) return;
+      const clientIds = [...new Set(accounts.map((a) => a.clientId).filter((id) => id !== 'global'))];
+      const lockStates = new Map<string, LockState | null>(
+        await Promise.all(clientIds.map(async (id) => [id, await readLockState(id)] as const))
+      );
+      const prepared = accounts.map((acc) =>
+        prepareProtectedSave('chart_of_accounts', null, acc, acc.clientId === 'global' ? null : lockStates.get(acc.clientId))
+      );
+      await run(prepared.map((acc) => single((b) => b.set(doc(db, COL.accounts, acc.id), stamp(acc)))));
     },
     async saveChartSetup({ accounts, bankAccounts }) {
       if (accounts.length + bankAccounts.length > BATCH_LIMIT) throw new Error('Alteração do plano maior que o limite de uma gravação.');
+      if (!accounts.length && !bankAccounts.length) return;
+      const clientIds = [
+        ...new Set(
+          [...accounts.map((a) => a.clientId), ...bankAccounts.map((bk) => bk.clientId)].filter((id) => id !== 'global')
+        ),
+      ];
+      const [lockStateEntries, accountSnaps, bankSnaps] = await Promise.all([
+        Promise.all(clientIds.map(async (id) => [id, await readLockState(id)] as const)),
+        Promise.all(accounts.map((a) => getDoc(doc(db, COL.accounts, a.id)))),
+        Promise.all(bankAccounts.map((bk) => getDoc(doc(db, COL.bankAccounts, bk.id)))),
+      ]);
+      const lockStates = new Map<string, LockState | null>(lockStateEntries);
+      const preparedAccounts = accounts.map((acc, i) => {
+        const snap = accountSnaps[i];
+        const existing = snap.exists() ? ({ ...(snap.data() as ChartAccount), id: snap.id }) : null;
+        return prepareProtectedSave(
+          'chart_of_accounts',
+          existing,
+          acc,
+          acc.clientId === 'global' ? null : lockStates.get(acc.clientId)
+        );
+      });
+      const preparedBanks = bankAccounts.map((bank, i) => {
+        const snap = bankSnaps[i];
+        const existing = snap.exists() ? ({ ...(snap.data() as BankAccount), id: snap.id }) : null;
+        return prepareProtectedSave('bank_accounts', existing, bank, lockStates.get(bank.clientId));
+      });
       const b = writeBatch(db);
-      for (const acc of accounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc), { merge: true });
-      // Substitui o documento, como `saveBankAccount`.
-      for (const bank of bankAccounts) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
-      await b.commit();
+      // Substitui os documentos: campos opcionais removidos somem de fato e `lockSeq` fica exato.
+      for (const acc of preparedAccounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc));
+      for (const bank of preparedBanks) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
+      try {
+        await b.commit();
+      } catch (e) {
+        rethrowPermissionDenied(e, frozenMessage('bank_accounts'));
+      }
     },
 
     /* ── Regras ───────────────────────────────────────────────────────── */
@@ -277,7 +356,11 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       await setDoc(doc(db, COL.rules, rule.id), stamp(rule), { merge: true });
     },
     async deleteRule(ruleId) {
-      await deleteDoc(doc(db, COL.rules, ruleId));
+      try {
+        await deleteDoc(doc(db, COL.rules, ruleId));
+      } catch (e) {
+        rethrowPermissionDenied(e, 'Operadores só podem excluir regras criadas por si mesmos.');
+      }
     },
 
     /* ── Lançamentos ──────────────────────────────────────────────────── */
@@ -405,13 +488,37 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const banks = related.bankAccounts ?? [];
       const accounts = related.accounts ?? [];
       if (banks.length + accounts.length + 2 > BATCH_LIMIT) throw new Error('Abertura maior que o limite de uma gravação.');
+      const clientId = balances.clientId;
+      const openingRef = doc(db, COL.openings, clientId);
+      const [openingSnap, ls, accountSnaps, bankSnaps] = await Promise.all([
+        getDoc(openingRef),
+        readLockState(clientId),
+        Promise.all(accounts.map((a) => getDoc(doc(db, COL.accounts, a.id)))),
+        Promise.all(banks.map((bk) => getDoc(doc(db, COL.bankAccounts, bk.id)))),
+      ]);
+      const existingOpening = openingSnap.exists() ? ({ ...(openingSnap.data() as OpeningBalances), id: openingSnap.id }) : null;
+      const preparedOpening = prepareProtectedSave('opening_balances', existingOpening, { ...balances, id: clientId }, ls);
+      const preparedAccounts = accounts.map((acc, i) => {
+        const snap = accountSnaps[i];
+        const existing = snap.exists() ? ({ ...(snap.data() as ChartAccount), id: snap.id }) : null;
+        return prepareProtectedSave('chart_of_accounts', existing, acc, acc.clientId === 'global' ? null : ls);
+      });
+      const preparedBanks = banks.map((bank, i) => {
+        const snap = bankSnaps[i];
+        const existing = snap.exists() ? ({ ...(snap.data() as BankAccount), id: snap.id }) : null;
+        return prepareProtectedSave('bank_accounts', existing, bank, ls);
+      });
       const b = writeBatch(db);
-      for (const acc of accounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc));
+      for (const acc of preparedAccounts) b.set(doc(db, COL.accounts, acc.id), stamp(acc));
       // Substitui o documento, como `saveBankAccount`.
-      for (const bank of banks) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
-      b.set(doc(db, COL.openings, balances.clientId), stamp({ ...balances, id: balances.clientId }));
+      for (const bank of preparedBanks) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
+      b.set(openingRef, stamp(preparedOpening));
       b.set(doc(db, COL.audit, audit.id), stamp(audit));
-      await b.commit();
+      try {
+        await b.commit();
+      } catch (e) {
+        rethrowPermissionDenied(e, frozenMessage('opening_balances', { firstTime: !existingOpening }));
+      }
     },
 
     /* ── Contas bancárias ─────────────────────────────────────────────── */
@@ -420,8 +527,16 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return snap.docs.map((d) => ({ ...(d.data() as BankAccount), id: d.id }));
     },
     async saveBankAccount(account) {
-      // Substitui o documento: vínculo ou saldo inicial removidos somem de fato.
-      await setDoc(doc(db, COL.bankAccounts, account.id), stamp(account));
+      const ref = doc(db, COL.bankAccounts, account.id);
+      const [existingSnap, ls] = await Promise.all([getDoc(ref), readLockState(account.clientId)]);
+      const existing = existingSnap.exists() ? ({ ...(existingSnap.data() as BankAccount), id: existingSnap.id }) : null;
+      const prepared = prepareProtectedSave('bank_accounts', existing, account, ls);
+      try {
+        // Substitui o documento: vínculo ou saldo inicial removidos somem de fato.
+        await setDoc(ref, stamp(prepared));
+      } catch (e) {
+        rethrowPermissionDenied(e, frozenMessage('bank_accounts'));
+      }
     },
 
     /* ── Fechamento de período ────────────────────────────────────────── */
@@ -429,18 +544,29 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
       return snap.docs.map((d) => ({ ...(d.data() as PeriodLock), id: d.id }));
     },
-    // As regras exigem o registro de auditoria na mesma gravação, sob um id derivado do fechamento.
+    async getLockState(clientId) {
+      return readLockState(clientId);
+    },
+    // As regras exigem o registro de auditoria e o avanço do lock_state na mesma gravação.
     async closePeriod(lock, audit) {
+      const nextLs = nextLockStateOnClose(await readLockState(lock.clientId), lock.id);
       const b = writeBatch(db);
       b.set(doc(db, COL.locks, lock.id), stamp(lock));
+      b.set(doc(db, COL.lockState, lock.clientId), stamp(nextLs));
       auditWrite({ ...audit, id: periodAuditId(lock, 'close') })(b);
       await b.commit();
     },
     async reopenPeriod(lock, audit) {
+      const nextLs = nextLockStateOnReopen(await readLockState(lock.clientId), lock.id);
       const b = writeBatch(db);
       b.delete(doc(db, COL.locks, lock.id));
+      b.set(doc(db, COL.lockState, lock.clientId), stamp(nextLs));
       auditWrite({ ...audit, id: periodAuditId(lock, 'reopen') })(b);
-      await b.commit();
+      try {
+        await b.commit();
+      } catch (e) {
+        rethrowPermissionDenied(e, 'Somente o administrador do escritório pode reabrir competências.');
+      }
     },
 
     /* ── Saldos consolidados (cache) ──────────────────────────────────── */
@@ -549,20 +675,24 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     // aceitam o contador saltar o bloco inteiro quando o YEAR_CLOSE nasce na mesma gravação.
     async closeYear(drafts, audit) {
       if (drafts.length === 0) throw new Error('Nada a encerrar.');
-      if (drafts.length + 2 > BATCH_LIMIT) throw new Error('Encerramento maior que o limite de uma gravação.');
+      if (drafts.length + 3 > BATCH_LIMIT) throw new Error('Encerramento maior que o limite de uma gravação.');
       drafts.forEach(assertValidJournalEntry);
       const clientId = drafts[0].clientId;
       const counterRef = doc(db, COL.journalCounters, clientId);
+      const lockStateRef = doc(db, COL.lockState, clientId);
       let seed = 0;
       if (!(await getDoc(counterRef)).exists()) {
         const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', clientId)));
         seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
       }
       return runTransaction(db, async (t) => {
-        const counter = await t.get(counterRef);
+        const [counter, lockStateSnap] = await Promise.all([t.get(counterRef), t.get(lockStateRef)]);
+        const currentLs = lockStateSnap.exists() ? ({ ...(lockStateSnap.data() as LockState), id: lockStateSnap.id }) : null;
+        const nextLs = nextLockStateOnYearClose(currentLs, audit.id);
         const base = counter.exists() ? Number(counter.data().last) || 0 : seed;
         const entries: JournalEntry[] = drafts.map((d, i) => ({ ...d, entryNumber: base + i + 1, closingAuditId: audit.id }));
         t.set(counterRef, stamp({ id: clientId, clientId, last: base + entries.length, closingAudit: audit.id }));
+        t.set(lockStateRef, stamp(nextLs));
         for (const e of entries) t.set(doc(db, COL.journalEntries, e.id), stamp(e));
         t.set(doc(db, COL.audit, audit.id), stamp(audit));
         return entries;

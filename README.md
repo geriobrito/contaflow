@@ -37,11 +37,12 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 - `src/lib/services/data-service.ts` — fachada usada pelas telas; escolhe o repositório.
 - `src/hooks/useReconciliation.ts` — orquestra importação, classificação, rateio e aprovação sobre o repositório (sem acesso direto ao Firestore).
 
-### Isolamento por escritório (multi-tenant)
+### Isolamento por escritório (multi-tenant) e papéis
 
-- Todo documento de dados (`clients`, `chart_of_accounts`, `classification_rules`, `transactions`, `import_batches`) tem `orgId`.
+- Todo documento de dados (`clients`, `chart_of_accounts`, `classification_rules`, `transactions`, `import_batches`, `lock_state` e demais coleções da empresa) tem `orgId`.
 - `users/{uid}.orgId` diz a qual escritório o usuário pertence. No primeiro login o perfil é criado com `orgId = uid` (escritório próprio).
-- **Colocar vários contadores no mesmo escritório:** defina `users/{uid}.orgId` igual ao do dono, pelo console do Firebase ou com o script de backfill (`--users`). O próprio usuário não consegue trocar de escritório.
+- **Papéis (`users/{uid}.role`):** `admin` (padrão) ou `operator`. Operadores conciliam, importam extratos e criam cadastros, mas só administradores excluem empresas, extratos, lançamentos manuais, contas do plano (`chart_of_accounts`), contas bancárias (`bank_accounts`) e saldos de abertura (`opening_balances`), ou reabrem competências. Em `classification_rules`, operadores só excluem regras criadas por eles mesmos (`createdByUid == auth.uid`; regras antigas sem autor ficam restritas a `admin`).
+- **Colocar vários contadores no mesmo escritório:** defina `users/{uid}.orgId` igual ao do dono, pelo console do Firebase ou com o script de backfill (`--users`). O próprio usuário não consegue trocar de escritório nem de papel.
 - `firestore.rules` garante: leitura/escrita só no próprio escritório, `orgId` imutável, `clientId` sempre de um cliente do mesmo escritório, consultas obrigatoriamente filtradas por `orgId`.
 
 ### Auditoria, fechamento e escritório
@@ -49,7 +50,8 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 | Coleção | Conteúdo | Regras |
 | --- | --- | --- |
 | `audit_log` | Quem classificou, reclassificou, rateou, desfez, aprovou ou auto-classificou (com a classificação anterior e a nova), e quem fechou/reabriu competências (com motivo). | Somente inclusão, com `actorUid == auth.uid`; nunca alterada nem apagada — sobrevive até à exclusão do cliente. |
-| `period_locks` | Competências fechadas (`{clientId}_{AAAA-MM}`). | Enquanto o documento existir, nenhum lançamento daquele mês pode ser alterado (`date` e `amount` são imutáveis). Reabrir = apagar o lock, registrando o motivo na auditoria. Importar novos lançamentos num mês fechado continua permitido. |
+| `period_locks` | Competências fechadas (`{clientId}_{AAAA-MM}`). | Enquanto o documento existir, nenhum lançamento daquele mês pode ser alterado (`date` e `amount` são imutáveis). Reabrir = apagar o lock, registrando o motivo na auditoria (`admin`). Importar novos lançamentos num mês fechado continua permitido. |
+| `lock_state` | Resumo por empresa dos fechamentos (`count` de competências fechadas e `seq` monotônico incrementado a cada fechamento mensal ou encerramento de exercício). | Atualizado no mesmo lote de `period_locks` e `YEAR_CLOSE`. Enquanto `count > 0`, `opening_balances`, saldo/data/vínculo contábil de `bank_accounts` e estrutura (`code`, `type`, `nature`, `parentId`, `level`, `dreGroup`, `isContra`) de `chart_of_accounts` gravados antes do último fechamento ficam congelados até todas as competências serem reabertas; nomes, apelidos e descrições continuam editáveis. |
 | `orgs/{orgId}` | Nome/CNPJ do escritório, nome, CRC e CPF do contador. | Só o próprio escritório lê e grava. |
 
 - O representante legal (nome e CPF) fica em cada cliente. Os dois preenchem as assinaturas da DRE em PDF e Excel.
@@ -144,14 +146,25 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 
    A chave da conta de serviço é gerada em *Configurações do projeto → Contas de serviço* e **não** deve ser versionada.
 
-2. **Índice e regras:**
+2. **Backfill do `lock_state`** para empresas já cadastradas (idempotente; calcula `count` de `period_locks` e `seq` monotônico a partir de `audit_log`, exigido pelas regras de congelamento de cadastros):
+
+   ```bash
+   # simulação
+   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
+     node scripts/backfill-lock-state.mjs --project <projeto>
+   # execução
+   GOOGLE_APPLICATION_CREDENTIALS=./service-account.json \
+     node scripts/backfill-lock-state.mjs --project <projeto> --apply
+   ```
+
+3. **Índice e regras:**
 
    ```bash
    npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>
    ```
 
-   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries`, `journal_counters` (sequência dos lançamentos manuais) e `period_snapshots` (saldos consolidados).
+   Índices compostos necessários: `transactions (orgId, clientId, date desc)` para as consultas por período e `audit_log (orgId, clientId, at desc)` / `audit_log (orgId, clientId, transactionId, at desc)` para a auditoria. Aguarde o status *Enabled* no console antes de usar o app. As regras precisam estar publicadas antes do app novo, pois ele grava em `audit_log`, `period_locks`, `lock_state`, `orgs`, `bank_accounts`, `opening_balances`, `client_requests`, `client_request_files`, `journal_entries`, `journal_counters` (sequência dos lançamentos manuais) e `period_snapshots` (saldos consolidados).
 
    **Publicação automática:** a cada merge na `main`, depois de todos os testes passarem, o CI (`.github/workflows/ci.yml`, job `deploy-firestore`) publica as regras e os índices no projeto do `.firebaserc`. Para ativar, cadastre no repositório (*Settings → Secrets and variables → Actions*) o segredo `FIREBASE_SERVICE_ACCOUNT` com o JSON de uma conta de serviço que tenha os papéis *Firebase Rules Admin* e *Cloud Datastore Index Admin*. Sem o segredo, o job só emite um aviso e nada é publicado.
 
-3. **Deploy do app** (Vercel) normalmente.
+4. **Deploy do app** (Vercel) normalmente.

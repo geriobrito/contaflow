@@ -108,7 +108,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors shrink-0"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] font-medium rounded-lg text-stone-600 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0"
         >
           {expanded ? 'Ocultar detalhes' : 'Ver detalhes'}
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -116,7 +116,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
       </div>
 
       {/* Painel comparativo de valores */}
-      <div className="mt-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.08] grid grid-cols-3 gap-3 text-[12px]">
+      <div className="mt-4 pt-3 border-t border-black/6 dark:border-white/8 grid grid-cols-3 gap-3 text-[12px]">
         <div>
           <span className="text-stone-500">DRE do Exercício</span>
           <p className="mt-0.5 font-mono font-semibold tabular-nums text-stone-800 dark:text-stone-100">
@@ -143,7 +143,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
 
       {/* Detalhamento dos diagnósticos e pendências */}
       {expanded && (
-        <div className="mt-4 space-y-2.5 pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+        <div className="mt-4 space-y-2.5 pt-3 border-t border-black/6 dark:border-white/8">
           <h4 className="text-[12px] font-semibold text-stone-600 dark:text-stone-300 uppercase tracking-wider">
             Motivos e apontamentos identificados ({issues.length})
           </h4>
@@ -151,7 +151,7 @@ export function DREConsistencyCard({ consistency, date }: Props) {
             {issues.map((issue) => (
               <li
                 key={issue.id}
-                className="flex items-start gap-2.5 rounded-xl bg-white/60 dark:bg-stone-900/40 p-3 border border-black/[0.04] text-[12px]"
+                className="flex items-start gap-2.5 rounded-xl bg-white/60 dark:bg-stone-900/40 p-3 border border-black/4 text-[12px]"
               >
                 <span className="mt-0.5 shrink-0">
                   {issue.severity === 'error' ? (

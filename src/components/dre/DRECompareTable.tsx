@@ -47,7 +47,7 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.05] dark:border-white/[0.06]">
+          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/5 dark:border-white/6">
             <th className="font-medium pl-5 pr-3 py-2.5 min-w-[220px]">Demonstrativo</th>
             {columns.map((c) => (
               <th key={c.label} className="font-medium px-3 py-2.5 text-right whitespace-nowrap">{c.label}</th>
@@ -68,8 +68,8 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
             return (
               <tr
                 key={r.id}
-                className={`border-b border-black/[0.03] dark:border-white/[0.04] last:border-0 text-[13px] ${
-                  total_ ? 'bg-black/[0.025] dark:bg-white/[0.03] font-semibold text-stone-900 dark:text-stone-50' : strong ? 'font-medium text-stone-800 dark:text-stone-200' : 'text-stone-500'
+                className={`border-b border-black/3 dark:border-white/4 last:border-0 text-[13px] ${
+                  total_ ? 'bg-black/2.5 dark:bg-white/3 font-semibold text-stone-900 dark:text-stone-50' : strong ? 'font-medium text-stone-800 dark:text-stone-200' : 'text-stone-500'
                 }`}
               >
                 <td className={`pr-3 py-2 ${r.kind === 'account' ? 'pl-9' : 'pl-5'}`}>

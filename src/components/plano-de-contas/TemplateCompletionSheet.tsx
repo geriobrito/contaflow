@@ -65,7 +65,7 @@ export function TemplateCompletionSheet({ missing, ignoredCount, busy, onAdd, on
           {selected.size === missing.length ? 'Desmarcar todas' : 'Marcar todas'}
         </button>
       </div>
-      <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+      <ul className="divide-y divide-black/4 dark:divide-white/5">
         {missing.map((a) => {
           const forced = !selected.has(a.code) && effective.has(a.code);
           return (

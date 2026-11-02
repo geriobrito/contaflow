@@ -150,15 +150,15 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
 
       {/* Drawer Panel */}
       <div
-        className="relative z-10 w-full max-w-4xl bg-white dark:bg-stone-900 border-l border-black/[0.08] dark:border-white/[0.08] shadow-2xl flex flex-col h-full overflow-hidden print:w-full print:max-w-none print:border-none print:shadow-none print:h-auto"
+        className="relative z-10 w-full max-w-4xl bg-white dark:bg-stone-900 border-l border-black/8 dark:border-white/8 shadow-2xl flex flex-col h-full overflow-hidden print:w-full print:max-w-none print:border-none print:shadow-none print:h-auto"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <header className="shrink-0 p-6 border-b border-black/[0.06] dark:border-white/[0.08] flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
+        <header className="shrink-0 p-6 border-b border-black/6 dark:border-white/8 flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-[13px] font-semibold text-stone-700 dark:text-stone-300 bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 rounded">
+              <span className="font-mono text-[13px] font-semibold text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
                 {ledger.code || 'Conta'}
               </span>
               <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
@@ -203,7 +203,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors ml-1"
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-black/5 dark:hover:bg-white/5 transition-colors ml-1"
               aria-label="Fechar"
             >
               <X className="w-5 h-5" />
@@ -212,7 +212,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </header>
 
         {/* Resumo dos Saldos e Movimentação */}
-        <section className="shrink-0 grid grid-cols-4 gap-px bg-black/[0.06] dark:bg-white/[0.08] border-b border-black/[0.06] dark:border-white/[0.08]">
+        <section className="shrink-0 grid grid-cols-4 gap-px bg-black/6 dark:bg-white/8 border-b border-black/6 dark:border-white/8">
           <div className="bg-white dark:bg-stone-900 p-4">
             <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
             <div className="mt-1 flex items-baseline gap-1.5">
@@ -265,7 +265,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </section>
 
         {/* Barra de Filtro de Texto */}
-        <div className="shrink-0 p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/[0.05] dark:border-white/[0.06] flex items-center gap-2 print:hidden">
+        <div className="shrink-0 p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/5 dark:border-white/6 flex items-center gap-2 print:hidden">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -273,7 +273,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
               placeholder="Buscar por histórico, documento ou contrapartida..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
+              className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
             />
           </div>
           {search && (
@@ -304,7 +304,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           ) : (
             <table className="w-full text-left border-collapse text-[12px]">
               <thead>
-                <tr className="sticky top-0 bg-stone-100 dark:bg-stone-800/90 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/[0.06] dark:border-white/[0.08] backdrop-blur z-10">
+                <tr className="sticky top-0 bg-stone-100 dark:bg-stone-800/90 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/6 dark:border-white/8 backdrop-blur z-10">
                   <th className="pl-6 pr-3 py-2.5 w-24">Data</th>
                   <th className="px-3 py-2.5 w-28">Doc / FITID</th>
                   <th className="px-3 py-2.5">Histórico</th>
@@ -314,7 +314,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                   <th className="pl-3 pr-6 py-2.5 text-right w-36">Saldo Atual</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+              <tbody className="divide-y divide-black/4 dark:divide-white/4">
                 {/* Linha inicial: Saldo Anterior */}
                 <tr className="bg-stone-50/60 dark:bg-stone-800/40 text-stone-500 italic font-medium">
                   <td className="pl-6 pr-3 py-2 font-mono text-[11px]">{formatDateBR(range.start)}</td>
@@ -340,7 +340,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                 {filteredEntries.map((e) => (
                   <tr
                     key={e.id}
-                    className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+                    className="hover:bg-black/2 dark:hover:bg-white/2 transition-colors"
                   >
                     <td className="pl-6 pr-3 py-2 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">
                       {formatDateBR(e.date)}
@@ -384,7 +384,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="sticky bottom-0 bg-stone-50 dark:bg-stone-800/95 border-t-2 border-black/[0.08] dark:border-white/[0.08] font-semibold text-stone-900 dark:text-stone-100 backdrop-blur z-10">
+              <tfoot className="sticky bottom-0 bg-stone-50 dark:bg-stone-800/95 border-t-2 border-black/8 dark:border-white/8 font-semibold text-stone-900 dark:text-stone-100 backdrop-blur z-10">
                 <tr>
                   <td className="pl-6 pr-3 py-2.5" colSpan={4}>
                     Totais do período ({filteredEntries.length} partidas)

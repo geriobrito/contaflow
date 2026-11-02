@@ -23,13 +23,14 @@ interface RulesTableProps {
   /** Regra sendo aplicada aos pendentes agora. */
   applyingId: string | null;
   isDuplicate: (key: string, exceptId: string) => boolean;
+  canDelete?: (rule: ClassificationRule) => boolean;
   onApply: (rule: ClassificationRule) => Promise<void>;
   onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
 }
 
 /** Tabela de regras de aprendizado, com edição do termo, aplicação aos pendentes e exclusão. */
-export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, memos, conflicts, rulesById, applyingId, isDuplicate, onApply, onSave, onDelete }: RulesTableProps) {
+export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, memos, conflicts, rulesById, applyingId, isDuplicate, canDelete, onApply, onSave, onDelete }: RulesTableProps) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
       {loadFailure ? (
@@ -51,7 +52,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
+              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4 dark:border-white/6">
                 <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
                 <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
                 <th scope="col" className="font-medium px-3 py-2.5 w-32">Criada em</th>
@@ -82,6 +83,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
                   onApply={onApply}
                   applying={applyingId === rule.id}
                   isDuplicate={isDuplicate}
+                  canDelete={canDelete ? canDelete(rule) : true}
                   onSave={onSave}
                   onDelete={onDelete}
                 />

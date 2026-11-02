@@ -9,8 +9,9 @@ import type {
 } from '@/types/firestore';
 import type { DataRepository, TransactionPatch } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
+import { getActor, isAdminSession } from '@/lib/data/scope';
 import { newAuditId, transactionAudit } from '@/lib/audit';
+import { canDeleteRule } from '@/lib/lock-guard';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { resetTransition } from '@/lib/transitions';
 import { bankAccountId, defaultNickname, nextChildCode, suggestOpening } from '@/lib/bank-accounts';
@@ -321,14 +322,33 @@ export { requestLink } from '@/lib/client-requests';
  * regras e remove regras que ficaram duplicadas. Competências fechadas não são tocadas.
  * A correção é registrada na auditoria (a trilha antiga é imutável e não é reescrita).
  */
-export async function applyTextRepair(clientId: string, plan: TextRepairPlan): Promise<{ memos: number; rules: number; removedRules: number }> {
-  if (!plan.memos.length && !plan.rules.length && !plan.duplicateRuleIds.length) return { memos: 0, rules: 0, removedRules: 0 };
+export async function applyTextRepair(
+  clientId: string,
+  plan: TextRepairPlan
+): Promise<{ memos: number; rules: number; removedRules: number; keptDuplicateRules: number }> {
+  if (!plan.memos.length && !plan.rules.length && !plan.duplicateRuleIds.length) {
+    return { memos: 0, rules: 0, removedRules: 0, keptDuplicateRules: 0 };
+  }
   const repo = getRepository();
   const actor = getActor();
+  const admin = isAdminSession();
   const now = new Date().toISOString();
+
+  // Operador só pode excluir duplicatas de própria autoria (D2); as demais ficam preservadas.
+  let removableDuplicateIds = [...plan.duplicateRuleIds];
+  if (plan.duplicateRuleIds.length && !admin) {
+    const byId = new Map((await repo.listRules(clientId)).map((r) => [r.id, r] as const));
+    removableDuplicateIds = plan.duplicateRuleIds.filter((id) => {
+      const rule = byId.get(id);
+      return rule ? canDeleteRule(rule, actor.uid, false) : false;
+    });
+  }
+  const keptDuplicateRules = plan.duplicateRuleIds.length - removableDuplicateIds.length;
+
   const note = [
     `${plan.memos.length} histórico(s) e ${plan.rules.length} regra(s) corrigidos`,
-    plan.duplicateRuleIds.length ? `${plan.duplicateRuleIds.length} regra(s) duplicada(s) removida(s)` : '',
+    removableDuplicateIds.length ? `${removableDuplicateIds.length} regra(s) duplicada(s) removida(s)` : '',
+    keptDuplicateRules ? `${keptDuplicateRules} regra(s) duplicada(s) mantida(s) (outro autor)` : '',
     plan.lockedMemos.length ? `${plan.lockedMemos.length} em competência fechada mantido(s)` : '',
     plan.memos[0] ? `ex.: “${plan.memos[0].before.slice(0, 60)}” → “${plan.memos[0].after.slice(0, 60)}”` : '',
   ]
@@ -350,8 +370,8 @@ export async function applyTextRepair(clientId: string, plan: TextRepairPlan): P
       },
     ],
   });
-  for (const id of plan.duplicateRuleIds) await repo.deleteRule(id);
-  return { memos: plan.memos.length, rules: plan.rules.length, removedRules: plan.duplicateRuleIds.length };
+  for (const id of removableDuplicateIds) await repo.deleteRule(id);
+  return { memos: plan.memos.length, rules: plan.rules.length, removedRules: removableDuplicateIds.length, keptDuplicateRules };
 }
 
 /* =========================================================================
@@ -370,6 +390,9 @@ export async function applyTextRepair(clientId: string, plan: TextRepairPlan): P
  * Exclusão e registro na trilha de auditoria são gravados juntos.
  */
 export async function deleteChartAccount(account: ChartAccount, repo: DataRepository = getRepository()): Promise<void> {
+  if (!isAdminSession()) {
+    throw new Error('Somente o administrador do escritório pode excluir contas do plano.');
+  }
   if (account.clientId === 'global') {
     throw new Error('Contas globais do plano compartilhado não podem ser excluídas.');
   }

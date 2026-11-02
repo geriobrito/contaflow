@@ -55,7 +55,7 @@ export function usePeriod(initialMode: PeriodMode): PeriodState {
 export function PeriodPicker({ period, className = '' }: { period: PeriodState; className?: string }) {
   const { mode, year, month, quarter, setMode, setYear, setMonth, setQuarter } = period;
   const stepper =
-    'w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150';
+    'w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/5 active:scale-[0.94] transition-all duration-150';
   return (
     <div className={`flex flex-wrap items-center gap-3 print:hidden ${className}`}>
       <SegmentedControl ariaLabel="Tipo de período" value={mode} onChange={setMode} options={MODES} />

@@ -53,7 +53,7 @@ function Side({
 }) {
   return (
     <div className="print-avoid-break">
-      <div className="flex items-baseline justify-between px-5 py-3 bg-black/[0.03] dark:bg-white/[0.04] border-b border-black/[0.05]">
+      <div className="flex items-baseline justify-between px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5">
         <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300">{title}</h3>
         <AccountingAmount value={total} className="text-[13px] font-semibold" />
       </div>
@@ -65,7 +65,7 @@ function Side({
             <li
               key={l.accountId}
               onClick={() => onSelectAccount?.(l.accountId)}
-              className={`flex items-baseline gap-3 pl-5 pr-5 py-1.5 text-[13px] transition-colors cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] group ${
+              className={`flex items-baseline gap-3 pl-5 pr-5 py-1.5 text-[13px] transition-colors cursor-pointer hover:bg-black/3 dark:hover:bg-white/4 group ${
                 l.synthetic ? 'font-medium text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400'
               }`}
               title="Clique para abrir o Livro Razão desta conta"
@@ -340,7 +340,7 @@ export default function BalancoPage() {
               onClick={() => window.print()}
               aria-label="Imprimir"
               title="Imprimir"
-              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/[0.05]"
+              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/5"
             >
               <Printer className="w-4 h-4" strokeWidth={1.75} />
             </button>
@@ -364,7 +364,7 @@ export default function BalancoPage() {
         </div>
         <Link
           href="/razao"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 dark:text-stone-300 bg-black/[0.04] dark:bg-white/[0.06] hover:bg-black/[0.08] dark:hover:bg-white/[0.1] rounded-lg transition-colors border border-black/[0.06] dark:border-white/[0.08]"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 rounded-lg transition-colors border border-black/6 dark:border-white/8"
           title="Abrir página dedicada do Livro Razão Analítico"
         >
           <BookOpen className="w-3.5 h-3.5 text-stone-500" />
@@ -483,7 +483,7 @@ export default function BalancoPage() {
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
             <Side title="Passivo" lines={sectionLines(bs.liabilities)} total={bs.totalLiabilities} onSelectAccount={setDrawerAccountId} />
             <Side title="Patrimônio líquido" lines={sectionLines(bs.equity, EQUITY_GROUP_CODE)} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
-            <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/[0.08] text-[13px] font-semibold">
+            <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/8 text-[13px] font-semibold">
               <span>Total do passivo e do PL</span>
               <AccountingAmount value={bs.totalLiabilities + bs.totalEquity} />
             </div>
@@ -491,7 +491,7 @@ export default function BalancoPage() {
         </div>
       ) : (
         <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/[0.04] print:hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/4 print:hidden">
             <span className="text-[12px] text-stone-400 flex items-center gap-1.5">
               <BookOpen className="w-3.5 h-3.5 text-stone-400" />
               Clique em qualquer conta para abrir a ficha do Livro Razão
@@ -507,14 +507,14 @@ export default function BalancoPage() {
             </div>
           </div>
           {tbStage && (
-            <p className="px-5 py-2 border-b border-black/[0.04] text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
+            <p className="px-5 py-2 border-b border-black/4 text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
               Balancete {tbStage.toLowerCase()}.
             </p>
           )}
           <div className="overflow-x-auto print:overflow-visible">
             <table className="w-full text-left print-fit-table">
               <thead>
-                <tr className="text-[11px] print:text-[9.5px] uppercase tracking-wider text-stone-400 print:text-stone-700 border-b border-black/[0.04] print:border-b-2 print:border-black/40">
+                <tr className="text-[11px] print:text-[9.5px] uppercase tracking-wider text-stone-400 print:text-stone-700 border-b border-black/4 print:border-b-2 print:border-black/40">
                   <th className="font-medium pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
                   <th className="font-medium px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
                   <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
@@ -528,7 +528,7 @@ export default function BalancoPage() {
                   <tr
                     key={r.accountId}
                     onClick={() => setDrawerAccountId(r.accountId)}
-                    className={`border-b border-black/[0.03] print:border-black/[0.06] last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors group ${
+                    className={`border-b border-black/3 print:border-black/6 last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/3 dark:hover:bg-white/4 transition-colors group ${
                       r.synthetic ? 'font-medium text-stone-900 dark:text-stone-100 print:font-semibold print:text-black' : 'text-stone-600 dark:text-stone-400 print:text-stone-800'
                     }`}
                     title="Clique para abrir o Livro Razão desta conta"
@@ -560,7 +560,7 @@ export default function BalancoPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t border-black/[0.08] print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
+                <tr className="border-t border-black/8 print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
                   <td className="pl-5 pr-3 py-2.5 print:pl-1.5 print:pr-1 print:py-1.5" />
                   <td className="px-3 py-2.5 print:px-1.5 print:py-1.5">Totais (contas analíticas)</td>
                   <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.previous)}</td>

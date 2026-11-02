@@ -10,7 +10,7 @@ export function ImportSummary({ lastImport, error, onDismiss }: { lastImport: Im
     <div className="space-y-2 animate-fade-in">
       {error && <p className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200/60 text-[13px] text-rose-700">{error}</p>}
       {lastImport && (
-        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 border border-black/[0.06] text-[13px] text-stone-600">
+        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 border border-black/6 text-[13px] text-stone-600">
           <span>
             <span className="font-mono tabular-nums font-medium text-stone-900">{lastImport.added}</span> importados ·{' '}
             <span className="font-mono tabular-nums font-medium text-accent-ink">{lastImport.autoClassified}</span> auto-classificados

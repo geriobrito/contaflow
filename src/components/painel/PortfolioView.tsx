@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 const CHIP: Record<TaskSeverity, string> = {
   high: 'bg-rose-50 text-rose-700 border-rose-200/70 hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-300 dark:border-rose-900/50 dark:hover:bg-rose-950/50',
   medium: 'bg-amber-50 text-amber-800 border-amber-200/70 hover:bg-amber-100 dark:bg-amber-950/25 dark:text-amber-300 dark:border-amber-900/50 dark:hover:bg-amber-950/45',
-  low: 'bg-black/[0.03] text-stone-600 border-black/[0.06] hover:bg-black/[0.06] dark:bg-white/[0.05] dark:text-stone-300 dark:border-white/[0.08] dark:hover:bg-white/[0.08]',
+  low: 'bg-black/3 text-stone-600 border-black/6 hover:bg-black/6 dark:bg-white/5 dark:text-stone-300 dark:border-white/8 dark:hover:bg-white/8',
 };
 
 function FocusPill({ row }: { row: PortfolioRow }) {
@@ -55,7 +55,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
 
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`} aria-label="Carteira">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3.5 border-b border-black/4 dark:border-white/6">
         <h2 className="text-[15px] font-semibold tracking-tight">O que falta fazer</h2>
         <p className="text-[12px] text-stone-500">
           {waiting.length > 0 && ready.length === 0
@@ -65,14 +65,14 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
         <button
           type="button"
           onClick={onRefresh}
-          className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+          className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-colors"
         >
           <RotateCw className="w-3.5 h-3.5" />
           Atualizar
         </button>
       </div>
 
-      <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+      <ul className="divide-y divide-black/4 dark:divide-white/5">
         {ready.map((row) => {
           const client = byId.get(row.clientId);
           if (!client) return null;
@@ -116,7 +116,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
                 type="button"
                 onClick={() => onOpenClient(client)}
                 aria-label={`Abrir o painel de ${row.name}`}
-                className="flex w-8 h-8 shrink-0 items-center justify-center rounded-full text-stone-300 group-hover:text-stone-500 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-colors"
+                className="flex w-8 h-8 shrink-0 items-center justify-center rounded-full text-stone-300 group-hover:text-stone-500 hover:bg-black/5 dark:hover:bg-white/8 transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

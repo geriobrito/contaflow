@@ -1,4 +1,5 @@
 import { ClassificationRule, ChartAccount } from '@/types/firestore';
+import { peekActor } from '@/lib/data/scope';
 import { newRuleId } from '@/lib/utils/id';
 
 /**
@@ -154,6 +155,7 @@ export function buildLearnedRule(
     };
   }
 
+  const actorUid = peekActor()?.uid;
   return {
     id: newRuleId(),
     clientId,
@@ -164,6 +166,7 @@ export function buildLearnedRule(
     accountName: account.name,
     confidence: 90,
     usageCount: 1,
+    ...(actorUid ? { createdByUid: actorUid } : {}),
     createdAt: now,
     updatedAt: now,
   };

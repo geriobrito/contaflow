@@ -85,15 +85,44 @@ const periodAudit = (lock: Lock, kind: 'close' | 'reopen', by = lock.lockedByUid
   at: 'T',
   month: lock.month,
 });
-const closeMonth = (db: Firestore, lock: Lock = lockOf('2025-03')) => {
+const createClient = (db: Firestore, id: string, orgId: string) => {
+  const b = writeBatch(db);
+  b.set(doc(db, `clients/${id}`), client(id, orgId));
+  b.set(doc(db, `lock_state/${id}`), { id, orgId, clientId: id, count: 0, seq: 0 });
+  return b.commit();
+};
+
+const closeMonth = async (db: Firestore, lock: Lock = lockOf('2025-03')) => {
+  const lsRef = doc(db, `lock_state/${lock.clientId}`);
+  const lsSnap = await getDoc(lsRef);
+  const prev = lsSnap.exists() ? (lsSnap.data() as { count: number; seq: number }) : { count: 0, seq: 0 };
   const b = writeBatch(db);
   b.set(doc(db, `period_locks/${lock.id}`), lock);
+  b.set(lsRef, {
+    id: lock.clientId,
+    orgId: lock.orgId,
+    clientId: lock.clientId,
+    count: prev.count + 1,
+    seq: prev.seq + 1,
+    lastEvent: { kind: 'close', lockId: lock.id },
+  });
   b.set(doc(db, `audit_log/${periodAuditId(lock, 'close')}`), periodAudit(lock, 'close'));
   return b.commit();
 };
-const reopenMonth = (db: Firestore, lock: Lock = lockOf('2025-03'), by = 'alice') => {
+const reopenMonth = async (db: Firestore, lock: Lock = lockOf('2025-03'), by = 'alice') => {
+  const lsRef = doc(db, `lock_state/${lock.clientId}`);
+  const lsSnap = await getDoc(lsRef);
+  const prev = lsSnap.exists() ? (lsSnap.data() as { count: number; seq: number }) : { count: 1, seq: 1 };
   const b = writeBatch(db);
   b.delete(doc(db, `period_locks/${lock.id}`));
+  b.set(lsRef, {
+    id: lock.clientId,
+    orgId: lock.orgId,
+    clientId: lock.clientId,
+    count: Math.max(0, prev.count - 1),
+    seq: prev.seq,
+    lastEvent: { kind: 'reopen', lockId: lock.id },
+  });
   b.set(doc(db, `audit_log/${periodAuditId(lock, 'reopen')}`), periodAudit(lock, 'reopen', by));
   return b.commit();
 };
@@ -119,6 +148,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'users/bob'), { uid: 'bob', orgId: ORG_B });
     await setDoc(doc(db, 'clients/cA'), client('cA', ORG_A));
     await setDoc(doc(db, 'clients/cB'), client('cB', ORG_B));
+    await setDoc(doc(db, 'lock_state/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', count: 0, seq: 0 });
+    await setDoc(doc(db, 'lock_state/cB'), { id: 'cB', orgId: ORG_B, clientId: 'cB', count: 0, seq: 0 });
     await setDoc(doc(db, 'transactions/cA_1'), tx('cA_1', 'cA', ORG_A));
     await setDoc(doc(db, 'transactions/cB_1'), tx('cB_1', 'cB', ORG_B));
   });
@@ -174,8 +205,9 @@ describe('isolamento entre escritórios', () => {
   });
 
   it('não cria documento em nome de outro escritório', async () => {
-    await assertFails(setDoc(doc(asUser('alice'), 'clients/novo'), client('novo', ORG_B)));
-    await assertSucceeds(setDoc(doc(asUser('alice'), 'clients/novo'), client('novo', ORG_A)));
+    await assertFails(createClient(asUser('alice'), 'novo', ORG_B));
+    await assertFails(setDoc(doc(asUser('alice'), 'clients/novo'), client('novo', ORG_A))); // exige lock_state junto
+    await assertSucceeds(createClient(asUser('alice'), 'novo', ORG_A));
   });
 
   it('não move documentos entre escritórios nem troca o cliente de um lançamento', async () => {
@@ -320,11 +352,19 @@ describe('fechamento de competência', () => {
 
   it('valida id, competência e autor do fechamento', async () => {
     const db = asUser('alice');
-    /** Fechamento com o registro de auditoria correto para o id e o usuário informados. */
+    /** Fechamento com o registro de auditoria e lock_state corretos para o id e o usuário informados. */
     const close = (id: string, lock: Lock, who = db, actor = 'alice') => {
       const auditId = periodAuditId({ id, lockedAt: lock.lockedAt }, 'close');
       const b = writeBatch(who);
       b.set(doc(who, `period_locks/${id}`), lock);
+      b.set(doc(who, `lock_state/${lock.clientId}`), {
+        id: lock.clientId,
+        orgId: lock.orgId,
+        clientId: lock.clientId,
+        count: 1,
+        seq: 1,
+        lastEvent: { kind: 'close', lockId: id },
+      });
       b.set(doc(who, `audit_log/${auditId}`), { ...periodAudit(lock, 'close', actor), id: auditId });
       return b.commit();
     };
@@ -342,6 +382,14 @@ describe('fechamento de competência', () => {
     const closeWith = (audit: Record<string, unknown>) => {
       const b = writeBatch(db);
       b.set(doc(db, 'period_locks/cA_2025-03'), march);
+      b.set(doc(db, 'lock_state/cA'), {
+        id: 'cA',
+        orgId: ORG_A,
+        clientId: 'cA',
+        count: 1,
+        seq: 1,
+        lastEvent: { kind: 'close', lockId: march.id },
+      });
       b.set(doc(db, `audit_log/${periodAuditId(march, 'close')}`), { ...periodAudit(march, 'close'), ...audit });
       return b.commit();
     };
@@ -422,23 +470,68 @@ describe('papéis no escritório (carol é operadora)', () => {
   it('operador trabalha normalmente: classifica, cadastra e fecha competência', async () => {
     const db = asUser('carol');
     await assertSucceeds(updateDoc(doc(db, 'transactions/cA_1'), { status: 'RECONCILED' }));
-    await assertSucceeds(setDoc(doc(db, 'clients/novo'), client('novo', ORG_A)));
+    await assertSucceeds(createClient(db, 'novo', ORG_A));
     await assertSucceeds(closeMonth(db, lockOf('2025-04', 'carol')));
   });
 
-  it('operador não reabre competência nem exclui empresa, extrato ou lançamento; o administrador sim', async () => {
+  it('operador não reabre competência nem exclui empresa, extrato, lançamento ou cadastros; o administrador sim', async () => {
     const carol = asUser('carol');
     const alice = asUser('alice');
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const db = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(db, 'chart_of_accounts/cA_acc'), { id: 'cA_acc', orgId: ORG_A, clientId: 'cA', code: '1.1', name: 'Caixa', type: 'ASSET', nature: 'ANALYTIC', level: 2, lockSeq: 0 });
+      await setDoc(doc(db, 'bank_accounts/cA_bk'), { id: 'cA_bk', orgId: ORG_A, clientId: 'cA', accountKey: 'bk', nickname: 'Itaú', lockSeq: 0 });
+      await setDoc(doc(db, 'opening_balances/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', date: '2024-12-31', entries: [], lockSeq: 0 });
+    });
     await closeMonth(alice, april);
     await assertFails(reopenMonth(carol, april, 'carol'));
     await assertFails(deleteDoc(doc(carol, 'transactions/cA_1')));
     await assertFails(deleteDoc(doc(carol, 'import_batches/bX')));
+    await assertFails(deleteDoc(doc(carol, 'chart_of_accounts/cA_acc')));
+    await assertFails(deleteDoc(doc(carol, 'bank_accounts/cA_bk')));
+    await assertFails(deleteDoc(doc(carol, 'opening_balances/cA')));
     await assertFails(deleteDoc(doc(carol, 'clients/cA')));
 
     await assertSucceeds(reopenMonth(alice, april));
     await assertSucceeds(deleteDoc(doc(alice, 'transactions/cA_1')));
     await assertSucceeds(deleteDoc(doc(alice, 'import_batches/bX')));
+    await assertSucceeds(deleteDoc(doc(alice, 'chart_of_accounts/cA_acc')));
+    await assertSucceeds(deleteDoc(doc(alice, 'bank_accounts/cA_bk')));
+    await assertSucceeds(deleteDoc(doc(alice, 'opening_balances/cA')));
     await assertSucceeds(deleteDoc(doc(alice, 'clients/cA')));
+  });
+
+  it('regras de classificação: operador exclui apenas as próprias, não exclui legadas/alheias e não toma autoria', async () => {
+    const carol = asUser('carol');
+    const alice = asUser('alice');
+    const rule = (id: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      orgId: ORG_A,
+      clientId: 'cA',
+      pattern: id,
+      accountId: 'a',
+      createdAt: 'T',
+      updatedAt: 'T',
+      ...extra,
+    });
+
+    // Não pode criar regra fingindo ser outra pessoa.
+    await assertFails(setDoc(doc(carol, 'classification_rules/r_falsa'), rule('r_falsa', { createdByUid: 'alice' })));
+    await assertSucceeds(setDoc(doc(carol, 'classification_rules/r_carol'), rule('r_carol', { createdByUid: 'carol' })));
+    await assertSucceeds(setDoc(doc(alice, 'classification_rules/r_alice'), rule('r_alice', { createdByUid: 'alice' })));
+    await assertSucceeds(setDoc(doc(alice, 'classification_rules/r_legada'), rule('r_legada')));
+
+    // Operadora edita padrão/conta, mas nunca altera ou injeta `createdByUid`.
+    await assertSucceeds(updateDoc(doc(carol, 'classification_rules/r_alice'), { pattern: 'novo' }));
+    await assertFails(updateDoc(doc(carol, 'classification_rules/r_alice'), { createdByUid: 'carol' }));
+    await assertFails(updateDoc(doc(carol, 'classification_rules/r_legada'), { createdByUid: 'carol' }));
+
+    // Operadora exclui a sua, mas não a de colega nem a legada; administradora exclui todas.
+    await assertSucceeds(deleteDoc(doc(carol, 'classification_rules/r_carol')));
+    await assertFails(deleteDoc(doc(carol, 'classification_rules/r_alice')));
+    await assertFails(deleteDoc(doc(carol, 'classification_rules/r_legada')));
+    await assertSucceeds(deleteDoc(doc(alice, 'classification_rules/r_alice')));
+    await assertSucceeds(deleteDoc(doc(alice, 'classification_rules/r_legada')));
   });
 
   it('exclusão de empresa por operador é recusada antes de apagar qualquer dado', async () => {
@@ -1208,3 +1301,164 @@ describe('pendências com o cliente (link público)', () => {
       });
     });
   });
+
+describe('cadastros congelados por competência fechada e integridade do lock_state', () => {
+  const opAudit = (id: string) => ({ id, clientId: 'cA', action: 'OPENING_SAVE' as const, actorUid: 'alice', at: 'T' });
+
+  it('saldos de abertura: bloqueia primeiro cadastro (D1) e edições com mês fechado; reabertura parcial mantém congelado e total libera', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+
+    await closeMonth(db, lockOf('2025-03'));
+    // D1: sem abertura prévia e com mês fechado, nem pelo repositório nem direto no Firestore.
+    await expect(
+      repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-01-01', entries: [{ accountId: 'a', amount: 100 }], updatedAt: 'T' }, opAudit('op1'))
+    ).rejects.toThrow(/competências fechadas/);
+    await assertFails(
+      setDoc(doc(db, 'opening_balances/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', date: '2025-01-01', entries: [], lockSeq: 1, updatedAt: 'T' })
+    );
+
+    // Reabre tudo (count = 0, seq = 1): primeiro cadastro passa com lockSeq = 1.
+    await reopenMonth(db, lockOf('2025-03'));
+    await repo.saveOpeningBalances(
+      { id: 'cA', clientId: 'cA', date: '2025-01-01', mode: 'OPENING_BALANCE', memo: 'Inicial', entries: [{ accountId: 'a', amount: 100 }], updatedAt: 'T' },
+      opAudit('op2')
+    );
+    expect((await repo.getOpeningBalances('cA'))?.lockSeq).toBe(1);
+
+    // Fecha dois meses (count = 2, seq = 3): abertura congela, inclusive contra escrita crua no Firestore.
+    await closeMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'T2'));
+    await closeMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'T2'));
+    await expect(
+      repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-01-01', entries: [{ accountId: 'a', amount: 200 }], updatedAt: 'T3' }, opAudit('op3'))
+    ).rejects.toThrow(/competências fechadas/);
+    await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { entries: [], lockSeq: 3 }));
+    await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { date: '2025-02-01', lockSeq: 3 }));
+    await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { memo: 'Alterado', lockSeq: 3 }));
+    await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { lockSeq: 3 })); // renovar lockSeq sozinho é recusado
+    await assertSucceeds(updateDoc(doc(db, 'opening_balances/cA'), { updatedAt: 'T3' }));
+
+    // Reabertura parcial (2025-04 abre, 2025-03 segue fechado: count = 1, seq = 3) mantém congelado.
+    await reopenMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'T2'));
+    await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { memo: 'Tentativa parcial', lockSeq: 3 }));
+
+    // Reabertura total (count = 0, seq = 3) libera e carimba lockSeq = 3.
+    await reopenMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'T2'));
+    await repo.saveOpeningBalances(
+      { id: 'cA', clientId: 'cA', date: '2025-01-01', memo: 'Revisado', entries: [{ accountId: 'a', amount: 250 }], updatedAt: 'T4' },
+      opAudit('op4')
+    );
+    expect(await repo.getOpeningBalances('cA')).toMatchObject({ memo: 'Revisado', lockSeq: 3 });
+  });
+
+  it('bancos e plano de contas: congela campos estruturais/contábeis, libera campos livres, permite editar cadastro novo e congela após encerramento anual', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+
+    // Semeia também conta legada (sem lockSeq) e conta global (D3).
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(admin, 'chart_of_accounts/cA_legada'), {
+        id: 'cA_legada', orgId: ORG_A, clientId: 'cA', code: '4.1.9.01', name: 'Legada', type: 'EXPENSE', nature: 'ANALYTIC', dreGroup: 'ADMIN_EXPENSES', level: 4, createdAt: 'T', updatedAt: 'T',
+      });
+      await setDoc(doc(admin, 'chart_of_accounts/global_1'), {
+        id: 'global_1', orgId: ORG_A, clientId: 'global', code: '3.1.1.01', name: 'Receita Global', type: 'REVENUE', nature: 'ANALYTIC', dreGroup: 'GROSS_REVENUE', level: 4, createdAt: 'T', updatedAt: 'T',
+      });
+    });
+
+    // D3: conta global nunca aceita alteração estrutural, mesmo sem nenhum mês fechado; nome/descrição aceitam.
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/global_1'), { dreGroup: 'OTHER_INCOME' }));
+    await assertSucceeds(updateDoc(doc(db, 'chart_of_accounts/global_1'), { name: 'Receita Compartilhada', description: 'ok' }));
+
+    const acc1 = { id: 'cA_a1', clientId: 'cA', code: '4.1.1.01', name: 'Aluguel', type: 'EXPENSE' as const, nature: 'ANALYTIC' as const, dreGroup: 'OPERATING_EXPENSES' as const, level: 4, createdAt: 'T', updatedAt: 'T' };
+    const bank1 = { id: 'cA_b1', clientId: 'cA', accountKey: 'b1', nickname: 'Itaú', openingBalance: 1000, openingDate: '2025-01-01', ledgerAccountId: 'cA_a1', createdAt: 'T', updatedAt: 'T' };
+    await repo.saveAccount(acc1);
+    await repo.saveBankAccount(bank1);
+
+    await closeMonth(db, lockOf('2025-03'));
+
+    // Campos protegidos recusados (inclusive tentando carimbar lockSeq = 1 direto no Firestore).
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/cA_a1'), { dreGroup: 'OTHER_EXPENSES', lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/cA_a1'), { isContra: true, lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/cA_legada'), { dreGroup: 'OTHER_EXPENSES', lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/cA_a1'), { lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cA_b1'), { openingBalance: 999, lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cA_b1'), { openingDate: '2025-02-01', lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cA_b1'), { ledgerAccountId: 'outra', lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cA_b1'), { kind: 'CARD', lockSeq: 1 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cA_b1'), { lockSeq: 1 }));
+
+    // Campos livres continuam liberados.
+    await repo.saveAccount({ ...acc1, name: 'Aluguel Sede', description: 'Escritório central' });
+    await repo.saveBankAccount({
+      ...bank1,
+      nickname: 'Itaú Principal',
+      csvPreset: { delimiter: ';', mapping: { dateCol: 0, memoCol: 1, valueMode: 'single', amountCol: 2, hasHeader: true } },
+    });
+    expect((await repo.listAccounts('cA')).find((a) => a.id === 'cA_a1')?.name).toBe('Aluguel Sede');
+    expect((await repo.listBankAccounts('cA')).find((b) => b.id === 'cA_b1')?.nickname).toBe('Itaú Principal');
+
+    // Criar novo banco/conta com competência fechada exige lockSeq == seq atual (1) e permanece editável até novo fechamento.
+    await assertFails(setDoc(doc(db, 'bank_accounts/cA_sem_seq'), { ...bank1, id: 'cA_sem_seq', accountKey: 'sem', orgId: ORG_A, lockSeq: 0 }));
+    const acc2 = { ...acc1, id: 'cA_a2', code: '4.1.1.02', name: 'Energia' };
+    const bank2 = { ...bank1, id: 'cA_b2', accountKey: 'b2', nickname: 'Bradesco', openingBalance: 0 };
+    await repo.saveAccount(acc2);
+    await repo.saveBankAccount(bank2);
+    await repo.saveAccount({ ...acc2, dreGroup: 'OTHER_EXPENSES' });
+    await repo.saveBankAccount({ ...bank2, openingBalance: 350 });
+    expect((await repo.listBankAccounts('cA')).find((b) => b.id === 'cA_b2')?.openingBalance).toBe(350);
+
+    // Fecha dezembro (seq = 2), cria conta `cA_a3` (lockSeq = 2) e encerra o exercício (seq = 3): `cA_a3` congela!
+    await closeMonth(db, lockOf('2025-12'));
+    const acc3 = { ...acc1, id: 'cA_a3', code: '2.3.3.01', name: 'Lucros Acumulados', type: 'EQUITY' as const, dreGroup: undefined };
+    await repo.saveAccount(acc3);
+    expect((await repo.listAccounts('cA')).find((a) => a.id === 'cA_a3')?.lockSeq).toBe(2);
+
+    await repo.closeYear(
+      [{
+        id: 'yc1', clientId: 'cA', date: '2025-12-31', memo: 'Encerramento 2025', category: 'CLOSING', yearClosing: '2025',
+        lines: [{ id: 'd', accountId: 'cA_a3', type: 'DEBIT', amount: 100 }, { id: 'c', accountId: 'cA_a1', type: 'CREDIT', amount: 100 }],
+        totalAmount: 100, createdAt: 'T', updatedAt: 'T', createdByUid: 'alice',
+      }],
+      { id: 'cA_2025_close_y', clientId: 'cA', action: 'YEAR_CLOSE', actorUid: 'alice', at: 'T', month: '2025-12' }
+    );
+    expect(await repo.getLockState('cA')).toMatchObject({ count: 2, seq: 3 });
+    await assertFails(updateDoc(doc(db, 'chart_of_accounts/cA_a3'), { code: '2.3.3.09', lockSeq: 3 }));
+  });
+
+  it('integridade do lock_state: não aceita adulteração, falha fechado sem backfill e é removido ao excluir a empresa', async () => {
+    const db = asUser('alice');
+    const march = lockOf('2025-03');
+
+    // Fechar competência sem avançar lock_state é recusado.
+    const semLockState = writeBatch(db);
+    semLockState.set(doc(db, `period_locks/${march.id}`), march);
+    semLockState.set(doc(db, `audit_log/${periodAuditId(march, 'close')}`), periodAudit(march, 'close'));
+    await assertFails(semLockState.commit());
+
+    // Alterar lock_state sem o fechamento/reabertura/encerramento real correspondente é recusado.
+    await assertFails(updateDoc(doc(db, 'lock_state/cA'), { count: 1, seq: 1, lastEvent: { kind: 'close', lockId: march.id } }));
+    await closeMonth(db, march);
+    await assertFails(updateDoc(doc(db, 'lock_state/cA'), { count: 0, seq: 1, lastEvent: { kind: 'reopen', lockId: march.id } }));
+    await assertFails(updateDoc(doc(db, 'lock_state/cA'), { count: 1, seq: 2, lastEvent: { kind: 'year', lockId: 'falso' } }));
+    // Não pode excluir lock_state enquanto a empresa existir.
+    await assertFails(deleteDoc(doc(db, 'lock_state/cA')));
+
+    // Empresa legada ainda sem lock_state: falha fechado em campos protegidos, mas permite campos livres.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore() as unknown as Firestore;
+      await setDoc(doc(admin, 'clients/cLeg'), client('cLeg', ORG_A));
+      await setDoc(doc(admin, 'bank_accounts/cLeg_b'), { id: 'cLeg_b', orgId: ORG_A, clientId: 'cLeg', accountKey: 'b', nickname: 'Antigo' });
+    });
+    await assertFails(setDoc(doc(db, 'lock_state/cLeg'), { id: 'cLeg', orgId: ORG_A, clientId: 'cLeg', count: 0, seq: 0 }));
+    await assertFails(updateDoc(doc(db, 'bank_accounts/cLeg_b'), { openingBalance: 10, lockSeq: 0 }));
+    await assertSucceeds(updateDoc(doc(db, 'bank_accounts/cLeg_b'), { nickname: 'Renomeado' }));
+
+    // Excluir a empresa remove também o lock_state.
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'lock_state/cA'))).exists()).toBe(false);
+    });
+  });
+});

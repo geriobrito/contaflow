@@ -100,7 +100,7 @@ export default function RazaoPage() {
               onClick={handlePrint}
               aria-label="Imprimir Ficha do Razão"
               title="Imprimir Ficha do Razão"
-              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/[0.05] transition-colors"
+              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/5 transition-colors"
             >
               <Printer className="w-4 h-4" strokeWidth={1.75} />
             </button>

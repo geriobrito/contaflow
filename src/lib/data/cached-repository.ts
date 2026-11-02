@@ -1,4 +1,4 @@
-import type { BankAccount, ChartAccount, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, LockState, PeriodLock } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
@@ -53,6 +53,7 @@ export function withReadCache(
   const accounts = listCache<ChartAccount>(now, ttlMs);
   const banks = listCache<BankAccount>(now, ttlMs);
   const locks = listCache<PeriodLock>(now, ttlMs);
+  const lockStates = listCache<LockState>(now, ttlMs);
   const key = (clientId: string) => `${scope()}|${clientId}`;
 
   /** Gravação que invalida os caches informados. */
@@ -73,16 +74,25 @@ export function withReadCache(
     listAccounts: (clientId) => accounts.get(key(clientId), () => repo.listAccounts(clientId)),
     listBankAccounts: (clientId) => banks.get(key(clientId), () => repo.listBankAccounts(clientId)),
     listPeriodLocks: (clientId) => locks.get(key(clientId), () => repo.listPeriodLocks(clientId)),
+    async getLockState(clientId) {
+      const [found] = await lockStates.get(key(clientId), async () => {
+        const s = await repo.getLockState(clientId);
+        return s ? [s] : [];
+      });
+      return found ? { ...found, ...(found.lastEvent ? { lastEvent: { ...found.lastEvent } } : {}) } : null;
+    },
 
     // Contas globais valem para todos os clientes, e a exclusão não informa o cliente: limpa tudo.
+    saveClient: writing(repo.saveClient, lockStates),
     saveAccount: writing(repo.saveAccount, accounts),
     deleteAccount: writing(repo.deleteAccount, accounts),
     insertAccounts: writing(repo.insertAccounts, accounts),
     saveChartSetup: writing(repo.saveChartSetup, accounts, banks),
     saveBankAccount: writing(repo.saveBankAccount, banks),
     saveOpeningBalances: writing(repo.saveOpeningBalances, accounts, banks),
-    closePeriod: writing(repo.closePeriod, locks),
-    reopenPeriod: writing(repo.reopenPeriod, locks),
-    deleteClient: writing(repo.deleteClient, accounts, banks, locks),
+    closePeriod: writing(repo.closePeriod, locks, lockStates),
+    reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
+    closeYear: writing(repo.closeYear, lockStates),
+    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates),
   };
 }

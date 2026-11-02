@@ -25,7 +25,7 @@ function Loading({ label = 'Carregando…', className = '', children }: { label?
 /** Linhas de tabela: uma coluna curta, uma longa e o valor à direita. */
 export function TableSkeleton({ rows = 6, label, dense = false }: { rows?: number; label?: string; dense?: boolean }) {
   return (
-    <Loading label={label} className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+    <Loading label={label} className="divide-y divide-black/4 dark:divide-white/5">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className={`${dense ? 'h-11' : 'h-14'} px-5 flex items-center gap-4`}>
           <Skeleton className="h-3 w-16 shrink-0" />

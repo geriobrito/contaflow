@@ -31,8 +31,8 @@ export function AccountPicker({ accounts, value, onChange, autoFocus = false }: 
   }, []);
 
   return (
-    <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
-      <div className="relative border-b border-black/[0.04] dark:border-white/[0.06]">
+    <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 overflow-hidden">
+      <div className="relative border-b border-black/4 dark:border-white/6">
         <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
         <input
           autoFocus={autoFocus}
@@ -47,14 +47,14 @@ export function AccountPicker({ accounts, value, onChange, autoFocus = false }: 
         {options.map((a) => {
           const selected = a.id === value;
           return (
-            <li key={a.id} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-0">
+            <li key={a.id} className="border-b border-black/4 dark:border-white/4 last:border-0">
               <button
                 type="button"
                 role="option"
                 aria-selected={selected}
                 onClick={() => onChange(a.id)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors duration-100 ${
-                  selected ? 'bg-accent/[0.05] dark:bg-accent/[0.14]' : 'hover:bg-black/[0.02] dark:hover:bg-white/[0.03]'
+                  selected ? 'bg-accent/5 dark:bg-accent/[0.14]' : 'hover:bg-black/2 dark:hover:bg-white/3'
                 }`}
               >
                 <span className="w-[96px] shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>

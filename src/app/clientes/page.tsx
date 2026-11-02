@@ -91,7 +91,7 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
       className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
         active
           ? 'bg-white dark:bg-stone-900 border-accent/30 shadow-[0_0_0_4px_rgba(181,85,47,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
-          : 'bg-white/70 dark:bg-stone-900/60 border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
+          : 'bg-white/70 dark:bg-stone-900/60 border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -112,7 +112,7 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
           type="button"
           onClick={onEdit}
           aria-label={`Editar ${client.name}`}
-          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
+          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 active:scale-[0.94] transition-all duration-150"
         >
           <Pencil className="w-3.5 h-3.5" />
         </button>
@@ -139,7 +139,7 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
         )}
       </dl>
 
-      <div className="mt-5 pt-4 border-t border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between gap-3">
+      <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/6 flex items-center justify-between gap-3">
         {active ? (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 text-emerald-700 border-emerald-200/60">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -162,7 +162,7 @@ function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, o
             onClick={onBackup}
             aria-label={`Baixar backup de ${client.tradeName || client.name}`}
             title="Baixar backup (JSON) com todos os dados da empresa"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/[0.05] disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
           >
             <Download className={`w-3.5 h-3.5 ${backingUp ? 'animate-pulse' : ''}`} />
           </button>
@@ -666,7 +666,7 @@ export default function ClientesPage() {
       {isLoading ? (
         <CardsSkeleton count={3} className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6" label="Carregando clientes…" />
       ) : visible.length === 0 ? (
-        <div className="rounded-[22px] border border-dashed border-black/[0.10]">
+        <div className="rounded-[22px] border border-dashed border-black/10">
           <EmptyState
             title={clients.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum cliente encontrado'}
             description={clients.length === 0 ? 'Cadastre a primeira empresa para começar.' : `Nada corresponde a “${search}”.`}

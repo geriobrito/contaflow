@@ -26,7 +26,7 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
           const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
           onChange(digits ? Number(digits) : 0);
         }}
-        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
       />
     </div>
   );
@@ -90,7 +90,7 @@ function AccountPicker({
         className={`w-full h-10 px-3 flex items-center gap-2 rounded-xl border text-left transition-all duration-150 active:scale-[0.99] ${
           open
             ? 'border-accent/60 shadow-[0_0_0_4px_rgba(181,85,47,0.12)] bg-white dark:bg-stone-800'
-            : 'border-black/[0.08] dark:border-white/[0.10] bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
+            : 'border-black/8 dark:border-white/10 bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
         }`}
       >
         {selected ? (
@@ -105,8 +105,8 @@ function AccountPicker({
       </button>
 
       {open && (
-        <div className="absolute z-20 left-0 right-0 mt-1.5 rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-xl border border-black/[0.08] dark:border-white/[0.10] shadow-[0_12px_32px_rgba(0,0,0,0.14)] overflow-hidden animate-pop-in">
-          <div className="relative border-b border-black/[0.05] dark:border-white/[0.06]">
+        <div className="absolute z-20 left-0 right-0 mt-1.5 rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-xl border border-black/8 dark:border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.14)] overflow-hidden animate-pop-in">
+          <div className="relative border-b border-black/5 dark:border-white/6">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input
               autoFocus
@@ -128,7 +128,7 @@ function AccountPicker({
                     onChange(a.id);
                     setOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-black/3 dark:hover:bg-white/4"
                 >
                   <span className="w-[86px] shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{a.code}</span>
                   <span className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200">{a.name}</span>
@@ -197,7 +197,7 @@ function GrossNetPanel({
               aria-checked={o.key === origin.key}
               onClick={() => setOriginKey(o.key)}
               className={`h-8 px-3 rounded-xl border text-[12px] font-medium ${
-                o.key === origin.key ? 'bg-accent border-accent text-white' : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-600 dark:text-stone-300'
+                o.key === origin.key ? 'bg-accent border-accent text-white' : 'bg-white dark:bg-stone-800/70 border-black/8 dark:border-white/10 text-stone-600 dark:text-stone-300'
               }`}
             >
               {o.label}
@@ -232,7 +232,7 @@ function GrossNetPanel({
                       aria-label={`Conta do ${p.label}`}
                       value={code}
                       onChange={(e) => setChoice((c) => ({ ...c, [p.key]: e.target.value }))}
-                      className="w-full h-8 px-2 rounded-lg bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[11px] text-stone-600 dark:text-stone-300"
+                      className="w-full h-8 px-2 rounded-lg bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[11px] text-stone-600 dark:text-stone-300"
                     >
                       {options.map((o) => (
                         <option key={o.code} value={o.code}>
@@ -306,7 +306,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
   return (
     <div className="space-y-4">
       {/* Indicadores em tempo real */}
-      <div className="grid grid-cols-3 rounded-2xl overflow-hidden border border-black/[0.06] dark:border-white/[0.08] divide-x divide-black/[0.05] dark:divide-white/[0.06] bg-white/80 dark:bg-stone-800/50">
+      <div className="grid grid-cols-3 rounded-2xl overflow-hidden border border-black/6 dark:border-white/8 divide-x divide-black/5 dark:divide-white/6 bg-white/80 dark:bg-stone-800/50">
         <div className="px-3.5 py-3 min-w-0">
           <p className="text-[11px] text-stone-500">Valor total</p>
           <p className="mt-0.5 font-mono tabular-nums text-[15px] font-semibold text-stone-900 dark:text-stone-100 truncate">
@@ -363,7 +363,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
         {drafts.map((d, i) => (
           <li
             key={d.id}
-            className="rounded-2xl bg-white/70 dark:bg-stone-800/40 border border-black/[0.05] dark:border-white/[0.06] p-3 space-y-2 animate-fade-in"
+            className="rounded-2xl bg-white/70 dark:bg-stone-800/40 border border-black/5 dark:border-white/6 p-3 space-y-2 animate-fade-in"
           >
             <div className="flex items-center gap-2">
               <span className="w-5 shrink-0 text-center font-mono tabular-nums text-[11px] text-stone-400">{i + 1}</span>
@@ -391,7 +391,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 onChange={(e) => update(d.id, { memo: e.target.value })}
                 placeholder="Descrição (ex.: Assinatura Canva)"
                 aria-label={`Descrição da linha ${i + 1}`}
-                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
               />
               <button
                 type="button"
@@ -402,7 +402,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 className={`w-9 h-10 shrink-0 rounded-xl border font-mono text-[15px] font-semibold transition-colors ${
                   d.reduces
                     ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-600'
-                    : 'bg-white dark:bg-stone-800/70 border-black/[0.08] dark:border-white/[0.10] text-stone-500'
+                    : 'bg-white dark:bg-stone-800/70 border-black/8 dark:border-white/10 text-stone-500'
                 }`}
               >
                 {d.reduces ? '−' : '+'}
@@ -429,7 +429,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
       <button
         type="button"
         onClick={add}
-        className="w-full h-10 rounded-2xl border border-dashed border-black/[0.12] dark:border-white/[0.14] text-[13px] font-medium text-stone-600 dark:text-stone-300 flex items-center justify-center gap-1.5 hover:bg-white/70 dark:hover:bg-white/[0.04] active:scale-[0.99] transition-all duration-150"
+        className="w-full h-10 rounded-2xl border border-dashed border-black/12 dark:border-white/[0.14] text-[13px] font-medium text-stone-600 dark:text-stone-300 flex items-center justify-center gap-1.5 hover:bg-white/70 dark:hover:bg-white/4 active:scale-[0.99] transition-all duration-150"
       >
         <Plus className="w-4 h-4" strokeWidth={2} />
         Adicionar linha de despesa

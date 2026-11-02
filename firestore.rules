@@ -33,8 +33,9 @@ rules_version = '2';
 //  11. Fechar ou reabrir competência só é aceito junto do registro em audit_log, gravado
 //      na mesma operação.
 //  12. Papéis: users/{uid}.role == 'operator' (definido só pelo console / Admin SDK) não
-//      reabre competência nem exclui empresa, extrato ou lançamento. Sem o campo, o
-//      usuário é administrador do escritório.
+//      reabre competência nem exclui empresa, extrato, lançamento, conta do plano, conta
+//      bancária ou saldos de abertura; em regras de classificação, só exclui as que ele
+//      mesmo criou (`createdByUid == auth.uid`). Sem o campo, é administrador.
 //  13. period_snapshots guarda saldos consolidados de competências fechadas: é um cache
 //      que o app confere antes de usar, isolado por escritório como os demais dados.
 //  14. Encerramento do exercício: todos os lançamentos dele (yearClosing, em 31/12) entram
@@ -42,6 +43,13 @@ rules_version = '2';
 //      saem juntos pela reabertura (administrador), também auditada. Nenhum lançamento manual
 //      antes da data de implantação.
 //  15. explanatory_notes guarda o texto das notas explicativas por cliente e exercício.
+//  16. lock_state/{clientId} resume os fechamentos da empresa (`count` competências fechadas
+//      agora e `seq` monotônico a cada fechamento de competência ou encerramento do exercício).
+//      Nasce junto com a empresa (`count = 0, seq = 0`) ou via Admin SDK (backfill).
+//  17. Cadastros que alteram saldos retroativos (`opening_balances`, campos contábeis de
+//      `bank_accounts` e estrutura de `chart_of_accounts`) carimbam `lockSeq = seq` e só
+//      podem mudar seus campos protegidos quando `count == 0` ou `lockSeq == seq`. Contas
+//      compartilhadas legadas (`clientId == 'global'`) têm estrutura fixa.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -90,6 +98,37 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/period_locks/$(tx.clientId + '_' + tx.date[0:7]));
     }
 
+    function lockStatePath(clientId) {
+      return /databases/$(database)/documents/lock_state/$(clientId);
+    }
+
+    // Nenhuma competência fechada agora (count == 0). Sem lock_state (antes do backfill), falha fechado.
+    function hasNoLocks(clientId) {
+      let ls = lockStatePath(clientId);
+      return exists(ls) && get(ls).data.count == 0;
+    }
+
+    // Campo protegido só muda quando nada está fechado (count == 0) ou quando nenhum fechamento
+    // ocorreu desde a última gravação protegida deste documento (lockSeq == seq).
+    function canEditProtected(clientId, current) {
+      let ls = lockStatePath(clientId);
+      return exists(ls)
+        && (get(ls).data.count == 0
+            || (current.get('lockSeq', -1) is int
+                && current.get('lockSeq', -1) == get(ls).data.seq));
+    }
+
+    function stampsCurrentSeq(clientId, next) {
+      let ls = lockStatePath(clientId);
+      return exists(ls)
+        && next.get('lockSeq', -1) is int
+        && next.get('lockSeq', -1) == get(ls).data.seq;
+    }
+
+    function touchesFields(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
     // ── Perfil do usuário ────────────────────────────────────────────────
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -103,23 +142,44 @@ service cloud.firestore {
 
     // ── Empresas ─────────────────────────────────────────────────────────
     match /clients/{clientId} {
-      allow read: if isMine(resource.data);
+      // Ler id ainda inexistente permite ao saveClient saber se está criando (com lock_state) ou atualizando.
+      allow get: if (resource == null && hasProfile()) || isMine(resource.data);
+      allow list: if isMine(resource.data);
       allow delete: if isMine(resource.data) && isAdmin();
-      allow create: if isMine(request.resource.data);
+      allow create: if isMine(request.resource.data)
+        && existsAfter(lockStatePath(clientId));
       allow update: if isMine(resource.data) && unchanged('orgId');
     }
 
     // ── Dados vinculados a uma empresa ───────────────────────────────────
     match /chart_of_accounts/{docId} {
-      allow read, delete: if isMine(resource.data);
-      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
-      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+      allow get: if (resource == null && hasProfile()) || isMine(resource.data);
+      allow list: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && (request.resource.data.clientId == 'global'
+            ? !('lockSeq' in request.resource.data)
+            : stampsCurrentSeq(request.resource.data.clientId, request.resource.data));
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && (!touchesFields(['code', 'type', 'nature', 'parentId', 'level', 'dreGroup', 'isContra', 'lockSeq'])
+            || (resource.data.clientId != 'global'
+                && canEditProtected(resource.data.clientId, resource.data)
+                && stampsCurrentSeq(resource.data.clientId, request.resource.data)));
     }
 
     match /classification_rules/{docId} {
-      allow read, delete: if isMine(resource.data);
-      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
-      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+      allow read: if isMine(resource.data);
+      allow delete: if isMine(resource.data)
+        && (isAdmin() || resource.data.get('createdByUid', '') == request.auth.uid);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && (!('createdByUid' in request.resource.data)
+            || request.resource.data.createdByUid == request.auth.uid);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && request.resource.data.get('createdByUid', '') == resource.data.get('createdByUid', '');
     }
 
     match /transactions/{docId} {
@@ -226,6 +286,15 @@ service cloud.firestore {
         && (!exists(journalCounter(entry.clientId))
             || get(journalCounter(entry.clientId)).data.last < entry.entryNumber);
     }
+    function advancesLockStateOnYearClose(clientId, closingAuditId) {
+      let ls = lockStatePath(clientId);
+      let after = getAfter(ls).data;
+      return exists(ls)
+        && after.count == get(ls).data.count
+        && after.seq == get(ls).data.seq + 1
+        && after.get('lastEvent', {}).get('kind', '') == 'year'
+        && after.get('lastEvent', {}).get('lockId', '') == closingAuditId;
+    }
 
     match /journal_entries/{entryId} {
       allow read: if isMine(resource.data);
@@ -241,7 +310,8 @@ service cloud.firestore {
         && ((monthOpen(request.resource.data) && takesNextNumber(request.resource.data))
             || (isYearClosing(request.resource.data)
                 && auditedNowAs(request.resource.data.closingAuditId, request.resource.data.clientId, 'YEAR_CLOSE')
-                && takesClosingNumber(request.resource.data)));
+                && takesClosingNumber(request.resource.data)
+                && advancesLockStateOnYearClose(request.resource.data.clientId, request.resource.data.closingAuditId)));
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId') && unchanged('entryNumber')
         && monthOpen(resource.data) && monthOpen(request.resource.data)
@@ -275,20 +345,34 @@ service cloud.firestore {
 
     // ── Contas bancárias do cliente ──────────────────────────────────────
     match /bank_accounts/{docId} {
-      allow read, delete: if isMine(resource.data);
-      allow create: if isMine(request.resource.data) && clientInMyOrg(request.resource.data);
-      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId') && unchanged('accountKey');
+      allow get: if (resource == null && hasProfile()) || isMine(resource.data);
+      allow list: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && stampsCurrentSeq(request.resource.data.clientId, request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('accountKey')
+        && (!touchesFields(['openingBalance', 'openingDate', 'ledgerAccountId', 'ledgerAccountCode', 'ledgerAccountName', 'kind', 'lockSeq'])
+            || (canEditProtected(resource.data.clientId, resource.data)
+                && stampsCurrentSeq(resource.data.clientId, request.resource.data)));
     }
 
     // ── Saldos de abertura (um documento por cliente, id = clientId) ─────
     match /opening_balances/{docId} {
       // Ler um cliente que ainda não tem saldos (documento inexistente) é permitido ao próprio escritório.
       allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
-      allow delete: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
-        && docId == request.resource.data.clientId;
-      allow update: if isMine(resource.data) && unchanged('orgId') && unchanged('clientId');
+        && docId == request.resource.data.clientId
+        && hasNoLocks(request.resource.data.clientId)
+        && stampsCurrentSeq(request.resource.data.clientId, request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && (!touchesFields(['date', 'mode', 'entries', 'memo', 'lockSeq'])
+            || (canEditProtected(resource.data.clientId, resource.data)
+                && stampsCurrentSeq(resource.data.clientId, request.resource.data)));
     }
 
     // ── Notas explicativas (um documento por cliente e exercício) ────────
@@ -389,6 +473,71 @@ service cloud.firestore {
         && getAfter(periodAudit(lockId, lock, kind)).data.month == lock.month;
     }
 
+    function advancesLockStateOnClose(lockId, clientId) {
+      let ls = lockStatePath(clientId);
+      let after = getAfter(ls).data;
+      return exists(ls)
+        && after.count == get(ls).data.count + 1
+        && after.seq == get(ls).data.seq + 1
+        && after.get('lastEvent', {}).get('kind', '') == 'close'
+        && after.get('lastEvent', {}).get('lockId', '') == lockId;
+    }
+
+    function validLockCloseUpdate(clientId) {
+      let ev = request.resource.data.get('lastEvent', {});
+      let id = ev.get('lockId', '_');
+      let lockPath = /databases/$(database)/documents/period_locks/$(id);
+      return id is string && id.size() > 0 && id != '_'
+        && !exists(lockPath)
+        && existsAfter(lockPath)
+        && getAfter(lockPath).data.clientId == clientId
+        && request.resource.data.count == resource.data.count + 1
+        && request.resource.data.seq == resource.data.seq + 1;
+    }
+
+    function validLockReopenUpdate(clientId) {
+      let ev = request.resource.data.get('lastEvent', {});
+      let id = ev.get('lockId', '_');
+      let lockPath = /databases/$(database)/documents/period_locks/$(id);
+      return id is string && id.size() > 0 && id != '_'
+        && exists(lockPath)
+        && get(lockPath).data.clientId == clientId
+        && !existsAfter(lockPath)
+        && resource.data.count >= 1
+        && request.resource.data.count == resource.data.count - 1
+        && request.resource.data.seq == resource.data.seq;
+    }
+
+    function validYearCloseUpdate(clientId) {
+      let ev = request.resource.data.get('lastEvent', {});
+      let auditId = ev.get('lockId', '_');
+      return auditId is string && auditId.size() > 0 && auditId != '_'
+        && auditedNowAs(auditId, clientId, 'YEAR_CLOSE')
+        && request.resource.data.count == resource.data.count
+        && request.resource.data.seq == resource.data.seq + 1;
+    }
+
+    match /lock_state/{clientId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': clientId}) : isMine(resource.data));
+      // Nasce junto com a empresa (count = 0, seq = 0), nunca depois pelo cliente (empresas antigas via Admin SDK).
+      allow create: if isMine(request.resource.data)
+        && !exists(/databases/$(database)/documents/clients/$(clientId))
+        && existsAfter(/databases/$(database)/documents/clients/$(clientId))
+        && getAfter(/databases/$(database)/documents/clients/$(clientId)).data.orgId == myOrg()
+        && request.resource.data.clientId == clientId
+        && request.resource.data.count is int && request.resource.data.count == 0
+        && request.resource.data.seq is int && request.resource.data.seq == 0;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && request.resource.data.count is int
+        && request.resource.data.seq is int
+        && ((request.resource.data.get('lastEvent', {}).get('kind', '') == 'close' && validLockCloseUpdate(clientId))
+            || (request.resource.data.get('lastEvent', {}).get('kind', '') == 'reopen' && validLockReopenUpdate(clientId))
+            || (request.resource.data.get('lastEvent', {}).get('kind', '') == 'year' && validYearCloseUpdate(clientId)));
+      allow delete: if isMine(resource.data) && isAdmin()
+        && !exists(/databases/$(database)/documents/clients/$(clientId));
+    }
+
     match /period_locks/{lockId} {
       allow read: if isMine(resource.data);
       allow create: if isMine(request.resource.data)
@@ -398,7 +547,8 @@ service cloud.firestore {
         && request.resource.data.lockedByUid == request.auth.uid
         && request.resource.data.lockedAt is string
         && request.resource.data.lockedAt.matches('^[0-9A-Za-z:.+-]{1,40}$')
-        && auditedNow(lockId, request.resource.data, 'close', 'PERIOD_CLOSE');
+        && auditedNow(lockId, request.resource.data, 'close', 'PERIOD_CLOSE')
+        && advancesLockStateOnClose(lockId, request.resource.data.clientId);
       // Reabrir: só administrador, e com o registro de auditoria.
       allow delete: if isMine(resource.data) && isAdmin()
         && auditedNow(lockId, resource.data, 'reopen', 'PERIOD_REOPEN');

@@ -20,7 +20,7 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
       <button
         type="button"
         onClick={() => setIsAccountDropdownOpen((prev) => !prev)}
-        className="w-full flex items-center justify-between gap-3 px-3.5 py-2 bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.08] rounded-xl text-[13px] font-medium text-stone-800 dark:text-stone-200 shadow-sm hover:border-black/20 dark:hover:border-white/20 transition-all text-left"
+        className="w-full flex items-center justify-between gap-3 px-3.5 py-2 bg-white dark:bg-stone-900 border border-black/8 dark:border-white/8 rounded-xl text-[13px] font-medium text-stone-800 dark:text-stone-200 shadow-sm hover:border-black/20 dark:hover:border-white/20 transition-all text-left"
       >
         <div className="flex items-center gap-2 truncate">
           {activeAccount ? (
@@ -36,8 +36,8 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
       </button>
 
       {isAccountDropdownOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-[420px] max-h-[380px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.08] rounded-xl shadow-xl z-30 flex flex-col overflow-hidden animate-fade-in">
-          <div className="p-2 border-b border-black/[0.05] dark:border-white/[0.06]">
+        <div className="absolute right-0 top-full mt-1.5 w-[420px] max-h-[380px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/8 rounded-xl shadow-xl z-30 flex flex-col overflow-hidden animate-fade-in">
+          <div className="p-2 border-b border-black/5 dark:border-white/6">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
               <input
@@ -50,7 +50,7 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
               />
             </div>
           </div>
-          <div className="overflow-y-auto flex-1 divide-y divide-black/[0.03] dark:divide-white/[0.03] p-1">
+          <div className="overflow-y-auto flex-1 divide-y divide-black/3 dark:divide-white/3 p-1">
             {filteredAccountsForPicker.length === 0 ? (
               <p className="p-4 text-center text-[12px] text-stone-400">Nenhuma conta encontrada.</p>
             ) : (
@@ -65,7 +65,7 @@ export function AccountSelect({ accounts, value, onChange }: { accounts: readonl
                   className={`w-full text-left px-3 py-2 text-[12px] rounded-lg flex items-center justify-between gap-2 transition-colors ${
                     a.id === value
                       ? 'bg-stone-100 dark:bg-stone-800 font-semibold text-stone-900 dark:text-stone-100'
-                      : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.03] text-stone-700 dark:text-stone-300'
+                      : 'hover:bg-black/3 dark:hover:bg-white/3 text-stone-700 dark:text-stone-300'
                   }`}
                 >
                   <div className="flex items-center gap-2 truncate">

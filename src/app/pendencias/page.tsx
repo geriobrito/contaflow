@@ -46,7 +46,7 @@ function ShareLink({ request, email }: { request: ClientRequest; email?: string 
         value={url}
         aria-label="Link para o cliente"
         onFocus={(e) => e.currentTarget.select()}
-        className="flex-1 min-w-[240px] h-9 px-3 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[12px] text-stone-600 dark:text-stone-300"
+        className="flex-1 min-w-[240px] h-9 px-3 rounded-xl bg-black/4 dark:bg-white/6 font-mono text-[12px] text-stone-600 dark:text-stone-300"
       />
       <button
         type="button"
@@ -244,7 +244,7 @@ export default function PendenciasPage() {
             const done = answeredCount(r);
             const nearExpiry = r.expiresAtMs - nowMs <= RENEW_SOON_MS;
             return (
-              <div key={r.id} className="space-y-2 pb-3 last:pb-0 border-b last:border-b-0 border-black/[0.04] dark:border-white/[0.05]">
+              <div key={r.id} className="space-y-2 pb-3 last:pb-0 border-b last:border-b-0 border-black/4 dark:border-white/5">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-stone-500">
                   <span>
                     Criado em {formatDateTime(r.createdAt)} · {r.items.length} pergunta(s) · {done} respondida(s)
@@ -286,7 +286,7 @@ export default function PendenciasPage() {
             description="Na Conciliação, abra um lançamento e use “Perguntar ao cliente” para incluí-lo aqui."
           />
         ) : (
-          <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+          <ul className="divide-y divide-black/4 dark:divide-white/5">
             {queries.map((q) => {
               const answer = answers.get(q.id);
               const isNewAnswer = newlyAnsweredIds.has(q.id);
@@ -322,7 +322,7 @@ export default function PendenciasPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap break-words">{answer.text}</p>
+                      <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap wrap-break-word">{answer.text}</p>
                     </div>
                   ) : (
                     <p className="ml-6 text-[12px] text-stone-400">
@@ -360,13 +360,13 @@ export default function PendenciasPage() {
           open={openRequests.length === 0 && queries.length > 0}
           className={`${SURFACE} group rounded-[22px] overflow-hidden`}
         >
-          <summary className="flex items-center justify-between gap-3 px-5 py-3.5 cursor-pointer select-none text-[13px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+          <summary className="flex items-center justify-between gap-3 px-5 py-3.5 cursor-pointer select-none text-[13px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/2 dark:hover:bg-white/3">
             <span>
               Links vencidos ou encerrados ({inactiveRequests.length}) · Reative para manter o mesmo endereço já enviado no WhatsApp
             </span>
             <ChevronDown className="w-4 h-4 text-stone-400 transition-transform duration-200 group-open:rotate-180" />
           </summary>
-          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.05] border-t border-black/[0.04] dark:border-white/[0.05]">
+          <div className="divide-y divide-black/4 dark:divide-white/5 border-t border-black/4 dark:border-white/5">
             {inactiveRequests.map((r) => {
               const done = answeredCount(r);
               const isExpiredOnly = r.status === 'OPEN' && r.expiresAtMs <= nowMs;

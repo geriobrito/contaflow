@@ -34,14 +34,14 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
     return (
       <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#F5F4EF] dark:bg-[#1F1E1C]">
         <div className="flex flex-col items-center gap-4 animate-in fade-in duration-300">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center text-white shadow-lg shadow-[#C15F3C]/25">
+          <div className="w-12 h-12 rounded-2xl bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center text-white shadow-lg shadow-[#C15F3C]/25">
             <Sparkles className="w-6 h-6 animate-pulse" />
           </div>
           {/* iOS circular activity spinner */}
           <div className="relative w-6 h-6">
             <div className="w-6 h-6 rounded-full border-2 border-black/10 dark:border-white/10 border-t-accent animate-spin" />
           </div>
-          <span className="text-xs font-medium text-[#86868B] dark:text-zinc-400">
+          <span className="text-xs font-medium text-apple-subtext dark:text-zinc-400">
             Carregando ContaFlow...
           </span>
         </div>

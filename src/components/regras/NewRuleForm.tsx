@@ -7,6 +7,7 @@ import { normalizePattern, ruleKey } from '@/lib/reconciliation';
 import { assessRuleTerm } from '@/lib/payee';
 import { describeError } from '@/lib/utils/errors';
 import { newRuleId } from '@/lib/utils/id';
+import { peekActor } from '@/lib/data/scope';
 import { BUTTON, INPUT, SURFACE } from '@/components/ui/primitives';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
 import { MatchTypeSelect } from '@/components/regras/RuleRow';
@@ -62,6 +63,7 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
     setAdding(true);
     setAddError(null);
     const now = new Date().toISOString();
+    const actorUid = peekActor()?.uid;
     try {
       await onCreate({
         id: newRuleId(),
@@ -71,6 +73,7 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
         accountCode: account.code,
         accountName: account.name,
         matchType: newType,
+        ...(actorUid ? { createdByUid: actorUid } : {}),
         createdAt: now,
         updatedAt: now,
       });

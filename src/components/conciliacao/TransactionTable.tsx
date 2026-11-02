@@ -53,7 +53,7 @@ export function TransactionTable({
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04] dark:border-white/[0.06]">
+          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4 dark:border-white/6">
             <th scope="col" className="pl-5 pr-2 py-2.5 w-10">
               <input
                 type="checkbox"
@@ -108,9 +108,9 @@ export function TransactionTable({
                     }
                   }}
                   tabIndex={0}
-                  className={`group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none ${
-                    isFocused ? 'ring-1 ring-inset ring-accent/60 bg-accent/[0.05] dark:bg-accent/[0.14]' : ''
-                  } ${isSelected ? 'bg-accent/[0.05] dark:bg-accent/[0.14]' : ''}`}
+                  className={`group border-b border-black/4 dark:border-white/5 last:border-0 cursor-pointer transition-colors duration-100 hover:bg-black/2 dark:hover:bg-white/3 focus:outline-none ${
+                    isFocused ? 'ring-1 ring-inset ring-accent/60 bg-accent/5 dark:bg-accent/[0.14]' : ''
+                  } ${isSelected ? 'bg-accent/5 dark:bg-accent/[0.14]' : ''}`}
                 >
                   <td className="pl-5 pr-2 py-3" onClick={(e) => e.stopPropagation()}>
                     <input
@@ -123,7 +123,7 @@ export function TransactionTable({
                   </td>
                   <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">{formatDateBR(t.date)}</td>
                   <td className="px-3 py-3 max-w-0 w-full">
-                    <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 whitespace-normal break-words">
+                    <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 whitespace-normal wrap-break-word">
                       {t.memo}
                     </p>
                     {bankNamesByKey && t.accountKey && bankNamesByKey.has(t.accountKey) && (
@@ -169,10 +169,10 @@ export function TransactionTable({
                   </td>
                 </tr>
                 {splitCount > 0 && isExpanded && (
-                  <tr id={`split-${t.id}`} className="border-b border-black/[0.04] dark:border-white/[0.05] bg-stone-900/[0.015] dark:bg-white/[0.02]">
+                  <tr id={`split-${t.id}`} className="border-b border-black/4 dark:border-white/5 bg-stone-900/1.5 dark:bg-white/2">
                     <td colSpan={2} />
                     <td colSpan={4} className="px-3 pb-3 pt-1 pr-5">
-                      <ul className="rounded-2xl border border-black/[0.05] dark:border-white/[0.06] bg-white/70 dark:bg-stone-900/40 divide-y divide-black/[0.04] dark:divide-white/[0.05] animate-fade-in">
+                      <ul className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/70 dark:bg-stone-900/40 divide-y divide-black/4 dark:divide-white/5 animate-fade-in">
                         {t.splits?.map((sp) => (
                           <li key={sp.id} className="flex items-baseline gap-3 px-4 py-2 text-[13px]">
                             <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{sp.accountCode}</span>
@@ -195,7 +195,7 @@ export function TransactionTable({
       {total > pageSize && (
         <nav
           aria-label="Paginação"
-          className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/[0.04] dark:border-white/[0.06] text-[12px] text-stone-500"
+          className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/4 dark:border-white/6 text-[12px] text-stone-500"
         >
           <span className="font-mono tabular-nums">
             {currentPage * pageSize + 1}–{Math.min((currentPage + 1) * pageSize, total)} de {total}
@@ -205,7 +205,7 @@ export function TransactionTable({
               type="button"
               onClick={() => onGoToPage(currentPage - 1)}
               disabled={currentPage === 0}
-              className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+              className="h-8 px-3 rounded-full hover:bg-black/5 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
             >
               Anterior
             </button>
@@ -216,7 +216,7 @@ export function TransactionTable({
               type="button"
               onClick={() => onGoToPage(currentPage + 1)}
               disabled={currentPage >= pageCount - 1}
-              className="h-8 px-3 rounded-full hover:bg-black/[0.05] disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+              className="h-8 px-3 rounded-full hover:bg-black/5 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
             >
               Próxima
             </button>

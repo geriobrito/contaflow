@@ -81,7 +81,7 @@ export function BulkClassifyModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto flex flex-col rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] overflow-hidden"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto flex flex-col rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.25)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabeçalho (fixo) */}
@@ -98,7 +98,7 @@ export function BulkClassifyModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/4 dark:hover:bg-white/6 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -107,7 +107,7 @@ export function BulkClassifyModal({
         {/* Corpo rolável */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-4 space-y-5">
           {/* Resumo dos lançamentos */}
-          <div className="rounded-xl p-3.5 bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] space-y-2 text-[12px]">
+          <div className="rounded-xl p-3.5 bg-black/3 dark:bg-white/4 border border-black/5 dark:border-white/6 space-y-2 text-[12px]">
             <div className="flex items-center justify-between text-stone-600 dark:text-stone-400">
               <span>Total selecionado:</span>
               <span className="font-mono tabular-nums font-semibold text-stone-900 dark:text-stone-100">
@@ -116,7 +116,7 @@ export function BulkClassifyModal({
                 {totalCredits > 0 && <span className="text-emerald-600 dark:text-emerald-400">+{formatCurrency(totalCredits)}</span>}
               </span>
             </div>
-            <div className="max-h-28 overflow-y-auto divide-y divide-black/[0.04] dark:divide-white/[0.05] pt-1">
+            <div className="max-h-28 overflow-y-auto divide-y divide-black/4 dark:divide-white/5 pt-1">
               {transactions.map((t) => (
                 <div key={t.id} className="py-1.5 flex items-baseline justify-between gap-3 text-[11px]">
                   <span className="font-mono text-stone-400">{formatDateBR(t.date)}</span>
@@ -142,7 +142,7 @@ export function BulkClassifyModal({
           </div>
 
           {/* Opção de Regra */}
-          <div className="pt-1 border-t border-black/[0.05] dark:border-white/[0.06]">
+          <div className="pt-1 border-t border-black/5 dark:border-white/6">
             <RuleLearnPanel
               checked={learnRule}
               onChecked={setCustomLearnRule}
@@ -161,7 +161,7 @@ export function BulkClassifyModal({
         </div>
 
         {/* Rodapé com Ações (fixo) */}
-        <div className="shrink-0 flex items-center justify-end gap-2.5 px-6 py-4 border-t border-black/[0.05] dark:border-white/[0.06]">
+        <div className="shrink-0 flex items-center justify-end gap-2.5 px-6 py-4 border-t border-black/5 dark:border-white/6">
           <button type="button" onClick={onClose} disabled={isSaving} className={`${BUTTON.secondary} h-9 px-4`}>
             Cancelar
           </button>

@@ -34,14 +34,14 @@ export function PayeeGroupList({ groups, onOpen }: PayeeGroupListProps) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-black/[0.04] dark:border-white/[0.06]">
+      <div className="flex items-center gap-3 px-5 py-3 border-b border-black/4 dark:border-white/6">
         <p className="flex-1 text-[13px] text-stone-500">
           <span className="font-mono tabular-nums text-stone-800 dark:text-stone-200">{pending}</span> lançamento(s) pendente(s) em{' '}
           <span className="font-mono tabular-nums text-stone-800 dark:text-stone-200">{groups.length}</span> favorecido(s). Classifique um grupo de uma vez.
         </p>
         <SearchField value={search} onChange={setSearch} placeholder="Buscar favorecido" className="w-64" />
       </div>
-      <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+      <ul className="divide-y divide-black/4 dark:divide-white/5">
         {visible.map((g) => {
           const dates = g.transactions.map((t) => t.date).sort();
           const incoming = g.direction === 'IN';
@@ -50,7 +50,7 @@ export function PayeeGroupList({ groups, onOpen }: PayeeGroupListProps) {
               <button
                 type="button"
                 onClick={() => onOpen(g)}
-                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] focus:outline-none focus-visible:bg-accent/[0.05] transition-colors"
+                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-black/2 dark:hover:bg-white/3 focus:outline-none focus-visible:bg-accent/5 transition-colors"
               >
                 <span
                   className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${
@@ -162,10 +162,10 @@ export function GroupClassifySheet({ group, accounts, pool, isSaving, onClose, o
               {allPicked ? 'Desmarcar todos' : 'Marcar todos'}
             </button>
           </div>
-          <ul className="max-h-44 overflow-y-auto overscroll-contain rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] divide-y divide-black/[0.04]">
+          <ul className="max-h-44 overflow-y-auto overscroll-contain rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 divide-y divide-black/4">
             {group.transactions.map((t) => (
               <li key={t.id}>
-                <label className="flex items-center gap-3 px-3.5 py-2 cursor-pointer hover:bg-black/[0.02]">
+                <label className="flex items-center gap-3 px-3.5 py-2 cursor-pointer hover:bg-black/2">
                   <input type="checkbox" checked={picked.has(t.id)} onChange={() => toggle(t.id)} aria-label={`${formatDateBR(t.date)} ${formatCurrency(t.amount)}`} />
                   <span className="font-mono tabular-nums text-[11px] text-stone-400 w-20 shrink-0">{formatDateBR(t.date)}</span>
                   <span className="flex-1 min-w-0 truncate text-[12px] text-stone-500" title={t.memo}>{t.memo}</span>

@@ -55,7 +55,7 @@ export function RuleLearnPanel({
   memoSuggestion,
 }: RuleLearnPanelProps) {
   return (
-    <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/[0.06] dark:border-white/[0.06] overflow-hidden">
+    <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 overflow-hidden">
       <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
         <span className="flex-1 min-w-0">
           <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">{title}</span>
@@ -64,7 +64,7 @@ export function RuleLearnPanel({
         <IOSSwitch id="learn-rule" checked={checked} onChange={onChecked} />
       </label>
       {checked && (
-        <div className="border-t border-black/[0.04] dark:border-white/[0.06] px-4 py-3 animate-fade-in">
+        <div className="border-t border-black/4 dark:border-white/6 px-4 py-3 animate-fade-in">
           <label htmlFor="pattern" className="block text-[12px] text-stone-500 mb-1">
             Termo a memorizar
           </label>

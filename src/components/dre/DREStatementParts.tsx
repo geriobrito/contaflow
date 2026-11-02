@@ -54,7 +54,7 @@ export function Row({ label, value, variant = 'line' }: { label: string; value: 
   return (
     <div
       className={`flex items-baseline gap-3 px-5 ${
-        subtotal ? 'py-3.5 bg-stone-900/[0.03] dark:bg-white/[0.04]' : 'py-3'
+        subtotal ? 'py-3.5 bg-stone-900/3 dark:bg-white/4' : 'py-3'
       }`}
     >
       <span
@@ -91,7 +91,7 @@ export function Section({ id, label, value, parts, open, onToggle }: SectionProp
         onClick={() => hasLines && onToggle(id)}
         aria-expanded={hasLines ? open : undefined}
         disabled={!hasLines}
-        className="w-full flex items-baseline gap-3 pl-3 pr-5 py-3 text-left enabled:hover:bg-black/[0.02] dark:enabled:hover:bg-white/[0.03] transition-colors"
+        className="w-full flex items-baseline gap-3 pl-3 pr-5 py-3 text-left enabled:hover:bg-black/2 dark:enabled:hover:bg-white/3 transition-colors"
       >
         <ChevronDown
           className={`w-3.5 h-3.5 self-center shrink-0 text-stone-400 transition-transform duration-200 print:invisible ${

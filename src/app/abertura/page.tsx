@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Scale, Wallet } from 'lucide-react';
-import type { BankAccount, ChartAccount, OpeningBalances, OpeningMode } from '@/types/firestore';
+import Link from 'next/link';
+import { AlertTriangle, CheckCircle2, Lock, Scale, Wallet } from 'lucide-react';
+import type { BankAccount, ChartAccount, LockState, OpeningBalances, OpeningMode, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { getActor } from '@/lib/data/scope';
 import { newAuditId } from '@/lib/audit';
+import { frozenMessage, isOpeningFrozen } from '@/lib/lock-guard';
 import { DEFAULT_OPENING_MEMO, OPENING_ACCOUNT_CODE, accountKind, isContraAccount, openingSign, type AccountKind } from '@/lib/ledger';
 import {
   OPENING_MODE_LABEL,
@@ -46,6 +48,8 @@ interface Loaded {
   accounts: ChartAccount[];
   banks: BankAccount[];
   saved: OpeningBalances | null;
+  lockState: LockState | null;
+  locks: PeriodLock[];
   firstStatement: string | null;
 }
 
@@ -81,11 +85,18 @@ export default function AberturaPage() {
     if (!clientId) return;
     let active = true;
     const repo = getRepository();
-    Promise.all([repo.listAccounts(clientId), repo.listBankAccounts(clientId), repo.getOpeningBalances(clientId), repo.listImportBatches(clientId)])
-      .then(([accounts, banks, saved, batches]) => {
+    Promise.all([
+      repo.listAccounts(clientId),
+      repo.listBankAccounts(clientId),
+      repo.getOpeningBalances(clientId),
+      repo.listImportBatches(clientId),
+      repo.getLockState(clientId),
+      repo.listPeriodLocks(clientId),
+    ])
+      .then(([accounts, banks, saved, batches, lockState, locks]) => {
         if (!active) return;
         const firstStatement = batches.map((b) => b.startDate).filter((d): d is string => Boolean(d)).sort()[0] ?? null;
-        hydrate({ id: clientId, accounts, banks, saved, firstStatement });
+        hydrate({ id: clientId, accounts, banks, saved, lockState, locks, firstStatement });
       })
       .catch((e: unknown) => active && setError(describe(e)));
     return () => {
@@ -97,6 +108,9 @@ export default function AberturaPage() {
   const accounts = useMemo(() => ready?.accounts ?? [], [ready]);
   const banks = useMemo(() => ready?.banks ?? [], [ready]);
   const rows = useMemo(() => openingAccounts(accounts, banks), [accounts, banks]);
+  const frozen = ready ? isOpeningFrozen(ready.saved, ready.lockState) : false;
+  const lockedMonths = useMemo(() => (ready?.locks ?? []).map((l) => l.month).sort(), [ready]);
+  const firstLockedMonth = lockedMonths[0];
 
   const parsed = useMemo(() => {
     const entries: { accountId: string; amount: number }[] = [];
@@ -166,7 +180,7 @@ export default function AberturaPage() {
   };
 
   const save = async () => {
-    if (!clientId || !ready) return;
+    if (!clientId || !ready || frozen) return;
     if (!isISODate(date)) return setError('Informe a data do balanço de abertura.');
     if (parsed.invalid.size) return setError('Há valores inválidos nas contas (use números positivos, como 1.234,56).');
     if (bankDrafts.invalid.size) return setError('Há saldos de banco inválidos (use números como 1.234,56 ou -250,00 para saldo devedor).');
@@ -207,8 +221,18 @@ export default function AberturaPage() {
         },
         { bankAccounts: changedBanks, accounts: created }
       );
-      const savedBanks = new Map(changedBanks.map((b) => [b.id, b] as const));
-      setLoaded({ ...ready, saved: balances, accounts: [...accounts, ...created], banks: banks.map((b) => savedBanks.get(b.id) ?? b) });
+      const seq = ready.lockState?.seq;
+      const stampedOpening = seq !== undefined ? { ...balances, lockSeq: seq } : balances;
+      const stampedCreated = seq !== undefined ? created.map((a) => (a.clientId === 'global' ? a : { ...a, lockSeq: seq })) : created;
+      const savedBanks = new Map(
+        changedBanks.map((b) => [b.id, seq !== undefined ? { ...b, lockSeq: seq } : b] as const)
+      );
+      setLoaded({
+        ...ready,
+        saved: stampedOpening,
+        accounts: [...accounts, ...stampedCreated],
+        banks: banks.map((b) => savedBanks.get(b.id) ?? b),
+      });
       setSavedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       setSavedAt(null);
@@ -225,11 +249,24 @@ export default function AberturaPage() {
         title="Balanço de abertura"
         description="Implantação dos saldos no início da escrituração: bancos, clientes, fornecedores, impostos, imobilizado e capital. Com eles o balanço patrimonial sai completo, não só com os bancos."
         actions={
-          <button type="button" disabled={!ready || saving || !dirty} onClick={() => void save()} className={BUTTON.accent}>
+          <button type="button" disabled={!ready || frozen || saving || !dirty} onClick={() => void save()} className={BUTTON.accent}>
             {saving ? 'Salvando…' : 'Salvar'}
           </button>
         }
       />
+      {ready && frozen && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-4 py-3 text-[13px] text-amber-900 dark:text-amber-200">
+          <span className="flex items-start gap-2.5 min-w-0">
+            <Lock className="w-4 h-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
+            <span>{frozenMessage('opening_balances', { lockState: ready.lockState, lockedMonths, firstTime: !ready.saved })}</span>
+          </span>
+          {firstLockedMonth && (
+            <Link href={`/?mes=${firstLockedMonth}`} className="shrink-0 font-medium text-accent-ink hover:underline">
+              Ir para Conciliação →
+            </Link>
+          )}
+        </div>
+      )}
       {error && (
         <p role="alert" className="flex items-start gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 text-[13px] text-rose-700">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -253,18 +290,18 @@ export default function AberturaPage() {
       ) : (
         <>
           {/* Tipo de implantação */}
-          <fieldset className={`${SURFACE} rounded-[22px] p-5 space-y-3`}>
+          <fieldset disabled={frozen} className={`${SURFACE} rounded-[22px] p-5 space-y-3 disabled:opacity-70`}>
             <legend className="sr-only">Tipo de implantação</legend>
             <p className="text-[14px] font-semibold tracking-tight">Tipo de implantação</p>
             <div className="grid gap-3 grid-cols-2">
               {(['OPENING_BALANCE', 'CONTINUITY'] as const).map((m) => (
                 <label
                   key={m}
-                  className={`flex gap-3 rounded-2xl border px-4 py-3 cursor-pointer transition-colors ${
-                    mode === m ? 'border-accent bg-accent/[0.04]' : 'border-black/[0.08] dark:border-white/[0.1] hover:bg-black/[0.02]'
+                  className={`flex gap-3 rounded-2xl border px-4 py-3 ${frozen ? 'cursor-not-allowed' : 'cursor-pointer'} transition-colors ${
+                    mode === m ? 'border-accent bg-accent/4' : 'border-black/8 dark:border-white/10 hover:bg-black/2'
                   }`}
                 >
-                  <input type="radio" name="opening-mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1" />
+                  <input disabled={frozen} type="radio" name="opening-mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1" />
                   <span className="min-w-0">
                     <span className="block text-[13px] font-medium text-stone-900 dark:text-stone-100">{OPENING_MODE_LABEL[m]}</span>
                     <span className="block text-[12px] text-stone-500">{MODE_HINT[m]}</span>
@@ -278,11 +315,11 @@ export default function AberturaPage() {
           <section className={`${SURFACE} rounded-[22px] p-5 grid gap-5 grid-cols-[240px_1fr] items-start`}>
             <div className="space-y-4">
               <Field label="Data do balanço de abertura" hint="Posição no início do dia. Os lançamentos do extrato e os manuais contam a partir dela, inclusive.">
-                <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+                <input disabled={frozen} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
               </Field>
               {mode === 'OPENING_BALANCE' && (
                 <Field label="Histórico no Diário">
-                  <input value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={200} className={INPUT} />
+                  <input disabled={frozen} value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={200} className={INPUT} />
                 </Field>
               )}
             </div>
@@ -294,7 +331,7 @@ export default function AberturaPage() {
                   ['Passivo', summary.liabilities],
                   ['Patrimônio líquido', summary.equity],
                 ].map(([label, v]) => (
-                  <div key={label as string} className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] px-3.5 py-2.5">
+                  <div key={label as string} className="rounded-2xl bg-black/3 dark:bg-white/4 px-3.5 py-2.5">
                     <dt className="text-[11px] text-stone-500">{label}</dt>
                     <dd className="font-mono tabular-nums text-[15px] font-medium">{formatCurrency(v as number)}</dd>
                   </div>
@@ -327,23 +364,25 @@ export default function AberturaPage() {
                       isso, o balanço mostra a diferença em “Saldos de abertura (a detalhar)”.
                     </span>
                   </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      aria-label="Conta de patrimônio líquido para a diferença"
-                      value={plugAccount?.id ?? ''}
-                      onChange={(e) => setPlugId(e.target.value)}
-                      className={`${INPUT} h-9 w-auto max-w-full text-[13px]`}
-                    >
-                      {equityRows.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.code} · {a.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="button" onClick={plugInto} className={`${BUTTON.secondary} h-9`}>
-                      Lançar a diferença nesta conta
-                    </button>
-                  </div>
+                  {!frozen && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label="Conta de patrimônio líquido para a diferença"
+                        value={plugAccount?.id ?? ''}
+                        onChange={(e) => setPlugId(e.target.value)}
+                        className={`${INPUT} h-9 w-auto max-w-full text-[13px]`}
+                      >
+                        {equityRows.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.code} · {a.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="button" onClick={plugInto} className={`${BUTTON.secondary} h-9`}>
+                        Lançar a diferença nesta conta
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -351,7 +390,7 @@ export default function AberturaPage() {
 
           {/* Bancos: saldo inicial editável, gravado na data da abertura */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+            <div className="px-5 py-3.5 border-b border-black/4 dark:border-white/6">
               <div className="flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-stone-400" />
                 <h2 className="text-[14px] font-semibold tracking-tight">Bancos</h2>
@@ -364,7 +403,7 @@ export default function AberturaPage() {
             {banks.length === 0 ? (
               <p className="px-5 py-5 text-[12px] text-stone-500">Nenhuma conta bancária cadastrada. Importe um extrato OFX para cadastrá-la.</p>
             ) : (
-              <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+              <ul className="divide-y divide-black/4 dark:divide-white/5">
                 {banks.map((b) => {
                   const bad = bankDrafts.invalid.has(b.id);
                   const moves = b.openingDate && isISODate(date) && b.openingDate !== date && b.openingBalance !== undefined;
@@ -380,6 +419,7 @@ export default function AberturaPage() {
                       <div className="w-40 shrink-0">
                         <input
                           id={`bank-${b.id}`}
+                          disabled={frozen}
                           value={bankValues[b.id] ?? ''}
                           onChange={(e) => setBankValues((v) => ({ ...v, [b.id]: e.target.value }))}
                           placeholder={b.openingBalance === undefined ? 'não informado' : '0,00'}
@@ -405,14 +445,14 @@ export default function AberturaPage() {
             const list = visible(kind);
             return (
               <section key={kind} className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-                <div className="px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+                <div className="px-5 py-3.5 border-b border-black/4 dark:border-white/6">
                   <h2 className="text-[14px] font-semibold tracking-tight">{title}</h2>
                   <p className="text-[12px] text-stone-500">{hint}</p>
                 </div>
                 {list.length === 0 ? (
                   <p className="px-5 py-5 text-[13px] text-stone-400">Nenhuma conta {term || onlyFilled ? 'neste filtro' : 'neste grupo'}.</p>
                 ) : (
-                  <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+                  <ul className="divide-y divide-black/4 dark:divide-white/5">
                     {list.map((a) => {
                       const bad = parsed.invalid.has(a.id);
                       const contra = isContraAccount(a);
@@ -422,7 +462,7 @@ export default function AberturaPage() {
                           <label htmlFor={`op-${a.id}`} className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200" title={a.name}>
                             {a.name}
                             {contra && (
-                              <span className="ml-2 rounded-full bg-black/[0.05] dark:bg-white/[0.08] px-2 py-0.5 text-[11px] text-stone-500">
+                              <span className="ml-2 rounded-full bg-black/5 dark:bg-white/8 px-2 py-0.5 text-[11px] text-stone-500">
                                 retificadora · a {openingSign(a) > 0 ? 'débito' : 'crédito'}
                               </span>
                             )}
@@ -430,6 +470,7 @@ export default function AberturaPage() {
                           <div className="w-40 shrink-0">
                             <input
                               id={`op-${a.id}`}
+                              disabled={frozen}
                               value={values[a.id] ?? ''}
                               onChange={(e) => setValues((v) => ({ ...v, [a.id]: e.target.value }))}
                               placeholder="0,00"

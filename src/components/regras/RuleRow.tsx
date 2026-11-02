@@ -44,13 +44,14 @@ export interface RuleRowProps {
   /** Descrições dos lançamentos do cliente, para avaliar o termo em edição. */
   memos: readonly string[];
   isDuplicate: (key: string, exceptId: string) => boolean;
+  canDelete?: boolean;
   onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
   onApply: (rule: ClassificationRule) => Promise<void>;
   applying: boolean;
 }
 
-export function RuleRow({ rule, account, affected, pending, conflicts, rulesById, assessment, memos, isDuplicate, onSave, onDelete, onApply, applying }: RuleRowProps) {
+export function RuleRow({ rule, account, affected, pending, conflicts, rulesById, assessment, memos, isDuplicate, canDelete = true, onSave, onDelete, onApply, applying }: RuleRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(rule.pattern);
   const [draftType, setDraftType] = useState<RuleMatchType>(rule.matchType ?? 'CONTAINS');
@@ -90,7 +91,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
   };
 
   return (
-    <tr className="group border-b border-black/[0.04] dark:border-white/[0.05] last:border-0">
+    <tr className="group border-b border-black/4 dark:border-white/5 last:border-0">
       <td className="pl-5 pr-3 py-3 align-middle">
         {editing ? (
           <div className="space-y-1">
@@ -117,7 +118,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
         ) : (
           <div className="min-w-0 space-y-1">
             <span className="block text-[10px] uppercase tracking-wider text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
-            <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] border border-black/[0.04] font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
+            <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>
             {assessment.level !== 'ok' && (
@@ -169,7 +170,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
             disabled={applying}
             onClick={() => void onApply(rule)}
             title="Classificar agora os lançamentos pendentes que esta regra vence (todos os períodos abertos)"
-            className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[11px] font-medium text-accent-ink bg-accent/[0.07] dark:bg-accent/[0.14] hover:bg-accent/[0.12] disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
+            className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-sans text-[11px] font-medium text-accent-ink bg-accent/[0.07] dark:bg-accent/[0.14] hover:bg-accent/12 disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
           >
             <Wand2 className="w-3 h-3" />
             {applying ? 'Aplicando…' : `Aplicar a ${pending}`}
@@ -193,7 +194,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={cancel}
                 aria-label="Cancelar edição"
-                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/[0.05] active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/5 active:scale-[0.94] transition-all duration-150"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -204,16 +205,18 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={() => setEditing(true)}
                 aria-label={`Editar termo ${rule.pattern}`}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/[0.05] opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>
-              <ConfirmButton
-                ariaLabel={`Excluir regra ${rule.pattern}`}
-                label={<Trash2 className="w-3.5 h-3.5" />}
-                confirmLabel="Excluir"
-                onConfirm={() => onDelete(rule)}
-              />
+              {canDelete && (
+                <ConfirmButton
+                  ariaLabel={`Excluir regra ${rule.pattern}`}
+                  label={<Trash2 className="w-3.5 h-3.5" />}
+                  confirmLabel="Excluir"
+                  onConfirm={() => onDelete(rule)}
+                />
+              )}
             </>
           )}
         </div>

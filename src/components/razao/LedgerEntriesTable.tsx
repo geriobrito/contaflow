@@ -24,7 +24,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
 
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-      <div className="p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/[0.04] dark:border-white/[0.06] flex items-center justify-between gap-3 print:hidden">
+      <div className="p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/4 dark:border-white/6 flex items-center justify-between gap-3 print:hidden">
         <div className="relative flex-1 max-w-md">
           <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
@@ -32,7 +32,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
             placeholder="Filtrar por histórico, documento ou contrapartida..."
             value={tableSearch}
             onChange={(e) => setTableSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
+            className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
           />
         </div>
         <span className="text-[11px] text-stone-400 tabular-nums font-mono whitespace-nowrap">
@@ -54,7 +54,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         ) : (
           <table className="w-full text-left border-collapse text-[12px] print-fit-table">
             <thead>
-              <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/[0.05] dark:border-white/[0.06]">
+              <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
                 <th className="pl-5 pr-3 py-2.5 w-24">Data</th>
                 <th className="px-3 py-2.5 w-28">Doc / FITID</th>
                 <th className="px-3 py-2.5">Histórico</th>
@@ -64,7 +64,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                 <th className="pl-3 pr-5 py-2.5 text-right w-36">Saldo Atual</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-black/[0.03] dark:divide-white/[0.03]">
+            <tbody className="divide-y divide-black/3 dark:divide-white/3">
               {/* Linha inicial: Saldo Anterior Transportado */}
               <tr className="bg-stone-50/60 dark:bg-stone-800/40 text-stone-500 italic font-medium">
                 <td className="pl-5 pr-3 py-2 font-mono text-[11px]">{formatDateBR(range.start)}</td>
@@ -88,7 +88,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
 
               {/* Linhas de movimentação cronológica */}
               {visibleEntries.map((e) => (
-                <tr key={e.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+                <tr key={e.id} className="hover:bg-black/2 dark:hover:bg-white/2 transition-colors">
                   <td className="pl-5 pr-3 py-2 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">
                     {formatDateBR(e.date)}
                   </td>
@@ -96,7 +96,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                     {e.documentId || '—'}
                   </td>
                   <td className="px-3 py-2 text-stone-800 dark:text-stone-200 font-medium">
-                    <div className="whitespace-normal break-words" title={e.memo}>
+                    <div className="whitespace-normal wrap-break-word" title={e.memo}>
                       {e.memo}
                     </div>
                   </td>
@@ -131,7 +131,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                 </tr>
               ))}
             </tbody>
-            <tfoot className="border-t-2 border-black/[0.08] dark:border-white/[0.08] font-semibold text-stone-900 dark:text-stone-100 bg-stone-50 dark:bg-stone-800/95">
+            <tfoot className="border-t-2 border-black/8 dark:border-white/8 font-semibold text-stone-900 dark:text-stone-100 bg-stone-50 dark:bg-stone-800/95">
               <tr>
                 <td className="pl-5 pr-3 py-2.5" colSpan={4}>
                   Totais do período ({visibleEntries.length} partidas)

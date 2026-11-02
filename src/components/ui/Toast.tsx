@@ -68,7 +68,7 @@ export function Toast({ toast, onDismiss }: { toast: ToastState | ToastData | nu
             onDismiss?.();
             action.onClick();
           }}
-          className="shrink-0 h-7 px-3 rounded-full font-medium text-[#F0A385] dark:text-accent-hover hover:bg-white/10 dark:hover:bg-black/[0.06] active:scale-[0.96] transition-all duration-150"
+          className="shrink-0 h-7 px-3 rounded-full font-medium text-[#F0A385] dark:text-accent-hover hover:bg-white/10 dark:hover:bg-black/6 active:scale-[0.96] transition-all duration-150"
         >
           {action.label}
         </button>

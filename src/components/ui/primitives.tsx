@@ -14,10 +14,10 @@ export const PAGE =
   'w-full max-w-[1680px] mx-auto px-8 py-8 space-y-8';
 
 export const SURFACE =
-  'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
+  'backdrop-blur-xl bg-white/70 dark:bg-stone-900/60 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]';
 
 export const INPUT =
-  'w-full h-11 px-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]';
+  'w-full h-11 px-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-55 disabled:cursor-not-allowed';
 
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full text-[13px] font-medium tracking-tight transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none';
@@ -25,8 +25,8 @@ const BUTTON_BASE =
 export const BUTTON = {
   primary: `${BUTTON_BASE} bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-stone-800 dark:hover:bg-white`,
   accent: `${BUTTON_BASE} bg-accent text-white hover:bg-accent-hover shadow-[0_4px_14px_rgba(181,85,47,0.22)]`,
-  ghost: `${BUTTON_BASE} text-stone-600 dark:text-stone-300 hover:bg-black/[0.05] dark:hover:bg-white/[0.08]`,
-  secondary: `${BUTTON_BASE} bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-black/[0.08] dark:border-white/[0.10] hover:bg-white`,
+  ghost: `${BUTTON_BASE} text-stone-600 dark:text-stone-300 hover:bg-black/5 dark:hover:bg-white/8`,
+  secondary: `${BUTTON_BASE} bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-black/8 dark:border-white/10 hover:bg-white`,
 } as const;
 
 /* =========================================================================
@@ -64,6 +64,7 @@ interface SegmentedControlProps<T extends string> {
   onChange: (value: T) => void;
   options: readonly { value: T; label: string }[];
   ariaLabel: string;
+  disabled?: boolean;
 }
 
 /** Destaque deslizante dos controles segmentados (o "relevo" da opção marcada). */
@@ -80,10 +81,17 @@ export function SegmentedControl<T extends string>({
   onChange,
   options,
   ariaLabel,
+  disabled = false,
 }: SegmentedControlProps<T>) {
   const { containerRef, indicatorRef } = useSlidingIndicator<HTMLDivElement>(value);
   return (
-    <div ref={containerRef} role="radiogroup" aria-label={ariaLabel} className="relative inline-flex p-0.5 rounded-xl bg-black/[0.05] dark:bg-white/[0.06]">
+    <div
+      ref={containerRef}
+      role="radiogroup"
+      aria-label={ariaLabel}
+      aria-disabled={disabled || undefined}
+      className={`relative inline-flex p-0.5 rounded-xl bg-black/5 dark:bg-white/6 ${disabled ? 'opacity-55 pointer-events-none' : ''}`}
+    >
       <span ref={indicatorRef} aria-hidden className={SEGMENT_PILL} />
       {options.map((o) => {
         const active = o.value === value;
@@ -92,9 +100,10 @@ export function SegmentedControl<T extends string>({
             key={o.value}
             type="button"
             role="radio"
+            disabled={disabled}
             aria-checked={active}
             data-active={active}
-            onClick={() => onChange(o.value)}
+            onClick={() => !disabled && onChange(o.value)}
             className={segmentClass(active)}
           >
             {o.label}
@@ -127,7 +136,7 @@ export function SearchField({ value, onChange, placeholder = 'Buscar', className
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-10 pr-9 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none border border-transparent transition-all duration-150 focus:bg-white dark:focus:bg-stone-800 focus:border-black/[0.08] focus:shadow-[0_0_0_4px_rgba(181,85,47,0.10)] [&::-webkit-search-cancel-button]:hidden"
+        className="w-full h-10 pl-10 pr-9 rounded-xl bg-black/4 dark:bg-white/6 text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none border border-transparent transition-all duration-150 focus:bg-white dark:focus:bg-stone-800 focus:border-black/8 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.10)] [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
@@ -211,7 +220,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full flex flex-col overflow-hidden bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
+        className={`relative w-full flex flex-col overflow-hidden bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/6 dark:border-white/8 shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
           right
             ? 'max-w-[420px] max-h-[calc(100vh-1.5rem)] rounded-[24px] animate-panel-in'
             : 'max-w-[460px] max-h-[calc(100vh-2rem)] my-auto rounded-[28px] animate-sheet-in'
@@ -228,7 +237,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="w-7 h-7 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-stone-500 flex items-center justify-center hover:bg-black/[0.08] active:scale-[0.94] transition-all duration-150"
+            className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/8 text-stone-500 flex items-center justify-center hover:bg-black/8 active:scale-[0.94] transition-all duration-150"
           >
             <X className="w-3.5 h-3.5" strokeWidth={2.25} />
           </button>

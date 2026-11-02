@@ -10,10 +10,10 @@ import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
 
 /** Extratos importados, do mais recente ao mais antigo, com a conferência de saldo e a exclusão. */
-export function ImportHistoryTable({ current, onDelete }: { current: ContasData | null; onDelete: (batch: ImportBatch) => void }) {
+export function ImportHistoryTable({ current, onDelete }: { current: ContasData | null; onDelete?: (batch: ImportBatch) => void }) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-      <div className="px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+      <div className="px-5 py-4 border-b border-black/4 dark:border-white/6">
         <h2 className="text-[15px] font-semibold tracking-tight">Histórico de importações</h2>
         <p className="text-[12px] text-stone-500">Excluir um extrato remove os lançamentos dele. Competências fechadas precisam ser reabertas antes.</p>
       </div>
@@ -23,7 +23,7 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04]">
+              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
                 <th className="font-medium pl-5 pr-3 py-2.5">Importado em</th>
                 <th className="font-medium px-3 py-2.5">Arquivo</th>
                 <th className="font-medium px-3 py-2.5">Conta</th>
@@ -37,7 +37,7 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
               {[...current.batches]
                 .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
                 .map((b) => (
-                  <tr key={b.id} className="border-b border-black/[0.04] last:border-0 text-[13px]">
+                  <tr key={b.id} className="border-b border-black/4 last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-2.5 font-mono tabular-nums text-[12px] text-stone-500 whitespace-nowrap">{formatDateTime(b.importedAt)}</td>
                     <td className="px-3 py-2.5 max-w-[240px] truncate" title={b.fileName}>{b.fileName}</td>
                     <td className="px-3 py-2.5 text-[12px] text-stone-500">
@@ -64,9 +64,11 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
                       )}
                     </td>
                     <td className="pl-3 pr-5 py-2.5 text-right">
-                      <button type="button" onClick={() => onDelete(b)} aria-label={`Excluir extrato ${b.fileName}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 active:scale-[0.94] transition-all">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {onDelete && (
+                        <button type="button" onClick={() => onDelete(b)} aria-label={`Excluir extrato ${b.fileName}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 active:scale-[0.94] transition-all">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

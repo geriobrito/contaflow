@@ -383,7 +383,7 @@ export default function ConciliacaoPage() {
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
-        <div className="flex flex-wrap items-center gap-3 justify-between px-5 py-4 border-b border-black/[0.04] dark:border-white/[0.06]">
+        <div className="flex flex-wrap items-center gap-3 justify-between px-5 py-4 border-b border-black/4 dark:border-white/6">
           <div className="flex flex-wrap items-center gap-3">
             <SegmentedControl
               ariaLabel="Visão dos lançamentos"
@@ -397,7 +397,7 @@ export default function ConciliacaoPage() {
             <div
               ref={filterTabsRef}
               role="tablist"
-              className={`${view === 'list' ? 'inline-flex' : 'hidden'} relative p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] self-start`}
+              className={`${view === 'list' ? 'inline-flex' : 'hidden'} relative p-0.5 rounded-xl bg-black/4 dark:bg-white/6 self-start`}
             >
               <span ref={filterPillRef} aria-hidden className={SEGMENT_PILL} />
               {FILTERS.map((f) => (
@@ -421,7 +421,7 @@ export default function ConciliacaoPage() {
                   aria-label="Filtrar por conta bancária ou cartão"
                   value={bankFilter}
                   onChange={(e) => setBankFilter(e.target.value)}
-                  className="h-9 pl-8 pr-7 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] text-[13px] font-medium text-stone-700 dark:text-stone-200 border border-transparent focus:border-accent/40 outline-none cursor-pointer transition-colors"
+                  className="h-9 pl-8 pr-7 rounded-xl bg-black/4 dark:bg-white/6 text-[13px] font-medium text-stone-700 dark:text-stone-200 border border-transparent focus:border-accent/40 outline-none cursor-pointer transition-colors"
                 >
                   <option value="ALL">Todas as contas ({transactions.length})</option>
                   {bankOptions.map((opt) => (
@@ -449,7 +449,7 @@ export default function ConciliacaoPage() {
                   onClick={() => setShowKeyboardHelp(true)}
                   title="Atalhos de teclado (?)"
                   aria-label="Atalhos de teclado"
-                  className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/[0.03] dark:bg-white/[0.05] hover:bg-black/[0.06] transition-colors"
+                  className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/3 dark:bg-white/5 hover:bg-black/6 transition-colors"
                 >
                   <kbd className="font-mono text-[12px] font-semibold">?</kbd>
                 </button>

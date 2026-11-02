@@ -55,7 +55,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
 
   // Portal no <body>: fica acima de qualquer contexto de empilhamento da página.
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm animate-fade-in" onClick={() => !busy && onClose()} />
       <div
         role="alertdialog"
@@ -88,7 +88,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
           </p>
         </div>
 
-        <dl className="mt-5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06] px-4 py-3 space-y-1.5 font-mono text-[12px] text-stone-500 dark:text-stone-400">
+        <dl className="mt-5 rounded-2xl bg-black/3 dark:bg-white/4 border border-black/5 dark:border-white/6 px-4 py-3 space-y-1.5 font-mono text-[12px] text-stone-500 dark:text-stone-400">
           <div className="flex justify-between gap-4">
             <dt>Arquivo</dt>
             <dd className="truncate text-stone-700 dark:text-stone-200" title={info.fileName}>
@@ -122,7 +122,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                   type="button"
                   onClick={onClose}
                   disabled={busy}
-                  className="rounded-xl py-2.5 px-5 font-medium text-stone-700 dark:text-stone-200 bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.08] disabled:opacity-40 transition-all active:scale-[0.98]"
+                  className="rounded-xl py-2.5 px-5 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 disabled:opacity-40 transition-all active:scale-[0.98]"
                 >
                   Entendi
                 </button>
@@ -143,7 +143,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                 type="button"
                 onClick={onClose}
                 disabled={busy}
-                className="flex-1 rounded-xl py-2.5 px-4 font-medium text-stone-700 dark:text-stone-200 bg-black/[0.05] dark:bg-white/[0.08] hover:bg-black/[0.08] disabled:opacity-40 transition-all active:scale-[0.98]"
+                className="flex-1 rounded-xl py-2.5 px-4 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 disabled:opacity-40 transition-all active:scale-[0.98]"
               >
                 Cancelar
               </button>

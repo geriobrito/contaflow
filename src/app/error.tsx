@@ -24,7 +24,7 @@ export default function RouteError({ error, retry }: { error: Error & { digest?:
           Nada foi gravado pela metade por causa disto. Tente de novo; se o erro continuar, anote a mensagem abaixo.
         </p>
         {error.message && (
-          <p className="mt-4 mx-auto max-w-xl px-4 py-2.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] font-mono text-[12px] text-stone-600 dark:text-stone-300 break-words">
+          <p className="mt-4 mx-auto max-w-xl px-4 py-2.5 rounded-xl bg-black/4 dark:bg-white/6 font-mono text-[12px] text-stone-600 dark:text-stone-300 wrap-break-word">
             {error.message}
             {error.digest && <span className="block mt-1 text-stone-400">ref. {error.digest}</span>}
           </p>

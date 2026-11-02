@@ -103,6 +103,8 @@ export interface ChartAccount {
   /** Conta redutora (retificadora), ex.: (-) Depreciação Acumulada. */
   isContra?: boolean;
   description?: string;
+  /** Sequência de fechamento (`lock_state.seq`) na última gravação de campo estrutural. */
+  lockSeq?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -185,6 +187,8 @@ export interface ClassificationRule {
   accountName?: string;
   confidence?: number;
   usageCount?: number;
+  /** Autor da regra (operador só exclui as regras que ele mesmo criou). */
+  createdByUid?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -338,6 +342,25 @@ export interface PeriodLock {
   lockedByEmail?: string;
 }
 
+export interface LockStateEvent {
+  lockId: string;
+  kind: 'close' | 'reopen' | 'year';
+}
+
+/**
+ * Resumo dos fechamentos de uma empresa (coleção `lock_state`, id = clientId), mantido pelas
+ * regras do Firestore: `count` é quantas competências estão fechadas agora e `seq` só cresce a
+ * cada fechamento de competência ou encerramento do exercício.
+ */
+export interface LockState {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  count: number;
+  seq: number;
+  lastEvent?: LockStateEvent;
+}
+
 /** Quantidade de lançamentos bancários de uma competência, por situação. */
 export interface MonthCounts {
   month: string;
@@ -470,6 +493,8 @@ export interface BankAccount {
   openingDate?: string;
   /** Formato de CSV memorizado para esta conta ou cartão. */
   csvPreset?: BankCSVPreset;
+  /** Sequência de fechamento (`lock_state.seq`) na última gravação de campo protegido. */
+  lockSeq?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -559,6 +584,8 @@ export interface OpeningBalances {
   /** Histórico do lançamento de abertura no Diário. */
   memo?: string;
   entries: OpeningEntry[];
+  /** Sequência de fechamento (`lock_state.seq`) na última gravação. */
+  lockSeq?: number;
   updatedAt: string;
   updatedByUid?: string;
 }

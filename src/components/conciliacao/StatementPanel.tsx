@@ -91,7 +91,7 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-black/[0.02] transition-colors"
+        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-black/2 transition-colors"
       >
         <FileText className="w-4 h-4 text-stone-400" />
         <span className="flex-1 text-[14px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
@@ -113,7 +113,7 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
       </button>
 
       {open && (
-        <div className="border-t border-black/[0.04] dark:border-white/[0.06] animate-fade-in">
+        <div className="border-t border-black/4 dark:border-white/6 animate-fade-in">
           {gaps.length > 0 && (
             <ul className="px-5 py-3 space-y-1 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-200/40">
               {gaps.map((g) => (
@@ -129,7 +129,7 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04]">
+                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
                   <th className="font-medium pl-5 pr-3 py-2">Conta</th>
                   <th className="font-medium px-3 py-2">Período</th>
                   <th className="font-medium px-3 py-2 text-right">Saldo informado</th>
@@ -139,7 +139,7 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
               </thead>
               <tbody>
                 {withAccount.map((b) => (
-                  <tr key={b.id} className="border-b border-black/[0.04] last:border-0 text-[13px]">
+                  <tr key={b.id} className="border-b border-black/4 last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-2.5">
                       <span className="font-mono text-[12px] text-stone-700 dark:text-stone-300">{b.accountKey}</span>
                       {b.bankName && <span className="block text-[11px] text-stone-400">{b.bankName}</span>}

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { useContasData } from '@/hooks/contas/useContasData';
 import { BankAccountSheet } from '@/components/contas/BankAccountSheet';
@@ -16,6 +17,7 @@ import { PAGE, PageHeader } from '@/components/ui/primitives';
  * bloco tem o seu componente em src/components/contas/.
  */
 export default function ContasPage() {
+  const { isAdmin } = useAuth();
   const { currentClient } = useClient();
   const { current, error, busy, lockedMonths, unregistered, textPlan, unlinkedTx, carriedByBank, reload, register, repairText } = useContasData(currentClient?.id);
   const [creating, setCreating] = useState(false);
@@ -73,7 +75,7 @@ export default function ContasPage() {
         />
       )}
 
-      <ImportHistoryTable current={current} onDelete={setDeleting} />
+      <ImportHistoryTable current={current} onDelete={isAdmin ? setDeleting : undefined} />
 
       {creating && current && currentClient && (
         <BankAccountSheet

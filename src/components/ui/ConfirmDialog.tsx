@@ -71,7 +71,7 @@ export function ConfirmDialog({
 
   // Portal no <body>: fica acima de qualquer contexto de empilhamento da página.
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm animate-fade-in" onClick={() => !busy && onCancel()} />
       <div
         role="alertdialog"

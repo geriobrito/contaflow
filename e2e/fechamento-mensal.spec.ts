@@ -242,6 +242,18 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
   await test.step('Balanço de abertura (sem contabilidade anterior)', async () => {
     await page.goto('/abertura');
     await expect(page.getByRole('heading', { name: 'Balanço de abertura' })).toBeVisible();
+    // Com março/2025 fechado, a implantação inicial dos saldos de abertura fica congelada.
+    await expect(page.getByRole('status').filter({ hasText: /Há competências fechadas/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+
+    // Reabre março/2025 com motivo na auditoria para permitir gravar a abertura.
+    await page.getByRole('link', { name: /Ir para Conciliação/ }).click();
+    await page.getByRole('button', { name: 'Reabrir competência' }).click();
+    await page.getByLabel('Motivo da reabertura').fill('Implantar saldos de abertura');
+    await page.getByRole('button', { name: 'Reabrir', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Fechar competência' })).toBeVisible();
+
+    await page.goto('/abertura');
     await expect(page.getByRole('radio', { name: /Balanço de abertura \(sem contabilidade anterior/ })).toBeChecked();
     // Movimento em 2025: a data sugerida nunca é do ano corrente.
     await expect(page.getByLabel(/Data do balanço de abertura/)).toHaveValue(/^2025-/);
@@ -254,6 +266,15 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await page.reload();
     await expect(page.getByLabel(/^Capital Subscrito$/)).toHaveValue('1000,00');
     await expect(page.locator('input[id^="bank-"]').first()).toHaveValue('1500,00');
+
+    // Fecha novamente março/2025 e confirma que a tela de abertura volta a congelar.
+    await page.goto('/?mes=2025-03');
+    await page.getByRole('button', { name: 'Fechar competência' }).click();
+    await page.getByRole('button', { name: 'Clique para confirmar o fechamento' }).click();
+    await expect(page.getByText('Competência fechada', { exact: true })).toBeVisible();
+    await page.goto('/abertura');
+    await expect(page.getByRole('button', { name: 'Salvar' })).toBeDisabled();
+
     // Abertura conferida: o balanço não avisa de diferença, e a 2.3.3.04 aparece no PL.
     await page.goto('/balanco');
     await expect(page.getByRole('heading', { name: 'Balanço patrimonial' })).toBeVisible();

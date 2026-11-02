@@ -76,7 +76,7 @@ export function RepeatEntriesSheet({ targetMonth, candidates, onConfirm, onClose
             <li key={entry.id}>
               <label
                 className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 ${
-                  problem ? 'border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20' : 'border-black/[0.06] dark:border-white/[0.08] bg-white/70 dark:bg-stone-800/50 cursor-pointer'
+                  problem ? 'border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20' : 'border-black/6 dark:border-white/8 bg-white/70 dark:bg-stone-800/50 cursor-pointer'
                 }`}
               >
                 <input type="checkbox" className="mt-1 w-4 h-4 accent-accent" disabled={Boolean(problem) || busy} checked={!problem && selected.has(entry.id)} onChange={() => toggle(entry.id)} />

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { getRepository } from '@/lib/services/data-service';
 import { applyRuleToPending } from '@/lib/services/reconciliation-service';
 import { partnerResetChange } from '@/lib/services/accounting-service';
-import { getActor } from '@/lib/data/scope';
+import { getActor, peekActor } from '@/lib/data/scope';
 import type { AccountRef } from '@/lib/data/repository';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { normalizePattern } from '@/lib/reconciliation';
@@ -69,9 +69,19 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
       const existingRule =
         rules.find((r) => args.preferRuleId && r.id === args.preferRuleId && r.clientId === clientId) ??
         rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === args.pattern && (r.matchType ?? 'CONTAINS') === args.matchType);
+      const actorUid = peekActor()?.uid;
       const rule: ClassificationRule = existingRule
         ? { ...existingRule, pattern: args.pattern, matchType: args.matchType, ...args.ref, updatedAt: args.now }
-        : { id: newRuleId(), clientId, pattern: args.pattern, matchType: args.matchType, ...args.ref, createdAt: args.now, updatedAt: args.now };
+        : {
+            id: newRuleId(),
+            clientId,
+            pattern: args.pattern,
+            matchType: args.matchType,
+            ...args.ref,
+            ...(actorUid ? { createdByUid: actorUid } : {}),
+            createdAt: args.now,
+            updatedAt: args.now,
+          };
       return { rule, existingRule };
     },
     [clientId, rules]

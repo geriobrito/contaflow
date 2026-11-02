@@ -154,15 +154,15 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
   const optionId = (i: number) => `${listId}-${i}`;
 
   const palette = (
-    <div className="fixed inset-0 z-[70] flex items-start justify-center px-4 pt-[12vh] print:hidden" role="presentation">
+    <div className="fixed inset-0 z-70 flex items-start justify-center px-4 pt-[12vh] print:hidden" role="presentation">
       <div className="absolute inset-0 bg-stone-900/25 dark:bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Busca rápida"
-        className="relative w-full max-w-[560px] rounded-[20px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_64px_rgba(0,0,0,0.22)] overflow-hidden animate-pop-in"
+        className="relative w-full max-w-[560px] rounded-[20px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.22)] overflow-hidden animate-pop-in"
       >
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-black/[0.06] dark:border-white/[0.08]">
+        <div className="flex items-center gap-3 px-4 h-14 border-b border-black/6 dark:border-white/8">
           <Search className="w-[18px] h-[18px] text-stone-400 shrink-0" strokeWidth={1.75} />
           <input
             autoFocus
@@ -180,7 +180,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
             placeholder="Buscar telas, empresas e ações…"
             className="flex-1 min-w-0 bg-transparent text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none"
           />
-          <kbd className="inline-flex h-6 px-1.5 items-center rounded-md border border-black/[0.08] dark:border-white/[0.12] bg-black/[0.03] dark:bg-white/[0.06] font-mono text-[10.5px] text-stone-500">Esc</kbd>
+          <kbd className="inline-flex h-6 px-1.5 items-center rounded-md border border-black/8 dark:border-white/12 bg-black/3 dark:bg-white/6 font-mono text-[10.5px] text-stone-500">Esc</kbd>
         </div>
 
         <ul ref={listRef} id={listId} role="listbox" aria-label="Resultados" className="max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain p-2">
@@ -207,7 +207,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
                   onMouseMove={() => !selected && setActive(i)}
                   onClick={() => run(cmd)}
                   className={`flex items-center gap-3 px-3 h-10 rounded-xl cursor-pointer select-none transition-colors duration-100 ${
-                    selected ? 'bg-black/[0.05] dark:bg-white/[0.08]' : ''
+                    selected ? 'bg-black/5 dark:bg-white/8' : ''
                   }`}
                 >
                   <Icon className={`w-4 h-4 shrink-0 ${selected ? 'text-accent-ink' : 'text-stone-400'}`} strokeWidth={1.75} />
@@ -227,7 +227,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           })}
         </ul>
 
-        <div className="flex items-center gap-4 px-4 h-9 border-t border-black/[0.06] dark:border-white/[0.08] text-[11px] text-stone-400">
+        <div className="flex items-center gap-4 px-4 h-9 border-t border-black/6 dark:border-white/8 text-[11px] text-stone-400">
           <span>↑↓ navegar</span>
           <span>Enter abrir</span>
           <span>Esc fechar</span>

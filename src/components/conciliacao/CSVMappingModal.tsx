@@ -391,9 +391,9 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
       aria-labelledby="csv-mapping-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
-      <div className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden">
+      <div className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/8 dark:border-white/10 overflow-hidden">
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <FileSpreadsheet className="w-5 h-5" />
@@ -419,7 +419,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors"
+            className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -526,12 +526,12 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
 
           {/* Formulário rápido para cadastrar conta ou cartão sem OFX prévio */}
           {showNewBankForm && (
-            <div className="p-4 rounded-xl border border-accent/25 bg-accent/[0.04] dark:bg-accent/[0.08] space-y-3 animate-fade-in">
+            <div className="p-4 rounded-xl border border-accent/25 bg-accent/4 dark:bg-accent/8 space-y-3 animate-fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-[13px] font-semibold text-stone-900 dark:text-stone-100">
                   Cadastrar nova conta bancária ou cartão de crédito
                 </span>
-                <div className="inline-flex rounded-lg p-0.5 bg-black/[0.05] dark:bg-white/[0.08] text-[12px]">
+                <div className="inline-flex rounded-lg p-0.5 bg-black/5 dark:bg-white/8 text-[12px]">
                   <button
                     type="button"
                     onClick={() => setNewBankKind('CARD')}
@@ -618,11 +618,11 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
               </label>
             </div>
 
-            <div className="border border-black/[0.08] dark:border-white/[0.1] rounded-xl overflow-hidden bg-stone-50/40 dark:bg-stone-900/40">
+            <div className="border border-black/8 dark:border-white/10 rounded-xl overflow-hidden bg-stone-50/40 dark:bg-stone-900/40">
               <div className="overflow-x-auto max-h-44">
                 <table className="w-full text-left text-[12px] border-collapse font-mono">
                   <thead>
-                    <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/[0.06] text-stone-600">
+                    <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/6 text-stone-600">
                       {activePreview.headers.map((h, i) => (
                         <th key={i} className="py-2 px-3 whitespace-nowrap">
                           <span className="text-[10px] text-stone-400 block font-normal">Col {i + 1}</span>
@@ -631,7 +631,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                  <tbody className="divide-y divide-black/4 dark:divide-white/6">
                     {activePreview.previewRows.slice(mapping.hasHeader ? 1 : 0, 5).map((row, rIdx) => (
                       <tr key={rIdx} className="hover:bg-white dark:hover:bg-stone-800/40">
                         {row.map((cell, cIdx) => (
@@ -648,7 +648,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
           </div>
 
           {/* Mapeamento de Colunas */}
-          <div className="p-4 rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/30 space-y-4">
+          <div className="p-4 rounded-xl border border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/30 space-y-4">
             <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
               Mapeamento de Campos
             </h3>
@@ -665,7 +665,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                       setMapping((m) => ({ ...m, dateCol: parseInt(e.target.value, 10) }));
                       setConfigSource('manual');
                     }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                   >
                     {columns.map((c) => (
                       <option key={c.index} value={c.index}>
@@ -686,7 +686,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                       setMapping((m) => ({ ...m, memoCol: parseInt(e.target.value, 10) }));
                       setConfigSource('manual');
                     }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                   >
                     {columns.map((c) => (
                       <option key={c.index} value={c.index}>
@@ -708,7 +708,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                       setMapping((m) => ({ ...m, docCol: val === -1 ? undefined : val }));
                       setConfigSource('manual');
                     }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                   >
                     <option value="-1">Gerar identificador automático (Recomendado)</option>
                     {columns.map((c) => (
@@ -721,7 +721,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             {/* Configuração de Valores (Único vs Separado) */}
-            <div className="space-y-3 pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+            <div className="space-y-3 pt-2 border-t border-black/4 dark:border-white/6">
               <div className="flex flex-wrap items-center gap-6">
                 <span className="text-[12px] font-medium text-stone-600 dark:text-stone-300">
                   Formato do Valor:
@@ -771,7 +771,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                         setMapping((m) => ({ ...m, amountCol: parseInt(e.target.value, 10) }));
                         setConfigSource('manual');
                       }}
-                      className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                      className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                     >
                       {columns.map((c) => (
                         <option key={c.index} value={c.index}>
@@ -793,7 +793,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                           setMapping((m) => ({ ...m, debitCol: parseInt(e.target.value, 10) }));
                           setConfigSource('manual');
                         }}
-                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                       >
                         {columns.map((c) => (
                           <option key={c.index} value={c.index}>
@@ -814,7 +814,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
                           setMapping((m) => ({ ...m, creditCol: parseInt(e.target.value, 10) }));
                           setConfigSource('manual');
                         }}
-                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/[0.08] text-[13px] outline-none"
+                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
                       >
                         {columns.map((c) => (
                           <option key={c.index} value={c.index}>
@@ -828,7 +828,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             {/* Inversão de Sinal (Fatura de Cartão) */}
-            <div className="pt-2 border-t border-black/[0.04] dark:border-white/[0.06]">
+            <div className="pt-2 border-t border-black/4 dark:border-white/6">
               <label className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 cursor-pointer">
                 <input
                   type="checkbox"
@@ -874,7 +874,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             {remainingFiles > 0 && (
-              <label className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-black/[0.06] dark:border-white/[0.08] text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
+              <label className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-black/6 dark:border-white/8 text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyToRemaining}
@@ -890,7 +890,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
           <span className="text-[12px] text-stone-400">
             {allBanks.some((b) => b.accountKey === selectedBankKey)
               ? 'O mapeamento escolhido será memorizado nesta conta para os próximos meses.'

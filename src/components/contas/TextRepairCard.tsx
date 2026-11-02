@@ -21,7 +21,7 @@ export function TextRepairCard({ plan, busy, onRepair }: { plan: TextRepairPlan;
             mantém as classificações e atualiza o termo das regras para continuarem casando.
           </p>
           {(plan.memos[0] || plan.rules[0]) && (
-            <p className="font-mono text-[11px] text-stone-500 break-words">
+            <p className="font-mono text-[11px] text-stone-500 wrap-break-word">
               {(plan.memos[0] ?? plan.rules[0]!).before.slice(0, 70)} → {(plan.memos[0]?.after ?? plan.rules[0]!.after).slice(0, 70)}
             </p>
           )}

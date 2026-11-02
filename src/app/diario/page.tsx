@@ -209,7 +209,7 @@ export default function DiarioPage() {
         </section>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08]">
+          <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8">
             <div className="bg-white dark:bg-stone-900 p-4">
               <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Lançamentos</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{daybook.entries.length}</p>
@@ -238,7 +238,7 @@ export default function DiarioPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-[12px]">
                   <thead>
-                    <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/[0.05] dark:border-white/[0.06]">
+                    <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
                       <th className="pl-5 pr-3 py-2.5 w-16 text-right">Nº</th>
                       <th className="px-3 py-2.5 w-24">Data</th>
                       <th className="px-3 py-2.5">Conta</th>
@@ -248,7 +248,7 @@ export default function DiarioPage() {
                     </tr>
                   </thead>
                   {rows.map((e) => (
-                    <tbody key={e.id} className="border-b border-black/[0.05] dark:border-white/[0.06] last:border-0">
+                    <tbody key={e.id} className="border-b border-black/5 dark:border-white/6 last:border-0">
                       <tr className="bg-stone-50/60 dark:bg-stone-800/30">
                         <td className="pl-5 pr-3 pt-2.5 pb-1 text-right font-mono tabular-nums font-semibold text-stone-700 dark:text-stone-300">{e.number}</td>
                         <td className="px-3 pt-2.5 pb-1 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">{formatDateBR(e.date)}</td>
@@ -279,7 +279,7 @@ export default function DiarioPage() {
               </div>
             )}
             {pageCount > 1 && (
-              <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/[0.05] dark:border-white/[0.06] text-[12px] text-stone-500">
+              <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/5 dark:border-white/6 text-[12px] text-stone-500">
                 <span>
                   Página {currentPage + 1} de {pageCount} · {visible.length} lançamento(s)
                 </span>

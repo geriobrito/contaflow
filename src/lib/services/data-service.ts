@@ -1,5 +1,5 @@
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany, LockState, PeriodLock } from '@/types/firestore';
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
@@ -74,6 +74,13 @@ export async function applyDefaultChartTemplate(clientId: string, codes?: readon
 export const getRules = (clientId: string): Promise<ClassificationRule[]> => getRepository().listRules(clientId);
 export const saveRule = (rule: ClassificationRule): Promise<void> => getRepository().saveRule(rule);
 export const deleteRule = (ruleId: string): Promise<void> => getRepository().deleteRule(ruleId);
+
+/* =========================================================================
+   Fechamento de período
+   ========================================================================= */
+
+export const getPeriodLocks = (clientId: string): Promise<PeriodLock[]> => getRepository().listPeriodLocks(clientId);
+export const getLockState = (clientId: string): Promise<LockState | null> => getRepository().getLockState(clientId);
 
 /* =========================================================================
    Lançamentos

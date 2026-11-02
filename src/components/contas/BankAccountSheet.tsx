@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import Link from 'next/link';
+import { Lock, Plus } from 'lucide-react';
 import type { BankAccount, BankAccountKind } from '@/types/firestore';
 import type { ContasData } from '@/hooks/contas/useContasData';
 import { getRepository } from '@/lib/services/data-service';
 import { bankAccountId, bankLedgerCandidates, newManualAccountKey, suggestOpening } from '@/lib/bank-accounts';
 import { BANKS_PARENT_CODE, createBankSubaccounts } from '@/lib/services/accounting-service';
+import { frozenMessage, isFrozen } from '@/lib/lock-guard';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
@@ -59,8 +61,19 @@ export function BankAccountSheet({
         : null;
   const sharedLedger = ledgerId && data.banks.some((b) => b.id !== bank?.id && b.ledgerAccountId === ledgerId);
   const parent = data.accounts.find((a) => a.code === BANKS_PARENT_CODE);
+  const lockedMonths = useMemo(() => data.locks.map((l) => l.month).sort(), [data.locks]);
+  const firstLockedMonth = lockedMonths[0];
+  const frozen = bank !== null && isFrozen(bank, data.lockState);
+  const parentFrozen = Boolean(parent && parent.nature === 'ANALYTIC' && isFrozen(parent, data.lockState));
 
   const buildDraftBank = (now: string): BankAccount => {
+    if (frozen && bank) {
+      return {
+        ...bank,
+        nickname: nickname.trim(),
+        updatedAt: now,
+      };
+    }
     const existingKeys = new Set(data.banks.map((b) => b.accountKey));
     const accountKey = bank?.accountKey ?? newManualAccountKey(nickname.trim(), kind, existingKeys);
     const id = bank?.id ?? bankAccountId(clientId, accountKey);
@@ -143,7 +156,7 @@ export function BankAccountSheet({
           )}
           <button
             type="button"
-            disabled={busy || Boolean(openingError) || !nickname.trim()}
+            disabled={busy || (!frozen && Boolean(openingError)) || !nickname.trim()}
             onClick={() => void save()}
             className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
           >
@@ -153,10 +166,25 @@ export function BankAccountSheet({
       }
     >
       <div className="space-y-4 pb-2">
+        {frozen && (
+          <div role="status" className="flex items-start gap-2.5 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-3.5 py-3 text-[12px] text-amber-900 dark:text-amber-200">
+            <Lock className="w-4 h-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
+            <div className="space-y-1">
+              <p>{frozenMessage('bank_accounts', { lockState: data.lockState, lockedMonths })}</p>
+              {firstLockedMonth && (
+                <Link href={`/?mes=${firstLockedMonth}`} onClick={onClose} className="inline-block font-medium text-accent-ink hover:underline">
+                  Ir para Conciliação →
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
         <Field label="Tipo">
           <SegmentedControl
             ariaLabel="Tipo de conta"
             value={kind}
+            disabled={frozen}
             onChange={(nextKind) => {
               setKind(nextKind);
               if (nextKind === 'BANK' && ledgerId) {
@@ -190,7 +218,7 @@ export function BankAccountSheet({
                 : 'Contrapartida bancária de todos os lançamentos deste extrato no balancete e no balanço.'
           }
         >
-          <select value={ledgerId} onChange={(e) => setLedgerId(e.target.value)} className={`${INPUT} ${ledgerId ? '' : 'text-stone-400'}`}>
+          <select disabled={frozen} value={ledgerId} onChange={(e) => setLedgerId(e.target.value)} className={`${INPUT} ${ledgerId ? '' : 'text-stone-400'}`}>
             <option value="">Sem vínculo</option>
             {kind === 'CARD' ? (
               <>
@@ -223,26 +251,33 @@ export function BankAccountSheet({
           </select>
         </Field>
         {parent && kind === 'BANK' && (
-          <button
-            type="button"
-            disabled={busy || (!nickname.trim() && !bank?.nickname)}
-            onClick={() => void createSubaccount()}
-            className={`${BUTTON.secondary} w-full`}
-          >
-            <Plus className="w-4 h-4" />
-            Criar subconta própria em {parent.code} {parent.name}
-          </button>
+          <div className="space-y-1">
+            <button
+              type="button"
+              disabled={busy || frozen || parentFrozen || (!nickname.trim() && !bank?.nickname)}
+              onClick={() => void createSubaccount()}
+              className={`${BUTTON.secondary} w-full`}
+            >
+              <Plus className="w-4 h-4" />
+              Criar subconta própria em {parent.code} {parent.name}
+            </button>
+            {!frozen && parentFrozen && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 px-1">
+                A conta {parent.code} ainda é analítica e está congelada por competência fechada; vincule a uma conta existente ou reabra as competências para criar subcontas.
+              </p>
+            )}
+          </div>
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Saldo inicial" error={openingError}>
-            <input value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+          <Field label="Saldo inicial" error={frozen ? null : openingError}>
+            <input disabled={frozen} value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
           </Field>
           <Field label="No início do dia">
-            <input type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
           </Field>
         </div>
-        {suggestion && (
+        {suggestion && !frozen && (
           <button
             type="button"
             onClick={() => {

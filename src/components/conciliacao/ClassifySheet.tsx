@@ -138,7 +138,7 @@ export function ClassifySheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/[0.06] dark:border-white/[0.08] shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
+        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/6 dark:border-white/8 shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
         {/* Cabeçalho (fixo) */}
         <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">
@@ -164,7 +164,7 @@ export function ClassifySheet({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="w-7 h-7 rounded-full bg-black/[0.05] dark:bg-white/[0.08] text-stone-500 flex items-center justify-center hover:bg-black/[0.08] active:scale-[0.94] transition-all duration-150"
+            className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/8 text-stone-500 flex items-center justify-center hover:bg-black/8 active:scale-[0.94] transition-all duration-150"
           >
             <X className="w-3.5 h-3.5" strokeWidth={2.25} />
           </button>
@@ -180,7 +180,7 @@ export function ClassifySheet({
           </div>
 
           {locked && (
-            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/[0.04] dark:bg-white/[0.06] border border-black/[0.06] text-[12px] text-stone-600 dark:text-stone-300">
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/4 dark:bg-white/6 border border-black/6 text-[12px] text-stone-600 dark:text-stone-300">
               <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>
                 A competência de <b>{lockedMonthLabel}</b> está fechada. Para alterar este lançamento, reabra a competência em
@@ -243,7 +243,7 @@ export function ClassifySheet({
                   onChange={(e) => setQuestion(e.target.value)}
                   rows={4}
                   maxLength={500}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
                 />
               </label>
               {openQuery && (
@@ -309,12 +309,12 @@ export function ClassifySheet({
         </div>
 
         {/* Rodapé (fixo) com a ação principal */}
-        <div className="shrink-0 px-6 pt-4 pb-5 border-t border-black/[0.05] dark:border-white/[0.06]">
+        <div className="shrink-0 px-6 pt-4 pb-5 border-t border-black/5 dark:border-white/6">
           {mode === 'history' ? (
             <button
               type="button"
               onClick={onClose}
-              className="w-full h-12 rounded-2xl bg-black/[0.05] dark:bg-white/[0.08] text-stone-800 dark:text-stone-100 text-[15px] font-medium tracking-tight active:scale-[0.98] transition-all duration-150"
+              className="w-full h-12 rounded-2xl bg-black/5 dark:bg-white/8 text-stone-800 dark:text-stone-100 text-[15px] font-medium tracking-tight active:scale-[0.98] transition-all duration-150"
             >
               Fechar
             </button>

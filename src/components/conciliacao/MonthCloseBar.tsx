@@ -120,7 +120,7 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
           } else setArmed(true);
         }}
         className={`rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
-          armed ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 animate-pop-in' : 'text-stone-700 dark:text-stone-200 hover:bg-black/[0.05]'
+          armed ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 animate-pop-in' : 'text-stone-700 dark:text-stone-200 hover:bg-black/5'
         }`}
       >
         {armed

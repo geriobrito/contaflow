@@ -4,7 +4,11 @@
  * Tema escolhido pelo usuário (Claro, Escuro ou Sistema; ver src/lib/theme.ts): o script no <head>
  * grava `data-theme` no <html> antes da primeira pintura, e `dark:` passa a depender dele.
  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+@custom-variant dark {
+  &:where([data-theme=dark], [data-theme=dark] *) {
+    @slot;
+  }
+}
 
 @theme {
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;

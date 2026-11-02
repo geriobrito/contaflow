@@ -64,7 +64,7 @@ const STATE_STYLE: Record<MonthState, { box: string; text: string; label: string
   LOCKED: { box: 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-transparent', text: 'text-white/70 dark:text-stone-600', label: 'Fechado' },
   READY: { box: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/70', text: 'text-emerald-700 dark:text-emerald-400', label: 'Pronto p/ fechar' },
   OPEN: { box: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200/70', text: 'text-amber-700 dark:text-amber-400', label: 'Em aberto' },
-  EMPTY: { box: 'bg-black/[0.03] dark:bg-white/[0.04] border-dashed border-black/[0.10]', text: 'text-stone-400', label: 'Sem movimento' },
+  EMPTY: { box: 'bg-black/3 dark:bg-white/4 border-dashed border-black/10', text: 'text-stone-400', label: 'Sem movimento' },
 };
 
 function Tile({ label, value, caption, href, tone = 'neutral' }: { label: string; value: string; caption?: string; href?: string; tone?: 'neutral' | 'alert' | 'good' }) {
@@ -244,7 +244,7 @@ export default function PainelPage() {
         )
       ) : (
         <>
-          <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+          <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
             <Tile
               label="Pendentes de classificação"
               value={String(dash.totals.pending)}
@@ -271,7 +271,7 @@ export default function PainelPage() {
 
           {/* Atenção */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="flex items-center gap-2 px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+            <div className="flex items-center gap-2 px-5 py-3.5 border-b border-black/4 dark:border-white/6">
               {dash.allClear ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
               <h2 className="text-[15px] font-semibold tracking-tight">{dash.allClear ? 'Tudo em dia' : 'Precisa de atenção'}</h2>
               <span className="text-[12px] text-stone-500">{dash.alerts.length > 0 && `${dash.alerts.length} item(ns)`}</span>
@@ -279,10 +279,10 @@ export default function PainelPage() {
             {dash.alerts.length === 0 ? (
               <p className="px-5 py-8 text-center text-[13px] text-stone-500">Nada pendente: os lançamentos estão classificados, os extratos conferem e os cadastros estão completos.</p>
             ) : (
-              <ul className="divide-y divide-black/[0.04] dark:divide-white/[0.05]">
+              <ul className="divide-y divide-black/4 dark:divide-white/5">
                 {dash.alerts.map((a) => (
                   <li key={a.id}>
-                    <Link href={a.href} className="flex items-center gap-3 px-5 py-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
+                    <Link href={a.href} className="flex items-center gap-3 px-5 py-3 hover:bg-black/2 dark:hover:bg-white/3 transition-colors">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${SEVERITY_STYLE[a.severity].dot}`} title={SEVERITY_STYLE[a.severity].label} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-[14px] font-medium tracking-tight text-stone-900 dark:text-stone-100">{a.title}</span>
@@ -324,7 +324,7 @@ export default function PainelPage() {
 
           {/* Extratos */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="flex items-center px-5 py-3.5 border-b border-black/[0.04] dark:border-white/[0.06]">
+            <div className="flex items-center px-5 py-3.5 border-b border-black/4 dark:border-white/6">
               <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Extratos por conta</h2>
               <Link href="/contas" className="text-[12px] text-accent-ink hover:underline">Contas e extratos</Link>
             </div>
@@ -334,7 +334,7 @@ export default function PainelPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/[0.04]">
+                    <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
                       <th className="font-medium pl-5 pr-3 py-2.5">Conta</th>
                       <th className="font-medium px-3 py-2.5">Último extrato até</th>
                       <th className="font-medium px-3 py-2.5 text-right">Último saldo</th>
@@ -345,7 +345,7 @@ export default function PainelPage() {
                     {dash.accounts.map((a) => {
                       const lastBatch = ready!.batches.filter((b) => b.accountKey === a.accountKey).sort((x, y) => (y.endDate ?? '').localeCompare(x.endDate ?? ''))[0];
                       return (
-                        <tr key={a.accountKey} className="border-b border-black/[0.04] last:border-0 text-[13px] align-top">
+                        <tr key={a.accountKey} className="border-b border-black/4 last:border-0 text-[13px] align-top">
                           <td className="pl-5 pr-3 py-3">
                             <p className="font-medium">{a.nickname}</p>
                             <p className="font-mono text-[11px] text-stone-400">{a.accountKey}</p>

@@ -218,10 +218,10 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
       <div
-        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/[0.08] dark:border-white/[0.1] overflow-hidden"
+        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/8 dark:border-white/10 overflow-hidden"
       >
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent-ink flex items-center justify-center">
               <Calculator className="w-5 h-5" />
@@ -240,7 +240,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             onClick={onClose}
             disabled={saving}
             aria-label="Fechar modal"
-            className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors"
+            className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -248,7 +248,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
         {/* Modelos de provisão mensal */}
         {!initialEntry?.id && (
-          <div className="shrink-0 px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/[0.04] dark:border-white/[0.06] space-y-2.5 text-[12px]">
+          <div className="shrink-0 px-6 py-2.5 bg-stone-100/70 dark:bg-stone-800/60 border-b border-black/4 dark:border-white/6 space-y-2.5 text-[12px]">
             <div role="group" aria-label="Modelos de lançamento" className="flex items-center gap-2 overflow-x-auto">
               <span className="font-medium text-stone-500 flex items-center gap-1 shrink-0">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Modelos:
@@ -265,7 +265,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   className={`px-2.5 py-1 rounded-lg border transition-colors shrink-0 ${
                     templateId === t.id
                       ? 'bg-accent border-accent text-white'
-                      : 'bg-white dark:bg-stone-700 border-black/[0.06] dark:border-white/[0.08] text-stone-700 dark:text-stone-200 hover:border-accent/60 hover:text-accent-ink'
+                      : 'bg-white dark:bg-stone-700 border-black/6 dark:border-white/8 text-stone-700 dark:text-stone-200 hover:border-accent/60 hover:text-accent-ink'
                   }`}
                 >
                   {t.label}
@@ -273,7 +273,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               ))}
             </div>
             {template && (
-              <div className="rounded-xl bg-white dark:bg-stone-900 border border-black/[0.06] dark:border-white/[0.08] p-3 space-y-3">
+              <div className="rounded-xl bg-white dark:bg-stone-900 border border-black/6 dark:border-white/8 p-3 space-y-3">
                 <p className="text-stone-500">{template.description} Competência pela data do lançamento.</p>
                 <div className="grid grid-cols-3 gap-3">
                   {template.fields.map((f) => (
@@ -401,17 +401,17 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   type="button"
                   onClick={handleAddLine}
                   disabled={saving || locked}
-                  className={`${BUTTON.secondary} !h-8 !text-[12px]`}
+                  className={`${BUTTON.secondary} h-8! text-[12px]!`}
                 >
                   <Plus className="w-3.5 h-3.5" /> Adicionar Partida
                 </button>
               </div>
 
-              <div className="border border-black/[0.08] dark:border-white/[0.1] rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
+              <div className="border border-black/8 dark:border-white/10 rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-[13px] border-collapse">
                     <thead>
-                      <tr className="border-b border-black/[0.06] dark:border-white/[0.08] bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                      <tr className="border-b border-black/6 dark:border-white/8 bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
                         <th className="py-2.5 px-3 w-16 text-center">Tipo</th>
                         <th className="py-2.5 px-3">Conta Contábil (Analítica)</th>
                         <th className="py-2.5 px-3 w-40 text-right">Valor (R$)</th>
@@ -419,7 +419,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                         <th className="py-2.5 px-3 w-12 text-center"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
+                    <tbody className="divide-y divide-black/4 dark:divide-white/6">
                       {lines.map((line, idx) => (
                         <tr key={line.id} className="hover:bg-white dark:hover:bg-stone-800/40 transition-colors">
                           <td className="py-2 px-3 text-center">
@@ -446,7 +446,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                               onChange={(e) => handleLineChange(line.id, 'accountId', e.target.value)}
                               disabled={saving || locked}
                               required
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] outline-none focus:border-accent/60"
                             >
                               <option value="">Selecione a conta analítica...</option>
                               {analyticAccounts.map((acc) => (
@@ -469,7 +469,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                               }
                               disabled={saving || locked}
                               required
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] font-mono text-right outline-none focus:border-accent/60"
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] font-mono text-right outline-none focus:border-accent/60"
                             />
                           </td>
 
@@ -480,7 +480,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                               value={line.memo ?? ''}
                               onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
                               disabled={saving || locked}
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/[0.08] dark:border-white/[0.1] text-[13px] outline-none focus:border-accent/60"
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] outline-none focus:border-accent/60"
                             />
                           </td>
 
@@ -502,7 +502,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 </div>
 
                 {/* Barra de Balanço das Partidas */}
-                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-black/[0.06] dark:border-white/[0.08] flex flex-wrap items-center justify-between gap-4 text-[13px]">
+                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-black/6 dark:border-white/8 flex flex-wrap items-center justify-between gap-4 text-[13px]">
                   <div className="flex items-center gap-6 font-mono">
                     <div>
                       <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Débitos</span>
@@ -575,7 +575,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           </div>
 
           {/* Rodapé / Ações (fixo) */}
-          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-black/[0.06] dark:border-white/[0.08]">
+          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-black/6 dark:border-white/8">
             <button
               type="button"
               onClick={onClose}

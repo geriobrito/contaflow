@@ -55,4 +55,4 @@ export function useSlidingIndicator<C extends HTMLElement>(activeKey: string | n
 
 /** Classes base do destaque: posição absoluta no canto do contêiner e a transição do deslize. */
 export const SLIDING_INDICATOR =
-  'pointer-events-none absolute left-0 top-0 opacity-0 transition-[transform,width,height,opacity] duration-[260ms] ease-[cubic-bezier(0.3,0.9,0.3,1)]';
+  'pointer-events-none absolute left-0 top-0 opacity-0 transition-[transform,width,height,opacity] duration-260 ease-[cubic-bezier(0.3,0.9,0.3,1)]';

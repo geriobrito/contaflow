@@ -11,9 +11,10 @@ import {
 } from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { needsSecondFactor, resolveSecondFactor, secondFactorResolver } from '@/lib/auth/two-factor';
-import { ensureUserProfile } from '@/lib/data/profile';
+import { resolveUserAccess } from '@/lib/data/profile';
 import { setSession } from '@/lib/data/scope';
 import { LOCAL_ORG_ID } from '@/lib/data/local-repository';
+import type { UserRole } from '@/types/firestore';
 import {
   SESSION_END_MESSAGE,
   clearLastActivity,
@@ -27,6 +28,10 @@ export interface AuthContextType {
   user: User | null;
   /** Escritório do usuário; todos os dados lidos/gravados pertencem a ele. */
   orgId: string | null;
+  /** Papel do usuário no escritório (`admin` por padrão). */
+  role: UserRole;
+  /** Atalho para `role !== 'operator'`. */
+  isAdmin: boolean;
   loading: boolean;
   /** Autenticado E com escritório resolvido (pronto para acessar dados). */
   isAuthenticated: boolean;
@@ -70,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const firestoreMode = isFirebaseConfigured();
   const [user, setUser] = useState<User | null>(null);
   const [orgId, setOrg] = useState<string | null>(null);
+  const [role, setRole] = useState<UserRole>('admin');
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [signedInAt, setSignedInAt] = useState<number | null>(null);
@@ -79,8 +85,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [secondFactorPending, setSecondFactorPending] = useState(false);
 
   /** Define o escopo de dados ANTES de expor o usuário, para nenhuma leitura sair sem orgId. */
-  const applySession = (nextUser: User | null, nextOrg: string | null) => {
-    setSession(nextOrg, nextUser ? { uid: nextUser.uid, ...(nextUser.email ? { email: nextUser.email } : {}) } : null);
+  const applySession = (nextUser: User | null, nextOrg: string | null, nextRole: UserRole = 'admin') => {
+    const effectiveRole: UserRole = nextOrg ? nextRole : 'admin';
+    setSession(
+      nextOrg,
+      nextUser ? { uid: nextUser.uid, ...(nextUser.email ? { email: nextUser.email } : {}) } : null,
+      effectiveRole
+    );
+    setRole(effectiveRole);
     setOrg(nextOrg);
     setUser(nextUser);
   };
@@ -105,10 +117,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await firebaseSignOut(auth);
               return;
             }
-            const org = await ensureUserProfile(db, currentUser);
+            const access = await resolveUserAccess(db, currentUser);
             setAuthError(null);
             setSignedInAt(at);
-            applySession(currentUser, org);
+            applySession(currentUser, access.orgId, access.role);
           })
           .catch((e: unknown) => {
             console.error('Falha ao resolver o escritório do usuário:', e);
@@ -120,10 +132,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Modo local: sessão salva no navegador, escritório fixo, com a mesma validade.
-    let restored: (User & { signedInAt?: number }) | null = null;
+    let restored: (User & { signedInAt?: number; role?: UserRole }) | null = null;
     try {
       const saved = localStorage.getItem(DEV_AUTH_KEY);
-      restored = saved ? (JSON.parse(saved) as User & { signedInAt?: number }) : null;
+      restored = saved ? (JSON.parse(saved) as User & { signedInAt?: number; role?: UserRole }) : null;
     } catch {
       restored = null;
     }
@@ -137,7 +149,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     queueMicrotask(() => {
       if (expired) setSessionNotice(SESSION_END_MESSAGE[expired]);
       setSignedInAt(restored ? at : null);
-      applySession(restored, restored ? LOCAL_ORG_ID : null);
+      const restoredRole: UserRole = restored?.role === 'operator' ? 'operator' : 'admin';
+      applySession(restored, restored ? LOCAL_ORG_ID : null, restoredRole);
       setLoading(false);
     });
   }, [firestoreMode]);
@@ -202,6 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         orgId,
+        role,
+        isAdmin: role !== 'operator',
         loading,
         isAuthenticated: Boolean(user && orgId),
         authError,

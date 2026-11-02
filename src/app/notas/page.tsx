@@ -129,7 +129,7 @@ export default function NotasPage() {
                     aria-label="Título da nota"
                     value={n.title}
                     onChange={(e) => update(n.id, { title: e.target.value })}
-                    className={`${INPUT} h-9 flex-1 min-w-[12rem] text-[14px] font-semibold`}
+                    className={`${INPUT} h-9 flex-1 min-w-48 text-[14px] font-semibold`}
                   />
                   <button type="button" onClick={() => restore(n.id)} className={`${BUTTON.secondary} h-9`} title="Voltar ao texto-padrão desta nota, com os saldos do exercício">
                     <RotateCcw className="w-3.5 h-3.5" /> Texto-padrão
@@ -140,7 +140,7 @@ export default function NotasPage() {
                   value={n.text}
                   onChange={(e) => update(n.id, { text: e.target.value })}
                   rows={Math.min(12, Math.max(4, Math.ceil(n.text.length / 110) + n.text.split('\n').length))}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/[0.08] dark:border-white/[0.10] text-[13px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[13px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
                 />
               </section>
             );

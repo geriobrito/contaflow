@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createLocalRepository, LOCAL_KEYS, LOCAL_ORG_ID, type KeyValueStore } from '@/lib/data/local-repository';
 import type { DataRepository, JournalEntryDraft } from '@/lib/data/repository';
+import { setSession } from '@/lib/data/scope';
 import type { BankTransaction, ClassificationRule } from '@/types/firestore';
 import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
 import { transactionAudit } from '@/lib/audit';
@@ -29,6 +30,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
   let repo: DataRepository;
 
   beforeEach(async () => {
+    setSession(LOCAL_ORG_ID, actor, 'admin');
     store = memoryStore();
     repo = createLocalRepository(store);
     await repo.insertTransactions([tx('a', '2025-01-10'), tx('b', '2025-02-10'), tx('c', '2025-03-10', { clientId: 'c2' })]);
@@ -150,7 +152,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
     const bank = { id: 'c1_k', clientId: 'c1', accountKey: 'k', nickname: 'Itaú', ledgerAccountId: 'x', createdAt: '', updatedAt: '' };
     await repo.saveBankAccount(bank);
     await repo.saveBankAccount({ ...bank, ledgerAccountId: undefined });
-    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: undefined, orgId: LOCAL_ORG_ID }]);
+    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: undefined, lockSeq: 0, orgId: LOCAL_ORG_ID }]);
   });
 
   it('pendências: perguntas abertas e link público com validade', async () => {
@@ -211,7 +213,7 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect([...byId.keys()].sort()).toEqual(['filha', 'mae', 'solta']);
     expect(byId.get('mae')).toMatchObject({ nature: 'SYNTHETIC', description: 'grupo' });
     // O banco é substituído: o saldo inicial removido some de fato.
-    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: 'filha', openingBalance: undefined, orgId: LOCAL_ORG_ID }]);
+    expect(await repo.listBankAccounts('c1')).toEqual([{ ...bank, ledgerAccountId: 'filha', openingBalance: undefined, lockSeq: 0, orgId: LOCAL_ORG_ID }]);
 
     await repo.deleteAccount('solta', { id: 'del', clientId: 'c1', action: 'ACCOUNT_DELETE', actorUid: 'u', at: 'T' });
     expect((await repo.listAccounts('c1')).map((a) => a.id).sort()).toEqual(['filha', 'mae']);
@@ -348,6 +350,83 @@ describe('repositório local (modo único, sem Firestore)', () => {
       expect(await repo.getExplanatoryNotes('c2', '2025')).toBeNull();
       await repo.deleteClient('c1', actor);
       expect(await repo.getExplanatoryNotes('c1', '2025')).toBeNull();
+    });
+  });
+
+  describe('cadastros congelados e papéis (operador vs administrador)', () => {
+    const lock = (month: string) => ({ id: `c1_${month}`, clientId: 'c1', month, lockedAt: 'T', lockedByUid: 'u1' });
+    const closeAudit = (month: string) => ({ id: '', clientId: 'c1', action: 'PERIOD_CLOSE' as const, actorUid: 'u1', at: 'T', month });
+    const reopenAudit = (month: string) => ({ id: '', clientId: 'c1', action: 'PERIOD_REOPEN' as const, actorUid: 'u1', at: 'T2', month, note: 'ajuste' });
+
+    it('congela saldos de abertura, banco e estrutura do plano após fechar competência, liberando campos livres e reabertura total', async () => {
+      await repo.saveClient({ id: 'c1', name: 'A', cnpj: '', regime: 'MEI', createdAt: '', updatedAt: '' });
+      const acc = { id: 'c1_a', clientId: 'c1', code: '4.1.1.01', name: 'Despesa', type: 'EXPENSE' as const, nature: 'ANALYTIC' as const, dreGroup: 'OPERATING_EXPENSES' as const, level: 4, createdAt: '', updatedAt: '' };
+      const bank = { id: 'c1_b', clientId: 'c1', accountKey: 'b', nickname: 'Itaú', openingBalance: 100, openingDate: '2025-01-01', createdAt: '', updatedAt: '' };
+      const opening = { id: 'c1', clientId: 'c1', date: '2024-12-31', entries: [{ accountId: 'c1_a', amount: 50 }], updatedAt: 'T' };
+
+      await repo.saveAccount(acc);
+      await repo.saveBankAccount(bank);
+      await repo.saveOpeningBalances(opening, { id: 'op1', clientId: 'c1', action: 'OPENING_SAVE', actorUid: 'u1', at: 'T' });
+
+      await repo.closePeriod(lock('2025-01'), closeAudit('2025-01'));
+      expect(await repo.getLockState('c1')).toMatchObject({ count: 1, seq: 1 });
+
+      // Campos protegidos congelados
+      await expect(repo.saveAccount({ ...acc, dreGroup: 'OTHER_EXPENSES' })).rejects.toThrow(/competências fechadas/);
+      await expect(repo.saveBankAccount({ ...bank, openingBalance: 200 })).rejects.toThrow(/competências fechadas/);
+      await expect(
+        repo.saveOpeningBalances({ ...opening, entries: [{ accountId: 'c1_a', amount: 80 }] }, { id: 'op2', clientId: 'c1', action: 'OPENING_SAVE', actorUid: 'u1', at: 'T' })
+      ).rejects.toThrow(/competências fechadas/);
+
+      // Campos livres continuam editáveis
+      await repo.saveAccount({ ...acc, name: 'Despesa Renomeada', description: 'nota' });
+      await repo.saveBankAccount({ ...bank, nickname: 'Itaú Empresas' });
+      expect((await repo.listAccounts('c1'))[0].name).toBe('Despesa Renomeada');
+      expect((await repo.listBankAccounts('c1'))[0].nickname).toBe('Itaú Empresas');
+
+      // Conta criada DEPOIS do fechamento nasce com lockSeq = 1 e permanece editável até novo fechamento
+      const nova = { ...acc, id: 'c1_nova', code: '4.1.1.02', name: 'Nova' };
+      await repo.saveAccount(nova);
+      await repo.saveAccount({ ...nova, dreGroup: 'FINANCIAL_EXPENSES' });
+      expect((await repo.listAccounts('c1')).find((a) => a.id === 'c1_nova')?.dreGroup).toBe('FINANCIAL_EXPENSES');
+
+      // Encerramento do exercício avança `seq`, congelando o que foi criado antes dele
+      await repo.closeYear(
+        [{
+          id: 'yc1', clientId: 'c1', date: '2025-12-31', memo: 'Encerramento', category: 'CLOSING', yearClosing: '2025',
+          lines: [{ id: 'd', accountId: 'c1_nova', type: 'DEBIT', amount: 10 }, { id: 'c', accountId: 'c1_a', type: 'CREDIT', amount: 10 }],
+          totalAmount: 10, createdAt: '', updatedAt: '', createdByUid: 'u1',
+        }],
+        { id: 'c1_2025_close_y', clientId: 'c1', action: 'YEAR_CLOSE', actorUid: 'u1', at: 'T' }
+      );
+      expect(await repo.getLockState('c1')).toMatchObject({ count: 1, seq: 2 });
+      await expect(repo.saveAccount({ ...nova, dreGroup: 'OTHER_EXPENSES' })).rejects.toThrow(/competências fechadas/);
+
+      // Reabrir todas as competências libera novamente
+      await repo.reopenPeriod(lock('2025-01'), reopenAudit('2025-01'));
+      expect(await repo.getLockState('c1')).toMatchObject({ count: 0, seq: 2 });
+      await repo.saveBankAccount({ ...bank, nickname: 'Itaú Empresas', openingBalance: 250 });
+      expect((await repo.listBankAccounts('c1'))[0]).toMatchObject({ openingBalance: 250, lockSeq: 2 });
+    });
+
+    it('restringe exclusões para operador, permitindo apenas regras de própria autoria', async () => {
+      await repo.insertAccounts([{ id: 'c1_a', clientId: 'c1', code: '1', name: 'Caixa', type: 'ASSET', nature: 'ANALYTIC', level: 1, createdAt: '', updatedAt: '' }]);
+      await repo.saveRule({ id: 'r_admin', clientId: 'c1', pattern: 'aluguel', accountId: 'c1_a', createdByUid: 'u1', createdAt: '', updatedAt: '' });
+      await repo.saveRule({ id: 'r_legada', clientId: 'c1', pattern: 'energia', accountId: 'c1_a', createdAt: '', updatedAt: '' });
+      await repo.saveRule({ id: 'r_op', clientId: 'c1', pattern: 'agua', accountId: 'c1_a', createdByUid: 'op1', createdAt: '', updatedAt: '' });
+      await repo.closePeriod(lock('2025-01'), closeAudit('2025-01'));
+
+      setSession(LOCAL_ORG_ID, { uid: 'op1', email: 'op@x' }, 'operator');
+      await expect(repo.deleteAccount('c1_a')).rejects.toThrow(/administrador/);
+      await expect(repo.deleteClient('c1', { uid: 'op1' })).rejects.toThrow(/administrador/);
+      await expect(repo.reopenPeriod(lock('2025-01'), reopenAudit('2025-01'))).rejects.toThrow(/administrador/);
+      await expect(repo.deleteRule('r_admin')).rejects.toThrow(/próprios|si mesmos/);
+      await expect(repo.deleteRule('r_legada')).rejects.toThrow(/próprios|si mesmos/);
+      await expect(repo.saveRule({ id: 'r_admin', clientId: 'c1', pattern: 'aluguel', accountId: 'c1_a', createdByUid: 'op1', createdAt: '', updatedAt: '' })).rejects.toThrow(/autoria/);
+
+      // Regra criada pelo próprio operador pode ser excluída por ele
+      await repo.deleteRule('r_op');
+      expect((await repo.listRules('c1')).map((r) => r.id).sort()).toEqual(['r_admin', 'r_legada']);
     });
   });
 });

@@ -90,9 +90,9 @@ export function SessionTimeout() {
       aria-modal="true"
       aria-labelledby="session-timeout-title"
       aria-describedby="session-timeout-text"
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in print:hidden"
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in print:hidden"
     >
-      <div className="w-full max-w-sm rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4">
+      <div className="w-full max-w-sm rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4">
         <div className="flex items-start gap-3">
           <span className="w-9 h-9 shrink-0 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center">
             <Clock className="w-[18px] h-[18px]" />

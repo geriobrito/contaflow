@@ -1,14 +1,26 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Plus, Trash2, Wand2 } from 'lucide-react';
-import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
-import { applyDefaultChartTemplate, deleteChartAccount, getAccounts, saveAccount, saveClient } from '@/lib/services/data-service';
+import Link from 'next/link';
+import { ChevronRight, Lock, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
+import type { AccountType, ChartAccount, DREGroup, LockState, PeriodLock } from '@/types/firestore';
+import {
+  applyDefaultChartTemplate,
+  deleteChartAccount,
+  getAccounts,
+  getLockState,
+  getPeriodLocks,
+  saveAccount,
+  saveClient,
+} from '@/lib/services/data-service';
 import { TemplateCompletionSheet } from '@/components/plano-de-contas/TemplateCompletionSheet';
 import { newAccountId } from '@/lib/utils/id';
+import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { resolveDREGroup } from '@/lib/dre/build';
 import { missingTemplateAccounts } from '@/lib/chart/itg1000';
+import { frozenMessage, isFrozen } from '@/lib/lock-guard';
+import { describeError } from '@/lib/utils/errors';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 
@@ -129,8 +141,8 @@ function suggestCode(parent: ChartAccount | undefined, accounts: readonly ChartA
 }
 
 /** Código ocupado: já existe ou é prefixo hierárquico de outra conta. */
-function isCodeTaken(code: string, accounts: readonly ChartAccount[]): boolean {
-  return accounts.some((a) => a.code === code || a.code.startsWith(`${code}.`));
+function isCodeTaken(code: string, accounts: readonly ChartAccount[], excludeId?: string): boolean {
+  return accounts.some((a) => a.id !== excludeId && (a.code === code || a.code.startsWith(`${code}.`)));
 }
 
 /* =========================================================================
@@ -141,14 +153,17 @@ interface TreeRowProps {
   node: TreeNode;
   expanded: (code: string) => boolean;
   onToggle: (code: string) => void;
+  onEdit: (account: ChartAccount, hasChildren: boolean) => void;
   onDelete: (account: ChartAccount) => void;
+  isAdmin: boolean;
 }
 
-function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
+function TreeRow({ node, expanded, onToggle, onEdit, onDelete, isAdmin }: TreeRowProps) {
   const { account, depth, children } = node;
   const hasChildren = children.length > 0;
   const open = expanded(account.code);
   const synthetic = account.nature === 'SYNTHETIC';
+  const canDelete = isAdmin && !synthetic && !hasChildren && account.clientId !== 'global';
 
   return (
     <>
@@ -157,8 +172,8 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
         aria-level={depth + 1}
         aria-selected={false}
         aria-expanded={hasChildren ? open : undefined}
-        className={`group flex items-center gap-2 pr-3 border-b border-black/[0.04] dark:border-white/[0.05] ${
-          depth === 0 ? 'py-3 bg-stone-900/[0.02] dark:bg-white/[0.02]' : 'py-2'
+        className={`group flex items-center gap-2 pr-3 border-b border-black/4 dark:border-white/5 ${
+          depth === 0 ? 'py-3 bg-stone-900/2 dark:bg-white/2' : 'py-2'
         }`}
         style={{ paddingLeft: 12 + depth * 22 }}
       >
@@ -168,7 +183,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           aria-label={hasChildren ? (open ? `Recolher ${account.name}` : `Expandir ${account.name}`) : undefined}
           tabIndex={hasChildren ? 0 : -1}
           className={`w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-stone-400 ${
-            hasChildren ? 'hover:bg-black/[0.05] active:scale-[0.92] transition-all duration-150' : 'invisible'
+            hasChildren ? 'hover:bg-black/5 active:scale-[0.92] transition-all duration-150' : 'invisible'
           }`}
         >
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
@@ -190,16 +205,16 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
         </span>
 
         <span className="flex items-center gap-1.5 shrink-0">
-        {account.isContra && (
-          <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
-            Redutora
-          </span>
-        )}
-        {!synthetic && account.clientId === 'global' && (
-          <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
-            Compartilhada
-          </span>
-        )}
+          {account.isContra && (
+            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+              Redutora
+            </span>
+          )}
+          {!synthetic && account.clientId === 'global' && (
+            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
+              Compartilhada
+            </span>
+          )}
         </span>
 
         {/* Colunas de detalhe */}
@@ -209,7 +224,7 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           ) : synthetic ? (
             'Sintética'
           ) : (
-            <span className="inline-flex px-2 py-0.5 rounded-full bg-stone-900/[0.05] dark:bg-white/[0.08] text-stone-700 dark:text-stone-300">
+            <span className="inline-flex px-2 py-0.5 rounded-full bg-stone-900/5 dark:bg-white/8 text-stone-700 dark:text-stone-300">
               Analítica
             </span>
           )}
@@ -218,22 +233,38 @@ function TreeRow({ node, expanded, onToggle, onDelete }: TreeRowProps) {
           {!synthetic ? dreLabel(account) ?? <span className="text-stone-300 dark:text-stone-600">Patrimonial</span> : null}
         </span>
 
-        <span className="w-8 shrink-0 flex justify-end">
-        {!synthetic && !hasChildren && (
-          <span className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <span className="w-16 shrink-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <button
+            type="button"
+            onClick={() => onEdit(account, hasChildren)}
+            aria-label={`Editar ${account.name}`}
+            className="w-7 h-7 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all duration-150"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+          {canDelete && (
             <ConfirmButton
               ariaLabel={`Excluir ${account.name}`}
               label={<Trash2 className="w-3.5 h-3.5" />}
               confirmLabel="Excluir"
               onConfirm={() => onDelete(account)}
             />
-          </span>
-        )}
+          )}
         </span>
       </div>
       {hasChildren &&
         open &&
-        children.map((c) => <TreeRow key={c.account.id} node={c} expanded={expanded} onToggle={onToggle} onDelete={onDelete} />)}
+        children.map((c) => (
+          <TreeRow
+            key={c.account.id}
+            node={c}
+            expanded={expanded}
+            onToggle={onToggle}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            isAdmin={isAdmin}
+          />
+        ))}
     </>
   );
 }
@@ -251,7 +282,7 @@ interface NewAccountSheetProps {
 
 function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountSheetProps) {
   const parents = useMemo(() => accounts.filter((a) => a.nature === 'SYNTHETIC'), [accounts]);
-    const initialParent = useMemo(() => {
+  const initialParent = useMemo(() => {
     const analyticUnder = (p: ChartAccount) =>
       accounts.filter((a) => a.nature === 'ANALYTIC' && RESULT_TYPES.has(a.type) && a.code.startsWith(`${p.code}.`)).length;
     // Grupo mais específico (mais segmentos) entre os que concentram mais contas analíticas de resultado.
@@ -307,7 +338,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
       });
       onCreated();
     } catch (e: unknown) {
-      setSaveError(`Não foi possível criar a conta (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setSaveError(`Não foi possível criar a conta (${describeError(e)}).`);
     } finally {
       setSaving(false);
     }
@@ -321,15 +352,15 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
       onClose={onClose}
       footer={
         <>
-        {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
-        <button
-          type="button"
-          disabled={!valid || saving}
-          onClick={() => void submit()}
-          className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
-        >
-          {saving ? 'Salvando…' : 'Criar conta'}
-        </button>
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          <button
+            type="button"
+            disabled={!valid || saving}
+            onClick={() => void submit()}
+            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
+          >
+            {saving ? 'Salvando…' : 'Criar conta'}
+          </button>
         </>
       }
     >
@@ -338,7 +369,7 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
           <select value={parentId} onChange={(e) => handleParent(e.target.value)} className={INPUT}>
             {parents.map((p) => (
               <option key={p.id} value={p.id}>
-                {'  '.repeat(p.code.split('.').length - 1)}
+                {'\u00A0\u00A0'.repeat(p.code.split('.').length - 1)}
                 {p.code} · {p.name}
               </option>
             ))}
@@ -371,35 +402,233 @@ function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountS
 }
 
 /* =========================================================================
+   Sheet lateral "Editar conta"
+   ========================================================================= */
+
+interface EditAccountSheetProps {
+  account: ChartAccount;
+  accounts: ChartAccount[];
+  hasChildren: boolean;
+  lockState: LockState | null;
+  lockedMonths: readonly string[];
+  onClose: () => void;
+  onSaved: (updated: ChartAccount) => void;
+}
+
+function EditAccountSheet({ account, accounts, hasChildren, lockState, lockedMonths, onClose, onSaved }: EditAccountSheetProps) {
+  const [code, setCode] = useState(account.code);
+  const [name, setName] = useState(account.name);
+  const [description, setDescription] = useState(account.description ?? '');
+  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(account.dreGroup ?? '');
+  const [isContra, setIsContra] = useState(Boolean(account.isContra));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const isGlobal = account.clientId === 'global';
+  const structuralFrozen = isFrozen(account, lockState);
+  const firstLockedMonth = !isGlobal ? lockedMonths[0] : undefined;
+  const synthetic = account.nature === 'SYNTHETIC';
+  const parent = account.parentId ? accounts.find((a) => a.id === account.parentId) : undefined;
+  const codeDisabled = structuralFrozen || hasChildren;
+  const trimmedCode = code.trim();
+  const codeError = codeDisabled
+    ? null
+    : !trimmedCode
+      ? 'Informe o código.'
+      : trimmedCode !== account.code && isCodeTaken(trimmedCode, accounts, account.id)
+        ? 'Código já utilizado.'
+        : parent && !trimmedCode.startsWith(`${parent.code}.`)
+          ? `Deve começar com ${parent.code}.`
+          : null;
+  const valid = Boolean(name.trim() && !codeError);
+
+  const hasLegacyGroup = Boolean(account.dreGroup && !DRE_LABEL.has(account.dreGroup));
+
+  const submit = async () => {
+    if (!valid) return;
+    setSaving(true);
+    setSaveError(null);
+    const now = new Date().toISOString();
+    const trimmedDesc = description.trim();
+    const next: ChartAccount = structuralFrozen
+      ? {
+          ...account,
+          name: name.trim(),
+          description: trimmedDesc || undefined,
+          updatedAt: now,
+        }
+      : {
+          ...account,
+          code: codeDisabled ? account.code : trimmedCode,
+          name: name.trim(),
+          description: trimmedDesc || undefined,
+          ...(!synthetic && RESULT_TYPES.has(account.type)
+            ? { dreGroup: (dreGroup || undefined) as DREGroup | undefined }
+            : {}),
+          ...(!synthetic ? { isContra: isContra ? true : undefined } : {}),
+          updatedAt: now,
+        };
+    try {
+      await saveAccount(next);
+      onSaved(next);
+    } catch (e: unknown) {
+      setSaveError(`Não foi possível salvar a conta (${describeError(e)}).`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Sheet
+      side="right"
+      title="Editar conta"
+      subtitle={`${account.code} · ${TYPE_LABEL[account.type]} · ${synthetic ? 'Sintética' : 'Analítica'}`}
+      onClose={onClose}
+      footer={
+        <>
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          <button
+            type="button"
+            disabled={!valid || saving}
+            onClick={() => void submit()}
+            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
+          >
+            {saving ? 'Salvando…' : 'Salvar alterações'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4 pb-2">
+        {structuralFrozen && (
+          <div
+            role="status"
+            className="flex items-start gap-2.5 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-3.5 py-3 text-[12px] text-amber-900 dark:text-amber-200"
+          >
+            <Lock className="w-4 h-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
+            <div className="space-y-1">
+              <p>{frozenMessage('chart_of_accounts', { lockState, lockedMonths, isGlobal })}</p>
+              {firstLockedMonth && (
+                <Link href={`/?mes=${firstLockedMonth}`} onClick={onClose} className="inline-block font-medium text-accent-ink hover:underline">
+                  Ir para Conciliação →
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
+        <Field label="Nome">
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
+        </Field>
+
+        <Field label="Descrição (opcional)">
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Nota interna sobre o uso desta conta"
+            className={INPUT}
+          />
+        </Field>
+
+        <Field
+          label="Código"
+          error={codeError}
+          hint={
+            hasChildren && !structuralFrozen
+              ? 'Contas com subcontas não podem ter o código alterado.'
+              : `Tipo: ${TYPE_LABEL[account.type]}`
+          }
+        >
+          <input
+            disabled={codeDisabled}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            className={`${INPUT} font-mono tabular-nums`}
+          />
+        </Field>
+
+        {!synthetic && RESULT_TYPES.has(account.type) && (
+          <Field label="Grupo na DRE">
+            <select
+              disabled={structuralFrozen}
+              value={dreGroup}
+              onChange={(e) => setDreGroup(e.target.value as DREGroup | '')}
+              className={INPUT}
+            >
+              <option value="">Não informado</option>
+              {hasLegacyGroup && account.dreGroup && (
+                <option value={account.dreGroup}>{dreLabel(account) ?? account.dreGroup}</option>
+              )}
+              {DRE_GROUPS.map((g) => (
+                <option key={g.value} value={g.value}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {!synthetic && (
+          <label
+            className={`flex items-start gap-2.5 rounded-xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[13px] ${
+              structuralFrozen ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+            }`}
+          >
+            <input
+              type="checkbox"
+              disabled={structuralFrozen}
+              checked={isContra}
+              onChange={(e) => setIsContra(e.target.checked)}
+              className="mt-0.5 rounded border-stone-300 text-accent focus:ring-accent"
+            />
+            <span>
+              <span className="block font-medium text-stone-800 dark:text-stone-200">Conta redutora (retificadora)</span>
+              <span className="block text-[12px] text-stone-500">Inverte o sinal natural do grupo no balanço ou na DRE.</span>
+            </span>
+          </label>
+        )}
+      </div>
+    </Sheet>
+  );
+}
+
+/* =========================================================================
    Página
    ========================================================================= */
 
 export default function PlanoDeContasPage() {
+  const { isAdmin } = useAuth();
   const { currentClient, refreshClients } = useClient();
   const clientId = currentClient?.id;
 
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
+  const [lockState, setLockState] = useState<LockState | null>(null);
+  const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingTarget, setEditingTarget] = useState<{ account: ChartAccount; hasChildren: boolean } | null>(null);
   const [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async (id: string) => {
-    const list = await getAccounts(id);
+    const [list, state, periodLocks] = await Promise.all([getAccounts(id), getLockState(id), getPeriodLocks(id)]);
     setAccounts(list);
+    setLockState(state);
+    setLocks(periodLocks);
     setLoadedFor(id);
   }, []);
 
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    getAccounts(clientId)
-      .then((list) => {
+    Promise.all([getAccounts(clientId), getLockState(clientId), getPeriodLocks(clientId)])
+      .then(([list, state, periodLocks]) => {
         if (!active) return;
         setAccounts(list);
+        setLockState(state);
+        setLocks(periodLocks);
         setLoadedFor(clientId);
         setLoadError(null);
       })
@@ -412,6 +641,7 @@ export default function PlanoDeContasPage() {
     };
   }, [clientId]);
   const loadFailure = loadError && loadError.id === clientId ? loadError.message : null;
+  const lockedMonths = useMemo(() => locks.map((l) => l.month).sort(), [locks]);
 
   const tree = useMemo(() => buildTree(accounts), [accounts]);
   const term = search.trim().toLowerCase();
@@ -443,7 +673,7 @@ export default function PlanoDeContasPage() {
       setNotice(`${created} conta(s) do modelo de plano de contas (CFC) adicionada(s).`);
       setCompleteOpen(false);
     } catch (e: unknown) {
-      setNotice(`Não foi possível completar o plano (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setNotice(`Não foi possível completar o plano (${describeError(e)}).`);
     } finally {
       setApplying(false);
     }
@@ -458,7 +688,7 @@ export default function PlanoDeContasPage() {
       setNotice(codes.length ? `${codes.length} conta(s) do modelo não serão mais oferecidas para este cliente.` : 'As contas ignoradas voltam a ser oferecidas.');
       setCompleteOpen(false);
     } catch (e: unknown) {
-      setNotice(`Não foi possível gravar a escolha (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setNotice(`Não foi possível gravar a escolha (${describeError(e)}).`);
     } finally {
       setApplying(false);
     }
@@ -473,7 +703,7 @@ export default function PlanoDeContasPage() {
       if (clientId) await load(clientId);
       setNotice(`Conta ${account.code} (${account.name}) excluída com sucesso.`);
     } catch (e: unknown) {
-      setNotice(`Não foi possível excluir a conta ${account.code}: ${e instanceof Error ? e.message : 'erro desconhecido'}`);
+      setNotice(`Não foi possível excluir a conta ${account.code}: ${describeError(e)}`);
     }
   };
 
@@ -485,7 +715,7 @@ export default function PlanoDeContasPage() {
       await load(clientId);
       setNotice(created > 0 ? `${created} contas do modelo de plano de contas (CFC) adicionadas.` : 'O plano já contém todas as contas do modelo.');
     } catch (e: unknown) {
-      setNotice(`Não foi possível aplicar o modelo de plano de contas (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
+      setNotice(`Não foi possível aplicar o modelo de plano de contas (${describeError(e)}).`);
     } finally {
       setApplying(false);
     }
@@ -532,7 +762,7 @@ export default function PlanoDeContasPage() {
       />
 
       {notice && (
-        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/[0.06] text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
+        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/6 text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
           {notice}
           <button type="button" onClick={() => setNotice(null)} className="text-accent-ink font-medium">
             OK
@@ -564,21 +794,29 @@ export default function PlanoDeContasPage() {
           <EmptyState title="Nenhuma conta encontrada" description={`Nada corresponde a “${search}”.`} />
         ) : (
           <>
-          <div
-            aria-hidden
-            className="flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/[0.05] dark:border-white/[0.06] text-[11px] uppercase tracking-wider text-stone-400"
-          >
-            <span className="w-32 shrink-0">Código</span>
-            <span className="flex-1">Conta</span>
-            <span className="w-28 shrink-0">Natureza</span>
-            <span className="w-56 xl:w-64 shrink-0">Grupo na DRE</span>
-            <span className="w-8 shrink-0" />
-          </div>
-          <div role="tree" aria-label="Plano de contas" className="[&>*:last-child]:border-b-0">
-            {visible.map((n) => (
-              <TreeRow key={n.account.id} node={n} expanded={expanded} onToggle={toggle} onDelete={(a) => void handleDelete(a)} />
-            ))}
-          </div>
+            <div
+              aria-hidden
+              className="flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/5 dark:border-white/6 text-[11px] uppercase tracking-wider text-stone-400"
+            >
+              <span className="w-32 shrink-0">Código</span>
+              <span className="flex-1">Conta</span>
+              <span className="w-28 shrink-0">Natureza</span>
+              <span className="w-56 xl:w-64 shrink-0">Grupo na DRE</span>
+              <span className="w-16 shrink-0" />
+            </div>
+            <div role="tree" aria-label="Plano de contas" className="[&>*:last-child]:border-b-0">
+              {visible.map((n) => (
+                <TreeRow
+                  key={n.account.id}
+                  node={n}
+                  expanded={expanded}
+                  onToggle={toggle}
+                  onEdit={(account, hasChildren) => setEditingTarget({ account, hasChildren })}
+                  onDelete={(a) => void handleDelete(a)}
+                  isAdmin={isAdmin}
+                />
+              ))}
+            </div>
           </>
         )}
       </section>
@@ -602,6 +840,22 @@ export default function PlanoDeContasPage() {
           onClose={() => setSheetOpen(false)}
           onCreated={() => {
             setSheetOpen(false);
+            void load(clientId);
+          }}
+        />
+      )}
+
+      {editingTarget && clientId && (
+        <EditAccountSheet
+          account={editingTarget.account}
+          accounts={accounts}
+          hasChildren={editingTarget.hasChildren}
+          lockState={lockState}
+          lockedMonths={lockedMonths}
+          onClose={() => setEditingTarget(null)}
+          onSaved={(updated) => {
+            setEditingTarget(null);
+            setNotice(`Conta ${updated.code} (${updated.name}) atualizada.`);
             void load(clientId);
           }}
         />

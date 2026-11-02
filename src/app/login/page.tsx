@@ -36,7 +36,7 @@ function errorCode(err: unknown): string | undefined {
 }
 
 const FIELD =
-  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-white dark:bg-white/[0.04] border border-black/[0.09] dark:border-white/[0.10] text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none transition-all duration-150 hover:border-black/[0.16] dark:hover:border-white/[0.18] focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
+  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-white dark:bg-white/4 border border-black/9 dark:border-white/10 text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none transition-all duration-150 hover:border-black/16 dark:hover:border-white/18 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
 
 const FLOAT_LABEL =
   'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-accent-ink';
@@ -49,7 +49,7 @@ const LINK = 'text-[13px] text-stone-500 hover:text-stone-900 dark:hover:text-st
 function Brand() {
   return (
     <span className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded-[9px] bg-gradient-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center shadow-[0_2px_8px_rgba(193,95,60,0.35)]">
+      <span className="w-7 h-7 rounded-[9px] bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center shadow-[0_2px_8px_rgba(193,95,60,0.35)]">
         <Sparkles className="w-4 h-4 text-white" />
       </span>
       <span className="text-[16px] font-semibold tracking-tight">ContaFlow</span>
@@ -60,11 +60,11 @@ function Brand() {
 /** Painel de apresentação (telas largas): folha de livro-razão com um exemplo de conciliação. */
 function Showcase() {
   return (
-    <aside className="relative flex flex-col justify-between overflow-hidden p-12 xl:p-16 bg-[#EFEDE5] dark:bg-[#181715] border-r border-black/[0.06] dark:border-white/[0.06]">
+    <aside className="relative flex flex-col justify-between overflow-hidden p-12 xl:p-16 bg-[#EFEDE5] dark:bg-[#181715] border-r border-black/6 dark:border-white/6">
       {/* Pautas de livro contábil, esmaecendo para baixo, e a margem em terracota */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(28,25,23,0.06)_35px,rgba(28,25,23,0.06)_36px)] dark:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(255,255,255,0.05)_35px,rgba(255,255,255,0.05)_36px)] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
+        className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(28,25,23,0.06)_35px,rgba(28,25,23,0.06)_36px)] dark:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(255,255,255,0.05)_35px,rgba(255,255,255,0.05)_36px)] mask-[linear-gradient(to_bottom,black,transparent_85%)]"
       />
       <div aria-hidden className="pointer-events-none absolute inset-y-0 left-8 xl:left-10 w-px bg-[#D97757]/30" />
 
@@ -83,7 +83,7 @@ function Showcase() {
         </div>
 
         {/* Exemplo: a linha do extrato vira lançamento contábil */}
-        <figure className="rounded-[22px] bg-white/80 dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.08] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_18px_40px_-16px_rgba(28,25,23,0.18)] p-5 space-y-4">
+        <figure className="rounded-[22px] bg-white/80 dark:bg-white/4 border border-black/6 dark:border-white/8 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_18px_40px_-16px_rgba(28,25,23,0.18)] p-5 space-y-4">
           <div className="flex items-baseline justify-between gap-4">
             <div className="min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">Extrato · 14/10</p>
@@ -91,7 +91,7 @@ function Showcase() {
             </div>
             <p className="font-mono tabular-nums text-[14px] text-emerald-700 dark:text-emerald-400">+ 1.250,00</p>
           </div>
-          <div className="border-t border-dashed border-black/[0.10] dark:border-white/[0.10]" />
+          <div className="border-t border-dashed border-black/10 dark:border-white/10" />
           <dl className="space-y-1.5 font-mono tabular-nums text-[12.5px]">
             {[
               ['D', '1.1.1.02', 'Bancos Conta Movimento'],
@@ -106,7 +106,7 @@ function Showcase() {
               </div>
             ))}
           </dl>
-          <figcaption className="inline-flex items-center gap-1.5 rounded-full bg-[#D97757]/[0.10] dark:bg-[#D97757]/[0.16] px-2.5 py-1 text-[11.5px] font-medium text-[#A84E30] dark:text-[#E89A7E]">
+          <figcaption className="inline-flex items-center gap-1.5 rounded-full bg-[#D97757]/10 dark:bg-[#D97757]/16 px-2.5 py-1 text-[11.5px] font-medium text-[#A84E30] dark:text-[#E89A7E]">
             <Check className="w-3.5 h-3.5" strokeWidth={2.25} />
             Conciliado pela regra “Padaria Aurora”
           </figcaption>
@@ -219,7 +219,7 @@ export default function LoginPage() {
             )}
 
             {sessionNotice && !notice && !error && (
-              <div role="status" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-[#D97757]/[0.08] dark:bg-[#D97757]/[0.12] border border-[#D97757]/25 text-[13px] text-[#8F4128] dark:text-[#E89A7E] animate-fade-in">
+              <div role="status" className="mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-[#D97757]/8 dark:bg-[#D97757]/12 border border-[#D97757]/25 text-[13px] text-[#8F4128] dark:text-[#E89A7E] animate-fade-in">
                 <Clock className="w-4 h-4 mt-px shrink-0" />
                 <span>{sessionNotice}</span>
               </div>
@@ -332,7 +332,7 @@ export default function LoginPage() {
               </button>
             )}
 
-            <p className="mt-8 pt-5 border-t border-black/[0.06] dark:border-white/[0.08] flex items-start gap-2 text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
+            <p className="mt-8 pt-5 border-t border-black/6 dark:border-white/8 flex items-start gap-2 text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
               <Lock className="w-3.5 h-3.5 mt-[3px] shrink-0" />
               <span>Acesso restrito à equipe contábil. Por segurança, a sessão termina após 30 minutos sem uso.</span>
             </p>

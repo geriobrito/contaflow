@@ -115,7 +115,7 @@ export default function DREPage() {
               onClick={() => window.print()}
               aria-label="Imprimir"
               title="Imprimir"
-              className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] active:scale-[0.96] transition-all duration-150"
+              className="inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.96] transition-all duration-150"
             >
               <Printer className="w-4 h-4 shrink-0" strokeWidth={1.75} />
             </button>
@@ -186,7 +186,7 @@ export default function DREPage() {
 
       {view !== 'simple' && (
         <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-          <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-black/[0.05] dark:border-white/[0.06]">
+          <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-black/5 dark:border-white/6">
             <h2 className="flex-1 text-[14px] font-semibold tracking-tight">
               {view === 'monthly' ? `Mês a mês · ${periodLabel}` : `${periodLabel} vs. mesmo período de ${prevRange.start.slice(0, 4)}`}
             </h2>

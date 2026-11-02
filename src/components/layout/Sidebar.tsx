@@ -30,7 +30,7 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
         onClick={() => setPref(nextPreference(pref))}
         title={`${label(pref)} (clique para trocar)`}
         aria-label={`${label(pref)}. Trocar tema`}
-        className="mx-auto flex w-8 h-8 items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+        className="mx-auto flex w-8 h-8 items-center justify-center rounded-lg text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
       >
         <Icon className="w-4 h-4" strokeWidth={1.75} />
       </button>
@@ -39,7 +39,7 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
   return (
     <div className="flex items-center justify-between gap-2 px-2.5">
       <span className="text-[11px] text-stone-500">Tema</span>
-      <div ref={containerRef} role="radiogroup" aria-label="Tema" className="relative inline-flex p-0.5 rounded-lg bg-black/[0.05] dark:bg-white/[0.06]">
+      <div ref={containerRef} role="radiogroup" aria-label="Tema" className="relative inline-flex p-0.5 rounded-lg bg-black/5 dark:bg-white/6">
         <span ref={indicatorRef} aria-hidden className={`${SLIDING_INDICATOR} rounded-md bg-white dark:bg-stone-700 shadow-[0_1px_2px_rgba(0,0,0,0.08)]`} />
         {THEME_OPTIONS.map((o) => {
           const Icon = THEME_ICON[o.value];
@@ -125,7 +125,7 @@ function ClientSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
         title={collapsed ? `${label}${otherUnreadHint}` : otherUnreadHint ? otherUnreadHint.slice(3) : undefined}
-        className={`w-full flex items-center gap-3 rounded-2xl p-2 text-left transition-all duration-150 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] active:scale-[0.98] ${
+        className={`w-full flex items-center gap-3 rounded-2xl p-2 text-left transition-all duration-150 hover:bg-black/4 dark:hover:bg-white/6 active:scale-[0.98] ${
           collapsed ? 'justify-center' : ''
         }`}
       >
@@ -161,7 +161,7 @@ function ClientSwitcher({
       {open && (
         <ul
           role="listbox"
-          className="absolute z-50 left-0 top-full mt-1.5 w-64 max-h-72 overflow-y-auto overscroll-contain rounded-2xl p-1.5 backdrop-blur-xl bg-white/90 dark:bg-stone-900/90 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-pop-in"
+          className="absolute z-50 left-0 top-full mt-1.5 w-64 max-h-72 overflow-y-auto overscroll-contain rounded-2xl p-1.5 backdrop-blur-xl bg-white/90 dark:bg-stone-900/90 border border-black/6 dark:border-white/8 shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-pop-in"
         >
           {clients.length === 0 && (
             <li className="px-3 py-2 text-xs text-stone-400">Nenhum cliente cadastrado</li>
@@ -179,7 +179,7 @@ function ClientSwitcher({
                     selectClient(c);
                     setOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-black/4 dark:hover:bg-white/6 transition-colors"
                 >
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] tracking-tight text-stone-900 dark:text-stone-100 truncate">
@@ -231,7 +231,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
       <div className={`flex items-center h-14 px-3 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
           <Link href="/" className="flex items-center gap-2 px-1">
-            <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
+            <span className="w-6 h-6 rounded-lg bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
               <Sparkles className="w-3.5 h-3.5 text-white" />
             </span>
             <span className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
@@ -246,7 +246,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
             title={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
             aria-label={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
             aria-keyshortcuts="Control+K Meta+K"
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
           >
             <Search className="w-4 h-4" strokeWidth={1.75} />
           </button>
@@ -262,19 +262,19 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
         />
       </div>
 
-      <div className="mx-4 my-2 border-t border-black/[0.05] dark:border-white/[0.06]" />
+      <div className="mx-4 my-2 border-t border-black/5 dark:border-white/6" />
 
       {/* Navegação: o destaque da página atual desliza até a próxima, entre as seções também */}
       <nav ref={navRef} className="relative flex-1 px-2 pb-2 overflow-y-auto">
         <span
           ref={navPillRef}
           aria-hidden
-          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/[0.04] dark:ring-white/[0.06]`}
+          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/8 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/4 dark:ring-white/6`}
         />
         {NAV_SECTIONS.map((section, s) => (
           <div key={section.title} role="group" aria-label={section.title} className="space-y-px">
             {collapsed ? (
-              s > 0 && <div aria-hidden className="mx-3 my-2 border-t border-black/[0.06] dark:border-white/[0.08]" />
+              s > 0 && <div aria-hidden className="mx-3 my-2 border-t border-black/6 dark:border-white/8" />
             ) : (
               <p className={`px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-3' : 'pt-0.5'}`}>
                 {section.title}
@@ -301,7 +301,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                   } ${
                     active
                       ? 'text-stone-900 dark:text-white font-medium'
-                      : 'text-stone-600 dark:text-stone-400 hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-stone-900 dark:hover:text-stone-100'
+                      : 'text-stone-600 dark:text-stone-400 hover:bg-black/4 dark:hover:bg-white/5 hover:text-stone-900 dark:hover:text-stone-100'
                   }`}
                 >
                   <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-accent-ink' : ''}`} strokeWidth={1.75} />
@@ -328,7 +328,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
       </nav>
 
       {/* Rodapé: tema, conexão e versão, usuário */}
-      <div className="p-2 space-y-1 border-t border-black/[0.05] dark:border-white/[0.06]">
+      <div className="p-2 space-y-1 border-t border-black/5 dark:border-white/6">
         <div className="pt-1">
           <ThemeSwitcher collapsed={collapsed} />
         </div>
@@ -370,7 +370,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
             onClick={() => void signOut()}
             title="Sair"
             aria-label="Sair"
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
           >
             <LogOut className="w-4 h-4" strokeWidth={1.75} />
           </button>
@@ -415,7 +415,7 @@ export function Sidebar() {
         collapsed ? 'w-[84px]' : 'w-[272px]'
       }`}
     >
-      <div className="h-full rounded-[22px] backdrop-blur-xl bg-white/60 dark:bg-stone-900/60 border border-black/[0.06] dark:border-white/[0.08] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+      <div className="h-full rounded-[22px] backdrop-blur-xl bg-white/60 dark:bg-stone-900/60 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
         <SidebarBody
           collapsed={collapsed}
           headerAction={
@@ -423,7 +423,7 @@ export function Sidebar() {
               type="button"
               onClick={toggleCollapsed}
               aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
-              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/[0.05] dark:hover:bg-white/[0.08] transition-all duration-150 active:scale-[0.94]"
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
             >
               {collapsed ? (
                 <PanelLeftOpen className="w-4 h-4" strokeWidth={1.75} />

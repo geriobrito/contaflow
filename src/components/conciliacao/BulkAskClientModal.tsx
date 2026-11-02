@@ -41,7 +41,7 @@ export function BulkAskClientModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.25)] p-6 space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-4">
@@ -77,7 +77,7 @@ export function BulkAskClientModal({
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-black/[0.05] dark:border-white/[0.06]">
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-black/5 dark:border-white/6">
           <button type="button" onClick={onClose} disabled={isSaving} className={`${BUTTON.secondary} h-9 px-4`}>
             Cancelar
           </button>

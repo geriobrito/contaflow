@@ -11,10 +11,10 @@ import { SURFACE } from '@/components/ui/primitives';
 export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range: DateRange }) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-      <div className="p-5 border-b border-black/[0.05] dark:border-white/[0.06] flex flex-wrap items-center justify-between gap-3 bg-stone-50/50 dark:bg-stone-900/50">
+      <div className="p-5 border-b border-black/5 dark:border-white/6 flex flex-wrap items-center justify-between gap-3 bg-stone-50/50 dark:bg-stone-900/50">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-[13px] font-semibold text-stone-800 dark:text-stone-200 bg-black/[0.04] dark:bg-white/[0.06] px-2 py-0.5 rounded">
+            <span className="font-mono text-[13px] font-semibold text-stone-800 dark:text-stone-200 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
               {ledger.code}
             </span>
             <span className="text-[11px] uppercase tracking-wider text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
@@ -34,7 +34,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
       </div>
 
       {/* 4 Cards de Resumo */}
-      <div className="grid grid-cols-4 gap-px bg-black/[0.05] dark:bg-white/[0.06]">
+      <div className="grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6">
         <div className="bg-white dark:bg-stone-900 p-4">
           <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
           <div className="mt-1 flex items-baseline gap-1.5">

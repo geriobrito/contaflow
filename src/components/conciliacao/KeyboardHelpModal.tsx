@@ -34,7 +34,7 @@ export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/[0.08] dark:border-white/[0.10] shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
+        className="w-full max-w-md max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -48,13 +48,13 @@ export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors"
+            className="p-1.5 rounded-full text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-black/4 dark:hover:bg-white/6 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <ul className="divide-y divide-black/[0.05] dark:divide-white/[0.06] text-[13px]">
+        <ul className="divide-y divide-black/5 dark:divide-white/6 text-[13px]">
           {SHORTCUTS.map((s, i) => (
             <li key={i} className="py-2.5 flex items-center justify-between gap-4">
               <span className="text-stone-600 dark:text-stone-300">{s.description}</span>
@@ -62,7 +62,7 @@ export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
                 {s.keys.map((k, j) => (
                   <kbd
                     key={j}
-                    className="min-w-6 h-6 px-1.5 inline-flex items-center justify-center rounded-md font-mono text-[11px] font-medium bg-black/[0.05] dark:bg-white/[0.10] border border-black/[0.08] dark:border-white/[0.12] text-stone-700 dark:text-stone-200 shadow-sm"
+                    className="min-w-6 h-6 px-1.5 inline-flex items-center justify-center rounded-md font-mono text-[11px] font-medium bg-black/5 dark:bg-white/10 border border-black/8 dark:border-white/12 text-stone-700 dark:text-stone-200 shadow-sm"
                   >
                     {k}
                   </kbd>
