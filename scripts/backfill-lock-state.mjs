@@ -108,8 +108,7 @@ async function main() {
     };
 
     console.log(
-      `  lock_state/${clientId} (org ${orgId}): ${
-        existing ? `count ${existing.count}→${count}, seq ${existing.seq}→${seq}` : `novo (count=${count}, seq=${seq})`
+      `  lock_state/${clientId} (org ${orgId}): ${existing ? `count ${existing.count}→${count}, seq ${existing.seq}→${seq}` : `novo (count=${count}, seq=${seq})`
       }`
     );
     pendingWrites.push({ ref: db.collection('lock_state').doc(clientId), payload });
@@ -117,8 +116,8 @@ async function main() {
 
   console.log(
     `Resumo: ${clientsSnap.size} empresa(s) lida(s), ${pendingWrites.length} a gravar, ${unchanged} já em dia` +
-      (skippedNoOrg ? `, ${skippedNoOrg} ignorada(s) sem orgId` : '') +
-      '.'
+    (skippedNoOrg ? `, ${skippedNoOrg} ignorada(s) sem orgId` : '') +
+    '.'
   );
 
   if (!apply) {
