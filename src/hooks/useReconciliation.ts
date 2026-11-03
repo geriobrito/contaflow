@@ -12,6 +12,7 @@ import {
   type ReconciliationStore,
   type UseReconciliationParams,
 } from '@/hooks/reconciliation/types';
+import { reportError } from '@/lib/monitoring';
 
 export { normalizePattern, buildTransactionId } from '@/lib/reconciliation';
 export type {
@@ -83,7 +84,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
       setTransactions(loadedTxs);
       setLocks(loadedLocks);
     } catch (e) {
-      console.error('[useReconciliation] Falha ao carregar dados:', e);
+      reportError(e, { area: 'conciliacao', op: 'carregar' });
       setError(`Não foi possível carregar os lançamentos (${describeError(e)}).`);
     } finally {
       setIsLoading(false);
@@ -110,7 +111,7 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     try {
       return await op();
     } catch (e) {
-      console.error(`[useReconciliation] ${failure}:`, e);
+      reportError(e, { area: 'conciliacao', op: failure });
       setError(`${failure} (${describeError(e)}).`);
       throw e;
     } finally {

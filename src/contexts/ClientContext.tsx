@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import type { ClientCompany } from '@/types/firestore';
 import { deleteClient, getClients } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
+import { reportError } from '@/lib/monitoring';
 
 const STORAGE_KEY = 'contaflow_active_client';
 
@@ -17,6 +18,8 @@ export interface ClientContextType {
   loadError: string | null;
   selectClient: (client: ClientCompany) => void;
   refreshClients: () => Promise<ClientCompany[]>;
+  /** Troca em memória o cadastro de uma empresa já gravada (sem reler a carteira inteira). */
+  replaceClient: (client: ClientCompany) => void;
   /**
    * Exclui o cliente (em cascata). Se for o ativo, ativa o próximo disponível ou nenhum. Se a
    * exclusão parar no meio, a empresa continua na lista marcada com `deletingAt`: chamar de novo retoma.
@@ -72,7 +75,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
         return refreshClients();
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar clientes:', e);
+        reportError(e, { area: 'clientes', op: 'carregar carteira' });
         if (active) setLoadError(e instanceof Error ? e.message : 'Não foi possível carregar os clientes.');
       })
       .finally(() => active && setIsLoading(false));
@@ -89,6 +92,10 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* armazenamento indisponível */
     }
+  }, []);
+
+  const replaceClient = useCallback((client: ClientCompany) => {
+    setClients((prev) => prev.map((c) => (c.id === client.id ? client : c)));
   }, []);
 
   const removeClient = useCallback(
@@ -125,9 +132,10 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       loadError,
       selectClient,
       refreshClients,
+      replaceClient,
       removeClient,
     }),
-    [clients, currentId, isLoading, loadError, selectClient, refreshClients, removeClient]
+    [clients, currentId, isLoading, loadError, selectClient, refreshClients, replaceClient, removeClient]
   );
 
   return <ClientContext.Provider value={value}>{children}</ClientContext.Provider>;

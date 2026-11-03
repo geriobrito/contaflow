@@ -14,6 +14,7 @@ import { LedgerEntriesTable } from '@/components/razao/LedgerEntriesTable';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { LedgerSummary } from '@/components/razao/LedgerSummary';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /**
  * Livro Razão: ficha de uma conta no período. Os dados vêm de `useLedgerData` (o mesmo do
@@ -64,7 +65,7 @@ export default function RazaoPage() {
       });
       downloadBlob(blob, fileName);
     } catch (e) {
-      console.error('Falha ao exportar Livro Razão em Excel:', e);
+      reportError(e, { area: 'razao', op: 'exportar Excel' });
       setError(`Não foi possível gerar a planilha (${describeError(e)}).`);
     } finally {
       setExportingExcel(false);

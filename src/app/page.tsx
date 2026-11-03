@@ -36,6 +36,7 @@ import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
 import { matchTransaction } from '@/lib/utils/search';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /** Linhas por página na tabela de lançamentos. */
 const PAGE_SIZE = 50;
@@ -43,7 +44,7 @@ const PAGE_SIZE = 50;
 type Filter = 'ALL' | ReconciliationStatus;
 
 const loadFailure = (what: string, e: unknown): string => {
-  console.error(`Erro ao carregar ${what}:`, e);
+  reportError(e, { area: 'conciliacao', op: `carregar ${what}` });
   return `Não foi possível carregar ${what} (${e instanceof Error && e.message ? e.message : 'erro desconhecido'}). Recarregue a página para tentar de novo.`;
 };
 
@@ -106,7 +107,7 @@ export default function ConciliacaoPage() {
         setPositionedFor(clientId);
       })
       .catch((e) => {
-        console.error('Erro ao localizar o período mais recente:', e);
+        reportError(e, { area: 'conciliacao', op: 'localizar período' });
         if (active) setPositionedFor(clientId);
       });
     return () => {

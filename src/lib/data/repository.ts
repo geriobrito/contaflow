@@ -7,6 +7,7 @@ import type {
   ChartAccount,
   ClassificationRule,
   ClientCompany,
+  ClientDaybookInfo,
   ExplanatoryNotes,
   ImportBatch,
   JournalEntry,
@@ -70,6 +71,8 @@ export interface DataRepository {
   /* Clientes */
   listClients(): Promise<ClientCompany[]>;
   saveClient(client: ClientCompany): Promise<void>;
+  /** Grava só os dados dos termos do Livro Diário, sem tocar no resto do cadastro. */
+  updateClientDaybook(clientId: string, daybook: ClientDaybookInfo): Promise<void>;
   /**
    * Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e
    * fechamentos. A auditoria é preservada, e cada fechamento removido fica registrado nela em

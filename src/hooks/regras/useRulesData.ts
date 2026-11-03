@@ -8,6 +8,7 @@ import { countAffected, detectRuleConflicts, normalizePattern, pendingWonByRule,
 import { assessRuleTerm, type TermAssessment } from '@/lib/payee';
 import { isMonthLocked } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
+import { reportError } from '@/lib/monitoring';
 
 /** Uma linha da tabela de regras, com o que a regra afeta hoje. */
 export interface RuleListRow {
@@ -53,7 +54,7 @@ export function useRulesData(clientId: string | undefined, search: string) {
         setLoadError(null);
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar regras:', e);
+        reportError(e, { area: 'regras', op: 'carregar' });
         if (active) setLoadError({ id: clientId, message: describeError(e) });
       });
     return () => {

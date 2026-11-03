@@ -49,6 +49,7 @@ import {
   prepareProtectedSave,
 } from '@/lib/lock-guard';
 import { rethrowPermissionDenied } from '@/lib/utils/errors';
+import { reportError } from '@/lib/monitoring';
 
 export const COL = {
   users: 'users',
@@ -237,6 +238,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       }
       // Substitui o documento: campos apagados no formulário (ex.: CPF do representante) somem de fato.
       await setDoc(clientRef, stamp(client));
+    },
+    async updateClientDaybook(clientId, daybook) {
+      // Só este campo: o resto do cadastro fica como está (saveClient substituiria tudo).
+      await updateDoc(doc(db, COL.clients, clientId), { daybook: { ...daybook } });
     },
     async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
@@ -455,7 +460,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
           try {
             await setDoc(doc(db, COL.batches, batch.id), stamp({ ...batch, status: 'FAILED' }), { merge: true });
           } catch (innerErr) {
-            console.error('[insertTransactions] Falha ao marcar lote como FAILED:', innerErr);
+            reportError(innerErr, { area: 'importacao', op: 'marcar lote como falho' });
           }
         }
         throw err;

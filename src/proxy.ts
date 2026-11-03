@@ -22,8 +22,8 @@ export function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      // Fora: rotas de API, arquivos estáticos, imagens e prefetch (não são páginas HTML).
-      source: '/((?!api|_next/static|_next/image|favicon.ico).*)',
+      // Fora: rotas de API, túnel do monitoramento, arquivos estáticos, imagens e prefetch (não são páginas HTML).
+      source: '/((?!api|monitoring|sentry-tunnel|_next/static|_next/image|favicon.ico).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

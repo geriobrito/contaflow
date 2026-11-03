@@ -11,6 +11,7 @@ import { monthsBetween } from '@/lib/periods';
 import { openingStatus } from '@/lib/opening';
 import { describeError } from '@/lib/utils/errors';
 import type { DRETone } from '@/components/dre/DREResultCard';
+import { reportError } from '@/lib/monitoring';
 
 export type DREView = 'simple' | 'monthly' | 'yoy';
 
@@ -38,7 +39,7 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
         setPositionedFor(clientId);
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar dados da DRE:', e);
+        reportError(e, { area: 'dre', op: 'carregar' });
         if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
       });
     return () => {
@@ -76,7 +77,7 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
         setAuxState({ id: clientId, error: null });
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar dados auxiliares da DRE:', e);
+        reportError(e, { area: 'dre', op: 'carregar dados auxiliares' });
         if (active) setAuxState({ id: clientId, error: e instanceof Error ? e.message : 'Falha ao carregar os lançamentos manuais.' });
       });
     return () => {
@@ -106,7 +107,7 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
         setLoadedKey(`${clientId}|${range.start}|${range.end}`);
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar lançamentos da DRE:', e);
+        reportError(e, { area: 'dre', op: 'carregar lançamentos' });
         if (active) setLoadError(e instanceof Error ? e.message : 'Falha ao carregar a DRE.');
       });
     return () => {

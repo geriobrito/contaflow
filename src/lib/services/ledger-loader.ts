@@ -5,6 +5,7 @@ import { getRepository } from '@/lib/services/data-service';
 import { monthOf } from '@/lib/periods';
 import { addDays } from '@/lib/statement';
 import { buildSnapshot, carryOf, monthEnd, snapshotProblem, snapshotTarget } from '@/lib/snapshots';
+import { reportError } from '@/lib/monitoring';
 
 /** Lançamentos de um cliente a partir de um corte, mais o acumulado de tudo que veio antes. */
 export interface LedgerWindow {
@@ -69,7 +70,7 @@ export async function loadLedgerWindow(
       }
     } catch (e) {
       // O snapshot é só um atalho: sem ele, o histórico completo dá o mesmo resultado.
-      console.warn('Saldos consolidados indisponíveis; lendo o histórico completo.', e);
+      reportError(e, { area: 'livros', op: 'ler saldos consolidados', level: 'warning' });
       base = null;
     }
   }
@@ -99,7 +100,7 @@ export async function loadLedgerWindow(
       try {
         await repo.savePeriodSnapshot(next);
       } catch (e) {
-        console.warn('Não foi possível gravar os saldos consolidados; a próxima leitura refaz o cálculo.', e);
+        reportError(e, { area: 'livros', op: 'gravar saldos consolidados', level: 'warning' });
       }
       return windowOf(next, loaded.filter((t) => t.date > cut));
     }

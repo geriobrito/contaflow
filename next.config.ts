@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import { execSync } from "node:child_process";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -46,4 +47,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Monitoramento de erros (src/lib/monitoring). Os eventos saem por `/monitoring` (túnel na
+ * própria origem, src/app/sentry-tunnel/route.ts). Os source maps só são enviados com
+ * SENTRY_AUTH_TOKEN, SENTRY_ORG e SENTRY_PROJECT no build (Vercel) e apagados depois do envio,
+ * para não ficarem públicos.
+ */
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  tunnelRoute: "/monitoring",
+  silent: !process.env.CI,
+  telemetry: false,
+  widenClientFileUpload: true,
+  sourcemaps: { disable: !process.env.SENTRY_AUTH_TOKEN, deleteSourcemapsAfterUpload: true },
+});

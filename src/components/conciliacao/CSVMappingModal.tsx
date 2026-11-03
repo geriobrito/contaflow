@@ -39,6 +39,7 @@ import { bankAccountId, bankLedgerCandidates, newManualAccountKey } from '@/lib/
 import { getRepository } from '@/lib/services/data-service';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { reportError } from '@/lib/monitoring';
 
 export interface CSVQueueFile {
   fileName: string;
@@ -298,7 +299,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
           setCreatedOrUpdatedBanks((prev) => [...prev.filter((b) => b.id !== updatedBank.id), updatedBank]);
           onBankAccountUpdated?.(updatedBank);
         } catch (presetErr) {
-          console.warn('Não foi possível memorizar preset CSV na conta:', presetErr);
+          reportError(presetErr, { area: 'importacao', op: 'memorizar preset CSV', level: 'warning' });
         }
       }
 

@@ -143,14 +143,29 @@ service cloud.firestore {
     }
 
     // ── Empresas ─────────────────────────────────────────────────────────
+    // Termos do Livro Diário no cadastro (ClientDaybookInfo): só três textos de até 120 caracteres.
+    function shortText(m, key) {
+      return m.get(key, '') is string && m.get(key, '').size() <= 120;
+    }
+    function validDaybook(data) {
+      return !('daybook' in data)
+        || (data.daybook is map
+            && data.daybook.keys().hasOnly(['number', 'city', 'registry'])
+            && shortText(data.daybook, 'number')
+            && shortText(data.daybook, 'city')
+            && shortText(data.daybook, 'registry'));
+    }
+
     match /clients/{clientId} {
       // Ler id ainda inexistente permite ao saveClient saber se está criando (com lock_state) ou atualizando.
       allow get: if (resource == null && hasProfile()) || isMine(resource.data);
       allow list: if isMine(resource.data);
       allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data)
-        && existsAfter(lockStatePath(clientId));
-      allow update: if isMine(resource.data) && unchanged('orgId');
+        && existsAfter(lockStatePath(clientId))
+        && validDaybook(request.resource.data);
+      allow update: if isMine(resource.data) && unchanged('orgId')
+        && validDaybook(request.resource.data);
     }
 
     // ── Dados vinculados a uma empresa ───────────────────────────────────

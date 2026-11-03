@@ -5,6 +5,7 @@ import { setSession } from '@/lib/data/scope';
 import type { BankTransaction, ClassificationRule } from '@/types/firestore';
 import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
 import { transactionAudit } from '@/lib/audit';
+import { fieldsKeptOutsideForm } from '@/lib/client-record';
 
 function memoryStore(): KeyValueStore & { dump: Map<string, string> } {
   const dump = new Map<string, string>();
@@ -34,6 +35,20 @@ describe('repositório local (modo único, sem Firestore)', () => {
     store = memoryStore();
     repo = createLocalRepository(store);
     await repo.insertTransactions([tx('a', '2025-01-10'), tx('b', '2025-02-10'), tx('c', '2025-03-10', { clientId: 'c2' })]);
+  });
+
+  it('termos do Livro Diário: gravados no cadastro sem tocar no resto; editar a empresa os mantém', async () => {
+    const company = { id: 'c1', name: 'Empresa', cnpj: '11222333000181', regime: 'SIMPLES_NACIONAL' as const, city: 'Recife/PE', createdAt: 'T', updatedAt: 'T' };
+    await repo.saveClient(company);
+    await repo.updateClientDaybook('c1', { number: '3', city: 'Olinda/PE', registry: 'NIRE 123' });
+    const [stored] = await repo.listClients();
+    expect(stored).toMatchObject({ name: 'Empresa', city: 'Recife/PE', daybook: { number: '3', city: 'Olinda/PE', registry: 'NIRE 123' } });
+
+    // O formulário de Clientes remonta o cadastro: os campos de fora dele seguem junto.
+    await repo.saveClient({ ...company, name: 'Empresa Renomeada', updatedAt: 'T2', ...fieldsKeptOutsideForm(stored) });
+    expect((await repo.listClients())[0]).toMatchObject({ name: 'Empresa Renomeada', daybook: { number: '3' } });
+
+    await expect(repo.updateClientDaybook('nao-existe', { number: '1' })).rejects.toThrow(/não encontrada/);
   });
 
   it('carimba orgId e filtra por cliente e período (mais recente primeiro)', async () => {

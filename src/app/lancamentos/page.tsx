@@ -19,6 +19,7 @@ import { JournalEntryModal } from '@/components/lancamentos/JournalEntryModal';
 import { JournalSummaryCards } from '@/components/lancamentos/JournalSummaryCards';
 import { RepeatEntriesSheet } from '@/components/lancamentos/RepeatEntriesSheet';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /**
  * Lançamentos manuais de fechamento. A tela só compõe: os dados e as gravações vêm de
@@ -99,7 +100,7 @@ export default function LancamentosPage() {
       await deleteEntry(entry);
       setDeleteTarget(null);
     } catch (err) {
-      console.error('Erro ao excluir lançamento:', err);
+      reportError(err, { area: 'lancamentos', op: 'excluir' });
       throw err;
     } finally {
       setDeletingId(null);

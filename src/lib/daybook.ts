@@ -1,4 +1,4 @@
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, ClientDaybookInfo, JournalEntry, OpeningBalances } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
 import { VIRTUAL, VIRTUAL_LABEL, countsAfterOpening, isVirtual, openingJournals } from '@/lib/ledger';
 import { toCents } from '@/lib/money';
@@ -168,13 +168,16 @@ export function buildDaybook(args: {
    Termos de abertura e de encerramento
    ========================================================================= */
 
-export interface DaybookBookInfo {
-  /** Número de ordem do livro (Diário nº 1, 2…). */
-  number: string;
-  /** Município/UF da sede. */
-  city?: string;
-  /** NIRE ou número de registro no cartório. */
-  registry?: string;
+/** Dados dos termos: os mesmos guardados no cadastro da empresa (`ClientCompany.daybook`). */
+export type DaybookBookInfo = ClientDaybookInfo;
+
+/** Tamanho máximo de cada texto dos termos (o mesmo de firestore.rules). */
+export const DAYBOOK_TEXT_MAX = 120;
+
+/** Dados dos termos limpos para gravar: só os três textos, aparados e no tamanho máximo. */
+export function normalizeDaybookInfo(info: Partial<DaybookBookInfo>): DaybookBookInfo {
+  const text = (v: unknown) => String(v ?? '').slice(0, DAYBOOK_TEXT_MAX);
+  return { number: text(info.number) || '1', city: text(info.city), registry: text(info.registry) };
 }
 
 /** Texto dos termos de abertura e de encerramento do livro, para a quantidade de páginas emitida. */

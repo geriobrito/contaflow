@@ -15,6 +15,7 @@
     "clean:firestore": "node scripts/clean-firestore.mjs"
   },
   "dependencies": {
+    "@sentry/nextjs": "^11.10.0",
     "exceljs": "^4.4.0",
     "firebase": "^12.19.0",
     "firebase-admin": "^14.5.0",

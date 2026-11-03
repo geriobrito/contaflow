@@ -8,6 +8,7 @@ import { getActor } from '@/lib/data/scope';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { buildClosingDrafts, closingEquity, describeResult, missingClosingAccounts, resultBalances, yearClosingState } from '@/lib/year-closing';
+import { reportError } from '@/lib/monitoring';
 
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
@@ -73,7 +74,7 @@ export function useYearClosing(args: {
         audit(`${clientId}_${year}_close_${Date.now().toString(36)}`, 'YEAR_CLOSE', `Exercício ${year} (${[describeResult(state.netResult), ...extras].join('; ')}) em ${drafts.length} lançamento(s)`)
       );
     } catch (e) {
-      console.error('Erro ao encerrar o exercício:', e);
+      reportError(e, { area: 'balanco', op: 'encerrar exercício' });
       throw new Error(`Não foi possível encerrar o exercício; nada foi gravado (${describeError(e)}).`);
     } finally {
       setBusy(null);
@@ -94,7 +95,7 @@ export function useYearClosing(args: {
         audit(`${closingAuditId}_reopen`, 'YEAR_REOPEN', `Exercício ${year} · excluídos os lançamentos ${state.entries.map((e) => `#${e.entryNumber}`).join(', ')}`)
       );
     } catch (e) {
-      console.error('Erro ao reabrir o exercício:', e);
+      reportError(e, { area: 'balanco', op: 'reabrir exercício' });
       throw new Error(`Não foi possível reabrir o exercício; nada foi excluído (${describeError(e)}).`);
     } finally {
       setBusy(null);

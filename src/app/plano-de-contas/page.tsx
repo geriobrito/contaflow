@@ -23,6 +23,7 @@ import { frozenMessage, isFrozen } from '@/lib/lock-guard';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /* =========================================================================
    Rótulos
@@ -633,7 +634,7 @@ export default function PlanoDeContasPage() {
         setLoadError(null);
       })
       .catch((e: unknown) => {
-        console.error('Erro ao carregar plano de contas:', e);
+        reportError(e, { area: 'plano-de-contas', op: 'carregar' });
         if (active) setLoadError({ id: clientId, message: e instanceof Error && e.message ? e.message : 'erro desconhecido' });
       });
     return () => {

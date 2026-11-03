@@ -6,6 +6,7 @@
 - **Backend / BaaS**: Firebase 12.19.0 (Auth, Firestore), Firebase Admin 14.5.0
 - **Testes**: Vitest 5.0.2 (unit + firestore rules), `@firebase/rules-unit-testing` 5.0.2
 - **Exportação & Utilitários**: ExcelJS 4.4.0, jsPDF 4.2.1, jsPDF-AutoTable 5.0.8, Lucide React 1.48.0
+- **Monitoramento**: Sentry (`@sentry/nextjs` 11.10, `withSentryConfig` vem de `@sentry/nextjs/config`); erros sempre por `reportError` (`src/lib/monitoring`), nunca `console.error` direto
 - **Lint**: ESLint 9 (`eslint-config-next` 16.3.6)
 
 # Comandos Essenciais

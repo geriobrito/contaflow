@@ -15,6 +15,7 @@ import { DREStatement } from '@/components/dre/DREStatement';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /**
  * Demonstração do resultado. Os dados vêm de `useDREData`, e o resultado em destaque, o
@@ -65,7 +66,7 @@ export default function DREPage() {
       ]);
       downloadBlob(file.blob, file.fileName);
     } catch (e) {
-      console.error('Erro ao exportar a DRE:', e);
+      reportError(e, { area: 'dre', op: 'exportar' });
       setExportError(`Não foi possível gerar o ${format === 'pdf' ? 'PDF' : 'Excel'}. Tente novamente.`);
     } finally {
       setBusy(false);

@@ -22,8 +22,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
+import { fieldsKeptOutsideForm } from '@/lib/client-record';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
 import { CardsSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
   { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
@@ -323,8 +325,8 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       regime,
       taxRegime: regime,
       porte,
-      // Preferências gravadas fora deste formulário (Plano de Contas) seguem com o cadastro.
-      ...(client?.ignoredTemplateCodes?.length ? { ignoredTemplateCodes: client.ignoredTemplateCodes } : {}),
+      // Dados gravados fora deste formulário (Plano de Contas, Livro Diário) seguem com o cadastro.
+      ...fieldsKeptOutsideForm(client),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       legalRepresentativeName: repName.trim() || undefined,
@@ -616,7 +618,7 @@ export default function ClientesPage() {
       );
       return true;
     } catch (e) {
-      console.error('Erro ao gerar backup:', e);
+      reportError(e, { area: 'clientes', op: 'backup' });
       flash(`Não foi possível gerar o backup de ${label} (${e instanceof Error && e.message ? e.message : 'erro'}).`);
       return false;
     } finally {
@@ -632,7 +634,7 @@ export default function ClientesPage() {
       await removeClient(client.id);
       flash(`${label} excluído com seus lançamentos, regras e contas`);
     } catch (e) {
-      console.error('Erro ao excluir cliente:', e);
+      reportError(e, { area: 'clientes', op: 'excluir' });
       flash(`Não foi possível concluir a exclusão (${e instanceof Error && e.message ? e.message : 'erro'}). Retome pelo cartão da empresa.`);
     } finally {
       setDeletingId(null);

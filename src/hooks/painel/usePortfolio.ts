@@ -5,6 +5,7 @@ import type { ClientCompany } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { buildPortfolioRow, type PortfolioRow } from '@/lib/portfolio';
 import { describeError } from '@/lib/utils/errors';
+import { reportError } from '@/lib/monitoring';
 
 export type PortfolioEntry = { status: 'loading' } | { status: 'ready'; row: PortfolioRow } | { status: 'error'; message: string };
 
@@ -71,7 +72,7 @@ export function usePortfolio(clients: readonly ClientCompany[], enabled: boolean
           cache.set(id, { at: Date.now(), row });
           if (active) setEntries((prev) => ({ ...prev, [id]: { status: 'ready', row } }));
         } catch (e) {
-          console.error('Falha ao resumir a empresa no painel:', e);
+          reportError(e, { area: 'painel', op: 'resumir empresa' });
           if (active) setEntries((prev) => ({ ...prev, [id]: { status: 'error', message: describeError(e) } }));
         }
       }

@@ -166,6 +166,11 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         replace(LOCAL_KEYS.lockState, stamp(initialLockState(client.id)));
       }
     },
+    async updateClientDaybook(clientId, daybook) {
+      const client = read<ClientCompany>(LOCAL_KEYS.clients).find((c) => c.id === clientId);
+      if (!client) throw new Error('Empresa não encontrada.');
+      replace(LOCAL_KEYS.clients, { ...client, daybook: { ...daybook } });
+    },
     async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
       if (!isAdminSession()) throw new Error('Somente o administrador do escritório pode excluir empresas.');

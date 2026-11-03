@@ -16,6 +16,16 @@ export type TaxRegime = 'SIMPLES_NACIONAL' | 'LUCRO_PRESUMIDO' | 'LUCRO_REAL' | 
 /** Porte contábil (CFC): define a norma das demonstrações, independente do regime tributário. */
 export type CompanyPorte = 'MICROENTIDADE' | 'PEQUENA_EMPRESA';
 
+/** Termos de abertura e de encerramento do Livro Diário (cada texto com até 120 caracteres). */
+export interface ClientDaybookInfo {
+  /** Número de ordem do livro (Diário nº 1, 2…). */
+  number: string;
+  /** Município/UF da sede. */
+  city?: string;
+  /** NIRE ou número de registro no cartório. */
+  registry?: string;
+}
+
 export interface ClientCompany {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
@@ -36,6 +46,8 @@ export interface ClientCompany {
   /** Representante legal / administrador que assina as demonstrações. */
   legalRepresentativeName?: string;
   legalRepresentativeCpf?: string;
+  /** Dados dos termos do Livro Diário, gravados pela tela do Diário (não pelo formulário de Clientes). */
+  daybook?: ClientDaybookInfo;
   /**
    * Exclusão em andamento (ISO). A cascata apaga os dados em vários lotes; se parar no
    * meio, a empresa continua marcada e a exclusão é retomada de onde parou.

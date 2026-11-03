@@ -17,6 +17,7 @@ import { JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINE
 import { parseMoneyInput } from '@/lib/opening';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
+import { reportError } from '@/lib/monitoring';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
@@ -203,7 +204,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       );
       onClose();
     } catch (err) {
-      console.error('Erro ao salvar lançamento manual:', err);
+      reportError(err, { area: 'lancamentos', op: 'salvar' });
       setError(err instanceof Error ? err.message : 'Falha ao salvar lançamento contábil.');
     } finally {
       setSaving(false);

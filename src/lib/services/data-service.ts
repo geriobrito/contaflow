@@ -1,5 +1,5 @@
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany, LockState, PeriodLock } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany, ClientDaybookInfo, LockState, PeriodLock } from '@/types/firestore';
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
@@ -42,6 +42,9 @@ export const dataMode = (): DataRepository['mode'] => getRepository().mode;
 
 export const getClients = (): Promise<ClientCompany[]> => getRepository().listClients();
 export const saveClient = (client: ClientCompany): Promise<void> => getRepository().saveClient(client);
+/** Grava os dados dos termos do Livro Diário no cadastro da empresa. */
+export const updateClientDaybook = (clientId: string, daybook: ClientDaybookInfo): Promise<void> =>
+  getRepository().updateClientDaybook(clientId, daybook);
 /** Exclui a empresa e, em cascata, contas, regras, lançamentos, lotes de importação e fechamentos. */
 export const deleteClient = (clientId: string): Promise<void> => getRepository().deleteClient(clientId, getActor());
 

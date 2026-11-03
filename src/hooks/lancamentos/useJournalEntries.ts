@@ -7,6 +7,7 @@ import { repeatDraft } from '@/lib/journal';
 import { implantationDate, implantationProblem } from '@/lib/opening';
 import { yearClosingLockedMessage } from '@/lib/year-closing';
 import { describeError } from '@/lib/utils/errors';
+import { reportError } from '@/lib/monitoring';
 
 /** Dados do formulário de lançamento: o resto (id, número, datas de gravação) é de quem grava. */
 export type JournalEntryInput = Omit<JournalEntry, 'id' | 'entryNumber' | 'createdAt' | 'updatedAt'>;
@@ -59,7 +60,7 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
       })
       .catch((e: unknown) => {
         if (!active) return;
-        console.error('Erro ao carregar dados:', e);
+        reportError(e, { area: 'lancamentos', op: 'carregar' });
         setError(e instanceof Error ? e.message : 'Falha ao carregar dados.');
         setLoading(false);
       });
@@ -141,7 +142,7 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
         created++;
       }
     } catch (e) {
-      console.error('Erro ao repetir lançamentos:', e);
+      reportError(e, { area: 'lancamentos', op: 'repetir' });
       throw new Error(`${created} de ${chosen.length} lançamento(s) gravado(s); o seguinte falhou (${describeError(e)}).`);
     } finally {
       if (created) reload();

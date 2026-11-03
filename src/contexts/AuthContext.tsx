@@ -23,6 +23,7 @@ import {
   writeLastActivity,
   type SessionEndReason,
 } from '@/lib/auth/session-policy';
+import { reportError, setMonitoringUser } from '@/lib/monitoring';
 
 export interface AuthContextType {
   user: User | null;
@@ -92,6 +93,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       nextUser ? { uid: nextUser.uid, ...(nextUser.email ? { email: nextUser.email } : {}) } : null,
       effectiveRole
     );
+    // Monitoramento de erros identifica só pelo uid (nunca pelo e-mail).
+    setMonitoringUser(nextUser ? nextUser.uid : null);
     setRole(effectiveRole);
     setOrg(nextOrg);
     setUser(nextUser);
@@ -123,7 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             applySession(currentUser, access.orgId, access.role);
           })
           .catch((e: unknown) => {
-            console.error('Falha ao resolver o escritório do usuário:', e);
+            reportError(e, { area: 'login', op: 'resolver escritório' });
             setAuthError('Não foi possível carregar seu perfil de acesso. Tente novamente ou contate o administrador.');
             applySession(null, null);
           })

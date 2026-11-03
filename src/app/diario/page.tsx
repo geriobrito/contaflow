@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useLedgerData } from '@/hooks/useLedgerData';
 import { usePagination } from '@/hooks/usePagination';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
-import { buildDaybook, type DaybookBookInfo, type DaybookOrigin } from '@/lib/daybook';
+import { buildDaybook, DAYBOOK_TEXT_MAX, normalizeDaybookInfo, type DaybookBookInfo, type DaybookOrigin } from '@/lib/daybook';
+import { updateClientDaybook } from '@/lib/services/data-service';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -15,26 +16,37 @@ import { openingStatus } from '@/lib/opening';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { reportError } from '@/lib/monitoring';
 
 /** Lançamentos por página na tela (o PDF traz o período inteiro). */
 const PAGE_SIZE = 50;
 
 const ORIGIN_LABEL: Record<DaybookOrigin, string> = { OPENING: 'Abertura', BANK: 'Extrato', MANUAL: 'Manual' };
 
-/* Dados dos termos (número do livro, sede, registro): ficam no navegador, por empresa. */
-const bookKey = (clientId: string) => `contaflow_daybook_${clientId}`;
+/*
+ * Dados dos termos (número do livro, sede, registro): ficam no cadastro da empresa
+ * (`ClientCompany.daybook`). Versões antigas guardavam no navegador; ao abrir o Diário, o que
+ * houver aqui passa para o cadastro uma vez e a chave local é apagada.
+ */
+const legacyBookKey = (clientId: string) => `contaflow_daybook_${clientId}`;
 const EMPTY_BOOK: DaybookBookInfo = { number: '1', city: '', registry: '' };
+/** Espera depois da última tecla antes de gravar no cadastro. */
+const SAVE_DELAY_MS = 700;
 
-function readBook(clientId: string, fallbackCity?: string): DaybookBookInfo {
+function readLegacyBook(clientId: string): Partial<DaybookBookInfo> | null {
   try {
-    const saved = JSON.parse(localStorage.getItem(bookKey(clientId)) ?? 'null') as Partial<DaybookBookInfo> | null;
-    return {
-      number: String(saved?.number ?? '1'),
-      city: String(saved?.city || fallbackCity || ''),
-      registry: String(saved?.registry ?? ''),
-    };
+    const raw = localStorage.getItem(legacyBookKey(clientId));
+    return raw ? (JSON.parse(raw) as Partial<DaybookBookInfo>) : null;
   } catch {
-    return { ...EMPTY_BOOK, city: fallbackCity ?? '' };
+    return null;
+  }
+}
+
+function dropLegacyBook(clientId: string): void {
+  try {
+    localStorage.removeItem(legacyBookKey(clientId));
+  } catch {
+    /* armazenamento indisponível */
   }
 }
 
@@ -44,7 +56,7 @@ function readBook(clientId: string, fallbackCity?: string): DaybookBookInfo {
  * abertura e de encerramento. Os dados vêm de `useLedgerData`, o mesmo do Livro Razão.
  */
 export default function DiarioPage() {
-  const { currentClient } = useClient();
+  const { currentClient, replaceClient } = useClient();
   const clientId = currentClient?.id;
   const period = usePeriod('month');
   const { range, jumpTo } = period;
@@ -55,15 +67,33 @@ export default function DiarioPage() {
   const [exporting, setExporting] = useState(false);
   const key = `${clientId}|${from}`;
 
-  // Dados dos termos guardados no navegador para a empresa (lidos fora do render).
+  const bookFor = useRef<string | null>(null);
+  const pendingSave = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Dados dos termos do cadastro da empresa, uma vez por empresa aberta (lidos fora do render).
   useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    void Promise.resolve().then(() => active && setBook(readBook(clientId, currentClient?.city)));
-    return () => {
-      active = false;
-    };
-  }, [clientId, currentClient?.city]);
+    if (!currentClient || bookFor.current === currentClient.id) return;
+    const client = currentClient;
+    bookFor.current = client.id;
+    const legacy = readLegacyBook(client.id);
+    const source = client.daybook ?? legacy ?? {};
+    const initial = normalizeDaybookInfo({ ...source, city: source.city || client.city || '' });
+    void Promise.resolve().then(() => setBook(initial));
+    if (!legacy) return;
+    if (client.daybook) {
+      dropLegacyBook(client.id); // o cadastro já tem os dados: o do navegador é sobra antiga
+      return;
+    }
+    updateClientDaybook(client.id, initial)
+      .then(() => {
+        dropLegacyBook(client.id);
+        replaceClient({ ...client, daybook: initial });
+      })
+      .catch((e: unknown) => {
+        reportError(e, { area: 'diario', op: 'migrar termos do navegador' });
+        setError(`Não foi possível levar os dados dos termos para o cadastro da empresa (${describeError(e)}).`);
+      });
+  }, [currentClient, replaceClient, setError]);
 
   const daybook = useMemo(() => {
     if (!transactions || !static_) return null;
@@ -109,15 +139,23 @@ export default function DiarioPage() {
   }, [daybook, search]);
   const { currentPage, pageCount, rows, setPage } = usePagination(visible, PAGE_SIZE, `${key}|${range.start}|${range.end}|${search}`);
 
+  /** Atualiza na tela e grava no cadastro da empresa logo após a última tecla. */
   const updateBook = (patch: Partial<DaybookBookInfo>) => {
     const next = { ...book, ...patch };
     setBook(next);
-    if (!clientId) return;
-    try {
-      localStorage.setItem(bookKey(clientId), JSON.stringify(next));
-    } catch {
-      /* armazenamento indisponível: vale só para esta sessão */
-    }
+    if (!currentClient) return;
+    const client = currentClient;
+    if (pendingSave.current) clearTimeout(pendingSave.current);
+    pendingSave.current = setTimeout(() => {
+      pendingSave.current = null;
+      const daybook = normalizeDaybookInfo(next);
+      updateClientDaybook(client.id, daybook)
+        .then(() => replaceClient({ ...client, daybook }))
+        .catch((e: unknown) => {
+          reportError(e, { area: 'diario', op: 'gravar termos' });
+          setError(`Não foi possível gravar os dados dos termos (${describeError(e)}).`);
+        });
+    }, SAVE_DELAY_MS);
   };
 
   const exportPdf = async () => {
@@ -138,7 +176,7 @@ export default function DiarioPage() {
       });
       downloadBlob(blob, fileName);
     } catch (e) {
-      console.error('Falha ao gerar o Livro Diário em PDF:', e);
+      reportError(e, { area: 'diario', op: 'gerar PDF' });
       setError(`Não foi possível gerar o PDF (${describeError(e)}).`);
     } finally {
       setExporting(false);
@@ -171,7 +209,7 @@ export default function DiarioPage() {
           <h2 className="text-[15px] font-semibold tracking-tight">Termos de abertura e de encerramento</h2>
           <p className="text-[12px] text-stone-500">
             Saem no PDF com a razão social, o CNPJ, o período, o total de páginas e as assinaturas do representante legal e do contador
-            (cadastrados em Clientes e em Escritório).
+            (cadastrados em Clientes e em Escritório). Os dados abaixo ficam gravados no cadastro da empresa.
           </p>
         </div>
         <div className="grid grid-cols-[8rem_1fr_1fr] gap-3">
@@ -179,10 +217,10 @@ export default function DiarioPage() {
             <input value={book.number} onChange={(e) => updateBook({ number: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={`${INPUT} font-mono tabular-nums`} />
           </Field>
           <Field label="Sede (município/UF)" hint="Opcional">
-            <input value={book.city ?? ''} onChange={(e) => updateBook({ city: e.target.value })} placeholder="ex.: Recife/PE" className={INPUT} />
+            <input value={book.city ?? ''} maxLength={DAYBOOK_TEXT_MAX} onChange={(e) => updateBook({ city: e.target.value })} placeholder="ex.: Recife/PE" className={INPUT} />
           </Field>
           <Field label="NIRE ou nº de registro" hint="Opcional">
-            <input value={book.registry ?? ''} onChange={(e) => updateBook({ registry: e.target.value })} className={`${INPUT} font-mono`} />
+            <input value={book.registry ?? ''} maxLength={DAYBOOK_TEXT_MAX} onChange={(e) => updateBook({ registry: e.target.value })} className={`${INPUT} font-mono`} />
           </Field>
         </div>
       </section>

@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { secondFactorMessage } from '@/lib/auth/two-factor';
 import { APP_VERSION, versionLabel } from '@/lib/app-version';
 import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, Eye, EyeOff, Loader2, Lock, Sparkles } from 'lucide-react';
+import { reportError } from '@/lib/monitoring';
 
 function friendlyError(code?: string): string {
   switch (code) {
@@ -141,7 +142,7 @@ export default function LoginPage() {
     try {
       await confirmSecondFactor(code);
     } catch (err: unknown) {
-      console.error('Erro na verificação em duas etapas:', err);
+      reportError(err, { area: 'login', op: 'verificação em duas etapas' });
       setErrorMessage(secondFactorMessage(err));
       setCode('');
     } finally {
@@ -163,7 +164,7 @@ export default function LoginPage() {
       // A mesma mensagem exista ou não a conta: a tela não revela quais e-mails têm cadastro.
       setNotice(`Se houver uma conta para ${address}, enviamos um link para redefinir a senha. Confira também a caixa de spam.`);
     } catch (err: unknown) {
-      console.error('Erro ao enviar redefinição de senha:', err);
+      reportError(err, { area: 'login', op: 'redefinir senha' });
       const failure = errorCode(err);
       if (failure === 'auth/user-not-found') {
         setNotice(`Se houver uma conta para ${address}, enviamos um link para redefinir a senha. Confira também a caixa de spam.`);
@@ -188,7 +189,7 @@ export default function LoginPage() {
       // O redirecionamento acontece no ProtectedRoute assim que o escritório do usuário é resolvido.
       await signIn(email, password);
     } catch (err: unknown) {
-      console.error('Erro de login:', err);
+      reportError(err, { area: 'login', op: 'entrar' });
       setErrorMessage(friendlyError(errorCode(err)));
     } finally {
       setLoading(false);

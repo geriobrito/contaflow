@@ -13,6 +13,7 @@ import {
   startAuthenticatorEnrollment,
 } from '@/lib/auth/two-factor';
 import { BUTTON, ConfirmButton, Field, INPUT, SURFACE } from '@/components/ui/primitives';
+import { reportError } from '@/lib/monitoring';
 
 /** Chave em grupos de 4, como os aplicativos autenticadores mostram. */
 const grouped = (key: string) => key.replace(/(.{4})/g, '$1 ').trim();
@@ -41,7 +42,7 @@ export function TwoFactorSection() {
       if (done) setMessage({ ok: true, text: done });
       return true;
     } catch (e) {
-      console.error('Erro na verificação em duas etapas:', e);
+      reportError(e, { area: 'escritorio', op: 'verificação em duas etapas' });
       setMessage({ ok: false, text: secondFactorMessage(e) });
       return false;
     } finally {

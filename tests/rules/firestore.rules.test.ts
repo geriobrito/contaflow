@@ -30,6 +30,7 @@ import { approveTransition, autoClassifyTransition, classifyTransition, resetTra
 import { transactionAudit } from '@/lib/audit';
 import { ensureUserProfile } from '@/lib/data/profile';
 import { periodAuditId } from '@/lib/periods';
+import { fieldsKeptOutsideForm } from '@/lib/client-record';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { buildITG1000Chart, ITG1000_ACCOUNT_COUNT } from '@/lib/chart/itg1000';
 import type { BankTransaction } from '@/types/firestore';
@@ -386,6 +387,29 @@ describe('trilha de auditoria (somente inclusão)', () => {
     await assertSucceeds(getDoc(doc(asUser('carol'), 'audit_log/a1')));
     await assertFails(getDoc(doc(asUser('bob'), 'audit_log/a1')));
     await assertFails(setDoc(doc(asUser('bob'), 'audit_log/b1'), entry('b1', 'bob', ORG_B, 'cA')));
+  });
+});
+
+describe('termos do Livro Diário no cadastro da empresa', () => {
+  it('grava só o campo daybook; editar a empresa pelo formulário o mantém', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.updateClientDaybook('cA', { number: '2', city: 'Recife/PE', registry: 'NIRE 26200000000' });
+    const [stored] = (await repo.listClients()).filter((c) => c.id === 'cA');
+    expect(stored).toMatchObject({ name: 'Empresa cA', daybook: { number: '2', city: 'Recife/PE', registry: 'NIRE 26200000000' } });
+    await repo.saveClient({ ...stored, name: 'Empresa cA Renomeada', ...fieldsKeptOutsideForm(stored) });
+    expect((await repo.listClients()).find((c) => c.id === 'cA')).toMatchObject({ name: 'Empresa cA Renomeada', daybook: { number: '2' } });
+  });
+
+  it('recusa formato diferente: campo extra, texto longo ou não texto', async () => {
+    const ref = doc(asUser('alice'), 'clients/cA');
+    await assertSucceeds(updateDoc(ref, { daybook: { number: '1', city: '', registry: '' } }));
+    await assertSucceeds(updateDoc(ref, { daybook: { number: '1' } }));
+    await assertFails(updateDoc(ref, { daybook: { number: '1', anexo: 'x' } }));
+    await assertFails(updateDoc(ref, { daybook: { number: '1', city: 'x'.repeat(121) } }));
+    await assertFails(updateDoc(ref, { daybook: { number: 1 } }));
+    await assertFails(updateDoc(ref, { daybook: 'Diário nº 1' }));
+    // Outro escritório não grava.
+    await assertFails(updateDoc(doc(asUser('bob'), 'clients/cA'), { daybook: { number: '9' } }));
   });
 });
 

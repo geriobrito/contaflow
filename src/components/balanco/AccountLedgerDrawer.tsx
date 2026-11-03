@@ -18,6 +18,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { generateAccountLedgerExcel } from '@/lib/export/ledger-excel';
 import { ModalPortal } from '@/components/ui/ModalPortal';
+import { reportError } from '@/lib/monitoring';
 
 interface AccountLedgerDrawerProps {
   isOpen: boolean;
@@ -118,7 +119,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error('Falha ao exportar Livro Razão em Excel:', e);
+      reportError(e, { area: 'balanco', op: 'exportar razão da conta' });
     } finally {
       setExportingExcel(false);
     }

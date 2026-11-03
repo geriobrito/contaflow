@@ -6,6 +6,7 @@ import type { DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
 import type { DateRange } from '@/lib/data/repository';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import type { ImportResult, MemoUpdate, PreImportCheck, UseReconciliationReturn } from '@/hooks/useReconciliation';
+import { reportError } from '@/lib/monitoring';
 
 /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
 export interface PendingDuplicate {
@@ -129,7 +130,7 @@ export function useImportFlow({
           if (imported.latestDate) lastDate = imported.latestDate;
         }
       } catch (e) {
-        console.error(`Erro ao importar ${item.fileName}:`, e);
+        reportError(e, { area: 'importacao', op: 'importar extrato' });
       }
     }
 

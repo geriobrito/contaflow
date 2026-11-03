@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { BUTTON, PAGE, SURFACE } from '@/components/ui/primitives';
+import { reportError } from '@/lib/monitoring';
 
 /**
  * Erro inesperado numa tela: em vez de a página ficar em branco, mostra o que houve e
@@ -10,7 +11,7 @@ import { BUTTON, PAGE, SURFACE } from '@/components/ui/primitives';
  */
 export default function RouteError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
-    console.error('Erro inesperado na tela:', error);
+    reportError(error, { area: 'tela', op: 'erro inesperado' });
   }, [error]);
 
   return (
