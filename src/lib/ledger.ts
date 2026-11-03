@@ -193,6 +193,77 @@ export function openingJournals(
 /** O movimento do extrato conta a partir do dia do saldo inicial (posição no início do dia). */
 export const countsAfterOpening = (date: string, openingDate: string | undefined): boolean => !openingDate || date >= openingDate;
 
+/** Origem de um lançamento do razão. */
+export type LedgerEntrySource = 'opening' | 'bank' | 'journal';
+
+/** Um lançamento com as suas partidas (que somam zero), na data dele. */
+export interface LedgerEntry {
+  source: LedgerEntrySource;
+  date: string;
+  lines: { accountId: string; value: number }[];
+}
+
+/**
+ * Lançamentos do razão até `until`, cada um com as suas partidas: saldos iniciais e de
+ * abertura, lançamentos bancários (banco contra a contrapartida ou o rateio) e lançamentos
+ * manuais. Partidas em conta que não existe mais no plano vão para "Lançamentos a classificar".
+ */
+export function ledgerEntries(
+  transactions: readonly BankTransaction[],
+  bankAccounts: readonly BankAccount[],
+  accounts: readonly ChartAccount[],
+  until?: string,
+  openings?: OpeningBalances | null,
+  journalEntries?: readonly JournalEntry[] | null
+): LedgerEntry[] {
+  const known = new Set(accounts.map((a) => a.id));
+  const ledgerByKey = new Map(
+    bankAccounts.filter((b) => b.ledgerAccountId && known.has(b.ledgerAccountId)).map((b) => [b.accountKey, b.ledgerAccountId!] as const)
+  );
+  const out: LedgerEntry[] = [];
+
+  // Saldos iniciais dos bancos e das demais contas patrimoniais (ver `openingJournals`).
+  for (const j of openingJournals(openings, bankAccounts, accounts)) {
+    if (until && j.date > until) continue;
+    out.push({ source: 'opening', date: j.date, lines: j.lines.map((l) => ({ accountId: l.accountId, value: l.value })) });
+  }
+
+  for (const t of transactions) {
+    if (until && t.date > until) continue;
+    // Movimento anterior ao saldo inicial informado já está contido nele.
+    if (!countsAfterOpening(t.date, bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate)) continue;
+    const bank = (t.accountKey && ledgerByKey.get(t.accountKey)) || VIRTUAL.BANK_UNLINKED;
+    const lines = [{ accountId: bank as string, value: t.amount }];
+
+    const counter =
+      t.status !== 'RECONCILED'
+        ? [{ accountId: VIRTUAL.SUSPENSE as string, amount: t.amount }]
+        : t.isSplit && t.splits?.length
+          ? t.splits.map((s) => ({ accountId: s.accountId, amount: s.amount }))
+          : [{ accountId: t.accountId ?? VIRTUAL.SUSPENSE, amount: t.amount }];
+    for (const c of counter) {
+      lines.push({ accountId: known.has(c.accountId) ? c.accountId : VIRTUAL.SUSPENSE, value: -c.amount });
+    }
+    out.push({ source: 'bank', date: t.date, lines });
+  }
+
+  // Lançamentos manuais de fechamento (partidas dobradas avulsas)
+  if (journalEntries) {
+    for (const j of journalEntries) {
+      if (until && j.date > until) continue;
+      const lines = j.lines
+        .filter((line) => line.amount)
+        .map((line) => ({
+          accountId: known.has(line.accountId) ? line.accountId : VIRTUAL.SUSPENSE,
+          value: line.type === 'DEBIT' ? line.amount : -line.amount,
+        }));
+      out.push({ source: 'journal', date: j.date, lines });
+    }
+  }
+
+  return out;
+}
+
 /**
  * Partidas de todos os lançamentos (e dos saldos iniciais dos bancos) até `until`.
  *
@@ -209,49 +280,10 @@ export function buildPostings(
   journalEntries?: readonly JournalEntry[] | null,
   carry?: readonly Posting[] | null
 ): Posting[] {
-  const known = new Set(accounts.map((a) => a.id));
-  const ledgerByKey = new Map(
-    bankAccounts.filter((b) => b.ledgerAccountId && known.has(b.ledgerAccountId)).map((b) => [b.accountKey, b.ledgerAccountId!] as const)
-  );
   const out: Posting[] = carry ? carry.filter((p) => !until || p.date <= until) : [];
-
-  // Saldos iniciais dos bancos e das demais contas patrimoniais (ver `openingJournals`).
-  for (const j of openingJournals(openings, bankAccounts, accounts)) {
-    if (until && j.date > until) continue;
-    for (const l of j.lines) out.push({ accountId: l.accountId, date: j.date, value: l.value });
+  for (const e of ledgerEntries(transactions, bankAccounts, accounts, until, openings, journalEntries)) {
+    for (const l of e.lines) out.push({ accountId: l.accountId, date: e.date, value: l.value });
   }
-
-  for (const t of transactions) {
-    if (until && t.date > until) continue;
-    // Movimento anterior ao saldo inicial informado já está contido nele.
-    if (!countsAfterOpening(t.date, bankAccounts.find((b) => b.accountKey === t.accountKey)?.openingDate)) continue;
-    const bank = (t.accountKey && ledgerByKey.get(t.accountKey)) || VIRTUAL.BANK_UNLINKED;
-    out.push({ accountId: bank, date: t.date, value: t.amount });
-
-    const counter =
-      t.status !== 'RECONCILED'
-        ? [{ accountId: VIRTUAL.SUSPENSE as string, amount: t.amount }]
-        : t.isSplit && t.splits?.length
-          ? t.splits.map((s) => ({ accountId: s.accountId, amount: s.amount }))
-          : [{ accountId: t.accountId ?? VIRTUAL.SUSPENSE, amount: t.amount }];
-    for (const c of counter) {
-      out.push({ accountId: known.has(c.accountId) ? c.accountId : VIRTUAL.SUSPENSE, date: t.date, value: -c.amount });
-    }
-  }
-
-  // Lançamentos manuais de fechamento (partidas dobradas avulsas)
-  if (journalEntries) {
-    for (const j of journalEntries) {
-      if (until && j.date > until) continue;
-      for (const line of j.lines) {
-        if (!line.amount) continue;
-        const targetAcc = known.has(line.accountId) ? line.accountId : VIRTUAL.SUSPENSE;
-        const value = line.type === 'DEBIT' ? line.amount : -line.amount;
-        out.push({ accountId: targetAcc, date: j.date, value });
-      }
-    }
-  }
-
   return out;
 }
 

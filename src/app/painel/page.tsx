@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, CheckCircle2, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
 import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
+import { isFirebaseConfigured } from '@/lib/firebase-config';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { useClient } from '@/contexts/ClientContext';
 import { buildDashboard, type Alert, type MonthState, type MonthStatus } from '@/lib/dashboard';
@@ -15,6 +16,7 @@ import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
 import { EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
+import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
@@ -200,11 +202,14 @@ export default function PainelPage() {
   }
 
   const viewSwitch = multiple ? <SegmentedControl ariaLabel="Visão do painel" value={view} onChange={chooseView} options={VIEWS} /> : undefined;
+  // Só o Firestore tem cota diária; no modo local não há o que medir.
+  const readMeter = isFirebaseConfigured() ? <ReadQuotaMeter /> : null;
 
   if (view === 'carteira') {
     return (
       <main className={PAGE}>
         <PageHeader title="Painel" description="Ponto de partida do dia: o que falta fazer em cada empresa da carteira." actions={viewSwitch} />
+        {readMeter}
         <PortfolioView
           clients={clients}
           entries={portfolio.entries}
@@ -232,7 +237,8 @@ export default function PainelPage() {
         description="O que precisa de atenção nesta empresa: classificação, meses, extratos, perguntas ao cliente e cadastros."
         actions={viewSwitch}
       />
-      {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel: {error}</p>}
+      {readMeter}
+      {error &&<p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel: {error}</p>}
       {!dash ? (
         !error && (
           <>

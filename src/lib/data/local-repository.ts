@@ -8,6 +8,7 @@ import type {
   ClientCompany,
   ExplanatoryNotes,
   ImportBatch,
+  InvoiceSummary,
   JournalCounter,
   JournalEntry,
   LockState,
@@ -19,6 +20,7 @@ import type {
 import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
 import { isAdminSession, peekActor } from '@/lib/data/scope';
 import { assertValidJournalEntry } from '@/lib/journal';
+import { invoiceId } from '@/lib/nfe/import';
 import {
   canDeleteRule,
   initialLockState,
@@ -53,6 +55,7 @@ export const LOCAL_KEYS = {
   journalCounters: 'contaflow_journal_counters',
   snapshots: 'contaflow_period_snapshots',
   notes: 'contaflow_explanatory_notes',
+  invoices: 'contaflow_invoice_summaries',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -203,6 +206,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.journalCounters,
         LOCAL_KEYS.snapshots,
         LOCAL_KEYS.notes,
+        LOCAL_KEYS.invoices,
       ]) {
         write(
           key,
@@ -573,6 +577,52 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       const gone = new Set(entries.map((e) => e.id));
       write(LOCAL_KEYS.journalEntries, read<JournalEntry>(LOCAL_KEYS.journalEntries).filter((j) => !gone.has(j.id)));
       write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+    },
+
+    async listInvoices(clientId, range) {
+      return read<InvoiceSummary>(LOCAL_KEYS.invoices)
+        .filter((i) => i.clientId === clientId && (!range || (i.issueDate >= range.start && i.issueDate <= range.end)))
+        .map((i) => ({ ...i, status: i.status ?? 'AUTHORIZED' }))
+        .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number, undefined, { numeric: true }));
+    },
+    async saveInvoices(invoices) {
+      const stored = read<InvoiceSummary>(LOCAL_KEYS.invoices);
+      const index = new Map(stored.map((s, i) => [s.id, i] as const));
+      for (const inv of invoices) {
+        const i = index.get(inv.id);
+        if (i === undefined) {
+          index.set(inv.id, stored.length);
+          stored.push(stamp({ ...inv, links: undefined }));
+          continue;
+        }
+        // Mesmo comportamento do Firestore: vínculos preservados e cancelamento nunca desfeito.
+        const prev = stored[i];
+        stored[i] = stamp({ ...inv, links: prev.links, status: prev.status === 'CANCELLED' ? 'CANCELLED' : inv.status });
+      }
+      write(LOCAL_KEYS.invoices, stored);
+    },
+    async cancelInvoices(clientId, keys) {
+      const ids = new Set(keys.map((k) => invoiceId(clientId, k)));
+      const stored = read<InvoiceSummary>(LOCAL_KEYS.invoices);
+      let count = 0;
+      for (const inv of stored) {
+        if (!ids.has(inv.id)) continue;
+        inv.status = 'CANCELLED';
+        count++;
+      }
+      write(LOCAL_KEYS.invoices, stored);
+      return count;
+    },
+    async linkInvoice(id, link) {
+      const stored = read<InvoiceSummary>(LOCAL_KEYS.invoices);
+      const inv = stored.find((i) => i.id === id);
+      if (!inv) throw new Error('Nota fiscal não encontrada.');
+      inv.links = [...(inv.links ?? []).filter((l) => l.transactionId !== link.transactionId), link];
+      write(LOCAL_KEYS.invoices, stored);
+      return { ...inv, status: inv.status ?? 'AUTHORIZED' };
+    },
+    async deleteInvoice(id) {
+      remove<InvoiceSummary>(LOCAL_KEYS.invoices, id);
     },
 
     async getExplanatoryNotes(clientId, year) {

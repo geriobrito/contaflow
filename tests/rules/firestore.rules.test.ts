@@ -1583,3 +1583,70 @@ describe('cadastros congelados por competência fechada e integridade do lock_st
     });
   });
 });
+
+describe('notas fiscais (resumos dos XML)', () => {
+  const KEY = '35250311444777000161550010000000011123456780';
+  const summary = (clientId = 'cA', key = KEY) => ({
+    id: `${clientId}_${key}`,
+    clientId,
+    key,
+    number: '1',
+    series: '1',
+    model: '55',
+    issueDate: '2025-03-05',
+    direction: 'PURCHASE' as const,
+    counterpartyDoc: '11444777000161',
+    counterpartyName: 'ACME LTDA',
+    total: 1500,
+    cfops: [{ cfop: '1102', amount: 1500 }],
+    installments: [],
+    status: 'AUTHORIZED' as const,
+    importedAt: 'T',
+  });
+
+  it('grava, lê por período, vincula e cancela; reimportar não desfaz vínculo nem cancelamento', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveInvoices([summary()]);
+    expect((await repo.listInvoices('cA', { start: '2025-03-01', end: '2025-03-31' })).map((i) => i.number)).toEqual(['1']);
+    expect(await repo.listInvoices('cA', { start: '2025-04-01', end: '2025-04-30' })).toEqual([]);
+
+    const linked = await repo.linkInvoice(`cA_${KEY}`, { transactionId: 'cA_1', amount: 1500, accountId: 'x', linkedAt: 'T' });
+    expect(linked.links).toHaveLength(1);
+    expect(await repo.cancelInvoices('cA', [KEY, '0'.repeat(44)])).toBe(1);
+
+    await repo.saveInvoices([summary()]);
+    const [again] = await repo.listInvoices('cA');
+    expect(again.links).toHaveLength(1);
+    expect(again.status).toBe('CANCELLED');
+
+    await repo.deleteInvoice(`cA_${KEY}`);
+    expect(await repo.listInvoices('cA')).toEqual([]);
+  });
+
+  it('isoladas por escritório; id, chave e campos validados', async () => {
+    const alice = asUser('alice');
+    const data = { ...summary(), orgId: ORG_A };
+    await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${KEY}`), data));
+    await assertSucceeds(setDoc(doc(asUser('carol'), `invoice_summaries/cA_${KEY}`), { ...data, total: 10 }));
+    await assertFails(setDoc(doc(alice, 'invoice_summaries/outro'), data)); // id não confere
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cB_${KEY}`), { ...data, clientId: 'cB' })); // empresa de outro escritório
+    await assertFails(setDoc(doc(alice, 'invoice_summaries/cA_123'), { ...data, key: '123' })); // chave inválida
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { ...data, direction: 'OUTRA' }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { ...data, total: 0 }));
+    await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { key: '35250311444777000161550010000000021123456780' }));
+    await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { clientId: 'cB' }));
+    await assertFails(getDoc(doc(asUser('bob'), `invoice_summaries/cA_${KEY}`)));
+    await assertFails(setDoc(doc(asUser('bob'), `invoice_summaries/cA_${KEY}`), { ...data, orgId: ORG_B }));
+    await assertFails(deleteDoc(doc(asUser('bob'), `invoice_summaries/cA_${KEY}`)));
+    await assertFails(getDoc(doc(anon(), `invoice_summaries/cA_${KEY}`)));
+  });
+
+  it('excluir a empresa remove as notas', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveInvoices([summary()]);
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, `invoice_summaries/cA_${KEY}`))).exists()).toBe(false);
+    });
+  });
+});

@@ -100,6 +100,12 @@ export type DREGroup =
   | 'OUTRAS_RECEITAS_DESPESAS'
   | 'IMPOSTOS_LUCRO';
 
+/**
+ * Classificação na Demonstração dos Fluxos de Caixa: uma das três atividades, ou caixa e
+ * equivalentes de caixa (a conta é o próprio caixa e não gera fluxo).
+ */
+export type CashFlowActivity = 'OPERATING' | 'INVESTING' | 'FINANCING' | 'CASH';
+
 export interface ChartAccount {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
@@ -114,6 +120,11 @@ export interface ChartAccount {
   dreGroup?: DREGroup;
   /** Conta redutora (retificadora), ex.: (-) Depreciação Acumulada. */
   isContra?: boolean;
+  /**
+   * Atividade da conta na DFC, quando o contador troca a sugerida pelo código (src/lib/cash-flow.ts).
+   * Só muda a apresentação da DFC: não é campo estrutural nem trava com o fechamento.
+   */
+  cashFlowActivity?: CashFlowActivity;
   description?: string;
   /** Sequência de fechamento (`lock_state.seq`) na última gravação de campo estrutural. */
   lockSeq?: number;
@@ -171,6 +182,63 @@ export interface BankTransaction {
   /** Pergunta ao cliente sobre este lançamento ("o que é este Pix?"). */
   clientQuery?: ClientQuery;
   createdAt: string;
+}
+
+/* =========================================================================
+   Notas fiscais (NF-e): só o resumo do XML, lido no navegador
+   ========================================================================= */
+
+/** Lado da nota para a empresa: compra (ela é a destinatária) ou venda (ela é a emitente). */
+export type InvoiceDirection = 'PURCHASE' | 'SALE';
+export type InvoiceStatus = 'AUTHORIZED' | 'CANCELLED';
+
+/** Parcela da cobrança (`<dup>`): vencimento e valor. */
+export interface InvoiceInstallment {
+  number?: string;
+  dueDate: string;
+  amount: number;
+}
+
+/** Valor dos produtos por CFOP. */
+export interface InvoiceCfop {
+  cfop: string;
+  amount: number;
+}
+
+/** Pagamento ou recebimento do extrato confirmado como quitação (de parte) da nota. */
+export interface InvoiceLink {
+  transactionId: string;
+  amount: number;
+  /** Conta usada na classificação: vira a sugestão para as próximas notas do mesmo parceiro. */
+  accountId: string;
+  linkedAt: string;
+}
+
+/**
+ * Resumo de uma NF-e (modelo 55) ou NFC-e (65) importada pelo XML. O arquivo não é guardado:
+ * o navegador lê o XML e grava só estes campos (id `${clientId}_${key}`).
+ */
+export interface InvoiceSummary {
+  orgId?: string;
+  id: string;
+  clientId: string;
+  /** Chave de acesso (44 caracteres). */
+  key: string;
+  number: string;
+  series: string;
+  model: string;
+  /** Data de emissão (YYYY-MM-DD). */
+  issueDate: string;
+  direction: InvoiceDirection;
+  /** CNPJ/CPF do fornecedor (compra) ou do cliente (venda), sem pontuação; vazio se a nota não traz. */
+  counterpartyDoc: string;
+  counterpartyName: string;
+  total: number;
+  cfops: InvoiceCfop[];
+  installments: InvoiceInstallment[];
+  status: InvoiceStatus;
+  links?: InvoiceLink[];
+  importedAt: string;
 }
 
 export type ClientQueryStatus = 'OPEN' | 'RESOLVED';

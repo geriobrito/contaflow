@@ -16,10 +16,12 @@ import { porteOf } from '@/lib/accounting-standard';
 import { openingStatus } from '@/lib/opening';
 import { monthOf } from '@/lib/periods';
 import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
+import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
+import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
 import { AccountantNotice } from '@/components/ui/AccountantNotice';
@@ -27,12 +29,13 @@ import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures'
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 import { AccountingAmount } from '@/components/ui/Amount';
 
-type View = 'bs' | 'tb' | 'dlpa';
+type View = 'bs' | 'tb' | 'dlpa' | 'dfc';
 
 const TITLE: Record<View, string> = {
   bs: 'Balanço patrimonial',
   tb: 'Balancete de verificação',
   dlpa: 'Lucros ou prejuízos acumulados',
+  dfc: 'Fluxos de caixa',
 };
 
 const EMPTY_LOCKS: PeriodLock[] = [];
@@ -226,6 +229,23 @@ export default function BalancoPage() {
     onChanged: () => setReloadCount((c) => c + 1),
   });
   const dlpa = useMemo(() => buildDLPA(postings, accounts, journalEntries, range.end), [postings, accounts, journalEntries, range.end]);
+  // DFC do período escolhido: os lançamentos do exercício já vêm um a um; o consolidado só compõe o caixa inicial.
+  const [cashFlowDetail, setCashFlowDetail] = useState(false);
+  const cashFlow = useMemo(
+    () =>
+      loading || !txs
+        ? null
+        : buildCashFlow({ transactions: txs.list, banks, accounts, range, openings: static_?.openings, journalEntries, carry: txs.carry }),
+    [loading, txs, banks, accounts, range, static_?.openings, journalEntries]
+  );
+
+  const porte = porteOf(currentClient);
+  const standardNote =
+    view === 'dfc' && porte === 'MICROENTIDADE'
+      ? 'Microentidade (NBC TG 1002): a DFC é facultativa. Apresente-a se ajudar a leitura das demonstrações.'
+      : (view === 'bs' || view === 'dlpa') && porte === 'PEQUENA_EMPRESA'
+        ? 'Pequena empresa (NBC TG 1001): o conjunto completo inclui a Demonstração dos Fluxos de Caixa, na aba DFC.'
+        : null;
 
   const missingOpening = banks.filter((b) => b.openingBalance === undefined);
   const unlinked = banks.filter((b) => !b.ledgerAccountId);
@@ -241,6 +261,13 @@ export default function BalancoPage() {
     setGeneratingPdf(true);
     try {
       const { downloadBlob } = await import('@/lib/export/dre-rows');
+      if (view === 'dfc') {
+        if (!cashFlow) return;
+        const { generateCashFlowPdf } = await import('@/lib/export/cash-flow-export');
+        const file = generateCashFlowPdf({ client: currentClient, statement: cashFlow, detail: cashFlowDetail, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        return;
+      }
       if (view === 'dlpa') {
         const { generateDLPAPdf } = await import('@/lib/export/dlpa-export');
         const file = generateDLPAPdf({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
@@ -272,6 +299,13 @@ export default function BalancoPage() {
     setExporting(true);
     try {
       const { downloadBlob } = await import('@/lib/export/dre-rows');
+      if (view === 'dfc') {
+        if (!cashFlow) return;
+        const { generateCashFlowExcel } = await import('@/lib/export/cash-flow-export');
+        const file = await generateCashFlowExcel({ client: currentClient, statement: cashFlow, detail: cashFlowDetail, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        return;
+      }
       if (view === 'dlpa') {
         const { generateDLPAExcel } = await import('@/lib/export/dlpa-export');
         const file = await generateDLPAExcel({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
@@ -304,6 +338,11 @@ export default function BalancoPage() {
         description={
           view === 'bs' ? (
             <>Posição em <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, por partidas dobradas a partir dos extratos e das classificações.</>
+          ) : view === 'dfc' ? (
+            <>
+              De <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.start)}</span> a{' '}
+              <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, pelo método direto. Para o exercício, escolha Ano no período.
+            </>
           ) : view === 'dlpa' ? (
             <>
               Exercício de {year} até <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>: saldo inicial, resultado, distribuições e
@@ -330,7 +369,13 @@ export default function BalancoPage() {
               disabled={!hasData || exporting || generatingPdf}
               onClick={() => void exportExcel()}
               className={BUTTON.secondary}
-              title={view === 'dlpa' ? 'Exportar a DLPA em planilha Excel (.xlsx)' : 'Exportar planilha Excel (.xlsx) com Balanço e Balancete'}
+              title={
+                view === 'dlpa'
+                  ? 'Exportar a DLPA em planilha Excel (.xlsx)'
+                  : view === 'dfc'
+                    ? 'Exportar a DFC em planilha Excel (.xlsx)'
+                    : 'Exportar planilha Excel (.xlsx) com Balanço e Balancete'
+              }
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />}
               {exporting ? 'Gerando…' : 'Exportar Excel'}
@@ -358,6 +403,7 @@ export default function BalancoPage() {
               { value: 'bs', label: 'Balanço patrimonial' },
               { value: 'tb', label: 'Balancete' },
               { value: 'dlpa', label: 'DLPA' },
+              { value: 'dfc', label: 'DFC' },
             ]}
           />
           <PeriodPicker period={period} />
@@ -378,13 +424,10 @@ export default function BalancoPage() {
 
       <OpeningStatusNotice status={opening} />
 
-      {view !== 'tb' && porteOf(currentClient) === 'PEQUENA_EMPRESA' && (
+      {standardNote && (
         <p role="note" className="flex items-start gap-2 rounded-2xl px-4 py-3 bg-sky-50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 text-[13px] text-sky-900 dark:text-sky-200 print:hidden">
           <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>
-            Pequena empresa (NBC TG 1001): além do Balanço, da DRE e da DLPA, a norma pede a Demonstração dos Fluxos de Caixa (DFC), que o ContaFlow ainda não
-            gera. Elabore-a à parte para completar o conjunto das demonstrações.
-          </span>
+          <span>{standardNote}</span>
         </p>
       )}
 
@@ -468,6 +511,8 @@ export default function BalancoPage() {
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem movimento até esta data" description="Importe extratos e concilie lançamentos para gerar o balanço e o balancete." />
         </section>
+      ) : view === 'dfc' ? (
+        cashFlow && <CashFlowStatement statement={cashFlow} detail={cashFlowDetail} onDetailChange={setCashFlowDetail} />
       ) : view === 'dlpa' ? (
         <div className="space-y-6">
           <DLPAStatement dlpa={dlpa} />

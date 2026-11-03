@@ -10,6 +10,8 @@ import type {
   ClientDaybookInfo,
   ExplanatoryNotes,
   ImportBatch,
+  InvoiceLink,
+  InvoiceSummary,
   JournalEntry,
   LockState,
   OpeningBalances,
@@ -189,6 +191,20 @@ export interface DataRepository {
   closeYear(drafts: readonly JournalEntryDraft[], audit: AuditEntry): Promise<JournalEntry[]>;
   /** Exclui todos os lançamentos do encerramento e grava o YEAR_REOPEN (`${closingAuditId}_reopen`) numa única operação. */
   reopenYear(entries: readonly JournalEntry[], audit: AuditEntry): Promise<void>;
+
+  /* Notas fiscais: só o resumo do XML (src/lib/nfe), id `${clientId}_${chave}` */
+  /** Notas da empresa, mais recentes primeiro; `range` limita pela data de emissão. */
+  listInvoices(clientId: string, range?: DateRange): Promise<InvoiceSummary[]>;
+  /**
+   * Grava os resumos (cria ou atualiza). Preserva os vínculos com o extrato e nunca desfaz um
+   * cancelamento: reimportar a nota autorizada não muda a situação gravada.
+   */
+  saveInvoices(invoices: readonly InvoiceSummary[]): Promise<void>;
+  /** Marca como canceladas as notas já importadas da empresa com essas chaves; devolve quantas eram. */
+  cancelInvoices(clientId: string, keys: readonly string[]): Promise<number>;
+  /** Vincula um lançamento do extrato à nota (troca o vínculo anterior do mesmo lançamento). */
+  linkInvoice(invoiceId: string, link: InvoiceLink): Promise<InvoiceSummary>;
+  deleteInvoice(invoiceId: string): Promise<void>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;

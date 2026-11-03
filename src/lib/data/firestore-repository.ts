@@ -3,9 +3,6 @@ import {
   deleteDoc,
   deleteField,
   doc,
-  getCountFromServer,
-  getDoc,
-  getDocs,
   limit,
   orderBy,
   query,
@@ -30,6 +27,7 @@ import type {
   ClientCompany,
   ExplanatoryNotes,
   ImportBatch,
+  InvoiceSummary,
   JournalEntry,
   LockState,
   OpeningBalances,
@@ -38,7 +36,11 @@ import type {
   PeriodSnapshot,
 } from '@/types/firestore';
 import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
+// Leituras contadas para o medidor da cota diária (ver read-meter.ts).
+import { getCountFromServer, getDoc, getDocs } from '@/lib/data/counted-reads';
+import { addReads } from '@/lib/data/read-meter';
 import { assertValidJournalEntry } from '@/lib/journal';
+import { invoiceId } from '@/lib/nfe/import';
 import { monthOf, periodAuditId } from '@/lib/periods';
 import {
   frozenMessage,
@@ -70,6 +72,7 @@ export const COL = {
   journalCounters: 'journal_counters',
   snapshots: 'period_snapshots',
   notes: 'explanatory_notes',
+  invoices: 'invoice_summaries',
 } as const;
 
 /** Limites do Firestore. */
@@ -170,6 +173,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
   const auditFrom = (d: { id: string; data: () => DocumentData }): AuditEntry => {
     const data = d.data();
     return { ...(data as AuditEntry), id: d.id, at: toISO(data.at) };
+  };
+  const invoiceFrom = (d: { id: string; data: () => DocumentData | undefined }): InvoiceSummary => {
+    const data = (d.data() ?? {}) as InvoiceSummary;
+    return { ...data, id: d.id, status: data.status ?? 'AUTHORIZED', cfops: data.cfops ?? [], installments: data.installments ?? [] };
   };
   const lockFrom = (d: { id: string; data: () => DocumentData }): PeriodLock => {
     const data = d.data();
@@ -280,7 +287,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         REOPENS_PER_BATCH
       );
       // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requestFiles, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -665,6 +672,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         try {
           return await runTransaction(db, async (t) => {
             const counter = await t.get(counterRef);
+            addReads(1);
             seen = counter.exists() ? Number(counter.data().last) || 0 : null;
             const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
             t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
@@ -713,6 +721,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       }
       return runTransaction(db, async (t) => {
         const [counter, lockStateSnap] = await Promise.all([t.get(counterRef), t.get(lockStateRef)]);
+        addReads(2);
         const currentLs = lockStateSnap.exists() ? ({ ...(lockStateSnap.data() as LockState), id: lockStateSnap.id }) : null;
         const nextLs = nextLockStateOnYearClose(currentLs, audit.id);
         const base = counter.exists() ? Number(counter.data().last) || 0 : seed;
@@ -730,6 +739,52 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       for (const e of entries) b.delete(doc(db, COL.journalEntries, e.id));
       auditWrite(audit)(b);
       await b.commit();
+    },
+
+    /* ── Notas fiscais (resumos dos XML) ──────────────────────────────── */
+    async listInvoices(clientId, range) {
+      // Índice composto: (orgId, clientId, issueDate).
+      const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
+      if (range) constraints.push(where('issueDate', '>=', range.start), where('issueDate', '<=', range.end));
+      const snap = await getDocs(scoped(COL.invoices, ...constraints));
+      return snap.docs.map(invoiceFrom).sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number, undefined, { numeric: true }));
+    },
+    async saveInvoices(invoices) {
+      // Mescla, sem ler antes: os vínculos ficam como estão, e a situação só é gravada quando
+      // é cancelamento (sem o campo, a nota é autorizada) — reimportar não "descancela".
+      await run(
+        invoices.map((inv) => {
+          const { links: _links, status, ...rest } = inv;
+          void _links;
+          const data = stamp(status === 'CANCELLED' ? { ...rest, status } : rest);
+          return single((b) => b.set(doc(db, COL.invoices, inv.id), data, { merge: true }));
+        })
+      );
+    },
+    async cancelInvoices(clientId, keys) {
+      const refs = keys.map((k) => doc(db, COL.invoices, invoiceId(clientId, k)));
+      const snaps = await Promise.all(refs.map(async (ref) => {
+        try {
+          return await getDoc(ref);
+        } catch {
+          return null; // nota de outro escritório ou inexistente com outra dona: ignora
+        }
+      }));
+      const existing = refs.filter((_, i) => snaps[i]?.exists());
+      await run(existing.map((ref) => single((b) => b.update(ref, { status: 'CANCELLED' }))));
+      return existing.length;
+    },
+    async linkInvoice(id, link) {
+      const ref = doc(db, COL.invoices, id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error('Nota fiscal não encontrada.');
+      const current = invoiceFrom(snap);
+      const links = [...(current.links ?? []).filter((l) => l.transactionId !== link.transactionId), clean(link) as typeof link];
+      await updateDoc(ref, { links });
+      return { ...current, links };
+    },
+    async deleteInvoice(id) {
+      await deleteDoc(doc(db, COL.invoices, id));
     },
 
     /* ── Notas explicativas ───────────────────────────────────────────── */

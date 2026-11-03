@@ -1,726 +1,48 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { ChevronRight, Lock, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
-import type { AccountType, ChartAccount, DREGroup, LockState, PeriodLock } from '@/types/firestore';
-import {
-  applyDefaultChartTemplate,
-  deleteChartAccount,
-  getAccounts,
-  getLockState,
-  getPeriodLocks,
-  saveAccount,
-  saveClient,
-} from '@/lib/services/data-service';
-import { TemplateCompletionSheet } from '@/components/plano-de-contas/TemplateCompletionSheet';
-import { newAccountId } from '@/lib/utils/id';
+import { useCallback, useMemo, useState } from 'react';
+import { Plus, Wand2 } from 'lucide-react';
+import type { ChartAccount } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
-import { resolveDREGroup } from '@/lib/dre/build';
-import { missingTemplateAccounts } from '@/lib/chart/itg1000';
-import { frozenMessage, isFrozen } from '@/lib/lock-guard';
-import { describeError } from '@/lib/utils/errors';
-import { BUTTON, ConfirmButton, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, Sheet, SURFACE } from '@/components/ui/primitives';
+import { useChartOfAccounts, type ChartActionResult } from '@/hooks/plano-de-contas/useChartOfAccounts';
+import { buildTree, filterTree } from '@/lib/chart/tree';
+import { AccountTreeRow } from '@/components/plano-de-contas/AccountTreeRow';
+import { EditAccountSheet } from '@/components/plano-de-contas/EditAccountSheet';
+import { NewAccountSheet } from '@/components/plano-de-contas/NewAccountSheet';
+import { TemplateCompletionSheet } from '@/components/plano-de-contas/TemplateCompletionSheet';
+import { BUTTON, EmptyState, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
-import { reportError } from '@/lib/monitoring';
-
-/* =========================================================================
-   Rótulos
-   ========================================================================= */
-
-const TYPE_LABEL: Record<AccountType, string> = {
-  ASSET: 'Ativo',
-  ATIVO: 'Ativo',
-  LIABILITY: 'Passivo',
-  EQUITY: 'Patrimônio líquido',
-  PASSIVO: 'Passivo',
-  COST: 'Custo',
-  CUSTO: 'Custo',
-  EXPENSE: 'Despesa',
-  DESPESA: 'Despesa',
-  REVENUE: 'Receita',
-  RECEITA: 'Receita',
-};
-
-const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
-  { value: 'GROSS_REVENUE', label: 'Receita operacional bruta' },
-  { value: 'DEDUCTIONS', label: 'Deduções da receita bruta' },
-  { value: 'COSTS', label: 'Custos das vendas' },
-  { value: 'OPERATING_EXPENSES', label: 'Despesas operacionais' },
-  { value: 'FINANCIAL_INCOME', label: 'Receitas financeiras' },
-  { value: 'FINANCIAL_EXPENSES', label: 'Despesas financeiras' },
-  { value: 'OTHER_INCOME', label: 'Outras receitas operacionais' },
-  { value: 'OTHER_EXPENSES', label: 'Outras despesas operacionais' },
-  { value: 'INCOME_TAXES', label: 'IRPJ e CSLL' },
-];
-
-const DRE_LABEL = new Map<string, string>(DRE_GROUPS.map((g) => [g.value, g.label]));
-
-/** Rótulo do grupo da DRE de uma conta analítica (inclui códigos legados), ou null se patrimonial. */
-function dreLabel(account: ChartAccount): string | null {
-  const group = resolveDREGroup(account);
-  return group ? (DRE_LABEL.get(group) ?? null) : null;
-}
-
-/** Grupo da DRE sugerido para uma nova conta: o do pai ou o das contas irmãs. */
-function inheritedDREGroup(parent: ChartAccount | undefined, accounts: readonly ChartAccount[]): DREGroup | '' {
-  if (!parent) return '';
-  if (parent.dreGroup) return parent.dreGroup;
-  const sibling = accounts.find((a) => a.parentId === parent.id && a.dreGroup) ??
-    accounts.find((a) => a.code.startsWith(`${parent.code}.`) && a.dreGroup);
-  return sibling?.dreGroup ?? '';
-}
-
-const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA', 'EXPENSE', 'DESPESA', 'COST', 'CUSTO']);
-
-/* =========================================================================
-   Árvore (hierarquia inferida pelo código: 1 › 1.1 › 1.1.01 › 1.1.01.001)
-   ========================================================================= */
-
-interface TreeNode {
-  account: ChartAccount;
-  depth: number;
-  children: TreeNode[];
-}
-
-function buildTree(accounts: readonly ChartAccount[]): TreeNode[] {
-  const nodes = new Map<string, TreeNode>(accounts.map((a) => [a.code, { account: a, depth: 0, children: [] }]));
-  const roots: TreeNode[] = [];
-
-  const parentOf = (code: string): TreeNode | undefined => {
-    const parts = code.split('.');
-    for (let i = parts.length - 1; i > 0; i--) {
-      const candidate = nodes.get(parts.slice(0, i).join('.'));
-      if (candidate) return candidate;
-    }
-    return undefined;
-  };
-
-  for (const node of nodes.values()) {
-    const parent = parentOf(node.account.code);
-    if (parent) parent.children.push(node);
-    else roots.push(node);
-  }
-
-  const sortAndDepth = (list: TreeNode[], depth: number) => {
-    list.sort((a, b) => a.account.code.localeCompare(b.account.code, undefined, { numeric: true }));
-    for (const n of list) {
-      n.depth = depth;
-      sortAndDepth(n.children, depth + 1);
-    }
-  };
-  sortAndDepth(roots, 0);
-  return roots;
-}
-
-/** Filtra a árvore mantendo os ancestrais de cada correspondência. */
-function filterTree(nodes: TreeNode[], term: string): TreeNode[] {
-  if (!term) return nodes;
-  const out: TreeNode[] = [];
-  for (const n of nodes) {
-    const children = filterTree(n.children, term);
-    const hit = `${n.account.code} ${n.account.name}`.toLowerCase().includes(term);
-    if (hit || children.length > 0) out.push({ ...n, children: hit && children.length === 0 ? n.children : children });
-  }
-  return out;
-}
-
-/** Próximo código disponível sob um pai (ex.: 4.1.02 → 4.1.02.004). */
-function suggestCode(parent: ChartAccount | undefined, accounts: readonly ChartAccount[]): string {
-  if (!parent) return '';
-  const prefix = `${parent.code}.`;
-  const siblings = accounts
-    .map((a) => a.code)
-    .filter((c) => c.startsWith(prefix) && !c.slice(prefix.length).includes('.'))
-    .map((c) => c.slice(prefix.length));
-  const width = siblings[0]?.length ?? (parent.code.split('.').length >= 3 ? 3 : 2);
-  let next = siblings.reduce((max, s) => Math.max(max, Number(s) || 0), 0) + 1;
-  // Evita colidir com códigos já usados como prefixo (ex.: 1.1.02 quando existe 1.1.02.001).
-  while (isCodeTaken(`${prefix}${String(next).padStart(width, '0')}`, accounts)) next++;
-  return `${prefix}${String(next).padStart(width, '0')}`;
-}
-
-/** Código ocupado: já existe ou é prefixo hierárquico de outra conta. */
-function isCodeTaken(code: string, accounts: readonly ChartAccount[], excludeId?: string): boolean {
-  return accounts.some((a) => a.id !== excludeId && (a.code === code || a.code.startsWith(`${code}.`)));
-}
-
-/* =========================================================================
-   Linha da árvore
-   ========================================================================= */
-
-interface TreeRowProps {
-  node: TreeNode;
-  expanded: (code: string) => boolean;
-  onToggle: (code: string) => void;
-  onEdit: (account: ChartAccount, hasChildren: boolean) => void;
-  onDelete: (account: ChartAccount) => void;
-  isAdmin: boolean;
-}
-
-function TreeRow({ node, expanded, onToggle, onEdit, onDelete, isAdmin }: TreeRowProps) {
-  const { account, depth, children } = node;
-  const hasChildren = children.length > 0;
-  const open = expanded(account.code);
-  const synthetic = account.nature === 'SYNTHETIC';
-  const canDelete = isAdmin && !synthetic && !hasChildren && account.clientId !== 'global';
-
-  return (
-    <>
-      <div
-        role="treeitem"
-        aria-level={depth + 1}
-        aria-selected={false}
-        aria-expanded={hasChildren ? open : undefined}
-        className={`group flex items-center gap-2 pr-3 border-b border-black/4 dark:border-white/5 ${
-          depth === 0 ? 'py-3 bg-stone-900/2 dark:bg-white/2' : 'py-2'
-        }`}
-        style={{ paddingLeft: 12 + depth * 22 }}
-      >
-        <button
-          type="button"
-          onClick={() => hasChildren && onToggle(account.code)}
-          aria-label={hasChildren ? (open ? `Recolher ${account.name}` : `Expandir ${account.name}`) : undefined}
-          tabIndex={hasChildren ? 0 : -1}
-          className={`w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-stone-400 ${
-            hasChildren ? 'hover:bg-black/5 active:scale-[0.92] transition-all duration-150' : 'invisible'
-          }`}
-        >
-          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />
-        </button>
-
-        <span className={`w-32 shrink-0 font-mono tabular-nums text-[12px] ${synthetic ? 'text-stone-500' : 'text-stone-400'}`}>
-          {account.code}
-        </span>
-        <span
-          className={`flex-1 min-w-0 truncate tracking-tight ${
-            depth === 0
-              ? 'text-[14px] font-semibold text-stone-900 dark:text-stone-50'
-              : synthetic
-                ? 'text-[13px] font-medium text-stone-800 dark:text-stone-200'
-                : 'text-[13px] text-stone-600 dark:text-stone-400'
-          }`}
-        >
-          {account.name}
-        </span>
-
-        <span className="flex items-center gap-1.5 shrink-0">
-          {account.isContra && (
-            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
-              Redutora
-            </span>
-          )}
-          {!synthetic && account.clientId === 'global' && (
-            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/[0.07] text-accent-ink border border-accent/25">
-              Compartilhada
-            </span>
-          )}
-        </span>
-
-        {/* Colunas de detalhe */}
-        <span className="block w-28 shrink-0 text-[12px] text-stone-500">
-          {depth === 0 ? (
-            <span className="font-medium text-stone-600 dark:text-stone-300">{TYPE_LABEL[account.type]}</span>
-          ) : synthetic ? (
-            'Sintética'
-          ) : (
-            <span className="inline-flex px-2 py-0.5 rounded-full bg-stone-900/5 dark:bg-white/8 text-stone-700 dark:text-stone-300">
-              Analítica
-            </span>
-          )}
-        </span>
-        <span className="block w-56 xl:w-64 shrink-0 truncate text-[12px] text-stone-500">
-          {!synthetic ? dreLabel(account) ?? <span className="text-stone-300 dark:text-stone-600">Patrimonial</span> : null}
-        </span>
-
-        <span className="w-16 shrink-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={() => onEdit(account, hasChildren)}
-            aria-label={`Editar ${account.name}`}
-            className="w-7 h-7 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all duration-150"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          {canDelete && (
-            <ConfirmButton
-              ariaLabel={`Excluir ${account.name}`}
-              label={<Trash2 className="w-3.5 h-3.5" />}
-              confirmLabel="Excluir"
-              onConfirm={() => onDelete(account)}
-            />
-          )}
-        </span>
-      </div>
-      {hasChildren &&
-        open &&
-        children.map((c) => (
-          <TreeRow
-            key={c.account.id}
-            node={c}
-            expanded={expanded}
-            onToggle={onToggle}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            isAdmin={isAdmin}
-          />
-        ))}
-    </>
-  );
-}
-
-/* =========================================================================
-   Sheet lateral "Nova conta"
-   ========================================================================= */
-
-interface NewAccountSheetProps {
-  accounts: ChartAccount[];
-  clientId: string;
-  onClose: () => void;
-  onCreated: () => void;
-}
-
-function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewAccountSheetProps) {
-  const parents = useMemo(() => accounts.filter((a) => a.nature === 'SYNTHETIC'), [accounts]);
-  const initialParent = useMemo(() => {
-    const analyticUnder = (p: ChartAccount) =>
-      accounts.filter((a) => a.nature === 'ANALYTIC' && RESULT_TYPES.has(a.type) && a.code.startsWith(`${p.code}.`)).length;
-    // Grupo mais específico (mais segmentos) entre os que concentram mais contas analíticas de resultado.
-    return [...parents].sort(
-      (x, y) => analyticUnder(y) - analyticUnder(x) || y.code.split('.').length - x.code.split('.').length
-    )[0];
-  }, [parents, accounts]);
-
-  const [parentId, setParentId] = useState<string>(initialParent?.id ?? '');
-  const [code, setCode] = useState(() => suggestCode(initialParent, accounts));
-  const [name, setName] = useState('');
-  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(() => inheritedDREGroup(initialParent, accounts));
-  const [saving, setSaving] = useState(false);
-
-  const parent = parents.find((p) => p.id === parentId);
-  const trimmed = code.trim();
-  const codeError = !trimmed
-    ? null
-    : isCodeTaken(trimmed, accounts)
-      ? 'Código já utilizado.'
-      : parent && !trimmed.startsWith(`${parent.code}.`)
-        ? `Deve começar com ${parent.code}.`
-        : null;
-  const valid = Boolean(parent && name.trim() && trimmed && !codeError);
-
-  const handleParent = (id: string) => {
-    const p = parents.find((x) => x.id === id);
-    setParentId(id);
-    setCode(suggestCode(p, accounts));
-    setDreGroup(inheritedDREGroup(p, accounts));
-  };
-
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const submit = async () => {
-    if (!parent || !valid) return;
-    setSaving(true);
-    setSaveError(null);
-    const now = new Date().toISOString();
-    try {
-      await saveAccount({
-        id: newAccountId(),
-        clientId,
-        code: trimmed,
-        name: name.trim(),
-        type: parent.type,
-        nature: 'ANALYTIC',
-        parentId: parent.id,
-        level: parent.level + 1,
-        dreGroup: dreGroup || undefined,
-        createdAt: now,
-        updatedAt: now,
-      });
-      onCreated();
-    } catch (e: unknown) {
-      setSaveError(`Não foi possível criar a conta (${describeError(e)}).`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Sheet
-      side="right"
-      title="Nova conta analítica"
-      subtitle="Contas analíticas recebem lançamentos na conciliação."
-      onClose={onClose}
-      footer={
-        <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
-          <button
-            type="button"
-            disabled={!valid || saving}
-            onClick={() => void submit()}
-            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
-          >
-            {saving ? 'Salvando…' : 'Criar conta'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4 pb-2">
-        <Field label="Conta superior">
-          <select value={parentId} onChange={(e) => handleParent(e.target.value)} className={INPUT}>
-            {parents.map((p) => (
-              <option key={p.id} value={p.id}>
-                {'\u00A0\u00A0'.repeat(p.code.split('.').length - 1)}
-                {p.code} · {p.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Código" error={codeError} hint={parent ? `Tipo herdado: ${TYPE_LABEL[parent.type]}` : undefined}>
-          <input value={code} onChange={(e) => setCode(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
-        </Field>
-
-        <Field label="Nome">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="ex.: Energia elétrica" className={INPUT} />
-        </Field>
-
-        {parent && RESULT_TYPES.has(parent.type) && (
-          <Field label="Grupo na DRE">
-            <select value={dreGroup} onChange={(e) => setDreGroup(e.target.value as DREGroup | '')} className={INPUT}>
-              <option value="">Não informado</option>
-              {DRE_GROUPS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-      </div>
-    </Sheet>
-  );
-}
-
-/* =========================================================================
-   Sheet lateral "Editar conta"
-   ========================================================================= */
-
-interface EditAccountSheetProps {
-  account: ChartAccount;
-  accounts: ChartAccount[];
-  hasChildren: boolean;
-  lockState: LockState | null;
-  lockedMonths: readonly string[];
-  onClose: () => void;
-  onSaved: (updated: ChartAccount) => void;
-}
-
-function EditAccountSheet({ account, accounts, hasChildren, lockState, lockedMonths, onClose, onSaved }: EditAccountSheetProps) {
-  const [code, setCode] = useState(account.code);
-  const [name, setName] = useState(account.name);
-  const [description, setDescription] = useState(account.description ?? '');
-  const [dreGroup, setDreGroup] = useState<DREGroup | ''>(account.dreGroup ?? '');
-  const [isContra, setIsContra] = useState(Boolean(account.isContra));
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const isGlobal = account.clientId === 'global';
-  const structuralFrozen = isFrozen(account, lockState);
-  const firstLockedMonth = !isGlobal ? lockedMonths[0] : undefined;
-  const synthetic = account.nature === 'SYNTHETIC';
-  const parent = account.parentId ? accounts.find((a) => a.id === account.parentId) : undefined;
-  const codeDisabled = structuralFrozen || hasChildren;
-  const trimmedCode = code.trim();
-  const codeError = codeDisabled
-    ? null
-    : !trimmedCode
-      ? 'Informe o código.'
-      : trimmedCode !== account.code && isCodeTaken(trimmedCode, accounts, account.id)
-        ? 'Código já utilizado.'
-        : parent && !trimmedCode.startsWith(`${parent.code}.`)
-          ? `Deve começar com ${parent.code}.`
-          : null;
-  const valid = Boolean(name.trim() && !codeError);
-
-  const hasLegacyGroup = Boolean(account.dreGroup && !DRE_LABEL.has(account.dreGroup));
-
-  const submit = async () => {
-    if (!valid) return;
-    setSaving(true);
-    setSaveError(null);
-    const now = new Date().toISOString();
-    const trimmedDesc = description.trim();
-    const next: ChartAccount = structuralFrozen
-      ? {
-          ...account,
-          name: name.trim(),
-          description: trimmedDesc || undefined,
-          updatedAt: now,
-        }
-      : {
-          ...account,
-          code: codeDisabled ? account.code : trimmedCode,
-          name: name.trim(),
-          description: trimmedDesc || undefined,
-          ...(!synthetic && RESULT_TYPES.has(account.type)
-            ? { dreGroup: (dreGroup || undefined) as DREGroup | undefined }
-            : {}),
-          ...(!synthetic ? { isContra: isContra ? true : undefined } : {}),
-          updatedAt: now,
-        };
-    try {
-      await saveAccount(next);
-      onSaved(next);
-    } catch (e: unknown) {
-      setSaveError(`Não foi possível salvar a conta (${describeError(e)}).`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Sheet
-      side="right"
-      title="Editar conta"
-      subtitle={`${account.code} · ${TYPE_LABEL[account.type]} · ${synthetic ? 'Sintética' : 'Analítica'}`}
-      onClose={onClose}
-      footer={
-        <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
-          <button
-            type="button"
-            disabled={!valid || saving}
-            onClick={() => void submit()}
-            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
-          >
-            {saving ? 'Salvando…' : 'Salvar alterações'}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4 pb-2">
-        {structuralFrozen && (
-          <div
-            role="status"
-            className="flex items-start gap-2.5 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-3.5 py-3 text-[12px] text-amber-900 dark:text-amber-200"
-          >
-            <Lock className="w-4 h-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
-            <div className="space-y-1">
-              <p>{frozenMessage('chart_of_accounts', { lockState, lockedMonths, isGlobal })}</p>
-              {firstLockedMonth && (
-                <Link href={`/?mes=${firstLockedMonth}`} onClick={onClose} className="inline-block font-medium text-accent-ink hover:underline">
-                  Ir para Conciliação →
-                </Link>
-              )}
-            </div>
-          </div>
-        )}
-
-        <Field label="Nome">
-          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
-        </Field>
-
-        <Field label="Descrição (opcional)">
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Nota interna sobre o uso desta conta"
-            className={INPUT}
-          />
-        </Field>
-
-        <Field
-          label="Código"
-          error={codeError}
-          hint={
-            hasChildren && !structuralFrozen
-              ? 'Contas com subcontas não podem ter o código alterado.'
-              : `Tipo: ${TYPE_LABEL[account.type]}`
-          }
-        >
-          <input
-            disabled={codeDisabled}
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className={`${INPUT} font-mono tabular-nums`}
-          />
-        </Field>
-
-        {!synthetic && RESULT_TYPES.has(account.type) && (
-          <Field label="Grupo na DRE">
-            <select
-              disabled={structuralFrozen}
-              value={dreGroup}
-              onChange={(e) => setDreGroup(e.target.value as DREGroup | '')}
-              className={INPUT}
-            >
-              <option value="">Não informado</option>
-              {hasLegacyGroup && account.dreGroup && (
-                <option value={account.dreGroup}>{dreLabel(account) ?? account.dreGroup}</option>
-              )}
-              {DRE_GROUPS.map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-
-        {!synthetic && (
-          <label
-            className={`flex items-start gap-2.5 rounded-xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[13px] ${
-              structuralFrozen ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
-            }`}
-          >
-            <input
-              type="checkbox"
-              disabled={structuralFrozen}
-              checked={isContra}
-              onChange={(e) => setIsContra(e.target.checked)}
-              className="mt-0.5 rounded border-stone-300 text-accent focus:ring-accent"
-            />
-            <span>
-              <span className="block font-medium text-stone-800 dark:text-stone-200">Conta redutora (retificadora)</span>
-              <span className="block text-[12px] text-stone-500">Inverte o sinal natural do grupo no balanço ou na DRE.</span>
-            </span>
-          </label>
-        )}
-      </div>
-    </Sheet>
-  );
-}
-
-/* =========================================================================
-   Página
-   ========================================================================= */
 
 export default function PlanoDeContasPage() {
   const { isAdmin } = useAuth();
   const { currentClient, refreshClients } = useClient();
   const clientId = currentClient?.id;
+  const chart = useChartOfAccounts(currentClient, refreshClients);
+  const { accounts, loadFailure, isLoading, isEmpty, missing, ignored, applying } = chart;
 
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [lockState, setLockState] = useState<LockState | null>(null);
-  const [locks, setLocks] = useState<PeriodLock[]>([]);
-  const [loadedFor, setLoadedFor] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
   const [editingTarget, setEditingTarget] = useState<{ account: ChartAccount; hasChildren: boolean } | null>(null);
-  const [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const load = useCallback(async (id: string) => {
-    const [list, state, periodLocks] = await Promise.all([getAccounts(id), getLockState(id), getPeriodLocks(id)]);
-    setAccounts(list);
-    setLockState(state);
-    setLocks(periodLocks);
-    setLoadedFor(id);
-  }, []);
-
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    Promise.all([getAccounts(clientId), getLockState(clientId), getPeriodLocks(clientId)])
-      .then(([list, state, periodLocks]) => {
-        if (!active) return;
-        setAccounts(list);
-        setLockState(state);
-        setLocks(periodLocks);
-        setLoadedFor(clientId);
-        setLoadError(null);
-      })
-      .catch((e: unknown) => {
-        reportError(e, { area: 'plano-de-contas', op: 'carregar' });
-        if (active) setLoadError({ id: clientId, message: e instanceof Error && e.message ? e.message : 'erro desconhecido' });
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-  const loadFailure = loadError && loadError.id === clientId ? loadError.message : null;
-  const lockedMonths = useMemo(() => locks.map((l) => l.month).sort(), [locks]);
 
   const tree = useMemo(() => buildTree(accounts), [accounts]);
   const term = search.trim().toLowerCase();
   const visible = useMemo(() => filterTree(tree, term), [tree, term]);
-
   const analyticCount = accounts.filter((a) => a.nature === 'ANALYTIC').length;
-  const isLoading = Boolean(clientId) && loadedFor !== clientId && !loadFailure;
-  // Carga que falhou não é plano vazio: não oferece o modelo por cima de dados que não foram lidos.
-  const isEmpty = !isLoading && !loadFailure && accounts.length === 0;
-  // Plano em uso: contas do modelo que ainda faltam (ex.: IBS e CBS, incluídas depois), menos as
-  // que o contador excluiu de propósito e mandou não oferecer mais.
-  const ignored = useMemo(() => new Set(currentClient?.ignoredTemplateCodes ?? []), [currentClient]);
-  const missing = useMemo(
-    () =>
-      clientId && loadedFor === clientId && !loadFailure && accounts.length > 0
-        ? missingTemplateAccounts(clientId, accounts).filter((a) => !ignored.has(a.code))
-        : [],
-    [clientId, loadedFor, loadFailure, accounts, ignored]
-  );
-  const missingCount = missing.length;
-  const [completeOpen, setCompleteOpen] = useState(false);
-
-  const addFromTemplate = async (codes: string[]) => {
-    if (!clientId) return;
-    setApplying(true);
-    try {
-      const created = await applyDefaultChartTemplate(clientId, codes);
-      await load(clientId);
-      setNotice(`${created} conta(s) do modelo de plano de contas (CFC) adicionada(s).`);
-      setCompleteOpen(false);
-    } catch (e: unknown) {
-      setNotice(`Não foi possível completar o plano (${describeError(e)}).`);
-    } finally {
-      setApplying(false);
-    }
-  };
-
-  const setIgnored = async (codes: string[]) => {
-    if (!currentClient) return;
-    setApplying(true);
-    try {
-      await saveClient({ ...currentClient, ignoredTemplateCodes: codes, updatedAt: new Date().toISOString() });
-      await refreshClients();
-      setNotice(codes.length ? `${codes.length} conta(s) do modelo não serão mais oferecidas para este cliente.` : 'As contas ignoradas voltam a ser oferecidas.');
-      setCompleteOpen(false);
-    } catch (e: unknown) {
-      setNotice(`Não foi possível gravar a escolha (${describeError(e)}).`);
-    } finally {
-      setApplying(false);
-    }
-  };
 
   const expanded = useCallback((code: string) => Boolean(term) || !collapsed[code], [collapsed, term]);
   const toggle = (code: string) => setCollapsed((prev) => ({ ...prev, [code]: !prev[code] }));
 
-  const handleDelete = async (account: ChartAccount) => {
-    try {
-      await deleteChartAccount(account);
-      if (clientId) await load(clientId);
-      setNotice(`Conta ${account.code} (${account.name}) excluída com sucesso.`);
-    } catch (e: unknown) {
-      setNotice(`Não foi possível excluir a conta ${account.code}: ${describeError(e)}`);
-    }
+  /** Mostra o aviso da gravação e, se deu certo, fecha a escolha de contas do modelo. */
+  const showResult = (result: ChartActionResult, closeCompletion = false) => {
+    setNotice(result.message);
+    if (result.ok && closeCompletion) setCompleteOpen(false);
   };
 
-  const handleApplyTemplate = async () => {
-    if (!clientId) return;
-    setApplying(true);
-    try {
-      const created = await applyDefaultChartTemplate(clientId);
-      await load(clientId);
-      setNotice(created > 0 ? `${created} contas do modelo de plano de contas (CFC) adicionadas.` : 'O plano já contém todas as contas do modelo.');
-    } catch (e: unknown) {
-      setNotice(`Não foi possível aplicar o modelo de plano de contas (${describeError(e)}).`);
-    } finally {
-      setApplying(false);
-    }
-  };
+  const applyFullTemplate = () => void chart.applyTemplate().then((r) => showResult(r));
 
   return (
     <main className={PAGE}>
@@ -737,12 +59,12 @@ export default function PlanoDeContasPage() {
         actions={
           <>
             {isEmpty && (
-              <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.secondary}>
+              <button type="button" onClick={applyFullTemplate} disabled={applying} className={BUTTON.secondary}>
                 <Wand2 className="w-4 h-4" strokeWidth={1.75} />
                 {applying ? 'Aplicando…' : 'Modelo de plano de contas (CFC)'}
               </button>
             )}
-            {!isEmpty && (missingCount > 0 || ignored.size > 0) && (
+            {!isEmpty && (missing.length > 0 || ignored.size > 0) && (
               <button
                 type="button"
                 onClick={() => setCompleteOpen(true)}
@@ -751,7 +73,7 @@ export default function PlanoDeContasPage() {
                 title="Escolha as contas do modelo que não estão no plano; as existentes não mudam"
               >
                 <Wand2 className="w-4 h-4" strokeWidth={1.75} />
-                {missingCount > 0 ? `Completar com o modelo (${missingCount})` : `Contas do modelo ignoradas (${ignored.size})`}
+                {missing.length > 0 ? `Completar com o modelo (${missing.length})` : `Contas do modelo ignoradas (${ignored.size})`}
               </button>
             )}
             <button type="button" onClick={() => setSheetOpen(true)} disabled={isEmpty || !clientId || Boolean(loadFailure)} className={BUTTON.primary}>
@@ -785,7 +107,7 @@ export default function PlanoDeContasPage() {
             title="Plano de contas vazio"
             description="Aplique o modelo de plano de contas do CFC (NBC TG 1002, Anexo 11), já amarrado à DRE."
             action={
-              <button type="button" onClick={() => void handleApplyTemplate()} disabled={applying} className={BUTTON.accent}>
+              <button type="button" onClick={applyFullTemplate} disabled={applying} className={BUTTON.accent}>
                 <Wand2 className="w-4 h-4" />
                 {applying ? 'Aplicando…' : 'Modelo de plano de contas (CFC)'}
               </button>
@@ -807,13 +129,13 @@ export default function PlanoDeContasPage() {
             </div>
             <div role="tree" aria-label="Plano de contas" className="[&>*:last-child]:border-b-0">
               {visible.map((n) => (
-                <TreeRow
+                <AccountTreeRow
                   key={n.account.id}
                   node={n}
                   expanded={expanded}
                   onToggle={toggle}
                   onEdit={(account, hasChildren) => setEditingTarget({ account, hasChildren })}
-                  onDelete={(a) => void handleDelete(a)}
+                  onDelete={(a) => void chart.deleteAccount(a).then((r) => showResult(r))}
                   isAdmin={isAdmin}
                 />
               ))}
@@ -827,9 +149,9 @@ export default function PlanoDeContasPage() {
           missing={missing}
           ignoredCount={ignored.size}
           busy={applying}
-          onAdd={addFromTemplate}
-          onIgnore={(codes) => setIgnored([...ignored, ...codes])}
-          onRestoreIgnored={() => setIgnored([])}
+          onAdd={(codes) => chart.applyTemplate(codes).then((r) => showResult(r, true))}
+          onIgnore={(codes) => chart.setIgnoredCodes([...ignored, ...codes]).then((r) => showResult(r, true))}
+          onRestoreIgnored={() => chart.setIgnoredCodes([]).then((r) => showResult(r, true))}
           onClose={() => setCompleteOpen(false)}
         />
       )}
@@ -841,7 +163,7 @@ export default function PlanoDeContasPage() {
           onClose={() => setSheetOpen(false)}
           onCreated={() => {
             setSheetOpen(false);
-            void load(clientId);
+            void chart.reload();
           }}
         />
       )}
@@ -851,13 +173,13 @@ export default function PlanoDeContasPage() {
           account={editingTarget.account}
           accounts={accounts}
           hasChildren={editingTarget.hasChildren}
-          lockState={lockState}
-          lockedMonths={lockedMonths}
+          lockState={chart.lockState}
+          lockedMonths={chart.lockedMonths}
           onClose={() => setEditingTarget(null)}
           onSaved={(updated) => {
             setEditingTarget(null);
             setNotice(`Conta ${updated.code} (${updated.name}) atualizada.`);
-            void load(clientId);
+            void chart.reload();
           }}
         />
       )}

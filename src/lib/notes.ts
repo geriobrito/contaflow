@@ -90,7 +90,7 @@ export function defaultNotes(
       enabled: true,
       text: `As demonstrações contábeis do exercício findo em ${end} foram elaboradas de acordo com a ${standard}, aprovada pelo Conselho Federal de Contabilidade (CFC), e compreendem ${
         small
-          ? 'o Balanço Patrimonial, a Demonstração do Resultado e a Demonstração de Lucros ou Prejuízos Acumulados [e as demais demonstrações apresentadas]'
+          ? 'o Balanço Patrimonial, a Demonstração do Resultado, a Demonstração de Lucros ou Prejuízos Acumulados e a Demonstração dos Fluxos de Caixa (método direto) [e as demais demonstrações apresentadas]'
           : 'o Balanço Patrimonial e a Demonstração do Resultado'
       }, acompanhadas destas notas. Os valores estão expressos em reais (R$).`,
     },

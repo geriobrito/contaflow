@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeftRight, ChevronDown, Lock, MessageCircleQuestion, Pencil, Split } from 'lucide-react';
+import { ArrowLeftRight, ChevronDown, Lock, MessageCircleQuestion, Pencil, ReceiptText, Split } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { isMonthLocked } from '@/lib/periods';
@@ -26,6 +26,8 @@ interface TransactionTableProps {
   onGoToPage: (page: number) => void;
   /** Mapa opcional `accountKey -> apelido` para identificar o banco/cartão quando há múltiplas contas. */
   bankNamesByKey?: ReadonlyMap<string, string>;
+  /** Nota fiscal casada (`match`, conta sugerida) ou já vinculada (`linked`) a cada lançamento. */
+  invoiceHints?: ReadonlyMap<string, 'match' | 'linked'>;
 }
 
 /** Tabela de lançamentos da conciliação: seleção, status, detalhe do rateio e paginação. */
@@ -45,6 +47,7 @@ export function TransactionTable({
   pageCount,
   onGoToPage,
   bankNamesByKey,
+  invoiceHints,
 }: TransactionTableProps) {
   const allSelected = rows.length > 0 && rows.every((t) => selectedIds.has(t.id));
   const someSelected = rows.some((t) => selectedIds.has(t.id));
@@ -147,6 +150,10 @@ export function TransactionTable({
                   <td className="px-3 py-3">
                     <span className="inline-flex items-center gap-1.5">
                       <StatusBadge status={t.status} />
+                      {invoiceHints?.get(t.id) === 'match' && (
+                        <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                      )}
+                      {invoiceHints?.get(t.id) === 'linked' && <ReceiptText role="img" aria-label="Nota fiscal vinculada" className="w-3.5 h-3.5 text-stone-400" />}
                       {t.transferPairId && <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600" />}
                       {t.clientQuery?.status === 'OPEN' && (
                         <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600" />

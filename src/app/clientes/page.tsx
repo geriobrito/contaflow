@@ -1,596 +1,29 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Download,
-  Loader2,
-  Pencil,
-  Plus,
-  Search,
-  Sparkles,
-  Trash2,
-  XCircle,
-} from 'lucide-react';
-import type { ClientCompany, CompanyPorte, TaxRegime } from '@/types/firestore';
-import type { CNPJLookupResult } from '@/lib/cnpj';
-import { saveClient } from '@/lib/services/data-service';
-import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
-import { useAuth } from '@/contexts/AuthContext';
+import { useMemo, useState } from 'react';
+import { Check, Plus } from 'lucide-react';
+import type { ClientCompany } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
-import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
-import { newClientId } from '@/lib/utils/id';
-import { fieldsKeptOutsideForm } from '@/lib/client-record';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { filterClients } from '@/lib/client-record';
+import { useClientMaintenance } from '@/hooks/clientes/useClientMaintenance';
+import { ClientCard } from '@/components/clientes/ClientCard';
+import { ClientSheet } from '@/components/clientes/ClientSheet';
+import { DeleteClientSheet } from '@/components/clientes/DeleteClientSheet';
+import { BUTTON, EmptyState, PAGE, PageHeader, SearchField } from '@/components/ui/primitives';
 import { CardsSkeleton } from '@/components/ui/Skeleton';
-import { reportError } from '@/lib/monitoring';
 
-const REGIMES: readonly { value: TaxRegime; label: string; short: string }[] = [
-  { value: 'SIMPLES_NACIONAL', label: 'Simples Nacional', short: 'Simples' },
-  { value: 'LUCRO_PRESUMIDO', label: 'Lucro Presumido', short: 'Presumido' },
-  { value: 'LUCRO_REAL', label: 'Lucro Real', short: 'Real' },
-  { value: 'MEI', label: 'MEI', short: 'MEI' },
-];
-
-const regimeLabel = (r: TaxRegime) => REGIMES.find((x) => x.value === r)?.label ?? r;
-
-const PORTES: readonly CompanyPorte[] = ['MICROENTIDADE', 'PEQUENA_EMPRESA'];
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter((w) => w.length > 2)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
-}
-
-/* =========================================================================
-   Cartão de cliente (Apple Card)
-   ========================================================================= */
-
-interface ClientCardProps {
-  client: ClientCompany;
-  active: boolean;
-  onActivate: () => void;
-  onEdit: () => void;
-  /** Baixa o backup (JSON) com todos os dados da empresa. */
-  onBackup: () => void;
-  backingUp: boolean;
-  /** Abre a confirmação de exclusão (que oferece o backup antes). */
-  onAskDelete: () => void;
-  /** Retoma uma exclusão que parou no meio. */
-  onDelete: () => Promise<void>;
-  deleting: boolean;
-}
-
-function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, onAskDelete, onDelete, deleting }: ClientCardProps) {
-  const regime = client.regime ?? client.taxRegime;
-  // A exclusão apaga os dados em vários lotes; se parou no meio, a empresa fica só para ser retomada.
-  if (client.deletingAt) {
-    return (
-      <article className="relative flex flex-col rounded-[22px] p-5 border border-amber-200/70 bg-amber-50/70 dark:bg-amber-950/20 dark:border-amber-900/40">
-        <h3 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50 truncate">{client.tradeName || client.name}</h3>
-        <p className="mt-1 text-[12px] font-medium text-amber-800 dark:text-amber-300">Exclusão incompleta</p>
-        <p className="mt-2 text-[12px] text-stone-600 dark:text-stone-300">
-          A exclusão desta empresa começou e não terminou; parte dos dados já foi apagada. Retome para concluir.
-        </p>
-        <div className="mt-4 pt-4 border-t border-amber-200/60 dark:border-amber-900/40 flex justify-end">
-          {deleting ? (
-            <span className="px-2 text-[12px] text-stone-500">Excluindo…</span>
-          ) : (
-            <button type="button" onClick={() => void onDelete()} className={`${BUTTON.secondary} h-8 px-3 whitespace-nowrap`}>
-              <Trash2 className="w-3.5 h-3.5" /> Retomar exclusão
-            </button>
-          )}
-        </div>
-      </article>
-    );
-  }
-  return (
-    <article
-      className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
-        active
-          ? 'bg-white dark:bg-stone-900 border-accent/30 shadow-[0_0_0_4px_rgba(181,85,47,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
-          : 'bg-white/70 dark:bg-stone-900/60 border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <span
-          className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center text-[13px] font-semibold tracking-tight ${
-            active ? 'bg-accent text-white' : 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
-          }`}
-        >
-          {initials(client.tradeName || client.name) || '—'}
-        </span>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50 truncate">
-            {client.tradeName || client.name}
-          </h3>
-          <p className="text-[12px] text-stone-500 truncate">{client.name}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Editar ${client.name}`}
-          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 active:scale-[0.94] transition-all duration-150"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <dl className="mt-5 grid grid-cols-2 gap-3 text-[12px]">
-        <div className="min-w-0">
-          <dt className="text-stone-400">CNPJ</dt>
-          <dd className="mt-0.5 font-mono tabular-nums text-stone-800 dark:text-stone-200 truncate">{formatCNPJ(client.cnpj)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-stone-400">Regime</dt>
-          <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{regimeLabel(regime)}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-stone-400">Porte</dt>
-          <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{PORTE_LABEL[porteOf(client)]}</dd>
-        </div>
-        {client.city && (
-          <div className="min-w-0">
-            <dt className="text-stone-400">Município</dt>
-            <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{client.city}</dd>
-          </div>
-        )}
-      </dl>
-
-      <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/6 flex items-center justify-between gap-3">
-        {active ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 text-emerald-700 border-emerald-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Ativo
-          </span>
-        ) : (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-stone-50 dark:bg-stone-800 text-stone-500 border-stone-200/60 dark:border-stone-700">
-            Disponível
-          </span>
-        )}
-        <div className="flex items-center gap-1">
-          {!active && (
-            <button type="button" onClick={onActivate} className={`${BUTTON.ghost} h-8 px-3 whitespace-nowrap text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14]`}>
-              Definir como ativo
-            </button>
-          )}
-          <button
-            type="button"
-            disabled={backingUp}
-            onClick={onBackup}
-            aria-label={`Baixar backup de ${client.tradeName || client.name}`}
-            title="Baixar backup (JSON) com todos os dados da empresa"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
-          >
-            <Download className={`w-3.5 h-3.5 ${backingUp ? 'animate-pulse' : ''}`} />
-          </button>
-          {deleting ? (
-            <span className="px-2 text-[12px] text-stone-400">Excluindo…</span>
-          ) : (
-            <button
-              type="button"
-              onClick={onAskDelete}
-              aria-label={`Excluir ${client.tradeName || client.name} e todos os seus dados`}
-              className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.94] transition-all duration-150"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/* =========================================================================
-   Sheet de cadastro / edição
-   ========================================================================= */
-
-interface ClientSheetProps {
-  client: ClientCompany | null;
-  onClose: () => void;
-  onSaved: (client: ClientCompany) => void;
-}
-
-function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
-  const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
-  const [name, setName] = useState(client?.name ?? '');
-  const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
-  const [city, setCity] = useState(client?.city ?? '');
-  const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
-  const [porte, setPorte] = useState<CompanyPorte>(porteOf(client));
-  const [email, setEmail] = useState(client?.email ?? '');
-  const [phone, setPhone] = useState(client?.phone ?? '');
-  const [repName, setRepName] = useState(client?.legalRepresentativeName ?? '');
-  const [repCpf, setRepCpf] = useState(client?.legalRepresentativeCpf ? maskCPF(client.legalRepresentativeCpf) : '');
-  const [saving, setSaving] = useState(false);
-
-  const [lookupLoading, setLookupLoading] = useState(false);
-  const [lookupNotice, setLookupNotice] = useState<{ kind: 'ok' | 'warn' | 'info'; text: string } | null>(null);
-  const lastAutoQueriedRef = useRef<string | null>(client ? cleanCNPJ(client.cnpj) : null);
-  const abortRef = useRef<AbortController | null>(null);
-  const { user, isMockAuth } = useAuth();
-
-  const cnpjChars = cleanCNPJ(cnpj);
-  const complete = cnpjChars.length === 14;
-  const cnpjValid = complete && isValidCNPJ(cnpjChars);
-  // Registros legados com CNPJ inválido podem ser salvos sem alterar o documento.
-  const cnpjUnchanged = Boolean(client) && cnpjChars === cleanCNPJ(client?.cnpj ?? '');
-  const cnpjError = complete && !cnpjValid ? 'CNPJ inválido: dígitos verificadores não conferem.' : null;
-  const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
-  const cpfDigits = cleanDigits(repCpf);
-  const cpfError = cpfDigits && !(cpfDigits.length === 11 && isValidCPF(cpfDigits)) ? 'CPF inválido.' : null;
-  const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError && !cpfError;
-
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  const lookupCNPJ = useCallback(async (targetCnpj: string, overwriteFilled: boolean) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    setLookupLoading(true);
-    setLookupNotice(null);
-    try {
-      // A rota só atende usuário logado (ID token do Firebase); o modo local não tem token.
-      const token = isMockAuth ? null : await user?.getIdToken();
-      const response = await fetch(`/api/cnpj/${encodeURIComponent(targetCnpj)}`, {
-        signal: controller.signal,
-        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        setLookupNotice({
-          kind: 'info',
-          text: body?.error || 'Consulta automática indisponível — preencha os campos manualmente.',
-        });
-        return;
-      }
-
-      const data = (await response.json()) as CNPJLookupResult;
-      setName((prev) => (overwriteFilled || !prev.trim() ? data.name || prev : prev));
-      if (data.tradeName) {
-        setTradeName((prev) => (overwriteFilled || !prev.trim() ? data.tradeName! : prev));
-      }
-      if (data.city) {
-        setCity((prev) => (overwriteFilled || !prev.trim() ? data.city! : prev));
-      }
-      if (data.regime) {
-        setRegime(data.regime);
-      }
-      if (data.porte) {
-        setPorte(data.porte);
-      }
-      if (data.email) {
-        setEmail((prev) => (overwriteFilled || !prev.trim() ? data.email! : prev));
-      }
-      if (data.phone) {
-        setPhone((prev) => (overwriteFilled || !prev.trim() ? data.phone! : prev));
-      }
-      if (data.legalRepresentativeName) {
-        setRepName((prev) => (overwriteFilled || !prev.trim() ? data.legalRepresentativeName! : prev));
-      }
-
-      const sit = data.situacaoCadastral;
-      const isInactive = Boolean(sit && sit.toUpperCase() !== 'ATIVA');
-      setLookupNotice({
-        kind: isInactive ? 'warn' : 'ok',
-        text: isInactive
-          ? `Dados preenchidos · Atenção: situação cadastral "${sit}" na Receita Federal.`
-          : 'Dados preenchidos automaticamente via cadastro público do CNPJ.',
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
-      setLookupNotice({
-        kind: 'info',
-        text: 'Sem conexão com a consulta pública — preencha os dados manualmente.',
-      });
-    } finally {
-      if (abortRef.current === controller) {
-        setLookupLoading(false);
-      }
-    }
-  }, [isMockAuth, user]);
-
-  // Dispara a busca automaticamente ao completar 14 caracteres válidos de um novo CNPJ
-  useEffect(() => {
-    if (!cnpjValid) return;
-    if (lastAutoQueriedRef.current === cnpjChars) return;
-    lastAutoQueriedRef.current = cnpjChars;
-    void lookupCNPJ(cnpjChars, false);
-  }, [cnpjValid, cnpjChars, lookupCNPJ]);
-
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
-
-  const submit = async () => {
-    if (!valid) return;
-    setSaving(true);
-    setSaveError(null);
-    const now = new Date().toISOString();
-    const saved: ClientCompany = {
-      id: client?.id ?? newClientId(),
-      name: name.trim(),
-      tradeName: tradeName.trim() || undefined,
-      cnpj: formatCNPJ(cnpjChars),
-      city: city.trim() || undefined,
-      regime,
-      taxRegime: regime,
-      porte,
-      // Dados gravados fora deste formulário (Plano de Contas, Livro Diário) seguem com o cadastro.
-      ...fieldsKeptOutsideForm(client),
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
-      legalRepresentativeName: repName.trim() || undefined,
-      legalRepresentativeCpf: cpfDigits ? maskCPF(cpfDigits) : undefined,
-      createdAt: client?.createdAt ?? now,
-      updatedAt: now,
-    };
-    try {
-      await saveClient(saved);
-      onSaved(saved);
-    } catch (e: unknown) {
-      setSaveError(`Não foi possível salvar o cliente (${e instanceof Error ? e.message : 'erro desconhecido'}).`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Sheet
-      title={client ? 'Editar cliente' : 'Novo cliente'}
-      subtitle={client ? client.name : 'Digite o CNPJ para preencher automaticamente ou informe os dados abaixo.'}
-      onClose={onClose}
-      footer={
-        <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
-          <button
-            type="button"
-            disabled={!valid || saving}
-            onClick={() => void submit()}
-            className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}
-          >
-            {saving ? 'Salvando…' : client ? 'Salvar alterações' : 'Cadastrar cliente'}
-          </button>
-        </>
-      }
-    >
-      <form
-        className="space-y-4 pb-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void submit();
-        }}
-      >
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between px-0.5">
-            <label htmlFor="client-cnpj" className="text-[12px] font-medium text-stone-500">
-              CNPJ
-            </label>
-            {cnpjValid && (
-              <button
-                type="button"
-                disabled={lookupLoading}
-                onClick={() => void lookupCNPJ(cnpjChars, true)}
-                className="inline-flex items-center gap-1 text-[12px] font-medium text-accent-ink hover:underline disabled:opacity-50"
-              >
-                {lookupLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}
-                {client ? 'Atualizar pela Receita' : 'Consultar Receita'}
-              </button>
-            )}
-          </div>
-          <div className="relative">
-            <input
-              id="client-cnpj"
-              autoFocus={!client}
-              autoCapitalize="characters"
-              autoComplete="off"
-              spellCheck={false}
-              value={cnpj}
-              onChange={(e) => {
-                setCnpj(maskCNPJ(e.target.value));
-                if (lookupNotice) setLookupNotice(null);
-              }}
-              placeholder="00.000.000/0000-00"
-              aria-invalid={Boolean(cnpjError)}
-              className={`${INPUT} pr-10 font-mono tabular-nums ${
-                cnpjError ? 'border-rose-300 focus:border-rose-400 focus:shadow-[0_0_0_4px_rgba(225,29,72,0.10)]' : ''
-              } ${cnpjValid ? 'border-emerald-300' : ''}`}
-            />
-            {lookupLoading ? (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="w-4 h-4 animate-spin text-accent-ink" />
-              </span>
-            ) : (
-              complete && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 animate-pop-in">
-                  {cnpjValid ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-rose-500" />}
-                </span>
-              )
-            )}
-          </div>
-          {cnpjError && <p className="text-[12px] text-rose-600 px-0.5">{cnpjError}</p>}
-          {!cnpjError && lookupLoading && (
-            <p className="text-[12px] text-stone-500 px-0.5">Consultando dados cadastrais do CNPJ…</p>
-          )}
-          {!cnpjError && !lookupLoading && lookupNotice && (
-            <p
-              className={`flex items-center gap-1.5 text-[12px] px-0.5 ${
-                lookupNotice.kind === 'ok'
-                  ? 'text-emerald-700 dark:text-emerald-400'
-                  : lookupNotice.kind === 'warn'
-                    ? 'text-amber-700 dark:text-amber-400'
-                    : 'text-stone-500'
-              }`}
-            >
-              {lookupNotice.kind === 'ok' && <Sparkles className="w-3.5 h-3.5 shrink-0" />}
-              {lookupNotice.kind === 'warn' && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
-              <span>{lookupNotice.text}</span>
-            </p>
-          )}
-        </div>
-
-        <Field label="Razão social">
-          <input autoFocus={Boolean(client)} value={name} onChange={(e) => setName(e.target.value)} className={INPUT} />
-        </Field>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field label="Nome fantasia" hint="Opcional">
-            <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className={INPUT} />
-          </Field>
-          <Field label="Município/UF" hint="Opcional">
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="ex.: Recife/PE" className={INPUT} />
-          </Field>
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="block text-[12px] font-medium text-stone-500 px-0.5">Regime tributário</span>
-          <div className="overflow-x-auto">
-            <SegmentedControl
-              ariaLabel="Regime tributário"
-              value={regime}
-              onChange={setRegime}
-              options={REGIMES.map((r) => ({ value: r.value, label: r.short }))}
-            />
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <span className="block text-[12px] font-medium text-stone-500 px-0.5">Porte contábil</span>
-          <div className="overflow-x-auto">
-            <SegmentedControl
-              ariaLabel="Porte contábil"
-              value={porte}
-              onChange={setPorte}
-              options={PORTES.map((p) => ({ value: p, label: PORTE_LABEL[p] }))}
-            />
-          </div>
-          <p className="text-[11px] text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="E-mail" error={emailError}>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} />
-          </Field>
-          <Field label="Telefone">
-            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className={INPUT} />
-          </Field>
-        </div>
-
-        <div className="pt-2 space-y-1">
-          <span className="block text-[13px] font-semibold text-stone-800 dark:text-stone-200 px-0.5">Representante legal</span>
-          <p className="text-[12px] text-stone-400 px-0.5">Assina a DRE exportada (PDF e Excel) ao lado do contador.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Nome do representante" hint="Opcional">
-            <input value={repName} onChange={(e) => setRepName(e.target.value)} className={INPUT} />
-          </Field>
-          <Field label="CPF do representante" hint="Opcional" error={cpfError}>
-            <input
-              value={repCpf}
-              onChange={(e) => setRepCpf(maskCPF(e.target.value))}
-              placeholder="000.000.000-00"
-              aria-invalid={Boolean(cpfError)}
-              className={`${INPUT} font-mono tabular-nums`}
-            />
-          </Field>
-        </div>
-        <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
-      </form>
-    </Sheet>
-  );
-}
-
-/* =========================================================================
-   Confirmação de exclusão (com backup antes)
-   ========================================================================= */
-
-interface DeleteClientSheetProps {
-  client: ClientCompany;
-  backingUp: boolean;
-  /** Baixa o backup; devolve se deu certo. */
-  onBackup: () => Promise<boolean>;
-  onClose: () => void;
-  onConfirm: () => void;
-}
-
-function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConfirm }: DeleteClientSheetProps) {
-  const [saved, setSaved] = useState(false);
-  const [armed, setArmed] = useState(false);
-
-  return (
-    <Sheet
-      title="Excluir empresa"
-      subtitle={client.tradeName || client.name}
-      onClose={onClose}
-      footer={
-        <button
-          type="button"
-          disabled={backingUp}
-          onClick={() => (armed ? onConfirm() : setArmed(true))}
-          className={`w-full h-12 rounded-2xl text-[15px] font-medium text-white transition-all active:scale-[0.98] disabled:opacity-40 ${armed ? 'bg-rose-700' : 'bg-rose-600 hover:bg-rose-700'}`}
-        >
-          {armed ? 'Toque de novo para excluir definitivamente' : 'Excluir empresa e todos os dados'}
-        </button>
-      }
-    >
-      <div className="space-y-4 pb-2 text-[13px] text-stone-600 dark:text-stone-300">
-        <p className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 border border-rose-200/60">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>
-            A exclusão não tem volta: apaga lançamentos, extratos, regras, plano de contas, contas bancárias, saldos de abertura, lançamentos
-            manuais, fechamentos e pendências desta empresa. Só a trilha de auditoria é preservada.
-          </span>
-        </p>
-        <p>Antes de excluir, guarde uma cópia: o backup reúne todos esses dados num arquivo JSON.</p>
-        <button
-          type="button"
-          disabled={backingUp}
-          onClick={() => void onBackup().then((ok) => ok && setSaved(true))}
-          className={`${BUTTON.secondary} w-full`}
-        >
-          {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Download className="w-4 h-4" />}
-          {backingUp ? 'Gerando backup…' : saved ? 'Backup baixado · baixar de novo' : 'Baixar backup (JSON)'}
-        </button>
-        {!saved && <p className="text-[12px] text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}
-      </div>
-    </Sheet>
-  );
-}
-
-/* =========================================================================
-   Página
-   ========================================================================= */
+const GRID = 'grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6';
 
 export default function ClientesPage() {
   const { clients, currentClient, selectClient, refreshClients, removeClient, isLoading } = useClient();
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { backingUpId, deletingId, exportBackup, deleteClient } = useClientMaintenance(removeClient);
   const [confirmDelete, setConfirmDelete] = useState<ClientCompany | null>(null);
-  const [backingUpId, setBackingUpId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ClientCompany | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const visible = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    // Só busca por CNPJ quando o termo tem algum dígito: nomes ("alpha") não casam com CNPJ alfanumérico.
-    const doc = /\d/.test(term) ? cleanCNPJ(term) : '';
-    return clients.filter(
-      (c) =>
-        !term ||
-        c.name.toLowerCase().includes(term) ||
-        (c.tradeName?.toLowerCase().includes(term) ?? false) ||
-        (doc.length > 0 && cleanCNPJ(c.cnpj).includes(doc))
-    );
-  }, [clients, search]);
+  const visible = useMemo(() => filterClients(clients, search), [clients, search]);
 
   const openNew = () => {
     setEditing(null);
@@ -602,43 +35,15 @@ export default function ClientesPage() {
     setTimeout(() => setToast((t) => (t === message ? null : t)), 2800);
   };
 
-  /** Lê todos os dados da empresa e baixa o arquivo. As bibliotecas só são carregadas aqui. */
-  const exportBackup = async (client: ClientCompany): Promise<boolean> => {
-    const label = client.tradeName || client.name;
-    setBackingUpId(client.id);
-    try {
-      const [{ buildClientBackup, backupBlob, backupFileName }, { downloadBlob }] = await Promise.all([
-        import('@/lib/export/client-backup'),
-        import('@/lib/export/dre-rows'),
-      ]);
-      const backup = await buildClientBackup(client);
-      downloadBlob(backupBlob(backup), backupFileName(client, backup.exportedAt));
-      flash(
-        `Backup de ${label} baixado · ${backup.transactions.length} lançamento(s)${backup.auditTruncated ? ' · auditoria parcial (só os registros mais recentes)' : ''}`
-      );
-      return true;
-    } catch (e) {
-      reportError(e, { area: 'clientes', op: 'backup' });
-      flash(`Não foi possível gerar o backup de ${label} (${e instanceof Error && e.message ? e.message : 'erro'}).`);
-      return false;
-    } finally {
-      setBackingUpId(null);
-    }
+  const backup = async (client: ClientCompany): Promise<boolean> => {
+    const result = await exportBackup(client);
+    flash(result.message);
+    return result.ok;
   };
 
   const handleDelete = async (client: ClientCompany) => {
-    const label = client.tradeName || client.name;
     setConfirmDelete(null);
-    setDeletingId(client.id);
-    try {
-      await removeClient(client.id);
-      flash(`${label} excluído com seus lançamentos, regras e contas`);
-    } catch (e) {
-      reportError(e, { area: 'clientes', op: 'excluir' });
-      flash(`Não foi possível concluir a exclusão (${e instanceof Error && e.message ? e.message : 'erro'}). Retome pelo cartão da empresa.`);
-    } finally {
-      setDeletingId(null);
-    }
+    flash((await deleteClient(client)).message);
   };
 
   const handleSaved = async (client: ClientCompany) => {
@@ -671,7 +76,7 @@ export default function ClientesPage() {
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por razão social, nome fantasia ou CNPJ" />
 
       {isLoading ? (
-        <CardsSkeleton count={3} className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6" label="Carregando clientes…" />
+        <CardsSkeleton count={3} className={GRID} label="Carregando clientes…" />
       ) : visible.length === 0 ? (
         <div className="rounded-[22px] border border-dashed border-black/10">
           <EmptyState
@@ -688,7 +93,7 @@ export default function ClientesPage() {
           />
         </div>
       ) : (
-        <div className="grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6">
+        <div className={GRID}>
           {visible.map((c) => (
             <ClientCard
               key={c.id}
@@ -700,9 +105,9 @@ export default function ClientesPage() {
               }}
               deleting={deletingId === c.id}
               backingUp={backingUpId === c.id}
-              onBackup={() => void exportBackup(c)}
+              onBackup={() => void backup(c)}
               onAskDelete={() => setConfirmDelete(c)}
-              onDelete={() => handleDelete(c)}
+              onDelete={() => void handleDelete(c)}
               onEdit={() => {
                 setEditing(c);
                 setSheetOpen(true);
@@ -729,7 +134,7 @@ export default function ClientesPage() {
           key={confirmDelete.id}
           client={confirmDelete}
           backingUp={backingUpId === confirmDelete.id}
-          onBackup={() => exportBackup(confirmDelete)}
+          onBackup={() => backup(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => void handleDelete(confirmDelete)}
         />

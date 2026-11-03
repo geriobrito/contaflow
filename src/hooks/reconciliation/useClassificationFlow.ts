@@ -87,8 +87,9 @@ export function useClassificationFlow({
       return next;
     });
 
-  const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => {
-    if (!selected) return;
+  /** Devolve se a classificação foi gravada. */
+  const handleConfirm = async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType): Promise<boolean> => {
+    if (!selected) return false;
     try {
       const { propagated, undo: plan } = await classifyTransaction(selected.id, accountId, {
         learnRule,
@@ -98,8 +99,10 @@ export function useClassificationFlow({
       setSelected(null);
       const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
       offerUndo(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb, plan);
+      return true;
     } catch {
       /* erro exposto pelo hook */
+      return false;
     }
   };
 

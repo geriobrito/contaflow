@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
-import type { BankAccount, ChartAccount, ReconciliationStatus } from '@/types/firestore';
+import type { BankAccount, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
 import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
 import { useImportFlow } from '@/hooks/reconciliation/useImportFlow';
+import { useInvoiceMatches } from '@/hooks/reconciliation/useInvoiceMatches';
 import { usePagination } from '@/hooks/usePagination';
 import { useTableKeyboard } from '@/hooks/useTableKeyboard';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -174,6 +175,20 @@ export default function ConciliacaoPage() {
     notify: (message, action) => setToast(action ? { message, action } : message),
   });
   const { selected } = flow;
+
+  // Notas fiscais importadas: casam com os lançamentos e sugerem a conta (src/lib/nfe/match.ts).
+  const invoices = useInvoiceMatches({ clientId, range, transactions, accounts });
+  const invoiceHints = useMemo(() => {
+    const map = new Map<string, 'match' | 'linked'>();
+    for (const id of invoices.linked.keys()) map.set(id, 'linked');
+    for (const id of invoices.matches.keys()) map.set(id, 'match');
+    return map;
+  }, [invoices.matches, invoices.linked]);
+  const confirmClassification = async (accountId: string, learnRule: boolean, pattern: string, matchType: RuleMatchType, invoiceId?: string) => {
+    const txId = selected?.id;
+    const saved = await flow.handleConfirm(accountId, learnRule, pattern, matchType);
+    if (saved && txId && invoiceId) await invoices.link(txId, invoiceId, accountId);
+  };
 
   /* ── Lista: filtro por conta, status, busca, visão por favorecido e paginação ── */
   const bankNamesByKey = useMemo(() => {
@@ -500,6 +515,7 @@ export default function ConciliacaoPage() {
             pageCount={pageCount}
             onGoToPage={goToPage}
             bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNamesByKey : undefined}
+            invoiceHints={invoiceHints}
           />
         )}
       </section>
@@ -511,7 +527,7 @@ export default function ConciliacaoPage() {
           accounts={accounts}
           isSaving={isSaving}
           onClose={flow.closeTransaction}
-          onConfirm={flow.handleConfirm}
+          onConfirm={confirmClassification}
           onSplit={flow.handleSplit}
           onUnreconcile={flow.handleUnreconcile}
           rules={rules}
@@ -519,6 +535,8 @@ export default function ConciliacaoPage() {
           lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
           loadAudit={() => loadAudit(selected.id)}
           onAskClient={flow.handleAskClient}
+          invoiceMatch={selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id)}
+          linkedInvoice={invoices.linked.get(selected.id)}
         />
       )}
 

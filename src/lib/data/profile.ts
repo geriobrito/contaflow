@@ -1,4 +1,5 @@
-import { doc, getDoc, setDoc, type Firestore } from 'firebase/firestore';
+import { doc, setDoc, type Firestore } from 'firebase/firestore';
+import { getDoc } from '@/lib/data/counted-reads';
 import type { UserProfile, UserRole } from '@/types/firestore';
 
 export interface UserAccess {

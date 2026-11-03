@@ -113,6 +113,13 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await page.getByRole('button', { name: 'Modelo de plano de contas (CFC)' }).first().click();
     await expect(page.getByText(/contas do modelo de plano de contas \(CFC\) adicionadas/)).toBeVisible();
     await expect(page.getByRole('tree', { name: 'Plano de contas' })).toBeVisible();
+    // A atividade na DFC vem do modelo e pode ser trocada na edição da conta.
+    await page.getByRole('button', { name: 'Editar Aluguéis e Condomínios' }).click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.getByLabel('Atividade na DFC')).toHaveValue('');
+    await expect(sheet.getByRole('option', { name: 'Padrão: Operacional' })).toBeAttached();
+    await sheet.getByRole('button', { name: 'Fechar' }).first().click();
+    await expect(sheet).toBeHidden();
   });
 
   await test.step('importação do extrato OFX', async () => {
@@ -173,6 +180,25 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     const closing = page.getByRole('region', { name: 'Encerramento do exercício' });
     await expect(closing.getByText(/Feche a competência de dezembro/)).toBeVisible();
     await expect(closing.getByRole('button', { name: 'Encerrar exercício' })).toBeDisabled();
+  });
+
+  await test.step('DFC pelo método direto', async () => {
+    await page.getByRole('radio', { name: 'DFC' }).click();
+    await expect(page.getByRole('heading', { name: 'Fluxos de caixa', exact: true })).toBeVisible();
+    const dfc = page.getByRole('region', { name: 'Demonstração dos fluxos de caixa' });
+    await expect(dfc.getByRole('row', { name: /Recebimentos de clientes.*5\.000,00/ })).toBeVisible();
+    await expect(dfc.getByRole('row', { name: /Pagamentos de despesas operacionais.*1\.200,00/ })).toBeVisible();
+    await expect(dfc.getByRole('row', { name: /Juros e despesas financeiras pagos.*32,50/ })).toBeVisible();
+    await expect(dfc.getByRole('row', { name: /Caixa líquido gerado pelas atividades operacionais.*3\.767,50/ })).toBeVisible();
+    await expect(dfc.getByRole('row', { name: /no fim do período.*3\.767,50/ })).toBeVisible();
+    await expect(dfc.getByText(/confere com o saldo das contas de caixa/)).toBeVisible();
+    // Detalhe por conta: a contrapartida aparece sob a linha.
+    await dfc.getByLabel('Detalhar por conta').check();
+    await expect(dfc.getByRole('row', { name: /3\.3\.2\.07.*Aluguéis e Condomínios/ })).toBeVisible();
+    await page.screenshot({ path: 'test-results/dfc.png', fullPage: true });
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'PDF Oficial' }).click();
+    expect((await download).suggestedFilename()).toMatch(/^DFC_.*\.pdf$/);
   });
 
   await test.step('Balancete: filtro do encerramento (ARE)', async () => {

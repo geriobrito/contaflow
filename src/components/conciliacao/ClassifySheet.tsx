@@ -2,7 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Lock, MessageCircleQuestion, X } from 'lucide-react';
-import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
+import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, InvoiceSummary, RuleMatchType } from '@/types/firestore';
+import type { InvoiceMatch } from '@/lib/nfe/match';
+import { InvoiceMatchCard, LinkedInvoiceNote } from '@/components/conciliacao/InvoiceMatchCard';
 import { normalizePattern } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SegmentedControl } from '@/components/ui/primitives';
@@ -25,7 +27,8 @@ interface ClassifySheetProps {
   accounts: ChartAccount[];
   isSaving: boolean;
   onClose: () => void;
-  onConfirm: (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => Promise<void>;
+  /** `invoiceId`: nota fiscal confirmada como documento do lançamento (casamento aceito). */
+  onConfirm: (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType, invoiceId?: string) => Promise<void>;
   onSplit: (drafts: SplitDraft[]) => Promise<void>;
   onUnreconcile: () => Promise<void>;
   /** Regras do cliente, para pré-carregar o termo da regra que originou o lançamento. */
@@ -38,6 +41,10 @@ interface ClassifySheetProps {
   memoPool?: readonly string[];
   /** Registra (texto) ou remove (vazio) a pergunta ao cliente. Sem a prop, a aba não aparece. */
   onAskClient?: (question: string) => Promise<void>;
+  /** Nota fiscal casada com o lançamento (ainda não conciliado), com a conta sugerida. */
+  invoiceMatch?: InvoiceMatch | null;
+  /** Nota já vinculada ao lançamento conciliado. */
+  linkedInvoice?: InvoiceSummary | null;
 }
 
 type SheetMode = 'single' | 'split' | 'ask' | 'history';
@@ -60,6 +67,8 @@ export function ClassifySheet({
   loadAudit,
   onAskClient,
   memoPool = [],
+  invoiceMatch,
+  linkedInvoice,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -98,7 +107,12 @@ export function ClassifySheet({
   const splitSummary = summarizeSplits(transaction.amount, drafts, accountsById);
   const canSaveSplit = splitSummary.isBalanced && splitSummary.isComplete;
 
-  const [accountId, setAccountId] = useState<string>(transaction.accountId ?? '');
+  // Pendente com nota casada: a conta já vem sugerida pela nota.
+  const [accountId, setAccountId] = useState<string>(
+    transaction.accountId ?? (transaction.status === 'PENDING' ? (invoiceMatch?.suggestedAccountId ?? '') : '')
+  );
+  const [invoiceRejected, setInvoiceRejected] = useState(false);
+  const acceptedInvoiceId = invoiceMatch && !invoiceRejected ? invoiceMatch.invoice.id : undefined;
   // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
   const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
   // Termo sugerido: a descrição como aparece na lista ("Pix recebido - Fulano"), sem CPF/dados bancários;
@@ -265,6 +279,17 @@ export function ClassifySheet({
             </div>
           ) : (
           <div className="px-6 space-y-5">
+            {invoiceMatch && (
+              <InvoiceMatchCard
+                match={invoiceMatch}
+                accounts={accounts}
+                accountId={accountId}
+                rejected={invoiceRejected}
+                onUseSuggestion={setAccountId}
+                onRejectedChange={setInvoiceRejected}
+              />
+            )}
+            {!invoiceMatch && linkedInvoice && <LinkedInvoiceNote invoice={linkedInvoice} />}
             {/* Plano de contas */}
             <section className="space-y-2">
               <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
@@ -356,7 +381,7 @@ export function ClassifySheet({
           <button
             type="button"
             disabled={!accountId || isSaving || ruleBlocked}
-            onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType)}
+            onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType, acceptedInvoiceId)}
             className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
           >
             {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
