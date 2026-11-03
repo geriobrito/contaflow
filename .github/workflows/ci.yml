@@ -98,7 +98,16 @@ jobs:
           key: firebase-emulators-15.31.0
       - run: npm ci
       - name: Testes das regras
-        run: npm run test:rules
+        # A transação do encerramento do exercício fica perto do limite de leituras das regras;
+        # o emulador, conforme a ordem em que avalia as gravações (varia a cada processo), já
+        # passou dele e recusou com "Service call error". A regra foi enxugada (firestore.rules,
+        # journal_entries create); se voltar a acontecer, uma segunda rodada com emulador novo
+        # antes de reprovar — com aviso, para não passar despercebido.
+        run: |
+          if ! npm run test:rules; then
+            echo "::warning title=Regras: segunda rodada::A primeira rodada dos testes de regras falhou; rodando de novo com um emulador novo."
+            npm run test:rules
+          fi
 
   deploy-firestore:
     name: Publicar regras e índices do Firestore

@@ -19,10 +19,13 @@ updates:
       menores:
         update-types: [minor, patch]
     ignore:
-      # Next, React e o plugin de lint andam juntos: atualize os três manualmente.
+      # Next, React, o plugin de lint e o ESLint andam juntos: atualize-os manualmente. (O
+      # eslint-config-next de cada versão do Next só suporta uma versão maior do ESLint.)
       - dependency-name: next
         update-types: [version-update:semver-major]
       - dependency-name: eslint-config-next
+        update-types: [version-update:semver-major]
+      - dependency-name: eslint
         update-types: [version-update:semver-major]
       - dependency-name: react
         update-types: [version-update:semver-major]

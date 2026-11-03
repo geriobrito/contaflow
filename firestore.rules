@@ -324,11 +324,14 @@ service cloud.firestore {
         && clientInMyOrg(request.resource.data)
         && afterImplantation(request.resource.data)
         && validJournal(request.resource.data)
-        && ((monthOpen(request.resource.data) && takesNextNumber(request.resource.data))
-            || (isYearClosing(request.resource.data)
+        // O encerramento vem primeiro: assim os lançamentos dele não consultam o fechamento de
+        // dezembro (que nem é exigido aberto), e a transação do encerramento lê um documento a
+        // menos — ela fica perto do limite de leituras das regras.
+        && ((isYearClosing(request.resource.data)
                 && auditedNowAs(request.resource.data.closingAuditId, request.resource.data.clientId, 'YEAR_CLOSE')
                 && takesClosingNumber(request.resource.data)
-                && advancesLockStateOnYearClose(request.resource.data.clientId, request.resource.data.closingAuditId)));
+                && advancesLockStateOnYearClose(request.resource.data.clientId, request.resource.data.closingAuditId))
+            || (monthOpen(request.resource.data) && takesNextNumber(request.resource.data)));
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId') && unchanged('entryNumber')
         && monthOpen(resource.data) && monthOpen(request.resource.data)
