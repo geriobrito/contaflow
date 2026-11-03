@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Geist, Geist_Mono, Newsreader } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -30,11 +31,14 @@ export const metadata: Metadata = {
     'Software contábil interno com leitura automática de extratos bancários OFX, conciliação contábil com aprendizado contínuo e geração de DRE.',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Nonce da CSP desta requisição (src/proxy.ts). Ler os cabeçalhos torna todas as páginas
+  // dinâmicas, o que o nonce exige: o Next aplica o mesmo nonce nos scripts dele.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html
       lang="pt-BR"
@@ -43,7 +47,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body className="min-h-full bg-[#F9F9F8] dark:bg-stone-950 text-stone-900 dark:text-stone-100">
         <AuthProvider>
