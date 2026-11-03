@@ -316,6 +316,7 @@ export interface AuditEntry {
   action: AuditAction;
   actorUid: string;
   actorEmail?: string;
+  /** ISO. No Firestore é gravado como carimbo do servidor (as regras exigem `request.time`). */
   at: string;
   transactionId?: string;
   /** Data e histórico do lançamento, para leitura da trilha sem consultar a transação. */
@@ -337,7 +338,13 @@ export interface PeriodLock {
   orgId?: string;
   clientId: string;
   month: string;
+  /** ISO. No Firestore é gravado como carimbo do servidor (as regras exigem `request.time`). */
   lockedAt: string;
+  /**
+   * Valor aleatório que compõe o id dos registros de auditoria do fechamento (periodAuditId).
+   * Ausente em fechamentos antigos do modo local, que usam `lockedAt` no lugar.
+   */
+  auditKey?: string;
   lockedByUid: string;
   lockedByEmail?: string;
 }

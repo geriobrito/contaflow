@@ -23,10 +23,20 @@ export const lockId = (clientId: string, month: string): string => `${clientId}_
 /**
  * ID do registro de auditoria de um fechamento ('close') ou da reabertura ('reopen') dele.
  * É derivado do próprio fechamento para que as regras exijam o registro na mesma gravação:
- * não existe fechar nem reabrir competência sem trilha.
+ * não existe fechar nem reabrir competência sem trilha. Usa `auditKey` (aleatório, gerado
+ * ao fechar); fechamentos antigos sem ele usam `lockedAt`, como antes.
  */
-export const periodAuditId = (lock: { id: string; lockedAt: string }, kind: 'close' | 'reopen'): string =>
-  `${lock.id}_${kind}_${lock.lockedAt}`;
+export const periodAuditId = (lock: { id: string; auditKey?: string; lockedAt?: string }, kind: 'close' | 'reopen'): string =>
+  `${lock.id}_${kind}_${lock.auditKey ?? lock.lockedAt}`;
+
+/** Chave aleatória de um novo fechamento (20 caracteres; as regras aceitam de 16 a 40). */
+export function newAuditKey(): string {
+  const hex =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '')
+      : Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `k${hex.slice(0, 19)}`;
+}
 
 export const isMonthLocked = (date: string, lockedMonths: ReadonlySet<string>): boolean =>
   lockedMonths.has(monthOf(date));

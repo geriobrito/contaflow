@@ -3,6 +3,12 @@ import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 /** Tamanho máximo de uma resposta do cliente (o mesmo do campo de texto do link e de firestore.rules). */
 export const MAX_ANSWER_LENGTH = 2000;
 
+/**
+ * Perguntas por link. As regras conferem as respostas uma a uma, sem laços, e só até 24
+ * (validAnswers em firestore.rules); acima disso o link é recusado na criação.
+ */
+export const MAX_REQUEST_ITEMS = 24;
+
 /** Evento disparado na janela quando respostas são marcadas como lidas ou links mudam de estado. */
 export const REQUESTS_UPDATED_EVENT = 'contaflow:requests-updated';
 

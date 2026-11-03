@@ -2,7 +2,7 @@ import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, Imp
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
 import { transactionAudit } from '@/lib/audit';
-import { isISODate, isMonthLocked, lockId, monthOf, periodAuditId } from '@/lib/periods';
+import { isISODate, isMonthLocked, lockId, monthOf, newAuditKey, periodAuditId } from '@/lib/periods';
 import { pendingWonByRule } from '@/lib/reconciliation';
 import { autoClassifyTransition } from '@/lib/transitions';
 import { addDays, computeBalanceCheck, previousStatement } from '@/lib/statement';
@@ -80,6 +80,7 @@ export async function closeMonth(clientId: string, month: string, note?: string)
     clientId,
     month,
     lockedAt: now,
+    auditKey: newAuditKey(),
     lockedByUid: actor.uid,
     ...(actor.email ? { lockedByEmail: actor.email } : {}),
   };
@@ -93,8 +94,10 @@ export async function closeMonth(clientId: string, month: string, note?: string)
     month,
     ...(note ? { note } : {}),
   };
-  await getRepository().closePeriod(lock, audit);
-  return lock;
+  const repo = getRepository();
+  await repo.closePeriod(lock, audit);
+  // No Firestore a data do fechamento é a do servidor: relê para devolver a gravada.
+  return (await repo.listPeriodLocks(clientId)).find((l) => l.id === lock.id) ?? lock;
 }
 
 export async function reopenMonth(lock: PeriodLock, reason: string): Promise<void> {

@@ -17,13 +17,14 @@ rules_version = '2';
 //      (orgId == uid). Entrar em um escritório existente exige alteração administrativa
 //      (console / Admin SDK), nunca pelo próprio cliente.
 //   6. Trilha de auditoria (audit_log) é somente-inclusão: ninguém edita nem apaga, e o
-//      registro precisa ser do próprio usuário autenticado (actorUid == auth.uid).
+//      registro precisa ser do próprio usuário autenticado (actorUid == auth.uid), com a
+//      data do servidor (`at == request.time`) e uma ação da lista de AuditAction.
 //   7. Competência fechada (period_locks/{clientId}_{YYYY-MM}) congela os lançamentos
 //      daquele mês: nenhuma alteração nem exclusão até a reabertura (também auditada).
 //   8. Pendências com o cliente (client_requests/{token}): o token aleatório de 128 bits
 //      é a credencial do link. Sem login, quem tem o link lê aquele documento e grava
-//      apenas as respostas (campo `answers`, texto de até 2000 caracteres cada, conferido
-//      em links de até 24 perguntas; as perguntas não mudam), enquanto o link estiver
+//      apenas as respostas (campo `answers`, texto de até 2000 caracteres cada; o link tem
+//      de 1 a 24 perguntas, que não mudam), enquanto o link estiver
 //      aberto e dentro da validade; ninguém lista a coleção. O cliente não
 //      envia arquivos: client_request_files é legado e não aceita novos documentos.
 //   9. Lançamento novo nunca entra conciliado: importar em competência fechada não altera
@@ -31,7 +32,8 @@ rules_version = '2';
 //  10. Lançamentos manuais (journal_entries) respeitam as partidas dobradas (débitos =
 //      créditos) e recebem um número sequencial por cliente (journal_counters), imutável.
 //  11. Fechar ou reabrir competência só é aceito junto do registro em audit_log, gravado
-//      na mesma operação.
+//      na mesma operação — e o inverso: registros de fechar/reabrir competência ou
+//      exercício só nascem junto da operação. A data do fechamento é a do servidor.
 //  12. Papéis: users/{uid}.role == 'operator' (definido só pelo console / Admin SDK) não
 //      reabre competência nem exclui empresa, extrato, lançamento, conta do plano, conta
 //      bancária ou saldos de abertura; em regras de classificação, só exclui as que ele
@@ -414,13 +416,13 @@ service cloud.firestore {
     }
 
     // As regras não têm laços: as respostas são conferidas uma a uma, até 24 — o que cabe, com
-    // folga, no teto de 1000 expressões por avaliação (medido no emulador). Links com mais
-    // perguntas continuam aceitando respostas, sem a conferência de tamanho: ficam limitados
-    // pelo 1 MiB do documento, e o app corta e saneia o texto ao ler (answerAt).
+    // folga, no teto de 1000 expressões por avaliação (medido no emulador). Por isso um link
+    // tem no máximo 24 perguntas (MAX_REQUEST_ITEMS em src/lib/client-requests.ts), e listas
+    // maiores são recusadas.
     function validAnswers(l) {
       let n = l.size();
-      return n > 24
-        || ((n < 1 || validAnswer(l[0])) && (n < 2 || validAnswer(l[1])) && (n < 3 || validAnswer(l[2])) && (n < 4 || validAnswer(l[3]))
+      return n <= 24
+        && ((n < 1 || validAnswer(l[0])) && (n < 2 || validAnswer(l[1])) && (n < 3 || validAnswer(l[2])) && (n < 4 || validAnswer(l[3]))
             && (n < 5 || validAnswer(l[4])) && (n < 6 || validAnswer(l[5])) && (n < 7 || validAnswer(l[6])) && (n < 8 || validAnswer(l[7]))
             && (n < 9 || validAnswer(l[8])) && (n < 10 || validAnswer(l[9])) && (n < 11 || validAnswer(l[10])) && (n < 12 || validAnswer(l[11]))
             && (n < 13 || validAnswer(l[12])) && (n < 14 || validAnswer(l[13])) && (n < 15 || validAnswer(l[14])) && (n < 16 || validAnswer(l[15]))
@@ -436,7 +438,10 @@ service cloud.firestore {
         && clientInMyOrg(request.resource.data)
         && token.size() >= 32
         && request.resource.data.status == 'OPEN'
-        && request.resource.data.expiresAtMs is int;
+        && request.resource.data.expiresAtMs is int
+        && request.resource.data.items is list
+        && request.resource.data.items.size() >= 1
+        && request.resource.data.items.size() <= 24;
       // Pelo link (sem login) só entram as respostas, uma por pergunta, e a data do envio.
       // Perguntas, valores e lançamentos (`items`) ficam como o escritório gravou.
       allow update: if (isMine(resource.data) && unchanged('orgId') && unchanged('clientId'))
@@ -458,9 +463,13 @@ service cloud.firestore {
 
     // ── Fechamento de competência ────────────────────────────────────────
     // Registro de auditoria de um fechamento ('close') ou da reabertura dele ('reopen'):
-    // id derivado do próprio fechamento (periodAuditId em src/lib/periods.ts).
+    // id derivado do próprio fechamento (periodAuditId em src/lib/periods.ts), pela chave
+    // aleatória `auditKey`. Fechamentos antigos sem ela usavam o `lockedAt` em texto.
+    function periodAuditIdOf(lockId, lock, kind) {
+      return lockId + '_' + kind + '_' + lock.get('auditKey', lock.lockedAt);
+    }
     function periodAudit(lockId, lock, kind) {
-      return /databases/$(database)/documents/audit_log/$(lockId + '_' + kind + '_' + lock.lockedAt);
+      return /databases/$(database)/documents/audit_log/$(periodAuditIdOf(lockId, lock, kind));
     }
 
     // O registro nasce nesta mesma gravação (não existia antes) e descreve este fechamento.
@@ -545,8 +554,10 @@ service cloud.firestore {
         && request.resource.data.month.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
         && lockId == request.resource.data.clientId + '_' + request.resource.data.month
         && request.resource.data.lockedByUid == request.auth.uid
-        && request.resource.data.lockedAt is string
-        && request.resource.data.lockedAt.matches('^[0-9A-Za-z:.+-]{1,40}$')
+        // Data do servidor (serverTimestamp), não do relógio do computador.
+        && request.resource.data.lockedAt == request.time
+        && request.resource.data.get('auditKey', 0) is string
+        && request.resource.data.auditKey.matches('^[0-9A-Za-z:.+_-]{16,40}$')
         && auditedNow(lockId, request.resource.data, 'close', 'PERIOD_CLOSE')
         && advancesLockStateOnClose(lockId, request.resource.data.clientId);
       // Reabrir: só administrador, e com o registro de auditoria.
@@ -569,11 +580,65 @@ service cloud.firestore {
     }
 
     // ── Trilha de auditoria (somente inclusão) ───────────────────────────
+    // Ações aceitas: as de AuditAction (src/types/firestore.ts).
+    function auditActions() {
+      return ['CLASSIFY', 'RECLASSIFY', 'SPLIT', 'UNRECONCILE', 'APPROVE', 'AUTO_CLASSIFY',
+        'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
+        'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
+        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN'];
+    }
+
+    // Fechamento da competência citada no registro (`${clientId}_${month}`).
+    function lockOfAudit(a) {
+      return /databases/$(database)/documents/period_locks/$(a.clientId + '_' + a.get('month', ''));
+    }
+    // Registros de fechar/reabrir competência e encerrar/reabrir exercício só nascem junto
+    // com a operação que descrevem — não dá para gravar "Fechou a competência" sozinho.
+    function closesPeriodNow(id, a) {
+      let p = lockOfAudit(a);
+      return !exists(p) && existsAfter(p)
+        && id == periodAuditIdOf(a.clientId + '_' + a.get('month', ''), getAfter(p).data, 'close');
+    }
+    function reopensPeriodNow(id, a) {
+      let p = lockOfAudit(a);
+      return exists(p) && !existsAfter(p)
+        && id == periodAuditIdOf(a.clientId + '_' + a.get('month', ''), get(p).data, 'reopen');
+    }
+    // O encerramento avança o lock_state apontando este registro (validYearCloseUpdate).
+    function closesYearNow(id, a) {
+      let ls = lockStatePath(a.clientId);
+      let after = getAfter(ls).data;
+      return after.get('lastEvent', {}).get('kind', '') == 'year'
+        && after.get('lastEvent', {}).get('lockId', '') == id
+        && after.seq == get(ls).data.seq + 1;
+    }
+    // A reabertura (só administrador) tem o id `${closingAuditId}_reopen` de um encerramento
+    // existente da mesma empresa; os lançamentos de encerramento saem na mesma gravação.
+    function reopensYearNow(id, a) {
+      let closeId = id.size() > 7 ? id[0:id.size() - 7] : '';
+      return isAdmin()
+        && id.matches('^.+_reopen$')
+        && exists(auditDoc(closeId))
+        && get(auditDoc(closeId)).data.action == 'YEAR_CLOSE'
+        && get(auditDoc(closeId)).data.clientId == a.clientId;
+    }
+    function pairedAudit(id, a) {
+      return !(a.action in ['PERIOD_CLOSE', 'PERIOD_REOPEN', 'YEAR_CLOSE', 'YEAR_REOPEN'])
+        || (a.action == 'PERIOD_CLOSE' && closesPeriodNow(id, a))
+        || (a.action == 'PERIOD_REOPEN' && reopensPeriodNow(id, a))
+        || (a.action == 'YEAR_CLOSE' && closesYearNow(id, a))
+        || (a.action == 'YEAR_REOPEN' && reopensYearNow(id, a));
+    }
+
     match /audit_log/{entryId} {
       allow read: if isMine(resource.data);
+      // Data do servidor (serverTimestamp), não do relógio do computador.
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
-        && request.resource.data.actorUid == request.auth.uid;
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.action in auditActions()
+        && pairedAudit(entryId, request.resource.data);
       allow update, delete: if false;
     }
 

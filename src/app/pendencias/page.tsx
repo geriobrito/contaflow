@@ -22,6 +22,7 @@ import {
   hasUnreadAnswers,
   latestAnswers,
   latestResponseAt,
+  MAX_REQUEST_ITEMS,
   notifyRequestsUpdated,
   unreadTransactionIds,
 } from '@/lib/client-requests';
@@ -159,16 +160,23 @@ export default function PendenciasPage() {
   const inactiveRequests = requests.filter((r) => r.status === 'CLOSED' || r.expiresAtMs <= nowMs);
   const inOpenLink = new Set(openRequests.flatMap((r) => r.items.map((i) => i.transactionId)));
   const notSent = queries.filter((q) => !inOpenLink.has(q.id));
+  // O link leva até MAX_REQUEST_ITEMS perguntas: as ainda não enviadas entram primeiro.
+  const toSend = [...notSent, ...queries.filter((q) => inOpenLink.has(q.id))];
+  const sendCount = Math.min(toSend.length, MAX_REQUEST_ITEMS);
 
   const generate = async () => {
     if (!currentClient) return;
     setBusy(true);
     try {
-      const req = await createClientRequest(currentClient, queries, org?.officeName);
+      const req = await createClientRequest(currentClient, toSend, org?.officeName);
       setRequests((prev) => [req, ...prev]);
       setNowMs(Date.now());
       notifyRequestsUpdated();
-      setToast('Link criado · envie ao cliente');
+      setToast(
+        req.items.length < toSend.length
+          ? `${req.items.length} de ${toSend.length} perguntas enviadas · gere outro link para as restantes`
+          : 'Link criado · envie ao cliente'
+      );
     } catch (e) {
       setError(describe(e));
     } finally {
@@ -231,10 +239,16 @@ export default function PendenciasPage() {
         description="Lançamentos que precisam de explicação do cliente. Gere um link e envie: o cliente justifica cada lançamento por escrito, sem login, e você classifica a partir da resposta."
         actions={
           <button type="button" disabled={busy || !notSent.length} onClick={() => void generate()} className={BUTTON.accent}>
-            <Link2 className="w-4 h-4" /> Gerar link com {queries.length} pergunta(s)
+            <Link2 className="w-4 h-4" /> Gerar link com {sendCount} pergunta(s)
           </button>
         }
       />
+      {queries.length > MAX_REQUEST_ITEMS && notSent.length > 0 && (
+        <p className="text-[13px] text-amber-700 dark:text-amber-400">
+          Cada link leva até {MAX_REQUEST_ITEMS} perguntas. {notSent.length} de {queries.length} ainda não estão em nenhum link aberto: gere outro
+          link para as restantes.
+        </p>
+      )}
       {(error || recon.error) && <p role="alert" className="text-[13px] text-rose-600">{error ?? recon.error}</p>}
 
       {openRequests.length > 0 && (

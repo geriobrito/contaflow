@@ -10,6 +10,7 @@ import {
   orderBy,
   query,
   runTransaction,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -79,6 +80,11 @@ const IN_LIMIT = 30;
  * perfil do usuário e o cliente, 15 competências por lote deixam folga.
  */
 export const MONTHS_PER_BATCH = 15;
+/**
+ * Reaberturas por lote na exclusão da empresa: cada uma consulta o fechamento e o próprio
+ * registro de auditoria (2 documentos); com o perfil e a empresa, 8 ficam em 18 de 20.
+ */
+const REOPENS_PER_BATCH = 8;
 /** Tentativas de obter o próximo número de lançamento manual quando há disputa entre usuários. */
 const JOURNAL_NUMBER_ATTEMPTS = 5;
 
@@ -126,8 +132,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   const stamp = <T extends object>(data: T): DocumentData => clean({ ...data, orgId: getOrgId() });
 
-  /** Executa grupos em lotes de até 500 escritas e no máximo MONTHS_PER_BATCH competências. */
-  async function run(groups: readonly Group[]) {
+  /** Executa grupos em lotes de até 500 escritas e no máximo `monthsPerBatch` competências. */
+  async function run(groups: readonly Group[], monthsPerBatch = MONTHS_PER_BATCH) {
     let writes: Group['writes'] = [];
     let months = new Set<string>();
     const flush = async () => {
@@ -141,7 +147,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     for (const g of groups) {
       if (g.writes.length > BATCH_LIMIT) throw new Error('Grupo de escrita maior que o limite do lote.');
       const newMonth = g.month !== undefined && !months.has(g.month);
-      if (writes.length + g.writes.length > BATCH_LIMIT || (newMonth && months.size >= MONTHS_PER_BATCH)) await flush();
+      if (writes.length + g.writes.length > BATCH_LIMIT || (newMonth && months.size >= monthsPerBatch)) await flush();
       if (g.month !== undefined) months.add(g.month);
       writes.push(...g.writes);
     }
@@ -156,7 +162,20 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     await run(snap.docs.map((d) => single((b) => b.delete(d.ref), monthOfDoc(d.data()))));
   }
 
-  const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), stamp(entry));
+  // A data de auditoria e a do fechamento são do servidor (as regras exigem `request.time`),
+  // não do relógio do computador; na leitura voltam a texto ISO (toISO).
+  const auditData = (entry: AuditEntry): DocumentData => ({ ...stamp(entry), at: serverTimestamp() });
+  const lockData = (lock: PeriodLock): DocumentData => ({ ...stamp(lock), lockedAt: serverTimestamp() });
+  const auditFrom = (d: { id: string; data: () => DocumentData }): AuditEntry => {
+    const data = d.data();
+    return { ...(data as AuditEntry), id: d.id, at: toISO(data.at) };
+  };
+  const lockFrom = (d: { id: string; data: () => DocumentData }): PeriodLock => {
+    const data = d.data();
+    return { ...(data as PeriodLock), id: d.id, lockedAt: toISO(data.lockedAt) };
+  };
+
+  const auditWrite = (entry: AuditEntry) => (b: WriteBatch) => b.set(doc(db, COL.audit, entry.id), auditData(entry));
 
   async function readLockState(clientId: string): Promise<LockState | null> {
     const snap = await getDoc(doc(db, COL.lockState, clientId));
@@ -239,7 +258,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const locks = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
       await run(
         locks.docs.map((d): Group => {
-          const lock = { ...(d.data() as PeriodLock), id: d.id };
+          const lock = lockFrom(d);
           const audit: AuditEntry = {
             id: periodAuditId(lock, 'reopen'),
             clientId,
@@ -251,7 +270,9 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
             note: 'Competência liberada pela exclusão da empresa',
           };
           return { month: lock.month, writes: [(b) => b.delete(d.ref), auditWrite(audit)] };
-        })
+        }),
+        // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
+        REOPENS_PER_BATCH
       );
       // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
       for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.requestFiles, COL.requests]) {
@@ -513,7 +534,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       // Substitui o documento, como `saveBankAccount`.
       for (const bank of preparedBanks) b.set(doc(db, COL.bankAccounts, bank.id), stamp(bank));
       b.set(openingRef, stamp(preparedOpening));
-      b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      auditWrite(audit)(b);
       try {
         await b.commit();
       } catch (e) {
@@ -542,7 +563,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     /* ── Fechamento de período ────────────────────────────────────────── */
     async listPeriodLocks(clientId) {
       const snap = await getDocs(scoped(COL.locks, where('clientId', '==', clientId)));
-      return snap.docs.map((d) => ({ ...(d.data() as PeriodLock), id: d.id }));
+      return snap.docs.map(lockFrom);
     },
     async getLockState(clientId) {
       return readLockState(clientId);
@@ -551,7 +572,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     async closePeriod(lock, audit) {
       const nextLs = nextLockStateOnClose(await readLockState(lock.clientId), lock.id);
       const b = writeBatch(db);
-      b.set(doc(db, COL.locks, lock.id), stamp(lock));
+      b.set(doc(db, COL.locks, lock.id), lockData(lock));
       b.set(doc(db, COL.lockState, lock.clientId), stamp(nextLs));
       auditWrite({ ...audit, id: periodAuditId(lock, 'close') })(b);
       await b.commit();
@@ -585,7 +606,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       if (options.transactionId) constraints.push(where('transactionId', '==', options.transactionId));
       constraints.push(orderBy('at', 'desc'), limit(options.limit ?? 200));
       const snap = await getDocs(scoped(COL.audit, ...constraints));
-      return snap.docs.map((d) => ({ ...(d.data() as AuditEntry), id: d.id }));
+      return snap.docs.map(auditFrom);
     },
 
     /* ── Pendências com o cliente ─────────────────────────────────────── */
@@ -643,7 +664,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
             const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
             t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
             t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
-            if (audit) t.set(doc(db, COL.audit, audit.id), stamp(audit));
+            if (audit) t.set(doc(db, COL.audit, audit.id), auditData(audit));
             return entry;
           });
         } catch (err) {
@@ -660,13 +681,13 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       assertValidJournalEntry(entry);
       const b = writeBatch(db);
       b.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
-      if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      if (audit) auditWrite(audit)(b);
       await b.commit();
     },
     async deleteJournalEntry(entryId, audit) {
       const b = writeBatch(db);
       b.delete(doc(db, COL.journalEntries, entryId));
-      if (audit) b.set(doc(db, COL.audit, audit.id), stamp(audit));
+      if (audit) auditWrite(audit)(b);
       await b.commit();
     },
 
@@ -694,7 +715,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         t.set(counterRef, stamp({ id: clientId, clientId, last: base + entries.length, closingAudit: audit.id }));
         t.set(lockStateRef, stamp(nextLs));
         for (const e of entries) t.set(doc(db, COL.journalEntries, e.id), stamp(e));
-        t.set(doc(db, COL.audit, audit.id), stamp(audit));
+        t.set(doc(db, COL.audit, audit.id), auditData(audit));
         return entries;
       });
     },

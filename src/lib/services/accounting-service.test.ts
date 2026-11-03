@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BANKS_PARENT_CODE, createBankSubaccounts, deleteChartAccount } from '@/lib/services/accounting-service';
+import { BANKS_PARENT_CODE, createBankSubaccounts, createClientRequest, deleteChartAccount } from '@/lib/services/accounting-service';
 import { getRepository } from '@/lib/services/data-service';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
 import { setSession } from '@/lib/data/scope';
-import type { ChartAccount, ClassificationRule, BankAccount, BankTransaction, ImportBatch } from '@/types/firestore';
+import { MAX_REQUEST_ITEMS } from '@/lib/client-requests';
+import type { ChartAccount, ClassificationRule, BankAccount, BankTransaction, ClientCompany, ImportBatch } from '@/types/firestore';
 import { newAccountId, newBatchId, newClientId, newRuleId, newSplitId } from '@/lib/utils/id';
 
 function memoryStore(): KeyValueStore {
@@ -268,5 +269,35 @@ describe('gravação do lote antes dos lançamentos', () => {
     expect(batches).toHaveLength(1);
     expect(batches[0].status).toBe('COMPLETED');
     expect(batches[0].id).toBe('batch_test_1');
+  });
+});
+
+describe('createClientRequest: limite de perguntas por link', () => {
+  const client: ClientCompany = { id: 'cq', name: 'Empresa CQ', createdAt: '', updatedAt: '' } as ClientCompany;
+  const queried = (n: number): BankTransaction[] =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `cq_${i}`,
+      clientId: 'cq',
+      fitid: `f${i}`,
+      date: '2025-03-10',
+      amount: -1,
+      type: 'DEBIT',
+      memo: `PIX ${i}`,
+      status: 'PENDING',
+      createdAt: '',
+      clientQuery: { question: `Pergunta ${i}?`, status: 'OPEN', askedAt: '', askedByUid: 'user-1' },
+    }));
+
+  beforeEach(() => setSession('org-1', { uid: 'user-1', email: 'user@teste.com' }));
+
+  it(`leva só as ${MAX_REQUEST_ITEMS} primeiras, na ordem recebida`, async () => {
+    const req = await createClientRequest(client, queried(30));
+    expect(req.items).toHaveLength(MAX_REQUEST_ITEMS);
+    expect(req.items[0].transactionId).toBe('cq_0');
+    expect(req.items.at(-1)?.transactionId).toBe(`cq_${MAX_REQUEST_ITEMS - 1}`);
+  });
+
+  it('abaixo do limite leva todas', async () => {
+    expect((await createClientRequest(client, queried(3))).items).toHaveLength(3);
   });
 });

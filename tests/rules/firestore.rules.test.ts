@@ -17,7 +17,9 @@ import {
   getDoc,
   getDocs,
   query,
+  serverTimestamp,
   setDoc,
+  Timestamp,
   updateDoc,
   where,
   type Firestore,
@@ -66,25 +68,36 @@ const tx = (id: string, clientId: string, orgId: string, date = '2025-03-10'): B
   createdAt: '2025-03-10',
 });
 
-/** Fechamento de competência e o registro de auditoria que as regras exigem na mesma gravação. */
-const lockOf = (month: string, by = 'alice', clientId = 'cA', orgId = ORG_A, lockedAt = 'T') => ({
+/**
+ * Fechamento de competência e o registro de auditoria que as regras exigem na mesma gravação.
+ * As datas são do servidor (serverTimestamp); o id do registro sai da chave `auditKey`.
+ */
+const lockOf = (month: string, by = 'alice', clientId = 'cA', orgId = ORG_A, auditKey = 'chave-teste-000001') => ({
   id: `${clientId}_${month}`,
   orgId,
   clientId,
   month,
-  lockedAt,
+  lockedAt: serverTimestamp(),
+  auditKey,
   lockedByUid: by,
 });
 type Lock = ReturnType<typeof lockOf>;
+const auditIdOf = (lock: Pick<Lock, 'id' | 'auditKey'>, kind: 'close' | 'reopen') => periodAuditId({ id: lock.id, auditKey: lock.auditKey }, kind);
 const periodAudit = (lock: Lock, kind: 'close' | 'reopen', by = lock.lockedByUid) => ({
-  id: periodAuditId(lock, kind),
+  id: auditIdOf(lock, kind),
   orgId: lock.orgId,
   clientId: lock.clientId,
   action: kind === 'close' ? 'PERIOD_CLOSE' : 'PERIOD_REOPEN',
   actorUid: by,
-  at: 'T',
+  at: serverTimestamp(),
   month: lock.month,
 });
+/** Cópia sem o campo (para testar documentos incompletos). */
+const omit = <T extends object>(obj: T, key: keyof T): Partial<T> => {
+  const copy: Partial<T> = { ...obj };
+  delete copy[key];
+  return copy;
+};
 const createClient = (db: Firestore, id: string, orgId: string) => {
   const b = writeBatch(db);
   b.set(doc(db, `clients/${id}`), client(id, orgId));
@@ -106,7 +119,7 @@ const closeMonth = async (db: Firestore, lock: Lock = lockOf('2025-03')) => {
     seq: prev.seq + 1,
     lastEvent: { kind: 'close', lockId: lock.id },
   });
-  b.set(doc(db, `audit_log/${periodAuditId(lock, 'close')}`), periodAudit(lock, 'close'));
+  b.set(doc(db, `audit_log/${auditIdOf(lock, 'close')}`), periodAudit(lock, 'close'));
   return b.commit();
 };
 const reopenMonth = async (db: Firestore, lock: Lock = lockOf('2025-03'), by = 'alice') => {
@@ -123,7 +136,7 @@ const reopenMonth = async (db: Firestore, lock: Lock = lockOf('2025-03'), by = '
     seq: prev.seq,
     lastEvent: { kind: 'reopen', lockId: lock.id },
   });
-  b.set(doc(db, `audit_log/${periodAuditId(lock, 'reopen')}`), periodAudit(lock, 'reopen', by));
+  b.set(doc(db, `audit_log/${auditIdOf(lock, 'reopen')}`), periodAudit(lock, 'reopen', by));
   return b.commit();
 };
 
@@ -277,7 +290,7 @@ describe('repositório da aplicação sob as regras', () => {
     expect((await repo.listPendingTransactions('c2')).map((t) => t.id)).toEqual(['c2_1']);
 
     // Fechamento bloqueia alterações daquele mês até a reabertura.
-    const lock = { id: 'c2_2025-01', clientId: 'c2', month: '2025-01', lockedAt: 'T', lockedByUid: 'alice' };
+    const lock = { id: 'c2_2025-01', clientId: 'c2', month: '2025-01', lockedAt: 'T', auditKey: 'chave-teste-000003', lockedByUid: 'alice' };
     await repo.closePeriod(lock, { id: 'au-close', clientId: 'c2', action: 'PERIOD_CLOSE', actorUid: 'alice', at: 'T', month: '2025-01' });
     expect((await repo.listPeriodLocks('c2')).map((l) => l.month)).toEqual(['2025-01']);
     const [, pending] = await repo.listTransactions('c2');
@@ -323,13 +336,42 @@ describe('trilha de auditoria (somente inclusão)', () => {
     clientId,
     action: 'CLASSIFY',
     actorUid,
-    at: '2025-03-01',
+    at: serverTimestamp(),
     transactionId: 'cA_1',
   });
 
   it('registra em nome próprio; não em nome de outro usuário', async () => {
     await assertSucceeds(setDoc(doc(asUser('alice'), 'audit_log/a1'), entry('a1', 'alice')));
     await assertFails(setDoc(doc(asUser('alice'), 'audit_log/a2'), entry('a2', 'carol')));
+  });
+
+  it('a data é a do servidor: texto ou data escolhida pelo computador são recusados', async () => {
+    const db = asUser('alice');
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), { ...entry('a1', 'alice'), at: '2025-03-01T12:00:00.000Z' }));
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), { ...entry('a1', 'alice'), at: Timestamp.fromMillis(Date.now() - 86_400_000) }));
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), omit(entry('a1', 'alice'), 'at')));
+    await assertSucceeds(setDoc(doc(db, 'audit_log/a1'), entry('a1', 'alice')));
+    // Na leitura pelo app, a data volta como texto ISO.
+    const [read] = await createFirestoreRepository(db, () => ORG_A).listAudit('cA');
+    expect(read.at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it('só aceita ações da lista de AuditAction', async () => {
+    const db = asUser('alice');
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), { ...entry('a1', 'alice'), action: 'HACK' }));
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), { ...entry('a1', 'alice'), action: 'classify' }));
+    await assertFails(setDoc(doc(db, 'audit_log/a1'), omit(entry('a1', 'alice'), 'action')));
+    await assertSucceeds(setDoc(doc(db, 'audit_log/a1'), { ...entry('a1', 'alice'), action: 'JOURNAL_DELETE' }));
+  });
+
+  it('registros de fechar/reabrir competência ou exercício não nascem sozinhos', async () => {
+    const db = asUser('alice');
+    const alone = (id: string, action: string, month = '2025-03') =>
+      setDoc(doc(db, `audit_log/${id}`), { ...omit(entry(id, 'alice'), 'transactionId'), action, month });
+    await assertFails(alone(auditIdOf(lockOf('2025-03'), 'close'), 'PERIOD_CLOSE'));
+    await assertFails(alone(auditIdOf(lockOf('2025-03'), 'reopen'), 'PERIOD_REOPEN'));
+    await assertFails(alone('cA_2025_close_x', 'YEAR_CLOSE', '2025-12'));
+    await assertFails(alone('cA_2025_close_x_reopen', 'YEAR_REOPEN', '2025-12'));
   });
 
   it('ninguém edita nem apaga registros, nem o próprio autor', async () => {
@@ -354,7 +396,7 @@ describe('fechamento de competência', () => {
     const db = asUser('alice');
     /** Fechamento com o registro de auditoria e lock_state corretos para o id e o usuário informados. */
     const close = (id: string, lock: Lock, who = db, actor = 'alice') => {
-      const auditId = periodAuditId({ id, lockedAt: lock.lockedAt }, 'close');
+      const auditId = auditIdOf({ id, auditKey: lock.auditKey }, 'close');
       const b = writeBatch(who);
       b.set(doc(who, `period_locks/${id}`), lock);
       b.set(doc(who, `lock_state/${lock.clientId}`), {
@@ -372,9 +414,18 @@ describe('fechamento de competência', () => {
     await assertFails(close('cA_2025-13', lockOf('2025-13'))); // mês inválido
     await assertFails(close('cA_2025-03', lockOf('2025-03', 'carol'))); // autor ≠ usuário
     await assertFails(close('cA_2025-03', lockOf('2025-03', 'bob', 'cA', ORG_B), asUser('bob'), 'bob'));
-    await assertFails(close('cA_2025-03', lockOf('2025-03', 'alice', 'cA', ORG_A, 'data invalida'))); // data/hora fora do formato
+    await assertFails(close('cA_2025-03', lockOf('2025-03', 'alice', 'cA', ORG_A, 'curta'))); // chave curta demais
+    await assertFails(close('cA_2025-03', lockOf('2025-03', 'alice', 'cA', ORG_A, 'chave com espaço 0001'))); // chave fora do formato
+    // Fechamento sem chave.
+    await assertFails(close('cA_2025-03', omit(march, 'auditKey') as Lock));
+    // Data do fechamento escolhida pelo computador (texto ou outro instante).
+    await assertFails(close('cA_2025-03', { ...march, lockedAt: '2025-03-31T12:00:00.000Z' as never }));
+    await assertFails(close('cA_2025-03', { ...march, lockedAt: Timestamp.fromMillis(Date.now() - 60_000) as never }));
     await assertSucceeds(close('cA_2025-03', march));
     await assertFails(updateDoc(doc(db, 'period_locks/cA_2025-03'), { lockedAt: 'X' }));
+    // O app relê o fechamento com a data do servidor, em texto ISO.
+    const [stored] = await createFirestoreRepository(db, () => ORG_A).listPeriodLocks('cA');
+    expect(stored).toMatchObject({ auditKey: march.auditKey, lockedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.+Z$/) });
   });
 
   it('fechar e reabrir exigem o registro de auditoria na mesma gravação', async () => {
@@ -390,7 +441,7 @@ describe('fechamento de competência', () => {
         seq: 1,
         lastEvent: { kind: 'close', lockId: march.id },
       });
-      b.set(doc(db, `audit_log/${periodAuditId(march, 'close')}`), { ...periodAudit(march, 'close'), ...audit });
+      b.set(doc(db, `audit_log/${auditIdOf(march, 'close')}`), { ...periodAudit(march, 'close'), ...audit });
       return b.commit();
     };
     // Fechar sem registro, ou com registro de outra ação, competência ou empresa.
@@ -405,18 +456,60 @@ describe('fechamento de competência', () => {
     const reopenWith = (audit: Record<string, unknown>) => {
       const b = writeBatch(db);
       b.delete(doc(db, 'period_locks/cA_2025-03'));
-      b.set(doc(db, `audit_log/${periodAuditId(march, 'reopen')}`), { ...periodAudit(march, 'reopen'), ...audit });
+      b.set(doc(db, `audit_log/${auditIdOf(march, 'reopen')}`), { ...periodAudit(march, 'reopen'), ...audit });
       return b.commit();
     };
     await assertFails(reopenWith({ action: 'PERIOD_CLOSE' }));
     await assertSucceeds(reopenMonth(db, march));
 
-    // Cada fechamento deixa o próprio registro: repetir o mesmo (mesma data/hora) reaproveitaria o antigo.
+    // Cada fechamento deixa o próprio registro: repetir a mesma chave reaproveitaria o antigo.
     await assertFails(closeMonth(db, march));
     await assertFails(setDoc(doc(db, 'period_locks/cA_2025-03'), march));
-    await assertSucceeds(closeMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'T2')));
+    await assertSucceeds(closeMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'chave-teste-000002')));
     const repo = createFirestoreRepository(db, () => ORG_A);
     expect((await repo.listAudit('cA')).map((e) => e.action).sort()).toEqual(['PERIOD_CLOSE', 'PERIOD_CLOSE', 'PERIOD_REOPEN']);
+  });
+
+  /** Fechamento gravado antes desta versão: `lockedAt` em texto e id do registro a partir dele. */
+  const legacyClose = async (migrated: boolean) => {
+    const OLD = '2025-03-31T12:00:00.000Z';
+    const oldMs = Date.parse(OLD);
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore() as unknown as Firestore;
+      const lock = { id: march.id, orgId: ORG_A, clientId: 'cA', month: '2025-03', lockedByUid: 'alice' };
+      // Migrado (scripts/migrar-datas-servidor.mjs): Timestamp + auditKey = texto antigo.
+      await setDoc(doc(admin, `period_locks/${march.id}`), migrated ? { ...lock, lockedAt: Timestamp.fromMillis(oldMs), auditKey: OLD } : { ...lock, lockedAt: OLD });
+      await setDoc(doc(admin, 'lock_state/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', count: 1, seq: 1, lastEvent: { kind: 'close', lockId: march.id } });
+      await setDoc(doc(admin, `audit_log/${march.id}_close_${OLD}`), {
+        id: `${march.id}_close_${OLD}`, orgId: ORG_A, clientId: 'cA', action: 'PERIOD_CLOSE', actorUid: 'alice', month: '2025-03',
+        at: migrated ? Timestamp.fromMillis(oldMs) : OLD,
+      });
+    });
+    return OLD;
+  };
+
+  it('fechamento migrado (Timestamp + auditKey) reabre e a trilha sai em ordem', async () => {
+    const OLD = await legacyClose(true);
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const [lock] = await repo.listPeriodLocks('cA');
+    // A data volta no mesmo texto de antes: os snapshots que a comparam seguem válidos.
+    expect(lock).toMatchObject({ lockedAt: OLD, auditKey: OLD });
+    await repo.reopenPeriod(lock, { id: '', clientId: 'cA', action: 'PERIOD_REOPEN', actorUid: 'alice', at: '', month: '2025-03', note: 'ajuste' });
+    expect(await repo.listPeriodLocks('cA')).toEqual([]);
+    expect((await repo.listAudit('cA')).map((e) => [e.action, e.id])).toEqual([
+      ['PERIOD_REOPEN', `${march.id}_reopen_${OLD}`],
+      ['PERIOD_CLOSE', `${march.id}_close_${OLD}`],
+    ]);
+  });
+
+  it('fechamento antigo ainda não migrado também reabre (id pelo lockedAt em texto)', async () => {
+    const OLD = await legacyClose(false);
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const [lock] = await repo.listPeriodLocks('cA');
+    expect(lock.auditKey).toBeUndefined();
+    await repo.reopenPeriod(lock, { id: '', clientId: 'cA', action: 'PERIOD_REOPEN', actorUid: 'alice', at: '', month: '2025-03', note: 'ajuste' });
+    expect(await repo.listPeriodLocks('cA')).toEqual([]);
+    expect((await repo.listAudit('cA', { limit: 5 })).some((e) => e.id === `${march.id}_reopen_${OLD}`)).toBe(true);
   });
 
   it('mês fechado congela lançamentos; outros meses seguem livres; reabrir libera', async () => {
@@ -978,7 +1071,7 @@ describe('pendências com o cliente (link público)', () => {
     await assertFails(send('texto solto'));
   });
 
-  it('o tamanho é conferido resposta a resposta em links de até 24 perguntas; links maiores continuam respondíveis', async () => {
+  it('o link tem de 1 a 24 perguntas, e o tamanho de cada resposta é conferido', async () => {
     const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
     const items = (n: number) => Array.from({ length: n }, (_, i) => ({ transactionId: `cA_${i}`, date: '2025-03-10', memo: 'PIX', amount: -1, question: '?' }));
     const answers = (n: number, text = 'x'.repeat(2000)) => Array.from({ length: n }, () => ({ text, answeredAt: '2025-03-10T12:00:00.000Z' }));
@@ -991,10 +1084,14 @@ describe('pendências com o cliente (link público)', () => {
     await assertFails(updateDoc(ref, { answers: [{ text: 'x'.repeat(2001) }, ...answers(23)], respondedAt: 'T3' }));
     await assertFails(updateDoc(ref, { answers: [...answers(23), { text: 'x'.repeat(2001) }], respondedAt: 'T3' }));
 
-    // Acima disso as regras não conseguem conferir uma a uma: o link segue aceitando respostas.
+    // Acima disso as regras não conseguem conferir uma a uma: o link não nasce.
+    const other = 'c'.repeat(32);
+    await assertFails(setDoc(doc(asUser('alice'), `client_requests/${other}`), request({ id: other, items: items(25) })));
+    await assertFails(setDoc(doc(asUser('alice'), `client_requests/${other}`), request({ id: other, items: [] })));
+
+    // Link antigo com mais de 24 perguntas (gravado antes do limite): não aceita mais respostas.
     await admin.saveClientRequest(request({ items: items(25) }) as never);
-    await assertSucceeds(updateDoc(ref, { answers: answers(25, 'curta'), respondedAt: 'T3' }));
-    await assertFails(updateDoc(ref, { answers: answers(24, 'curta'), respondedAt: 'T3' }));
+    await assertFails(updateDoc(ref, { answers: answers(25, 'curta'), respondedAt: 'T3' }));
   });
 
   it('encerrar o link preserva respostas que chegaram depois da última leitura do escritório', async () => {
@@ -1209,7 +1306,7 @@ describe('pendências com o cliente (link público)', () => {
       await env.withSecurityRulesDisabled(async (ctx) => {
         const db = ctx.firestore() as unknown as Firestore;
         await setDoc(doc(db, 'period_locks/cA_2025-03'), march);
-        await setDoc(doc(db, `audit_log/${periodAuditId(march, 'reopen')}`), periodAudit(march, 'reopen'));
+        await setDoc(doc(db, `audit_log/${auditIdOf(march, 'reopen')}`), periodAudit(march, 'reopen'));
       });
       await expect(repo.deleteClient('cA', { uid: 'alice' })).rejects.toThrow();
       const [stuck] = await repo.listClients();
@@ -1327,8 +1424,8 @@ describe('cadastros congelados por competência fechada e integridade do lock_st
     expect((await repo.getOpeningBalances('cA'))?.lockSeq).toBe(1);
 
     // Fecha dois meses (count = 2, seq = 3): abertura congela, inclusive contra escrita crua no Firestore.
-    await closeMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'T2'));
-    await closeMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'T2'));
+    await closeMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'chave-teste-000002'));
+    await closeMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'chave-teste-000002'));
     await expect(
       repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-01-01', entries: [{ accountId: 'a', amount: 200 }], updatedAt: 'T3' }, opAudit('op3'))
     ).rejects.toThrow(/competências fechadas/);
@@ -1339,11 +1436,11 @@ describe('cadastros congelados por competência fechada e integridade do lock_st
     await assertSucceeds(updateDoc(doc(db, 'opening_balances/cA'), { updatedAt: 'T3' }));
 
     // Reabertura parcial (2025-04 abre, 2025-03 segue fechado: count = 1, seq = 3) mantém congelado.
-    await reopenMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'T2'));
+    await reopenMonth(db, lockOf('2025-04', 'alice', 'cA', ORG_A, 'chave-teste-000002'));
     await assertFails(updateDoc(doc(db, 'opening_balances/cA'), { memo: 'Tentativa parcial', lockSeq: 3 }));
 
     // Reabertura total (count = 0, seq = 3) libera e carimba lockSeq = 3.
-    await reopenMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'T2'));
+    await reopenMonth(db, lockOf('2025-03', 'alice', 'cA', ORG_A, 'chave-teste-000002'));
     await repo.saveOpeningBalances(
       { id: 'cA', clientId: 'cA', date: '2025-01-01', memo: 'Revisado', entries: [{ accountId: 'a', amount: 250 }], updatedAt: 'T4' },
       opAudit('op4')
@@ -1433,7 +1530,7 @@ describe('cadastros congelados por competência fechada e integridade do lock_st
     // Fechar competência sem avançar lock_state é recusado.
     const semLockState = writeBatch(db);
     semLockState.set(doc(db, `period_locks/${march.id}`), march);
-    semLockState.set(doc(db, `audit_log/${periodAuditId(march, 'close')}`), periodAudit(march, 'close'));
+    semLockState.set(doc(db, `audit_log/${auditIdOf(march, 'close')}`), periodAudit(march, 'close'));
     await assertFails(semLockState.commit());
 
     // Alterar lock_state sem o fechamento/reabertura/encerramento real correspondente é recusado.

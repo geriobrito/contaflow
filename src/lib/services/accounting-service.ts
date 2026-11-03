@@ -18,6 +18,7 @@ import { bankAccountId, defaultNickname, nextChildCode, suggestOpening } from '@
 import { findTransitAccount, TRANSIT_ACCOUNT } from '@/lib/transfers';
 import type { OFXAccountInfo } from '@/lib/ofx/types';
 import type { TextRepairPlan } from '@/lib/text-repair';
+import { MAX_REQUEST_ITEMS } from '@/lib/client-requests';
 
 /* =========================================================================
    Contas bancárias
@@ -265,10 +266,14 @@ export function newRequestToken(): string {
 
 export const REQUEST_VALIDITY_DAYS = 30;
 
-/** Cria o link com as perguntas em aberto (dados mínimos do lançamento, sem acesso ao restante). */
+/**
+ * Cria o link com as perguntas em aberto (dados mínimos do lançamento, sem acesso ao restante).
+ * Leva no máximo MAX_REQUEST_ITEMS, na ordem recebida; as demais ficam para o próximo link.
+ */
 export async function createClientRequest(client: ClientCompany, queried: readonly BankTransaction[], officeName?: string): Promise<ClientRequest> {
   const items = queried
     .filter((t) => t.clientQuery?.status === 'OPEN')
+    .slice(0, MAX_REQUEST_ITEMS)
     .map((t) => ({ transactionId: t.id, date: t.date, memo: t.memo, amount: t.amount, question: t.clientQuery!.question }));
   if (!items.length) throw new Error('Nenhuma pergunta em aberto para enviar.');
   const actor = getActor();
