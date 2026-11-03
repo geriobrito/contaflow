@@ -18,6 +18,7 @@ import type { ClientCompany, CompanyPorte, TaxRegime } from '@/types/firestore';
 import type { CNPJLookupResult } from '@/lib/cnpj';
 import { saveClient } from '@/lib/services/data-service';
 import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
+import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
@@ -211,6 +212,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [lookupNotice, setLookupNotice] = useState<{ kind: 'ok' | 'warn' | 'info'; text: string } | null>(null);
   const lastAutoQueriedRef = useRef<string | null>(client ? cleanCNPJ(client.cnpj) : null);
   const abortRef = useRef<AbortController | null>(null);
+  const { user, isMockAuth } = useAuth();
 
   const cnpjChars = cleanCNPJ(cnpj);
   const complete = cnpjChars.length === 14;
@@ -233,8 +235,11 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     setLookupLoading(true);
     setLookupNotice(null);
     try {
+      // A rota só atende usuário logado (ID token do Firebase); o modo local não tem token.
+      const token = isMockAuth ? null : await user?.getIdToken();
       const response = await fetch(`/api/cnpj/${encodeURIComponent(targetCnpj)}`, {
         signal: controller.signal,
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -288,7 +293,7 @@ function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
         setLookupLoading(false);
       }
     }
-  }, []);
+  }, [isMockAuth, user]);
 
   // Dispara a busca automaticamente ao completar 14 caracteres válidos de um novo CNPJ
   useEffect(() => {

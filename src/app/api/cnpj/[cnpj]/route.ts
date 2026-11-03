@@ -1,39 +1,38 @@
-import { NextResponse } from 'next/server';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { fetchCNPJFromProviders } from '@/lib/cnpj';
-import { cleanCNPJ, isValidCNPJ } from '@/lib/utils/formatters';
+import { isFirebaseConfigured } from '@/lib/firebase-config';
+import { createCnpjHandler, type CnpjAuth } from '@/lib/server/cnpj-handler';
 
 /**
- * Proxy server-side para consulta pública de CNPJ.
- * Mantém a Content-Security-Policy estrita (`connect-src 'self'`) no navegador
- * e adiciona cache HTTP de 24h para evitar rate-limiting em consultas repetidas.
+ * Proxy server-side para consulta pública de CNPJ: só para usuários logados, com limite por
+ * usuário e cache em memória (detalhes em src/lib/server/cnpj-handler.ts). Mantém a
+ * Content-Security-Policy estrita (`connect-src 'self'`) no navegador.
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ cnpj: string }> }
-) {
-  const { cnpj: rawCnpj } = await params;
-  const cnpj = cleanCNPJ(rawCnpj);
 
-  if (cnpj.length !== 14 || !isValidCNPJ(cnpj)) {
-    return NextResponse.json(
-      { error: 'CNPJ inválido.' },
-      { status: 400 }
-    );
-  }
+const ADMIN_APP = 'cnpj-auth';
 
-  const outcome = await fetchCNPJFromProviders(cnpj);
-  if (!outcome.ok) {
-    return NextResponse.json(
-      { error: outcome.error },
-      { status: outcome.status }
-    );
-  }
-
-  return NextResponse.json(outcome.data, {
-    status: 200,
-    headers: {
-      'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800',
+/** Validar o ID token só exige o projectId (chaves públicas do Google), sem conta de serviço. */
+function firebaseAuth(projectId: string): CnpjAuth {
+  return {
+    kind: 'firebase',
+    verify: async (idToken) => {
+      const app = getApps().find((a) => a.name === ADMIN_APP) ?? initializeApp({ projectId }, ADMIN_APP);
+      return (await getAuth(app).verifyIdToken(idToken)).uid;
     },
-  });
+  };
 }
 
+function resolveAuth(): CnpjAuth {
+  if (isFirebaseConfigured()) return firebaseAuth(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!);
+  return process.env.NODE_ENV === 'production' ? { kind: 'unavailable' } : { kind: 'local' };
+}
+
+export const GET = createCnpjHandler({
+  auth: resolveAuth(),
+  lookup: fetchCNPJFromProviders,
+  allowedUids: (process.env.CNPJ_ALLOWED_UIDS ?? '')
+    .split(',')
+    .map((uid) => uid.trim())
+    .filter(Boolean),
+});
