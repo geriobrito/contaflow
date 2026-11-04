@@ -1,5 +1,6 @@
 import type { BankTransaction, ChartAccount, InvoiceInstallment, InvoiceSummary } from '@/types/firestore';
 import { textKey } from '@/lib/payee';
+import { companyTokens, nameOverlap } from '@/lib/company-name';
 import { addDays } from '@/lib/statement';
 import { toCents } from '@/lib/money';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
@@ -41,26 +42,8 @@ export interface InvoiceMatch {
    Parceiro
    ========================================================================= */
 
-/** Palavras que não identificam a empresa: natureza jurídica, ligações e termos genéricos. */
-const STOP = new Set([
-  'ltda', 'me', 'epp', 'eireli', 'sa', 's', 'a', 'cia', 'de', 'da', 'do', 'das', 'dos', 'e', 'em', 'com', 'comercio', 'comercial',
-  'servicos', 'industria', 'distribuidora', 'brasil', 'grupo', 'empresa', 'produtos', 'importacao', 'exportacao',
-  'pix', 'ted', 'doc', 'pagamento', 'boleto', 'efetuado', 'enviado', 'recebido', 'transferencia', 'compra', 'debito', 'credito',
-]);
-
-const tokensOf = (s: string) => textKey(s).split(' ').filter((w) => w.length >= 3 && !STOP.has(w));
-
-/** Duas palavras conferem se uma começa a outra (o extrato costuma cortar o nome). */
-const sameWord = (a: string, b: string) => (a.length >= 4 && b.length >= 4 ? a.startsWith(b) || b.startsWith(a) : a === b);
-
-/** Fração das palavras do nome do parceiro que aparecem na descrição (0 a 1). */
-export function nameOverlap(partner: string, memo: string): number {
-  const names = tokensOf(partner);
-  if (!names.length) return 0;
-  const words = tokensOf(memo);
-  const hits = names.filter((n) => words.some((w) => sameWord(n, w))).length;
-  return hits / names.length;
-}
+// Comparação de nomes compartilhada com o cadastro de clientes (src/lib/company-name.ts).
+export { nameOverlap };
 
 /** Evidência de que o lançamento é do parceiro da nota. */
 export function partyEvidence(invoice: Pick<InvoiceSummary, 'counterpartyDoc' | 'counterpartyName'>, memo: string): { party: PartyEvidence; strength: number } {
@@ -68,7 +51,7 @@ export function partyEvidence(invoice: Pick<InvoiceSummary, 'counterpartyDoc' | 
   if (doc.length >= 11 && memo.toUpperCase().replace(/[^0-9A-Z]/g, '').includes(doc)) return { party: 'document', strength: 1 };
   const overlap = nameOverlap(invoice.counterpartyName, memo);
   // Uma palavra marcante já basta em nomes curtos ("Claro S.A."); nos longos, metade delas.
-  const names = tokensOf(invoice.counterpartyName).length;
+  const names = companyTokens(invoice.counterpartyName).length;
   if (overlap > 0 && (overlap >= 0.5 || names <= 2)) return { party: 'name', strength: 0.6 + 0.3 * overlap };
   return { party: 'none', strength: 0 };
 }

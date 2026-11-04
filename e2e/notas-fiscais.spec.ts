@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { mockReceita } from './receita';
 
 /**
  * Notas fiscais: importar o XML de uma compra, ver a conta sugerida no pagamento do boleto na
@@ -41,6 +42,7 @@ const NFE = `<?xml version="1.0" encoding="UTF-8"?>
 test('nota fiscal de compra sugere a conta do pagamento na conciliação', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
+  await mockReceita(page);
 
   await page.goto('/login');
   await page.getByRole('button', { name: 'Usar credenciais de teste local' }).click();
@@ -135,6 +137,7 @@ const NFSE = `<?xml version="1.0" encoding="UTF-8"?>
 test('NFS-e tomada com IBS/CBS: pagamento rateado com o crédito a recuperar', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
+  await mockReceita(page);
 
   await page.goto('/login');
   await page.getByRole('button', { name: 'Usar credenciais de teste local' }).click();

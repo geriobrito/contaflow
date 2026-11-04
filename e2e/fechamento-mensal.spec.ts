@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mockReceita } from './receita';
 
 /**
  * Fluxo completo de um fechamento mensal, do cadastro da empresa aos demonstrativos:
@@ -88,6 +89,7 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
   // Qualquer erro de script na página reprova o teste.
   const pageErrors: string[] = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
+  await mockReceita(page);
 
   await test.step('login no modo local', async () => {
     await page.goto('/login');
