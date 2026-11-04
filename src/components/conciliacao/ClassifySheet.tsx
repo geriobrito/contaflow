@@ -9,7 +9,8 @@ import { describeInvoice, InvoiceMatchCard, LinkedInvoiceNote } from '@/componen
 import { normalizePattern } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SegmentedControl } from '@/components/ui/primitives';
-import { AccountPicker } from '@/components/conciliacao/AccountPicker';
+import { AccountPicker } from '@/components/ui/AccountCombobox';
+import { directionOf, orderAccountsByDirection, type AccountSuggestion } from '@/lib/account-suggestions';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
 import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
@@ -49,6 +50,8 @@ interface ClassifySheetProps {
   linkedInvoice?: InvoiceSummary | null;
   /** Regime tributário da empresa: decide se o IBS/CBS da nota de compra vira crédito. */
   regime?: TaxRegime;
+  /** Contas sugeridas no topo do seletor (nota, mesmo favorecido, recentes, mais usadas). */
+  suggestions?: readonly AccountSuggestion[];
 }
 
 type SheetMode = 'single' | 'split' | 'ask' | 'history';
@@ -74,6 +77,7 @@ export function ClassifySheet({
   invoiceMatch,
   linkedInvoice,
   regime,
+  suggestions,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -157,6 +161,8 @@ export function ClassifySheet({
   }, [onClose]);
 
   const negative = transaction.amount < 0;
+  // Saída: despesas e custos primeiro; entrada: receitas primeiro.
+  const pickerAccounts = useMemo(() => orderAccountsByDirection(accounts, directionOf(transaction.amount)), [accounts, transaction.amount]);
 
   const dialog = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -326,7 +332,7 @@ export function ClassifySheet({
             {/* Plano de contas */}
             <section className="space-y-2">
               <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-              <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
+              <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus />
               <button
                 type="button"
                 onClick={() => {

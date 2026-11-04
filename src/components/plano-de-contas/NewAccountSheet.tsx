@@ -7,6 +7,7 @@ import { newAccountId } from '@/lib/utils/id';
 import { describeError } from '@/lib/utils/errors';
 import { codeError as validateCode, defaultParent, DRE_GROUPS, inheritedDREGroup, RESULT_TYPES, suggestCode, TYPE_LABEL } from '@/lib/chart/tree';
 import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
 
 interface NewAccountSheetProps {
   accounts: ChartAccount[];
@@ -88,14 +89,7 @@ export function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewA
     >
       <div className="space-y-4 pb-2">
         <Field label="Conta superior">
-          <select value={parentId} onChange={(e) => handleParent(e.target.value)} className={INPUT}>
-            {parents.map((p) => (
-              <option key={p.id} value={p.id}>
-                {'  '.repeat(p.code.split('.').length - 1)}
-                {p.code} · {p.name}
-              </option>
-            ))}
-          </select>
+          <AccountSelectField accounts={parents} value={parentId} onChange={handleParent} label="Conta superior" analyticOnly={false} triggerClassName="h-11" />
         </Field>
 
         <Field label="Código" error={codeError} hint={parent ? `Tipo herdado: ${TYPE_LABEL[parent.type]}` : undefined}>

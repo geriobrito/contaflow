@@ -134,7 +134,8 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
   await test.step('classificação dos lançamentos', async () => {
     await classify(page, /RECEBIMENTO CLIENTE ALFA/, '3.1.1.01', /Receita de Prestação de Serviços/, { learnRule: false });
     // Com "Lembrar essa classificação": cria a regra de aprendizado junto.
-    await classify(page, /ALUGUEL SALA COMERCIAL/, '3.3.2.07', /Aluguéis e Condomínios/, { learnRule: true });
+    // A busca ignora acento e plural: "aluguel" acha "Aluguéis e Condomínios".
+    await classify(page, /ALUGUEL SALA COMERCIAL/, 'aluguel', /Aluguéis e Condomínios/, { learnRule: true });
     await classify(page, /TAR PACOTE MENSAL/, '3.4.1.01.002', /Despesas Bancárias/, { learnRule: false });
     await expect(page.getByText(/1\s+regra\(s\) ativa\(s\)/)).toBeVisible();
   });

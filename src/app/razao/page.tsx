@@ -9,7 +9,7 @@ import { buildAccountLedger, type AccountLedger } from '@/lib/ledger';
 import { describeError } from '@/lib/utils/errors';
 import { accountingStandardCode } from '@/lib/accounting-standard';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
-import { AccountSelect } from '@/components/razao/AccountSelect';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { LedgerEntriesTable } from '@/components/razao/LedgerEntriesTable';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { LedgerSummary } from '@/components/razao/LedgerSummary';
@@ -114,7 +114,17 @@ export default function RazaoPage() {
         <PeriodPicker period={period} />
 
         {/* Seletor de Conta com Dropdown Pesquisável */}
-        <AccountSelect accounts={accounts} value={effectiveAccountId} onChange={setSelectedAccountId} />
+        <AccountSelectField
+          accounts={accounts}
+          value={effectiveAccountId ?? ''}
+          onChange={setSelectedAccountId}
+          label="Conta do razão"
+          placeholder="Selecione uma conta contábil…"
+          analyticOnly={false}
+          className="min-w-[360px]"
+          panelWidth={420}
+          align="end"
+        />
       </div>
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}

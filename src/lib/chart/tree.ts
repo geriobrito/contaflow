@@ -1,5 +1,6 @@
 import type { AccountType, ChartAccount, DREGroup } from '@/types/firestore';
 import { resolveDREGroup } from '@/lib/dre/build';
+import { accountMatches } from '@/lib/account-search';
 
 /* =========================================================================
    Rótulos
@@ -87,13 +88,13 @@ export function buildTree(accounts: readonly ChartAccount[]): TreeNode[] {
   return roots;
 }
 
-/** Filtra a árvore mantendo os ancestrais de cada correspondência. `term` já em minúsculas. */
+/** Filtra a árvore mantendo os ancestrais de cada correspondência (busca de `account-search`). */
 export function filterTree(nodes: TreeNode[], term: string): TreeNode[] {
-  if (!term) return nodes;
+  if (!term.trim()) return nodes;
   const out: TreeNode[] = [];
   for (const n of nodes) {
     const children = filterTree(n.children, term);
-    const hit = `${n.account.code} ${n.account.name}`.toLowerCase().includes(term);
+    const hit = accountMatches(n.account, term);
     if (hit || children.length > 0) out.push({ ...n, children: hit && children.length === 0 ? n.children : children });
   }
   return out;

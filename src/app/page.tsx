@@ -11,6 +11,7 @@ import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
 import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
 import { useImportFlow } from '@/hooks/reconciliation/useImportFlow';
 import { useInvoiceMatches } from '@/hooks/reconciliation/useInvoiceMatches';
+import { useAccountSuggestions } from '@/hooks/reconciliation/useAccountSuggestions';
 import { usePagination } from '@/hooks/usePagination';
 import { useTableKeyboard } from '@/hooks/useTableKeyboard';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -18,11 +19,11 @@ import { PAGE, SEGMENT_PILL, SearchField, SegmentedControl, SURFACE, segmentClas
 import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 import { DuplicateImportModal } from '@/components/ui/DuplicateImportModal';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { OFXDropzone } from '@/components/conciliacao/OFXDropzone';
+import { CSVImportModal, FileDropOverlay, ImportButton, ImportEmptyState, ImportFeedback, useStatementFiles } from '@/components/conciliacao/StatementImport';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { GroupClassifySheet, PayeeGroupList } from '@/components/conciliacao/PayeeGroups';
 import { MonthCloseBar } from '@/components/conciliacao/MonthCloseBar';
-import { StatementPanel } from '@/components/conciliacao/StatementPanel';
+import { StatementChip, StatementDetails, useStatementBatches } from '@/components/conciliacao/StatementPanel';
 import { TransferPanel } from '@/components/conciliacao/TransferPanel';
 import { MetricsSummary } from '@/components/conciliacao/MetricsSummary';
 import { ImportSummary } from '@/components/conciliacao/ImportSummary';
@@ -223,6 +224,18 @@ export default function ConciliacaoPage() {
     reconcileTransferPairs: flow.handleTransfers,
     notify: setToast,
     offerUndo: flow.offerUndo,
+    clientId,
+  });
+
+  // Contas sugeridas em cada seletor (nota fiscal, mesmo favorecido, recentes, mais usadas).
+  const suggestions = useAccountSuggestions({
+    clientId,
+    accounts,
+    transactions,
+    selected,
+    invoiceAccountId: selected && selected.status !== 'RECONCILED' ? invoices.matches.get(selected.id)?.suggestedAccountId : null,
+    group: flow.groupSheet,
+    bulk: bulk.showBulkClassify ? bulk.selectedTransactions : null,
   });
 
   /* ── Importação de extratos ────────────────────────────────────────── */
@@ -238,9 +251,15 @@ export default function ConciliacaoPage() {
     notify: setToast,
   });
   const { duplicate } = importFlow;
+  // Leitura dos arquivos: botão do cabeçalho, arrastar na página e tabela vazia.
+  const statementFiles = useStatementFiles({ onParsedBatch: importFlow.handleOFXParsedBatch, isSaving });
+  const statements = useStatementBatches(clientId, statementsKey);
+  const [statementsOpen, setStatementsOpen] = useState(false);
 
   // Atalhos de teclado para conciliação rápida (suspensos enquanto houver um diálogo aberto).
-  const isAnyModalOpen = Boolean(selected || flow.groupSheet || duplicate || bulk.showBulkClassify || bulk.showBulkAsk || showKeyboardHelp);
+  const isAnyModalOpen = Boolean(
+    selected || flow.groupSheet || duplicate || bulk.showBulkClassify || bulk.showBulkAsk || showKeyboardHelp || statementFiles.csvQueue.length > 0
+  );
   const { focusedIndex } = useTableKeyboard({
     items: pageRows,
     getId: (t) => t.id,
@@ -262,17 +281,27 @@ export default function ConciliacaoPage() {
 
   return (
     <main className={PAGE}>
-      {/* Cabeçalho editorial */}
-      <header className="space-y-1.5">
-        <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
-        <h1 className="text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-          Conciliação bancária
-        </h1>
-        <p className="text-[14px] text-stone-500 max-w-xl">
-          Importe extratos e classifique lançamentos. Cada classificação memorizada ensina o sistema —{' '}
-          <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
-        </p>
+      {/* Cabeçalho editorial, com a importação de extratos */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1.5 min-w-0">
+          <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
+          <h1 className="text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">Conciliação bancária</h1>
+          <p className="text-[14px] text-stone-500">
+            Classifique os lançamentos; cada classificação memorizada ensina o sistema —{' '}
+            <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
+          </p>
+        </div>
+        {clientId && <ImportButton files={statementFiles} />}
       </header>
+      {clientId && <FileDropOverlay files={statementFiles} disabled={isAnyModalOpen} />}
+      <ImportFeedback files={statementFiles} />
+      <CSVImportModal
+        files={statementFiles}
+        bankAccounts={banks}
+        accounts={accounts}
+        clientId={clientId || ''}
+        onBankAccountUpdated={handleBankAccountUpdated}
+      />
       {loadError && loadError.id === clientId && (
         <p role="alert" className="text-[13px] text-rose-600">
           {loadError.message}
@@ -281,7 +310,8 @@ export default function ConciliacaoPage() {
 
       <div className="space-y-2">
         <PeriodPicker period={period} />
-        {clientId && range && (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        {clientId && range ? (
           <MonthCloseBar
             month={selectedMonth}
             range={range}
@@ -297,20 +327,17 @@ export default function ConciliacaoPage() {
               setToast(`Competência de ${formatMonth(m)} reaberta`);
             }}
           />
+        ) : (
+          <span />
         )}
+        <StatementChip summary={statements} open={statementsOpen} onToggle={() => setStatementsOpen((v) => !v)} />
+        </div>
       </div>
+
+      {statementsOpen && <StatementDetails summary={statements} />}
 
       <MetricsSummary metrics={metrics} periodLabel={period.label} />
 
-      <OFXDropzone
-        onParsed={importFlow.handleOFXParsed}
-        onParsedBatch={importFlow.handleOFXParsedBatch}
-        onBankAccountUpdated={handleBankAccountUpdated}
-        isLoading={isSaving}
-        bankAccounts={banks}
-        accounts={accounts}
-        clientId={clientId || ''}
-      />
       {duplicate && (
         <DuplicateImportModal
           info={duplicate.info}
@@ -322,8 +349,6 @@ export default function ConciliacaoPage() {
       )}
 
       <ImportSummary lastImport={importFlow.lastImport} error={error} onDismiss={importFlow.dismissLastImport} />
-
-      {clientId && <StatementPanel clientId={clientId} refreshKey={statementsKey} />}
 
       {hasBrokenText && (
         <p role="status" className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200/60 text-[13px] text-amber-800">
@@ -412,16 +437,18 @@ export default function ConciliacaoPage() {
               </div>
             )}
 
-            <button
-              type="button"
-              disabled={approvable.size === 0 || isSaving}
-              onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvable : undefined)}
-              className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
-            >
-              <CheckCheck className="w-4 h-4" strokeWidth={2} />
-              Aprovar todos os auto-classificados
-              <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable.size}</span>
-            </button>
+            {approvable.size > 0 && (
+              <button
+                type="button"
+                disabled={isSaving}
+                onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvable : undefined)}
+                className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
+              >
+                <CheckCheck className="w-4 h-4" strokeWidth={2} />
+                Aprovar todos os auto-classificados
+                <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable.size}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -430,14 +457,7 @@ export default function ConciliacaoPage() {
         ) : isLoading ? (
           <TableSkeleton rows={6} label="Carregando lançamentos…" />
         ) : visible.length === 0 ? (
-          <div className="px-6 py-16 text-center">
-            <p className="text-[15px] font-medium tracking-tight text-stone-800 dark:text-stone-200">
-              {transactions.length === 0 ? 'Nenhum lançamento ainda' : 'Nada por aqui'}
-            </p>
-            <p className="mt-1 text-[13px] text-stone-500">
-              {transactions.length === 0 ? 'Importe um extrato OFX para começar.' : 'Nenhum lançamento neste filtro ou busca.'}
-            </p>
-          </div>
+          <ImportEmptyState files={statementFiles} hasAnyTransaction={transactions.length > 0} />
         ) : (
           <TransactionTable
             rows={pageRows}
@@ -477,6 +497,7 @@ export default function ConciliacaoPage() {
           onAskClient={flow.handleAskClient}
           invoiceMatch={selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id)}
           linkedInvoice={invoices.linked.get(selected.id)}
+          suggestions={suggestions.forSelected}
           regime={currentClient?.regime}
         />
       )}
@@ -487,6 +508,7 @@ export default function ConciliacaoPage() {
           group={flow.groupSheet}
           accounts={accounts}
           pool={transactions}
+          suggestions={suggestions.forGroup}
           isSaving={isSaving}
           onClose={flow.closeGroup}
           onConfirm={flow.handleGroupConfirm}
@@ -510,6 +532,7 @@ export default function ConciliacaoPage() {
         transactions={bulk.selectedTransactions}
         accounts={accounts}
         memoPool={memoPool}
+        suggestions={suggestions.forBulk}
         isSaving={isSaving}
         onClose={() => bulk.setShowBulkClassify(false)}
         onConfirm={bulk.handleConfirmBulkClassify}
