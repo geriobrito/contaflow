@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftRight, Lock, MessageCircleQuestion, X } from 'lucide-react';
-import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, InvoiceSummary, RuleMatchType } from '@/types/firestore';
+import { ArrowLeftRight, Lock, MessageCircleQuestion, ReceiptText, X } from 'lucide-react';
+import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, InvoiceSummary, RuleMatchType, TaxRegime } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';
-import { InvoiceMatchCard, LinkedInvoiceNote } from '@/components/conciliacao/InvoiceMatchCard';
+import { creditSplitDrafts, ibsCbsCredit } from '@/lib/nfe/credits';
+import { describeInvoice, InvoiceMatchCard, LinkedInvoiceNote } from '@/components/conciliacao/InvoiceMatchCard';
 import { normalizePattern } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SegmentedControl } from '@/components/ui/primitives';
@@ -29,7 +30,8 @@ interface ClassifySheetProps {
   onClose: () => void;
   /** `invoiceId`: nota fiscal confirmada como documento do lançamento (casamento aceito). */
   onConfirm: (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType, invoiceId?: string) => Promise<void>;
-  onSplit: (drafts: SplitDraft[]) => Promise<void>;
+  /** `invoiceId`: nota fiscal confirmada como documento do lançamento rateado. */
+  onSplit: (drafts: SplitDraft[], invoiceId?: string) => Promise<void>;
   onUnreconcile: () => Promise<void>;
   /** Regras do cliente, para pré-carregar o termo da regra que originou o lançamento. */
   rules: readonly ClassificationRule[];
@@ -45,6 +47,8 @@ interface ClassifySheetProps {
   invoiceMatch?: InvoiceMatch | null;
   /** Nota já vinculada ao lançamento conciliado. */
   linkedInvoice?: InvoiceSummary | null;
+  /** Regime tributário da empresa: decide se o IBS/CBS da nota de compra vira crédito. */
+  regime?: TaxRegime;
 }
 
 type SheetMode = 'single' | 'split' | 'ask' | 'history';
@@ -69,6 +73,7 @@ export function ClassifySheet({
   memoPool = [],
   invoiceMatch,
   linkedInvoice,
+  regime,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -113,6 +118,15 @@ export function ClassifySheet({
   );
   const [invoiceRejected, setInvoiceRejected] = useState(false);
   const acceptedInvoiceId = invoiceMatch && !invoiceRejected ? invoiceMatch.invoice.id : undefined;
+  // IBS/CBS da nota: na compra do regime regular, o crédito sai da despesa pelo rateio.
+  const credit = useMemo(
+    () => (invoiceMatch ? ibsCbsCredit(invoiceMatch.invoice, invoiceMatch.amount, regime) : null),
+    [invoiceMatch, regime]
+  );
+  const creditDrafts = useMemo(
+    () => (credit?.status === 'CREDIT' ? creditSplitDrafts(transaction.amount, accountId, credit, accounts) : null),
+    [credit, transaction.amount, accountId, accounts]
+  );
   // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
   const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
   // Termo sugerido: a descrição como aparece na lista ("Pix recebido - Fulano"), sem CPF/dados bancários;
@@ -267,7 +281,16 @@ export function ClassifySheet({
               )}
             </div>
           ) : mode === 'split' ? (
-            <div className="px-6">
+            <div className="px-6 space-y-3">
+              {invoiceMatch && acceptedInvoiceId && (
+                <p className="flex items-start gap-2 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
+                  <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700" />
+                  <span>
+                    O rateio fica vinculado à {describeInvoice(invoiceMatch.invoice)}. Se não for esta nota, marque “Não é esta nota” em
+                    Conta única.
+                  </span>
+                </p>
+              )}
               <SplitEditor
                 transactionAmount={transaction.amount}
                 accounts={accounts}
@@ -287,6 +310,16 @@ export function ClassifySheet({
                 rejected={invoiceRejected}
                 onUseSuggestion={setAccountId}
                 onRejectedChange={setInvoiceRejected}
+                credit={credit}
+                onUseCredit={
+                  creditDrafts
+                    ? () => {
+                        setDrafts(creditDrafts);
+                        setGrossNetFirst(false);
+                        setMode('split');
+                      }
+                    : undefined
+                }
               />
             )}
             {!invoiceMatch && linkedInvoice && <LinkedInvoiceNote invoice={linkedInvoice} />}
@@ -371,7 +404,7 @@ export function ClassifySheet({
               <button
                 type="button"
                 disabled={!canSaveSplit || isSaving}
-                onClick={() => void onSplit(drafts)}
+                onClick={() => void onSplit(drafts, acceptedInvoiceId)}
                 className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
               >
                 {isSaving ? 'Salvando…' : isEditing ? 'Salvar novo rateio' : 'Salvar rateio'}

@@ -20,6 +20,8 @@ interface XmlOptions {
   dups?: [string, string, string][];
   cStat?: string | null;
   prefix?: string;
+  /** Grupos extras dentro de `<total>` (ex.: IBSCBSTot, vNFTot). */
+  extraTotal?: string;
 }
 
 /** NF-e processada mínima, com os grupos que o leitor usa. */
@@ -33,6 +35,7 @@ function nfeXml({
   dups = [],
   cStat = '100',
   prefix = '',
+  extraTotal = '',
 }: XmlOptions = {}): string {
   const p = prefix ? `${prefix}:` : '';
   const k = key(n, issuer[0]);
@@ -43,7 +46,7 @@ function nfeXml({
 <${p}emit><${p}CNPJ>${issuer[0]}</${p}CNPJ><${p}xNome>${issuer[1]}</${p}xNome></${p}emit>
 ${dest ? `<${p}dest><${p}CNPJ>${dest[0]}</${p}CNPJ><${p}xNome>${dest[1]}</${p}xNome></${p}dest>` : ''}
 ${items.map(([cfop, v], i) => `<${p}det nItem="${i + 1}"><${p}prod><${p}cProd>${i}</${p}cProd><${p}CFOP>${cfop}</${p}CFOP><${p}vProd>${v}</${p}vProd></${p}prod></${p}det>`).join('')}
-<${p}total><${p}ICMSTot><${p}vProd>${total}</${p}vProd><${p}vNF>${total}</${p}vNF></${p}ICMSTot></${p}total>
+<${p}total><${p}ICMSTot><${p}vProd>${total}</${p}vProd><${p}vNF>${total}</${p}vNF></${p}ICMSTot>${extraTotal}</${p}total>
 ${dups.length ? `<${p}cobr>${dups.map(([nDup, dVenc, vDup]) => `<${p}dup><${p}nDup>${nDup}</${p}nDup><${p}dVenc>${dVenc}</${p}dVenc><${p}vDup>${vDup}</${p}vDup></${p}dup>`).join('')}</${p}cobr>` : ''}
 <${p}pag><${p}detPag><${p}vPag>${total}</${p}vPag></${p}detPag></${p}pag>
 </${p}infNFe></${p}NFe>
@@ -92,6 +95,137 @@ describe('leitura do XML', () => {
     expect(res.kind === 'invoice' && res.invoice).toMatchObject({ number: '9', total: 99.9, summaryOnly: true, situation: 'AUTHORIZED' });
     expect(parseNFeXml('<html></html>').kind).toBe('unknown');
     expect(parseNFeXml(`<evento><infEvento><chNFe>${k}</chNFe><tpEvento>110110</tpEvento></infEvento></evento>`).kind).toBe('unknown');
+  });
+
+  it('IBS e CBS do IBSCBSTot e o total com eles (vNFTot)', () => {
+    const extraTotal = `<IBSCBSTot><vBCIBSCBS>1500.00</vBCIBSCBS><gIBS><gIBSUF><vDif>0</vDif><vIBSUF>1.50</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.00</vIBSMun></gIBSMun><vIBS>1.50</vIBS></gIBS><gCBS><vDif>0</vDif><vCBS>13.50</vCBS></gCBS></IBSCBSTot><vNFTot>1515.00</vNFTot>`;
+    const r = parseNFeXml(nfeXml({ extraTotal }));
+    expect(r.kind === 'invoice' && r.invoice).toMatchObject({ total: 1500, altTotal: 1515, ibs: 1.5, cbs: 13.5 });
+    // Sem vIBS, soma UF e município.
+    const parts = parseNFeXml(nfeXml({ extraTotal: '<IBSCBSTot><gIBS><gIBSUF><vIBSUF>0.75</vIBSUF></gIBSUF><gIBSMun><vIBSMun>0.75</vIBSMun></gIBSMun></gIBS></IBSCBSTot>' }));
+    expect(parts.kind === 'invoice' && parts.invoice.ibs).toBe(1.5);
+    // Nota antiga, sem o grupo.
+    const old = parseNFeXml(nfeXml());
+    expect(old.kind === 'invoice' && [old.invoice.ibs, old.invoice.cbs, old.invoice.altTotal]).toEqual([0, 0, undefined]);
+  });
+});
+
+/* ───────────────────────── NFS-e do padrão nacional ───────────────────────── */
+
+const PROVIDER_DOC = '22333444000155';
+/** Chave de 50 dígitos: município, ambiente, tipo de inscrição, CNPJ, número, AAMM, código e DV. */
+const nfseKey = (num: number, doc = PROVIDER_DOC) => `3550308${'1'}${'2'}${doc}${String(num).padStart(13, '0')}2701${'123456789'}${'0'}`;
+
+interface NfseOptions {
+  num?: number;
+  provider?: [string, string];
+  taker?: [string, string] | null;
+  service?: string;
+  net?: string;
+  cStat?: string;
+  ibsCbs?: string;
+}
+
+function nfseXml({
+  num = 10,
+  provider = [PROVIDER_DOC, 'ESCRITORIO DE ASSESSORIA LTDA'],
+  taker = [CLIENT_DOC, 'PADARIA TESTE LTDA'],
+  service = '1000.00',
+  net = '1000.00',
+  cStat = '100',
+  ibsCbs = '',
+}: NfseOptions = {}): string {
+  const k = nfseKey(num, provider[0]);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01"><infNFSe Id="NFS${k}">
+<xLocEmi>São Paulo</xLocEmi><nNFSe>${num}</nNFSe><cStat>${cStat}</cStat><dhProc>2027-01-12T09:00:00-03:00</dhProc>
+<emit><CNPJ>${provider[0]}</CNPJ><xNome>${provider[1]}</xNome></emit>
+<valores><vBC>${service}</vBC><vISSQN>20.00</vISSQN><vLiq>${net}</vLiq></valores>
+${ibsCbs}
+<DPS versao="1.01"><infDPS Id="DPS1"><dhEmi>2027-01-10T15:30:00-03:00</dhEmi><serie>900</serie><nDPS>1</nDPS>
+<prest><CNPJ>${provider[0]}</CNPJ><regTrib><opSimpNac>1</opSimpNac></regTrib></prest>
+${taker ? `<toma><CNPJ>${taker[0]}</CNPJ><xNome>${taker[1]}</xNome></toma>` : ''}
+<serv><cServ><cTribNac>170201</cTribNac><xDescServ>Assessoria</xDescServ></cServ></serv>
+<valores><vServPrest><vServ>${service}</vServ></vServPrest></valores>
+</infDPS></DPS></infNFSe></NFSe>`;
+}
+
+const nfseCancelXml = (k: string, code = 'e101101') =>
+  `<evento xmlns="http://www.sped.fazenda.gov.br/nfse"><infEvento Id="EVT1"><pedRegEvento><infPedReg Id="PRE1"><chNFSe>${k}</chNFSe><${code}><xDesc>Cancelamento de NFS-e</xDesc></${code}></infPedReg></pedRegEvento></infEvento></evento>`;
+
+describe('leitura do XML da NFS-e', () => {
+  it('extrai prestador, tomador, líquido, valor do serviço, código e data da DPS', () => {
+    const r = parseNFeXml(nfseXml({ service: '1000.00', net: '938.50' }));
+    expect(r.kind).toBe('invoice');
+    if (r.kind !== 'invoice') return;
+    expect(r.invoice).toMatchObject({
+      key: nfseKey(10),
+      number: '10',
+      series: '',
+      model: 'NFSE',
+      issueDate: '2027-01-10',
+      operation: 'OUT',
+      issuer: { doc: PROVIDER_DOC, name: 'ESCRITORIO DE ASSESSORIA LTDA' },
+      recipient: { doc: CLIENT_DOC, name: 'PADARIA TESTE LTDA' },
+      total: 938.5,
+      altTotal: 1000,
+      serviceCode: '170201',
+      situation: 'AUTHORIZED',
+      cfops: [],
+      installments: [],
+    });
+    expect(r.invoice.key).toHaveLength(50);
+  });
+
+  it('sem retenção não há valor alternativo; IBS/CBS dos totais da nota', () => {
+    const ibsCbs = '<IBSCBS><totCIBS><vTotNF>1010.00</vTotNF><gIBS><vIBSTot>1.00</vIBSTot></gIBS><gCBS><vCBS>9.00</vCBS></gCBS></totCIBS></IBSCBS>';
+    const r = parseNFeXml(nfseXml({ ibsCbs }));
+    expect(r.kind === 'invoice' && r.invoice).toMatchObject({ total: 1000, ibs: 1, cbs: 9 });
+    expect(r.kind === 'invoice' && r.invoice.altTotal).toBeUndefined();
+  });
+
+  it('cancelamento e cancelamento por substituição; outros eventos, DPS e ABRASF são recusados', () => {
+    const k = nfseKey(10);
+    expect(parseNFeXml(nfseCancelXml(k))).toEqual({ kind: 'cancellation', key: k });
+    expect(parseNFeXml(nfseCancelXml(k, 'e105102'))).toEqual({ kind: 'cancellation', key: k });
+    expect(parseNFeXml(nfseCancelXml(k, 'e202201'))).toMatchObject({ kind: 'unknown', reason: expect.stringMatching(/não é cancelamento/) });
+    expect(parseNFeXml(nfseCancelXml('123'))).toMatchObject({ kind: 'unknown' });
+    expect(parseNFeXml('<DPS><infDPS Id="DPS1"><dhEmi>2027-01-10</dhEmi></infDPS></DPS>')).toMatchObject({ kind: 'unknown', reason: expect.stringMatching(/DPS/) });
+    expect(parseNFeXml('<CompNfse><Nfse><InfNfse><Numero>1</Numero></InfNfse></Nfse></CompNfse>')).toMatchObject({ kind: 'unknown', reason: expect.stringMatching(/ABRASF/) });
+  });
+
+  it('situação desconhecida entra com aviso', () => {
+    const r = parseNFeXml(nfseXml({ cStat: '' }));
+    expect(r.kind === 'invoice' && r.invoice.situation).toBe('UNKNOWN');
+  });
+});
+
+describe('importação da NFS-e', () => {
+  const NOW = '2027-01-15T12:00:00.000Z';
+
+  it('serviço tomado é compra; prestado é venda; grava IBS/CBS e código só quando há', () => {
+    const ibsCbs = '<IBSCBS><totCIBS><gIBS><vIBSTot>1.00</vIBSTot></gIBS><gCBS><vCBS>9.00</vCBS></gCBS></totCIBS></IBSCBS>';
+    const plan = planInvoiceImport(
+      [
+        { name: 'tomada.xml', text: nfseXml({ num: 1, ibsCbs }) },
+        { name: 'prestada.xml', text: nfseXml({ num: 2, provider: [CLIENT_DOC, 'PADARIA TESTE LTDA'], taker: [SUPPLIER_DOC, 'CLIENTE ALFA'] }) },
+        { name: 'outra.xml', text: nfseXml({ num: 3, taker: ['99888777000166', 'OUTRA'] }) },
+        { name: 'cancel.xml', text: nfseCancelXml(nfseKey(1)) },
+        { name: 'sem-situacao.xml', text: nfseXml({ num: 4, cStat: '' }) },
+      ],
+      CLIENT,
+      NOW
+    );
+    expect(plan.invoices.map((i) => [i.number, i.direction, i.counterpartyDoc, i.status])).toEqual([
+      ['1', 'PURCHASE', PROVIDER_DOC, 'CANCELLED'],
+      ['2', 'SALE', SUPPLIER_DOC, 'AUTHORIZED'],
+      ['4', 'PURCHASE', PROVIDER_DOC, 'AUTHORIZED'],
+    ]);
+    expect(plan.invoices[0]).toMatchObject({ model: 'NFSE', ibs: 1, cbs: 9, serviceCode: '170201' });
+    expect('ibs' in plan.invoices[1]).toBe(false);
+    expect('altTotal' in plan.invoices[1]).toBe(false);
+    expect(plan.rejected.map((r) => r.file)).toEqual(['outra.xml']);
+    expect(plan.warnings).toEqual([{ file: 'sem-situacao.xml', message: expect.stringMatching(/NFS-e 4/) }]);
   });
 });
 
@@ -254,6 +388,31 @@ describe('casamento de lançamentos com notas', () => {
     const sale = invoice({ direction: 'SALE', counterpartyName: 'MERCADO BOM PRECO', cfops: [{ cfop: '5101', amount: 1500 }] });
     const t = tx('2025-03-08', 1500, 'Pix recebido - MERCADO BOM PRECO');
     expect(matchInvoices([t], [sale], chart).get(t.id)?.suggestedAccountId).toBe(acc('3.1.1.03'));
+  });
+
+  it('NFS-e: casa pelo líquido ou pelo valor do serviço, uma vez só; conta pelo tipo de nota', () => {
+    const service = invoice({
+      model: 'NFSE',
+      series: '',
+      direction: 'SALE',
+      counterpartyName: 'CLIENTE ALFA',
+      total: 938.5,
+      altTotal: 1000,
+      cfops: [],
+      serviceCode: '170201',
+    });
+    const net = tx('2025-03-15', 938.5, 'Pix recebido - CLIENTE ALFA');
+    const gross = tx('2025-03-16', 1000, 'Pix recebido - CLIENTE ALFA');
+    expect(matchInvoices([net], [service], chart).get(net.id)).toMatchObject({ amount: 938.5, suggestedAccountId: acc('3.1.1.01') });
+    expect(matchInvoices([gross], [service], chart).get(gross.id)).toMatchObject({ amount: 1000 });
+    // Total e valor alternativo são a mesma vaga.
+    expect(matchInvoices([net, gross], [service], chart).size).toBe(1);
+    // Já paga pelo valor do serviço: não casa de novo pelo líquido.
+    const paid = { ...service, links: [{ transactionId: 'x', amount: 1000, accountId: acc('3.1.1.01'), linkedAt: 'T' }] };
+    expect(matchInvoices([net], [paid], chart).size).toBe(0);
+    expect(paymentStateOf(paid)).toBe('SETTLED');
+    // Serviço tomado: despesa geral.
+    expect(cfopAccountCode({ direction: 'PURCHASE', cfops: [], model: 'NFSE' })).toBe('3.3.2.17');
   });
 });
 

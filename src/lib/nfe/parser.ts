@@ -2,13 +2,19 @@ import type { InvoiceCfop, InvoiceInstallment } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 
 /**
- * Leitura do XML de NF-e/NFC-e no navegador, sem guardar o arquivo: tira só o que a conciliação
- * usa (partes, valor, data, CFOP e parcelas).
+ * Leitura do XML de NF-e/NFC-e e de NFS-e do padrão nacional no navegador, sem guardar o
+ * arquivo: tira só o que a conciliação usa (partes, valor, data, CFOP, parcelas e IBS/CBS).
  *
- * Aceita a nota processada (`nfeProc`, com o protocolo de autorização), a nota sem protocolo,
- * o resumo da distribuição DF-e (`resNFe`, o que a SEFAZ entrega antes da manifestação) e o
- * evento de cancelamento (`procEventoNFe`, tpEvento 110111). A extração é por tag, não por
- * DOM: o leiaute da NF-e é fixo, e assim o mesmo código roda no navegador e nos testes.
+ * NF-e: aceita a nota processada (`nfeProc`, com o protocolo de autorização), a nota sem
+ * protocolo, o resumo da distribuição DF-e (`resNFe`, o que a SEFAZ entrega antes da
+ * manifestação) e o evento de cancelamento (`procEventoNFe`, tpEvento 110111).
+ *
+ * NFS-e (Emissor Nacional / ADN): a nota gerada (`NFSe`/`infNFSe`, chave de 50 dígitos) e o
+ * evento de cancelamento (e101101) ou de cancelamento por substituição (e105102). O leiaute
+ * municipal (ABRASF) e a DPS sozinha são recusados com o motivo.
+ *
+ * A extração é por tag, não por DOM: os leiautes são fixos, e assim o mesmo código roda no
+ * navegador e nos testes.
  */
 
 export interface InvoiceParty {
@@ -30,7 +36,15 @@ export interface ParsedInvoice {
   issuer: InvoiceParty;
   /** Ausente no resumo (resNFe) e na NFC-e sem consumidor identificado. */
   recipient: InvoiceParty | null;
+  /** Valor a pagar: vNF da NF-e; vLiq da NFS-e (sem as retenções). */
   total: number;
+  /** Outro valor possível do pagamento (vServ da NFS-e, vNFTot da NF-e), quando difere do total. */
+  altTotal?: number;
+  /** IBS e CBS destacados (0 quando a nota não traz o grupo). */
+  ibs: number;
+  cbs: number;
+  /** NFS-e: código de tributação nacional (cTribNac). */
+  serviceCode?: string;
   cfops: InvoiceCfop[];
   installments: InvoiceInstallment[];
   /** Situação pelo protocolo (ou pelo resumo); UNKNOWN = XML sem protocolo de autorização. */
@@ -38,6 +52,9 @@ export interface ParsedInvoice {
   /** Veio do resumo (resNFe): sem itens nem parcelas. */
   summaryOnly: boolean;
 }
+
+/** Modelo gravado para a NFS-e do padrão nacional. */
+export const NFSE_MODEL = 'NFSE';
 
 export type ParsedXml =
   | { kind: 'invoice'; invoice: ParsedInvoice }
@@ -99,9 +116,91 @@ function situationOf(cStat: string): InvoiceSituation {
   return 'DENIED';
 }
 
+/**
+ * IBS e CBS de um grupo de totais: `vIBS` (ou `vIBSTot`; sem eles, UF + município) e `vCBS`.
+ * Os nomes valem para o `IBSCBSTot` da NF-e e para os totais da NFS-e.
+ */
+function ibsCbsOf(group: string | null): { ibs: number; cbs: number } {
+  if (!group) return { ibs: 0, cbs: 0 };
+  const total = text(group, 'vIBS') || text(group, 'vIBSTot');
+  const ibs = total ? amount(total) : fromCents(toCents(amount(text(group, 'vIBSUF'))) + toCents(amount(text(group, 'vIBSMun'))));
+  return { ibs, cbs: amount(text(group, 'vCBS')) };
+}
+
+/* =========================================================================
+   NFS-e do padrão nacional
+   ========================================================================= */
+
+const NFSE_KEY = /^\d{50}$/;
+/** cStat da NFS-e gerada: 100 normal, 101 substituta, 102 decisão judicial, 103 avulsa. */
+const NFSE_GENERATED = ['100', '101', '102', '103'];
+
+function parseNFSe(xml: string): ParsedXml {
+  const inf = section(xml, 'infNFSe');
+  if (!inf) {
+    if (/<chNFSe>/.test(xml)) {
+      // e101101: cancelamento; e105102: cancelamento por substituição.
+      if (!/<e(?:101101|105102)(?:\s|>)/.test(xml)) {
+        return { kind: 'unknown', reason: 'Evento da NFS-e que não é cancelamento: nada a importar.' };
+      }
+      const key = text(xml, 'chNFSe');
+      if (!NFSE_KEY.test(key)) return { kind: 'unknown', reason: 'Evento de cancelamento de NFS-e sem chave de acesso válida.' };
+      return { kind: 'cancellation', key };
+    }
+    return { kind: 'unknown', reason: 'Este XML é a DPS (a declaração enviada para gerar a nota), não a NFS-e: baixe o XML da nota gerada.' };
+  }
+
+  const key = /<infNFSe[^>]*\bId="NFS(\d{50})"/.exec(xml)?.[1];
+  if (!key) return { kind: 'unknown', reason: 'NFS-e sem chave de acesso válida.' };
+
+  const dps = section(inf, 'infDPS') ?? '';
+  // Dados da nota gerada, sem a DPS (que repete grupos com o mesmo nome).
+  const own = inf.replace(/<DPS(?:\s[^>]*)?>[\s\S]*?<\/DPS>/, '');
+  const emit = section(own, 'emit');
+  const prest = section(dps, 'prest');
+  const toma = section(dps, 'toma');
+
+  const service = amount(text(section(dps, 'vServPrest'), 'vServ'));
+  const net = amount(text(section(own, 'valores'), 'vLiq')) || service;
+  const tax = ibsCbsOf(section(own, 'IBSCBS') ?? section(dps, 'IBSCBS'));
+  const status = text(own, 'cStat');
+  const recipientDoc = docOf(toma) || text(toma, 'NIF');
+  const serviceCode = text(section(dps, 'cServ'), 'cTribNac');
+
+  return {
+    kind: 'invoice',
+    invoice: {
+      key,
+      number: text(own, 'nNFSe') || String(Number(key.slice(23, 36))),
+      series: '',
+      model: NFSE_MODEL,
+      issueDate: dateOf(text(dps, 'dhEmi') || text(own, 'dhProc')),
+      // A NFS-e é sempre do prestador para o tomador.
+      operation: 'OUT',
+      issuer: { doc: docOf(emit) || docOf(prest), name: text(emit, 'xNome') || text(prest, 'xNome') },
+      recipient: toma && (recipientDoc || text(toma, 'xNome')) ? { doc: recipientDoc, name: text(toma, 'xNome') } : null,
+      total: net,
+      ...(service > net ? { altTotal: service } : {}),
+      ...tax,
+      ...(serviceCode ? { serviceCode } : {}),
+      cfops: [],
+      installments: [],
+      situation: !status ? 'UNKNOWN' : NFSE_GENERATED.includes(status) ? 'AUTHORIZED' : 'UNKNOWN',
+      summaryOnly: false,
+    },
+  };
+}
+
+/** XML de NF-e, NFC-e ou NFS-e do padrão nacional (nota, resumo ou evento de cancelamento). */
 export function parseNFeXml(raw: string): ParsedXml {
   // Prefixos de namespace ("<nfe:NFe>") e a declaração não importam para a leitura por tag.
   const xml = raw.replace(/^﻿/, '').replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1');
+
+  // NFS-e do padrão nacional (antes da NF-e: o evento dela também tem `infEvento`).
+  if (/<(?:infNFSe|infDPS)(?:\s|>)|<chNFSe>/.test(xml)) return parseNFSe(xml);
+  if (/<(?:InfNfse|CompNfse|ConsultarNfseResposta)(?:\s|>)/.test(xml)) {
+    return { kind: 'unknown', reason: 'NFS-e no leiaute municipal (ABRASF): só o padrão nacional é lido. Baixe o XML no Portal da NFS-e Nacional.' };
+  }
 
   // Evento de cancelamento (procEventoNFe ou só o evento).
   const event = section(xml, 'infEvento');
@@ -136,6 +235,8 @@ export function parseNFeXml(raw: string): ParsedXml {
         issuer: { doc: docOf(res), name: text(res, 'xNome') },
         recipient: null,
         total: amount(text(res, 'vNF')),
+        ibs: 0,
+        cbs: 0,
         cfops: [],
         installments: [],
         // cSitNFe: 1 autorizada, 2 denegada, 3 cancelada.
@@ -174,6 +275,11 @@ export function parseNFeXml(raw: string): ParsedXml {
   const prot = section(xml, 'protNFe');
   const protStatus = text(prot, 'cStat');
   const recipientDoc = docOf(dest) || text(dest, 'idEstrangeiro');
+  const totals = section(inf, 'total');
+  const total = amount(text(icmsTot, 'vNF'));
+  // Reforma tributária: IBS/CBS destacados e o total com eles (vNFTot), quando a nota traz.
+  const tax = ibsCbsOf(section(totals ?? '', 'IBSCBSTot'));
+  const withTaxes = amount(text(totals, 'vNFTot'));
 
   return {
     kind: 'invoice',
@@ -186,7 +292,9 @@ export function parseNFeXml(raw: string): ParsedXml {
       operation: text(ide, 'tpNF') === '0' ? 'IN' : 'OUT',
       issuer: { doc: docOf(emit), name: text(emit, 'xNome') },
       recipient: dest && (recipientDoc || text(dest, 'xNome')) ? { doc: recipientDoc, name: text(dest, 'xNome') } : null,
-      total: amount(text(icmsTot, 'vNF')),
+      total,
+      ...(withTaxes > total ? { altTotal: withTaxes } : {}),
+      ...tax,
       cfops: [...cfopCents].map(([cfop, cents]) => ({ cfop, amount: fromCents(cents) })).sort((a, b) => b.amount - a.amount),
       installments,
       situation: situationOf(protStatus),

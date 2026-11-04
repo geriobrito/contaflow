@@ -2,6 +2,7 @@ import type { BankTransaction, ChartAccount, InvoiceInstallment, InvoiceSummary 
 import { textKey } from '@/lib/payee';
 import { addDays } from '@/lib/statement';
 import { toCents } from '@/lib/money';
+import { NFSE_MODEL } from '@/lib/nfe/parser';
 
 /**
  * Casamento de lançamentos do extrato com notas fiscais importadas, e a conta sugerida.
@@ -112,8 +113,12 @@ const SALE_CFOP: readonly [readonly string[], string][] = [
   [['551'], '3.3.9.02'], // venda de ativo imobilizado
 ];
 
-/** Código do modelo sugerido pelo CFOP de maior valor da nota, ou null. */
-export function cfopAccountCode(invoice: Pick<InvoiceSummary, 'direction' | 'cfops'>): string | null {
+/** NFS-e (sem CFOP): receita de serviços na venda; despesa geral na compra, como o CFOP 933. */
+const NFSE_ACCOUNT = { SALE: '3.1.1.01', PURCHASE: '3.3.2.17' } as const;
+
+/** Código do modelo sugerido pelo CFOP de maior valor da nota (ou pelo tipo, na NFS-e), ou null. */
+export function cfopAccountCode(invoice: Pick<InvoiceSummary, 'direction' | 'cfops'> & { model?: string }): string | null {
+  if (invoice.model === NFSE_MODEL) return NFSE_ACCOUNT[invoice.direction];
   const main = invoice.cfops[0]?.cfop;
   if (!main || main.length !== 4) return null;
   const tail = main.slice(1);
@@ -185,7 +190,12 @@ function openSlots(invoice: InvoiceSummary, ignoreTransactionId?: string): Slot[
       .filter((p) => take(toCents(p.amount)))
       .map((p) => ({ invoice, cents: toCents(p.amount), installment: p, from, to: addDays(p.dueDate, DAYS_AFTER_DUE), target: p.dueDate }));
   }
-  return take(toCents(invoice.total)) ? [{ invoice, cents: toCents(invoice.total), from, to: addDays(invoice.issueDate, DAYS_AFTER_ISSUE), target: invoice.issueDate }] : [];
+  // Sem parcelas: o total ou o valor alternativo (serviço sem retenção, total com IBS/CBS).
+  // Um pagamento de qualquer dos dois quita a nota.
+  const amounts = [toCents(invoice.total), ...(invoice.altTotal ? [toCents(invoice.altTotal)] : [])];
+  if (amounts.some((c) => used.includes(c))) return [];
+  const to = addDays(invoice.issueDate, DAYS_AFTER_ISSUE);
+  return amounts.map((cents) => ({ invoice, cents, from, to, target: invoice.issueDate }));
 }
 
 const dayDiff = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
@@ -219,7 +229,8 @@ export function matchInvoices(
           slot,
           party,
           score: (party === 'none' ? 0.3 : strength) * 0.7 + closeness * 0.3,
-          slotKey: `${inv.id}|${slot.installment?.number ?? slot.installment?.dueDate ?? 'total'}|${slot.cents}`,
+          // O total e o valor alternativo são a mesma vaga: só um lançamento casa com eles.
+          slotKey: slot.installment ? `${inv.id}|${slot.installment.number ?? slot.installment.dueDate}|${slot.cents}` : `${inv.id}|total`,
         });
       }
     }

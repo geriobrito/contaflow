@@ -106,15 +106,18 @@ export function useClassificationFlow({
     }
   };
 
-  const handleSplit = async (drafts: SplitDraft[]) => {
-    if (!selected) return;
+  /** Rateia o lançamento selecionado; `true` se gravou. */
+  const handleSplit = async (drafts: SplitDraft[]): Promise<boolean> => {
+    if (!selected) return false;
     try {
       const plan = await splitTransaction(selected.id, drafts);
       setExpanded((prev) => new Set(prev).add(selected.id));
       setSelected(null);
       offerUndo(`Lançamento rateado em ${drafts.length} contas`, plan);
+      return true;
     } catch {
       /* erro exposto pelo hook */
+      return false;
     }
   };
 

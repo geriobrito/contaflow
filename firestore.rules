@@ -590,12 +590,15 @@ service cloud.firestore {
     // quando não confere. Não é fonte de dados — só membros do escritório o gravam.
     // ── Notas fiscais: só o resumo do XML (o arquivo não é guardado) ─────
     // id `${clientId}_${chave}`. Sem `status`, a nota é autorizada (src/lib/nfe).
+    // Chave: 44 caracteres (NF-e/NFC-e) ou 50 dígitos (NFS-e do padrão nacional).
     function validInvoice(d) {
-      return d.key is string && d.key.matches('^[0-9A-Z]{44}$')
+      return d.key is string && d.key.matches('^([0-9A-Z]{44}|[0-9]{50})$')
         && d.issueDate is string && d.issueDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && d.direction in ['PURCHASE', 'SALE']
         && d.get('status', 'AUTHORIZED') in ['AUTHORIZED', 'CANCELLED']
         && d.total is number && d.total > 0
+        && d.get('altTotal', 0) is number && d.get('ibs', 0) is number && d.get('cbs', 0) is number
+        && d.get('serviceCode', '') is string && d.get('serviceCode', '').size() <= 10
         && d.counterpartyDoc is string && d.counterpartyDoc.size() <= 20
         && d.counterpartyName is string && d.counterpartyName.size() <= 200
         && d.cfops is list && d.cfops.size() <= 60

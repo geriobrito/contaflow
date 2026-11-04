@@ -3,6 +3,7 @@
 import { Trash2 } from 'lucide-react';
 import type { InvoiceSummary } from '@/types/firestore';
 import { paymentStateOf, type InvoicePaymentState } from '@/lib/nfe/import';
+import { NFSE_MODEL } from '@/lib/nfe/parser';
 import { formatCNPJ, formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { ConfirmButton } from '@/components/ui/primitives';
 
@@ -48,6 +49,7 @@ export function InvoiceTable({ invoices, busy, onDelete }: InvoiceTableProps) {
                   <span className={`inline-block px-1.5 py-0.5 mr-1.5 rounded text-[10px] font-semibold ${inv.direction === 'PURCHASE' ? 'bg-sky-50 text-sky-700' : 'bg-violet-50 text-violet-700'}`}>
                     {inv.direction === 'PURCHASE' ? 'Compra' : 'Venda'}
                   </span>
+                  {inv.model === NFSE_MODEL && <span className="mr-1 text-[10px] font-semibold text-stone-500">NFS-e</span>}
                   <span className="font-mono tabular-nums" title={`Chave ${inv.key}`}>
                     {inv.number}
                     {inv.series && inv.series !== '0' ? `/${inv.series}` : ''}
@@ -57,9 +59,17 @@ export function InvoiceTable({ invoices, busy, onDelete }: InvoiceTableProps) {
                   <p className="truncate text-stone-900 dark:text-stone-100">{inv.counterpartyName || (inv.direction === 'SALE' ? 'Consumidor não identificado' : '—')}</p>
                   {inv.counterpartyDoc && <p className="font-mono tabular-nums text-[11px] text-stone-400">{docLabel(inv.counterpartyDoc)}</p>}
                   {inv.installments.length > 1 && <p className="text-[11px] text-stone-400">{inv.installments.length} parcelas</p>}
+                  {Boolean(inv.ibs || inv.cbs) && (
+                    <p className="font-mono tabular-nums text-[11px] text-stone-400">
+                      IBS {formatCurrency(inv.ibs ?? 0)} · CBS {formatCurrency(inv.cbs ?? 0)}
+                    </p>
+                  )}
+                  {Boolean(inv.altTotal) && inv.model === NFSE_MODEL && (
+                    <p className="text-[11px] text-stone-400">Serviço {formatCurrency(inv.altTotal ?? 0)}, líquido das retenções</p>
+                  )}
                 </td>
                 <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-500" title={inv.cfops.map((c) => `${c.cfop}: ${formatCurrency(c.amount)}`).join('\n')}>
-                  {inv.cfops[0]?.cfop ?? '—'}
+                  {inv.cfops[0]?.cfop ?? (inv.serviceCode ? <span title="Código de tributação nacional do serviço">{inv.serviceCode}</span> : '—')}
                   {inv.cfops.length > 1 && <span className="text-stone-400"> +{inv.cfops.length - 1}</span>}
                 </td>
                 <td className="px-3 py-3">

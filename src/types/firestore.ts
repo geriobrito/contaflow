@@ -215,17 +215,19 @@ export interface InvoiceLink {
 }
 
 /**
- * Resumo de uma NF-e (modelo 55) ou NFC-e (65) importada pelo XML. O arquivo não é guardado:
- * o navegador lê o XML e grava só estes campos (id `${clientId}_${key}`).
+ * Resumo de uma NF-e (modelo 55), NFC-e (65) ou NFS-e do padrão nacional (`model` 'NFSE')
+ * importada pelo XML. O arquivo não é guardado: o navegador lê o XML e grava só estes campos
+ * (id `${clientId}_${key}`).
  */
 export interface InvoiceSummary {
   orgId?: string;
   id: string;
   clientId: string;
-  /** Chave de acesso (44 caracteres). */
+  /** Chave de acesso: 44 caracteres (NF-e/NFC-e) ou 50 dígitos (NFS-e). */
   key: string;
   number: string;
   series: string;
+  /** '55' NF-e, '65' NFC-e, 'NFSE' NFS-e do padrão nacional. */
   model: string;
   /** Data de emissão (YYYY-MM-DD). */
   issueDate: string;
@@ -233,7 +235,18 @@ export interface InvoiceSummary {
   /** CNPJ/CPF do fornecedor (compra) ou do cliente (venda), sem pontuação; vazio se a nota não traz. */
   counterpartyDoc: string;
   counterpartyName: string;
+  /** Valor a pagar: o total da NF-e (vNF) ou o líquido da NFS-e (vLiq, já sem as retenções). */
   total: number;
+  /**
+   * Outro valor que o pagamento pode ter, quando difere do total: o valor do serviço sem as
+   * retenções (NFS-e, vServ) ou o total com IBS/CBS (NF-e, vNFTot).
+   */
+  altTotal?: number;
+  /** IBS e CBS destacados na nota (reforma tributária, LC 214/2025); ausentes quando zero. */
+  ibs?: number;
+  cbs?: number;
+  /** NFS-e: código de tributação nacional do serviço (cTribNac, 6 dígitos). */
+  serviceCode?: string;
   cfops: InvoiceCfop[];
   installments: InvoiceInstallment[];
   status: InvoiceStatus;

@@ -3,6 +3,8 @@
 import { ReceiptText } from 'lucide-react';
 import type { ChartAccount, InvoiceSummary } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';
+import type { IbsCbsCredit } from '@/lib/nfe/credits';
+import { invoiceKindLabel } from '@/lib/nfe/import';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 const PARTY_HINT: Record<InvoiceMatch['party'], string> = {
@@ -11,8 +13,14 @@ const PARTY_HINT: Record<InvoiceMatch['party'], string> = {
   none: 'o extrato não identifica o parceiro: confira se é esta nota',
 };
 
-const describeInvoice = (inv: InvoiceSummary) =>
-  `NF-e ${inv.number}${inv.series && inv.series !== '0' ? `/${inv.series}` : ''} · ${inv.counterpartyName || 'parceiro não identificado'}`;
+export const describeInvoice = (inv: InvoiceSummary) =>
+  `${invoiceKindLabel(inv)} ${inv.number}${inv.series && inv.series !== '0' ? `/${inv.series}` : ''} · ${inv.counterpartyName || 'parceiro não identificado'}`;
+
+const CREDIT_NOTE: Record<Exclude<IbsCbsCredit['status'], 'CREDIT'>, string> = {
+  TEST_YEAR: 'em 2026 (ano de teste) o destaque é informativo, sem crédito a lançar',
+  SIMPLES: 'empresa do Simples Nacional não toma o crédito',
+  SALE: 'destacados na venda',
+};
 
 interface InvoiceMatchCardProps {
   match: InvoiceMatch;
@@ -22,10 +30,14 @@ interface InvoiceMatchCardProps {
   rejected: boolean;
   onUseSuggestion: (accountId: string) => void;
   onRejectedChange: (rejected: boolean) => void;
+  /** IBS/CBS da nota para este pagamento (null: a nota não traz o destaque). */
+  credit?: IbsCbsCredit | null;
+  /** Abre o rateio com o crédito de IBS/CBS separado da despesa. */
+  onUseCredit?: () => void;
 }
 
-/** Nota fiscal casada com o lançamento: dados, por que casou e a conta sugerida. */
-export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSuggestion, onRejectedChange }: InvoiceMatchCardProps) {
+/** Nota fiscal casada com o lançamento: dados, por que casou, a conta sugerida e o IBS/CBS. */
+export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSuggestion, onRejectedChange, credit, onUseCredit }: InvoiceMatchCardProps) {
   const inv = match.invoice;
   const suggested = match.suggestedAccountId ? accounts.find((a) => a.id === match.suggestedAccountId) : undefined;
   const parcel = match.installment
@@ -47,6 +59,7 @@ export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSu
             Emitida em {formatDateBR(inv.issueDate)} · {formatCurrency(match.amount)}
             {parcel ? ` (${parcel})` : ''}
             {inv.cfops[0] ? ` · CFOP ${inv.cfops[0].cfop}` : ''}
+            {inv.serviceCode ? ` · serviço ${inv.serviceCode}` : ''}
           </span>
           <span className={`block ${match.party === 'none' ? 'text-amber-700' : 'text-stone-500'}`}>Mesmo valor; {PARTY_HINT[match.party]}.</span>
         </span>
@@ -63,6 +76,28 @@ export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSu
             <button type="button" onClick={() => onUseSuggestion(suggested.id)} className="font-medium text-accent-ink hover:underline">
               Usar
             </button>
+          )}
+        </p>
+      )}
+      {!rejected && credit && (
+        <p className="pl-5.5 flex flex-wrap items-center gap-x-2 text-stone-600 dark:text-stone-300">
+          {credit.status === 'CREDIT' ? (
+            <>
+              <span>
+                Crédito a recuperar: IBS <b className="font-mono tabular-nums font-medium">{formatCurrency(credit.ibs)}</b> e CBS{' '}
+                <b className="font-mono tabular-nums font-medium">{formatCurrency(credit.cbs)}</b>
+                {credit.ibs !== credit.invoiceIbs || credit.cbs !== credit.invoiceCbs ? ' (proporcional ao pago)' : ''}
+              </span>
+              {onUseCredit && (
+                <button type="button" onClick={onUseCredit} className="font-medium text-accent-ink hover:underline">
+                  Lançar com o crédito
+                </button>
+              )}
+            </>
+          ) : (
+            <span className="text-stone-500">
+              IBS {formatCurrency(credit.invoiceIbs)} e CBS {formatCurrency(credit.invoiceCbs)}: {CREDIT_NOTE[credit.status]}.
+            </span>
           )}
         </p>
       )}

@@ -32,6 +32,7 @@ import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
 import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
 import { KeyboardHelpModal } from '@/components/conciliacao/KeyboardHelpModal';
 import { groupByPayee } from '@/lib/payee';
+import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
@@ -188,6 +189,13 @@ export default function ConciliacaoPage() {
     const txId = selected?.id;
     const saved = await flow.handleConfirm(accountId, learnRule, pattern, matchType);
     if (saved && txId && invoiceId) await invoices.link(txId, invoiceId, accountId);
+  };
+  // Rateio com a nota aceita: o vínculo guarda a conta da maior linha (a despesa ou receita).
+  const confirmSplit = async (drafts: SplitDraft[], invoiceId?: string) => {
+    const txId = selected?.id;
+    const saved = await flow.handleSplit(drafts);
+    const main = drafts.filter((d) => !d.reduces).reduce<SplitDraft | null>((best, d) => (!best || d.cents > best.cents ? d : best), null);
+    if (saved && txId && invoiceId && main) await invoices.link(txId, invoiceId, main.accountId);
   };
 
   /* ── Lista: filtro por conta, status, busca, visão por favorecido e paginação ── */
@@ -528,7 +536,7 @@ export default function ConciliacaoPage() {
           isSaving={isSaving}
           onClose={flow.closeTransaction}
           onConfirm={confirmClassification}
-          onSplit={flow.handleSplit}
+          onSplit={confirmSplit}
           onUnreconcile={flow.handleUnreconcile}
           rules={rules}
           memoPool={memoPool}
@@ -537,6 +545,7 @@ export default function ConciliacaoPage() {
           onAskClient={flow.handleAskClient}
           invoiceMatch={selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id)}
           linkedInvoice={invoices.linked.get(selected.id)}
+          regime={currentClient?.regime ?? currentClient?.taxRegime}
         />
       )}
 

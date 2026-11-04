@@ -1,5 +1,5 @@
 import type { ClientCompany, InvoiceDirection, InvoiceSummary } from '@/types/firestore';
-import { parseNFeXml, type InvoiceParty, type ParsedInvoice } from '@/lib/nfe/parser';
+import { NFSE_MODEL, parseNFeXml, type InvoiceParty, type ParsedInvoice } from '@/lib/nfe/parser';
 import { cleanCNPJ, formatCNPJ } from '@/lib/utils/formatters';
 
 /** Arquivo lido no navegador: só o nome e o texto, o arquivo não é guardado. */
@@ -18,6 +18,9 @@ export interface InvoiceImportPlan {
 }
 
 export const invoiceId = (clientId: string, key: string) => `${clientId}_${key}`;
+
+/** Tipo do documento para exibir: NF-e, NFC-e ou NFS-e. */
+export const invoiceKindLabel = (inv: Pick<InvoiceSummary, 'model'>) => (inv.model === NFSE_MODEL ? 'NFS-e' : inv.model === '65' ? 'NFC-e' : 'NF-e');
 
 /** Raiz do CNPJ (8 primeiros caracteres): a matriz e as filiais são a mesma empresa. */
 const rootOf = (doc: string) => (doc.length === 14 ? doc.slice(0, 8) : doc);
@@ -79,7 +82,13 @@ export function planInvoiceImport(files: readonly InvoiceFile[], client: Pick<Cl
     if (seen.has(inv.key)) continue;
     seen.add(inv.key);
     if (inv.situation === 'UNKNOWN') {
-      plan.warnings.push({ file: file.name, message: `Nota ${inv.number}: XML sem protocolo de autorização. Confira se ela foi autorizada.` });
+      plan.warnings.push({
+        file: file.name,
+        message:
+          inv.model === NFSE_MODEL
+            ? `NFS-e ${inv.number}: situação da nota não reconhecida. Confira no Portal da NFS-e se ela foi gerada.`
+            : `Nota ${inv.number}: XML sem protocolo de autorização. Confira se ela foi autorizada.`,
+      });
     }
     plan.invoices.push({
       id: invoiceId(client.id, inv.key),
@@ -93,6 +102,11 @@ export function planInvoiceImport(files: readonly InvoiceFile[], client: Pick<Cl
       counterpartyDoc: side.counterparty?.doc ?? '',
       counterpartyName: side.counterparty?.name ?? '',
       total: inv.total,
+      // Opcionais só quando há valor: o Firestore não aceita `undefined`.
+      ...(inv.altTotal ? { altTotal: inv.altTotal } : {}),
+      ...(inv.ibs > 0 ? { ibs: inv.ibs } : {}),
+      ...(inv.cbs > 0 ? { cbs: inv.cbs } : {}),
+      ...(inv.serviceCode ? { serviceCode: inv.serviceCode } : {}),
       cfops: inv.cfops,
       installments: inv.installments,
       status: inv.situation === 'CANCELLED' ? 'CANCELLED' : 'AUTHORIZED',

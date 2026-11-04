@@ -1633,6 +1633,14 @@ describe('notas fiscais (resumos dos XML)', () => {
     await assertFails(setDoc(doc(alice, 'invoice_summaries/cA_123'), { ...data, key: '123' })); // chave inválida
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { ...data, direction: 'OUTRA' }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { ...data, total: 0 }));
+    // NFS-e do padrão nacional: chave de 50 dígitos, IBS/CBS e código do serviço.
+    // município (7) + ambiente (1) + tipo de inscrição (1) + CNPJ (14) + número (13) + AAMM (4) + código (9) + DV (1)
+    const NFSE_KEY = `3550308${'2'}${'2'}11444777000161${'1'.padStart(13, '0')}2601${'1'.padStart(9, '0')}6`;
+    const nfse = { ...data, id: `cA_${NFSE_KEY}`, key: NFSE_KEY, model: 'NFSE', series: '', cfops: [], altTotal: 1600, ibs: 1.5, cbs: 13.5, serviceCode: '170201' };
+    await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), nfse));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ibs: '1,50' }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, serviceCode: 'x'.repeat(11) }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY.slice(0, 43)}A1234`), { ...data, key: `${KEY.slice(0, 43)}A1234` })); // 48: nem NF-e nem NFS-e
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { key: '35250311444777000161550010000000021123456780' }));
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { clientId: 'cB' }));
     await assertFails(getDoc(doc(asUser('bob'), `invoice_summaries/cA_${KEY}`)));

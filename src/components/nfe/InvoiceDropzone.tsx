@@ -44,8 +44,8 @@ export function InvoiceDropzone({ busy, disabled, onFiles }: InvoiceDropzoneProp
           {busy ? 'Lendo as notas…' : 'Solte aqui os XML das notas (compra e venda)'}
         </p>
         <p className="text-[12px] text-stone-500">
-          NF-e, NFC-e, resumos da SEFAZ e eventos de cancelamento. O arquivo é lido neste navegador: só o resumo (partes, valor, data, CFOP
-          e parcelas) é gravado.
+          NF-e, NFC-e, NFS-e do padrão nacional, resumos da SEFAZ e eventos de cancelamento. O arquivo é lido neste navegador: só o
+          resumo (partes, valor, data, CFOP, parcelas e IBS/CBS) é gravado.
         </p>
       </div>
       <button
