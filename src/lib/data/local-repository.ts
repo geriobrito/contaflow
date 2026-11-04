@@ -362,11 +362,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     },
     async listBatchTransactions(batch) {
       return read<BankTransaction>(LOCAL_KEYS.transactions)
-        .filter(
-          (t) =>
-            t.clientId === batch.clientId &&
-            (t.importBatchId === batch.id || (!t.importBatchId && t.createdAt === batch.importedAt))
-        )
+        .filter((t) => t.clientId === batch.clientId && t.importBatchId === batch.id)
         .sort((a, b) => a.date.localeCompare(b.date));
     },
     async deleteImportBatch(batch, transactions, changes) {

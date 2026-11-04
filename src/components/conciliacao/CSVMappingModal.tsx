@@ -20,36 +20,24 @@ import {
 } from 'lucide-react';
 import type { BankAccount, BankAccountKind, ChartAccount } from '@/types/firestore';
 import type { OFXParseResult } from '@/lib/ofx/types';
+import { type CSVColumnMapping, type CSVDelimiter, previewCSV } from '@/lib/csv/parser';
+import { BUILTIN_CSV_PRESETS, clampMappingToColumns, resolveInitialCSVConfig, toOFXAccountInfo } from '@/lib/csv/presets';
 import {
-  type CSVColumnMapping,
-  type CSVDelimiter,
-  parseCSVToOFXResult,
-  previewCSV,
-} from '@/lib/csv/parser';
-import {
-  BUILTIN_CSV_PRESETS,
-  clampMappingToColumns,
-  headersMatchSignature,
-  isMappingCompatible,
-  normalizeHeaderSignature,
-  resolveInitialCSVConfig,
-  toOFXAccountInfo,
-} from '@/lib/csv/presets';
-import { bankAccountId, bankLedgerCandidates, newManualAccountKey } from '@/lib/bank-accounts';
+  applyFormatToQueue,
+  csvColumnOptions,
+  quickBankAccount,
+  simulateCSVImport,
+  withCSVPreset,
+  type CSVQueueFile,
+  type ParsedCSVBatchItem,
+} from '@/lib/csv/batch';
+import { bankLedgerCandidates } from '@/lib/bank-accounts';
 import { getRepository } from '@/lib/services/data-service';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 import { reportError } from '@/lib/monitoring';
 
-export interface CSVQueueFile {
-  fileName: string;
-  content: string;
-}
-
-export interface ParsedCSVBatchItem {
-  result: OFXParseResult;
-  fileName: string;
-}
+export type { CSVQueueFile, ParsedCSVBatchItem };
 
 interface CSVMappingModalProps {
   isOpen: boolean;
@@ -134,41 +122,13 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
     return previewCSV(currentFile.content, delimiter);
   }, [currentFile.content, delimiter]);
 
-  const columns = useMemo(() => {
-    if (activePreview.headers.length > 0) {
-      return activePreview.headers.map((h, i) => ({
-        index: i,
-        label: `[Col ${i + 1}] ${h || `Coluna ${i + 1}`}`,
-      }));
-    }
-    return [];
-  }, [activePreview]);
+  const columns = useMemo(() => csvColumnOptions(activePreview.headers), [activePreview]);
 
   // Simulação em tempo real do arquivo atual
-  const parseSimulation = useMemo(() => {
-    try {
-      const res = parseCSVToOFXResult({
-        content: currentFile.content,
-        mapping,
-        clientId,
-        accountKey: selectedBankKey,
-        delimiter,
-      });
-      return {
-        count: res.transactions.length,
-        hasErrors: res.hasErrors,
-        warnings: res.warnings,
-        res,
-      };
-    } catch (err) {
-      return {
-        count: 0,
-        hasErrors: true,
-        warnings: [err instanceof Error ? err.message : 'Falha ao interpretar mapeamento.'],
-        res: null,
-      };
-    }
-  }, [currentFile.content, mapping, clientId, selectedBankKey, delimiter]);
+  const parseSimulation = useMemo(
+    () => simulateCSVImport(currentFile.content, { mapping, delimiter }, clientId, selectedBankKey),
+    [currentFile.content, mapping, clientId, selectedBankKey, delimiter]
+  );
 
   if (!isOpen || queue.length === 0) return null;
 
@@ -224,22 +184,14 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
     setCreatingBank(true);
     setError(null);
     try {
-      const now = new Date().toISOString();
-      const existingKeys = new Set(allBanks.map((b) => b.accountKey));
-      const accountKey = newManualAccountKey(trimmed, newBankKind, existingKeys);
-      const ledger = ledgerCandidates.find((a) => a.id === newBankLedgerId);
-      const created: BankAccount = {
-        id: bankAccountId(clientId, accountKey),
+      const created = quickBankAccount({
         clientId,
-        accountKey,
-        kind: newBankKind,
         nickname: trimmed,
-        ...(ledger
-          ? { ledgerAccountId: ledger.id, ledgerAccountCode: ledger.code, ledgerAccountName: ledger.name }
-          : {}),
-        createdAt: now,
-        updatedAt: now,
-      };
+        kind: newBankKind,
+        ledger: ledgerCandidates.find((a) => a.id === newBankLedgerId),
+        existingKeys: new Set(allBanks.map((b) => b.accountKey)),
+        now: new Date().toISOString(),
+      });
       await getRepository().saveBankAccount(created);
       setCreatedOrUpdatedBanks((prev) => [...prev, created]);
       onBankAccountUpdated?.(created);
@@ -281,18 +233,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
 
       // Memoriza o formato CSV na conta selecionada para as próximas importações
       if (bankAcc && clientId) {
-        const csvPreset = {
-          delimiter,
-          mapping,
-          ...(activePreview.headers.length > 0
-            ? { headerSignature: normalizeHeaderSignature(activePreview.headers) }
-            : {}),
-        };
-        const updatedBank: BankAccount = {
-          ...bankAcc,
-          csvPreset,
-          updatedAt: new Date().toISOString(),
-        };
+        const updatedBank = withCSVPreset(bankAcc, { mapping, delimiter }, activePreview.headers, new Date().toISOString());
         try {
           await getRepository().saveBankAccount(updatedBank);
           bankAcc = updatedBank;
@@ -321,55 +262,26 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
       }
 
       if (applyToRemaining) {
-        const currentSig = normalizeHeaderSignature(activePreview.headers);
-        let stopAtIndex = -1;
+        const { items, stopAt } = applyFormatToQueue({
+          queue,
+          from: queueIndex + 1,
+          format: { mapping, delimiter },
+          headers: activePreview.headers,
+          clientId,
+          accountKey: selectedBankKey,
+          accountInfo,
+        });
+        nextCollected.push(...items);
 
-        for (let i = queueIndex + 1; i < queue.length; i++) {
-          const nextFile = queue[i];
-          const nextPrev = previewCSV(nextFile.content, delimiter);
-          const sameHeaderCount = nextPrev.headers.length === activePreview.headers.length;
-          const compatibleHeaders =
-            !mapping.hasHeader ||
-            headersMatchSignature(nextPrev.headers, currentSig) ||
-            sameHeaderCount;
-
-          if (!isMappingCompatible(mapping, nextPrev.headers.length) || !compatibleHeaders) {
-            stopAtIndex = i;
-            break;
-          }
-
-          const parsedNext = parseCSVToOFXResult({
-            content: nextFile.content,
-            mapping,
-            clientId,
-            accountKey: selectedBankKey,
-            bankAccountInfo: accountInfo,
-            delimiter,
-          });
-
-          if (parsedNext.transactions.length === 0) {
-            stopAtIndex = i;
-            break;
-          }
-
-          nextCollected.push({
-            fileName: nextFile.fileName,
-            result: {
-              ...parsedNext,
-              account: accountInfo,
-            },
-          });
-        }
-
-        if (stopAtIndex === -1) {
+        if (stopAt === null) {
           finishBatch(nextCollected);
           return;
         }
 
         // Parou em um arquivo de layout diferente: avança o modal para ele
         setCollected(nextCollected);
-        setQueueIndex(stopAtIndex);
-        applyForFileAndBank(queue[stopAtIndex].content, bankAcc);
+        setQueueIndex(stopAt);
+        applyForFileAndBank(queue[stopAt].content, bankAcc);
         return;
       }
 

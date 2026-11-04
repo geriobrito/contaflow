@@ -123,7 +123,7 @@ export interface DataRepository {
   /* Extratos importados */
   listImportBatches(clientId: string): Promise<ImportBatch[]>;
   saveImportBatch(batch: ImportBatch): Promise<void>;
-  /** Lançamentos gravados por um extrato (por `importBatchId`; extratos antigos, pela data de gravação). */
+  /** Lançamentos gravados por um extrato (por `importBatchId`). */
   listBatchTransactions(batch: ImportBatch): Promise<BankTransaction[]>;
   /**
    * Exclui um extrato: seus lançamentos e o registro do lote, com as alterações

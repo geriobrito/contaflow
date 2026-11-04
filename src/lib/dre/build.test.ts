@@ -109,21 +109,26 @@ describe('buildDRE', () => {
     expect(d.reconciledCount).toBe(1);
   });
 
-  it('aceita contas com grupos legados em português', () => {
-    const legacy: ChartAccount = {
-      id: 'legacy',
+  it('sem grupo (ou com um desconhecido), a conta cai no grupo da natureza', () => {
+    const base: ChartAccount = {
+      id: 'sem-grupo',
       clientId: CLIENT,
       code: '9.9',
-      name: 'Tarifa (legado)',
+      name: 'Tarifa',
       type: 'EXPENSE',
       nature: 'ANALYTIC',
       level: 2,
-      dreGroup: 'DESPESAS_FINANCEIRAS',
+      dreGroup: 'FINANCIAL_EXPENSES',
       createdAt: '',
       updatedAt: '',
     };
-    expect(resolveDREGroup(legacy)).toBe('FINANCIAL_EXPENSES');
-    const d = buildDRE([{ ...tx(null, -20), accountId: 'legacy' }], [...accounts, legacy], YEAR);
+    expect(resolveDREGroup(base)).toBe('FINANCIAL_EXPENSES');
+    expect(resolveDREGroup({ ...base, dreGroup: undefined })).toBe('OPERATING_EXPENSES');
+    expect(resolveDREGroup({ ...base, dreGroup: 'LUCRO_BRUTO' as never })).toBe('OPERATING_EXPENSES');
+    expect(resolveDREGroup({ ...base, type: 'REVENUE', dreGroup: undefined, isContra: true })).toBe('DEDUCTIONS');
+    expect(resolveDREGroup({ ...base, type: 'COST', dreGroup: undefined })).toBe('COSTS');
+    expect(resolveDREGroup({ ...base, type: 'ASSET' })).toBeNull();
+    const d = buildDRE([{ ...tx(null, -20), accountId: 'sem-grupo' }], [...accounts, base], YEAR);
     expect(d.financialResult).toBe(-20);
   });
 

@@ -1,36 +1,15 @@
 import type { AccountType, BankTransaction, ChartAccount, DREGroup, JournalEntry } from '@/types/firestore';
 
 /* =========================================================================
-   Grupos canônicos (NBC TG 1002) e compatibilidade com dados legados
+   Grupos (NBC TG 1002)
    ========================================================================= */
 
-export type DRESectionKey =
-  | 'GROSS_REVENUE'
-  | 'DEDUCTIONS'
-  | 'COSTS'
-  | 'OPERATING_EXPENSES'
-  | 'FINANCIAL_INCOME'
-  | 'FINANCIAL_EXPENSES'
-  | 'OTHER_INCOME'
-  | 'OTHER_EXPENSES'
-  | 'INCOME_TAXES';
+export type DRESectionKey = DREGroup;
 
 /** Grupos de natureza credora (aumentam o resultado); os demais são devedores. */
 const CREDIT_NATURE: ReadonlySet<DRESectionKey> = new Set(['GROSS_REVENUE', 'FINANCIAL_INCOME', 'OTHER_INCOME']);
 
-const LEGACY: Partial<Record<DREGroup, DRESectionKey>> = {
-  RECEITA_BRUTA: 'GROSS_REVENUE',
-  DEDUCOES_RECEITA: 'DEDUCTIONS',
-  CUSTOS: 'COSTS',
-  DESPESAS_OPERACIONAIS: 'OPERATING_EXPENSES',
-  DESPESAS_ADMINISTRATIVAS: 'OPERATING_EXPENSES',
-  DESPESAS_COMERCIAIS: 'OPERATING_EXPENSES',
-  DESPESAS_FINANCEIRAS: 'FINANCIAL_EXPENSES',
-  RECEITAS_FINANCEIRAS: 'FINANCIAL_INCOME',
-  IMPOSTOS_LUCRO: 'INCOME_TAXES',
-};
-
-const CANONICAL: ReadonlySet<string> = new Set<DRESectionKey>([
+const GROUPS: ReadonlySet<string> = new Set<DRESectionKey>([
   'GROSS_REVENUE',
   'DEDUCTIONS',
   'COSTS',
@@ -42,26 +21,18 @@ const CANONICAL: ReadonlySet<string> = new Set<DRESectionKey>([
   'INCOME_TAXES',
 ]);
 
-const REVENUE_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA']);
-const COST_TYPES: ReadonlySet<AccountType> = new Set(['COST', 'CUSTO']);
-const EXPENSE_TYPES: ReadonlySet<AccountType> = new Set(['EXPENSE', 'DESPESA']);
+const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'COST', 'EXPENSE']);
 
 /**
- * Resolve o grupo da DRE de uma conta: `dreGroup` canônico → mapeamento legado →
- * natureza da conta. Contas patrimoniais (ativo, passivo, PL) retornam null.
+ * Resolve o grupo da DRE de uma conta: o `dreGroup` gravado ou, sem ele (ou com um valor
+ * desconhecido), o da natureza da conta. Contas patrimoniais (ativo, passivo, PL) retornam null.
  */
 export function resolveDREGroup(account: ChartAccount): DRESectionKey | null {
-  const isRevenue = REVENUE_TYPES.has(account.type);
-  const isResult = isRevenue || COST_TYPES.has(account.type) || EXPENSE_TYPES.has(account.type);
-  if (!isResult) return null;
-
+  if (!RESULT_TYPES.has(account.type)) return null;
   const group = account.dreGroup;
-  if (group && CANONICAL.has(group)) return group as DRESectionKey;
-  if (group && LEGACY[group]) return LEGACY[group] ?? null;
-  if (group === 'OUTRAS_RECEITAS_DESPESAS') return isRevenue ? 'OTHER_INCOME' : 'OTHER_EXPENSES';
-
-  if (isRevenue) return account.isContra ? 'DEDUCTIONS' : 'GROSS_REVENUE';
-  if (COST_TYPES.has(account.type)) return 'COSTS';
+  if (group && GROUPS.has(group)) return group;
+  if (account.type === 'REVENUE') return account.isContra ? 'DEDUCTIONS' : 'GROSS_REVENUE';
+  if (account.type === 'COST') return 'COSTS';
   return 'OPERATING_EXPENSES';
 }
 
@@ -191,7 +162,7 @@ export function buildDRE(
   };
 
   const sections = Object.fromEntries(
-    [...CANONICAL].map((k) => [k, section(k as DRESectionKey)])
+    [...GROUPS].map((k) => [k, section(k as DRESectionKey)])
   ) as Record<DRESectionKey, DRESection>;
 
   const grossRevenue = sections.GROSS_REVENUE.total;

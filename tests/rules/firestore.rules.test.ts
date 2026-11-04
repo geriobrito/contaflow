@@ -990,8 +990,7 @@ describe('exclusão de extrato importado', () => {
       const db = ctx.firestore() as unknown as Firestore;
       await setDoc(doc(db, 'import_batches/bX'), { ...batch, orgId: ORG_A });
       await setDoc(doc(db, 'transactions/cA_n1'), { ...tx('cA_n1', 'cA', ORG_A, '2025-05-02'), importBatchId: 'bX' });
-      // Extrato antigo, sem importBatchId: identificado pela data/hora de gravação.
-      await setDoc(doc(db, 'transactions/cA_n2'), { ...tx('cA_n2', 'cA', ORG_A, '2025-06-03'), createdAt: 'IMPORT-T' });
+      await setDoc(doc(db, 'transactions/cA_n2'), { ...tx('cA_n2', 'cA', ORG_A, '2025-06-03'), importBatchId: 'bX' });
     });
   });
 
@@ -1147,25 +1146,11 @@ describe('pendências com o cliente (link público)', () => {
       ]);
     });
 
-    it('o cliente não envia arquivos: a coleção antiga não aceita nada novo, só leitura e limpeza pelo escritório', async () => {
-      const admin = createFirestoreRepository(asUser('alice'), () => ORG_A);
-      await admin.saveClientRequest(request() as never);
-      const file = (id: string) => ({ id, orgId: ORG_A, clientId: 'cA', requestId: TOKEN, transactionId: 'cA_1', name: 'nota.pdf', type: 'application/pdf', bytes: 10, data: 'aGVsbG8=', uploadedAt: 'T' });
-      await assertFails(setDoc(doc(anon(), 'client_request_files/f1'), file('f1')));
-      await assertFails(setDoc(doc(asUser('alice'), 'client_request_files/f1'), file('f1')));
-
-      // Comprovante gravado quando o envio ainda existia.
-      await env.withSecurityRulesDisabled(async (ctx) => {
-        await setDoc(doc(ctx.firestore() as unknown as Firestore, 'client_request_files/antigo'), file('antigo'));
-      });
-      await assertFails(getDoc(doc(anon(), 'client_request_files/antigo')));
-      await assertFails(getDoc(doc(asUser('bob'), 'client_request_files/antigo')));
-      await assertFails(updateDoc(doc(asUser('alice'), 'client_request_files/antigo'), { name: 'outro.pdf' }));
-      await assertSucceeds(getDoc(doc(asUser('alice'), 'client_request_files/antigo')));
-      await admin.deleteClient('cA', { uid: 'alice' });
-      await env.withSecurityRulesDisabled(async (ctx) => {
-        expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'client_request_files/antigo'))).exists()).toBe(false);
-      });
+    it('o cliente não envia arquivos: a coleção antiga de comprovantes fica fechada para todos', async () => {
+      const file = { id: 'f1', orgId: ORG_A, clientId: 'cA', requestId: TOKEN, name: 'nota.pdf', data: 'aGVsbG8=' };
+      await assertFails(setDoc(doc(anon(), 'client_request_files/f1'), file));
+      await assertFails(setDoc(doc(asUser('alice'), 'client_request_files/f1'), file));
+      await assertFails(getDoc(doc(asUser('alice'), 'client_request_files/f1')));
     });
   });
 

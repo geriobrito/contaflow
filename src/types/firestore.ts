@@ -34,7 +34,6 @@ export interface ClientCompany {
   tradeName?: string; // Nome Fantasia
   cnpj: string;
   regime: TaxRegime; // Regime Tributário
-  taxRegime?: TaxRegime; // Alias de compatibilidade
   /** Porte contábil; ausente em cadastros antigos, que contam como microentidade. */
   porte?: CompanyPorte;
   /** Contas do modelo de plano de contas excluídas de propósito: "Completar com o modelo" não as oferece mais. */
@@ -58,24 +57,9 @@ export interface ClientCompany {
 }
 
 export type AccountNature = 'SYNTHETIC' | 'ANALYTIC';
-export type AccountType =
-  | 'ASSET'
-  | 'LIABILITY'
-  | 'EQUITY'
-  | 'REVENUE'
-  | 'COST'
-  | 'EXPENSE'
-  // Aliases legados em português (dados antigos)
-  | 'RECEITA'
-  | 'DESPESA'
-  | 'ATIVO'
-  | 'PASSIVO'
-  | 'CUSTO';
+export type AccountType = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'REVENUE' | 'COST' | 'EXPENSE';
 
-/**
- * Grupos da DRE (modelo de plano de contas do CFC — NBC TG 1002, Anexo 11).
- * Os valores em português são legados e continuam aceitos pelo `buildDRE`.
- */
+/** Grupos da DRE (modelo de plano de contas do CFC — NBC TG 1002, Anexo 11). */
 export type DREGroup =
   | 'GROSS_REVENUE'
   | 'DEDUCTIONS'
@@ -85,20 +69,7 @@ export type DREGroup =
   | 'FINANCIAL_EXPENSES'
   | 'OTHER_INCOME'
   | 'OTHER_EXPENSES'
-  | 'INCOME_TAXES'
-  // Legados
-  | 'RECEITA_BRUTA'
-  | 'DEDUCOES_RECEITA'
-  | 'RECEITA_LIQUIDA'
-  | 'CUSTOS'
-  | 'LUCRO_BRUTO'
-  | 'DESPESAS_OPERACIONAIS'
-  | 'DESPESAS_ADMINISTRATIVAS'
-  | 'DESPESAS_COMERCIAIS'
-  | 'DESPESAS_FINANCEIRAS'
-  | 'RECEITAS_FINANCEIRAS'
-  | 'OUTRAS_RECEITAS_DESPESAS'
-  | 'IMPOSTOS_LUCRO';
+  | 'INCOME_TAXES';
 
 /**
  * Classificação na Demonstração dos Fluxos de Caixa: uma das três atividades, ou caixa e

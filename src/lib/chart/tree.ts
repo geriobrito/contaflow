@@ -7,16 +7,11 @@ import { resolveDREGroup } from '@/lib/dre/build';
 
 export const TYPE_LABEL: Record<AccountType, string> = {
   ASSET: 'Ativo',
-  ATIVO: 'Ativo',
   LIABILITY: 'Passivo',
   EQUITY: 'Patrimônio líquido',
-  PASSIVO: 'Passivo',
   COST: 'Custo',
-  CUSTO: 'Custo',
   EXPENSE: 'Despesa',
-  DESPESA: 'Despesa',
   REVENUE: 'Receita',
-  RECEITA: 'Receita',
 };
 
 export const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
@@ -34,9 +29,9 @@ export const DRE_GROUPS: readonly { value: DREGroup; label: string }[] = [
 export const DRE_LABEL = new Map<string, string>(DRE_GROUPS.map((g) => [g.value, g.label]));
 
 /** Tipos de conta de resultado (vão para a DRE). */
-export const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'RECEITA', 'EXPENSE', 'DESPESA', 'COST', 'CUSTO']);
+export const RESULT_TYPES: ReadonlySet<AccountType> = new Set(['REVENUE', 'EXPENSE', 'COST']);
 
-/** Rótulo do grupo da DRE de uma conta analítica (inclui códigos legados), ou null se patrimonial. */
+/** Rótulo do grupo da DRE de uma conta analítica, ou null se patrimonial. */
 export function dreLabel(account: ChartAccount): string | null {
   const group = resolveDREGroup(account);
   return group ? (DRE_LABEL.get(group) ?? null) : null;

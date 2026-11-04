@@ -1,23 +1,22 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, FileText, Info, Loader2, Printer } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
-import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
+import type { PeriodLock } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { loadLedgerWindow } from '@/lib/services/ledger-loader';
-import { EQUITY_GROUP_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine, type Posting } from '@/lib/ledger';
+import { EQUITY_GROUP_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { CAPITAL_GROUP_CODE, invertedBalances, missingShareCapital } from '@/lib/balance-sheet-checks';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { porteOf } from '@/lib/accounting-standard';
 import { openingStatus } from '@/lib/opening';
-import { monthOf } from '@/lib/periods';
+import { bankSetupIssues, formatDC as dc, hasClosingIn, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
 import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
+import { useBalanceSheetData } from '@/hooks/balanco/useBalanceSheetData';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
@@ -29,7 +28,7 @@ import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures'
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 import { AccountingAmount } from '@/components/ui/Amount';
 
-type View = 'bs' | 'tb' | 'dlpa' | 'dfc';
+type View = StatementView;
 
 const TITLE: Record<View, string> = {
   bs: 'Balanço patrimonial',
@@ -40,8 +39,6 @@ const TITLE: Record<View, string> = {
 
 const EMPTY_LOCKS: PeriodLock[] = [];
 
-/** Saldo de balancete com natureza: D (devedor) ou C (credor). */
-const dc = (v: number) => (Math.abs(v) < 0.005 ? '—' : `${formatCurrency(Math.abs(v))} ${v > 0 ? 'D' : 'C'}`);
 
 function Side({
   title,
@@ -95,75 +92,14 @@ export default function BalancoPage() {
   const { range, jumpTo } = period;
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
-  const [static_, setStatic] = useState<{
-    id: string;
-    accounts: ChartAccount[];
-    banks: BankAccount[];
-    org: OrgSettings | null;
-    openings: OpeningBalances | null;
-    journalEntries: JournalEntry[];
-    locks: PeriodLock[];
-  } | null>(null);
-  /** Muda depois de encerrar ou reabrir o exercício: relê plano e lançamentos manuais. */
-  const [reloadCount, setReloadCount] = useState(0);
-  const [txs, setTxs] = useState<{ key: string; list: BankTransaction[]; carry: Posting[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [drawerAccountId, setDrawerAccountId] = useState<string | null>(null);
 
-  // Plano, bancos, escritório e lançamentos manuais; posiciona no mês do lançamento mais recente.
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    const repo = getRepository();
-    Promise.all([
-      repo.listAccounts(clientId),
-      repo.listBankAccounts(clientId),
-      repo.getOrgSettings(),
-      getLatestTransactionDate(clientId),
-      repo.getOpeningBalances(clientId),
-      // Sem os lançamentos manuais o balanço sairia com valores errados: a falha bloqueia o relatório.
-      repo.listJournalEntries(clientId),
-      repo.listPeriodLocks(clientId),
-    ])
-      .then(([accounts, banks, org, latest, openings, journalEntries, locks]) => {
-        if (!active) return;
-        // Recarga depois do encerramento: fica no período escolhido.
-        if (latest && reloadCount === 0) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks });
-        setError(null);
-      })
-      .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));
-    return () => {
-      active = false;
-    };
-  }, [clientId, jumpTo, reloadCount]);
-
-  // O balanço acumula desde o início, mas só os lançamentos do exercício são lidos um a um:
-  // o que veio antes entra pelo saldo consolidado das competências fechadas (`carry`).
-  // Navegar entre meses do mesmo exercício não refaz a leitura.
-  const ready = static_?.id === clientId;
-  const accounts = useMemo(() => static_?.accounts ?? [], [static_]);
-  const banks = useMemo(() => static_?.banks ?? [], [static_]);
-  const from = `${range.start.slice(0, 4)}-01-01`;
-  const until = `${range.end.slice(0, 4)}-12-31`;
-  const key = `${clientId}|${from}|${until}`;
-  useEffect(() => {
-    if (!clientId || !ready) return;
-    let active = true;
-    loadLedgerWindow({ clientId, accounts, banks, from, until })
-      .then((w) => active && setTxs({ key: `${clientId}|${from}|${until}`, list: w.transactions, carry: w.carry }))
-      .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar lançamentos.'));
-    return () => {
-      active = false;
-    };
-  }, [clientId, ready, accounts, banks, from, until]);
-
-  const loading = !ready || txs?.key !== key;
+  const { static_, ready, accounts, banks, journalEntries, txs, loading, error, setError, reload } = useBalanceSheetData(clientId, range, jumpTo);
   const postings = useMemo(
-    () => (loading || !txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, static_?.journalEntries, txs.carry)),
-    [loading, txs, banks, accounts, range.end, static_?.openings, static_?.journalEntries]
+    () => (!txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, journalEntries, txs.carry)),
+    [txs, banks, accounts, range.end, static_?.openings, journalEntries]
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const inverted = useMemo(() => invertedBalances(bs), [bs]);
@@ -171,32 +107,30 @@ export default function BalancoPage() {
   // Balancete antes (padrão) ou depois do encerramento do exercício que cai no período: antes, as
   // contas de resultado aparecem com os saldos do ano; depois, zeradas contra a ARE.
   const [ignoreClosing, setIgnoreClosing] = useState(true);
-  const inRangeClosing = (j: JournalEntry) => Boolean(j.yearClosing) && j.date >= range.start && j.date <= range.end;
-  const closingInRange = (static_?.journalEntries ?? []).some(inRangeClosing);
+  const closingInRange = hasClosingIn(journalEntries, range);
   const tbPostings = useMemo(
     () =>
-      !ignoreClosing || !closingInRange || loading || !txs
+      !ignoreClosing || !closingInRange || !txs
         ? postings
-        : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, (static_?.journalEntries ?? []).filter((j) => !inRangeClosing(j)), txs.carry),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- inRangeClosing só depende de `range`
-    [ignoreClosing, closingInRange, loading, txs, postings, banks, accounts, range, static_?.openings, static_?.journalEntries]
+        : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, withoutClosingIn(journalEntries, range), txs.carry),
+    [ignoreClosing, closingInRange, txs, postings, banks, accounts, range, static_?.openings, journalEntries]
   );
   const tb = useMemo(() => buildTrialBalance(tbPostings, accounts, range), [tbPostings, accounts, range]);
-  const tbStage = closingInRange ? (ignoreClosing ? 'Antes do encerramento do exercício' : 'Após o encerramento do exercício (ARE)') : undefined;
+  const tbStage = trialBalanceStage(closingInRange, ignoreClosing);
   const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
 
   const consistency = useMemo(() => {
-    if (loading || !txs) return null;
+    if (!txs) return null;
     return checkAccountingConsistency({
       transactions: txs.list,
       accounts,
       banks,
       date: range.end,
       openings: static_?.openings,
-      journalEntries: static_?.journalEntries,
+      journalEntries,
       carry: txs.carry,
     });
-  }, [loading, txs, accounts, banks, range.end, static_?.openings, static_?.journalEntries]);
+  }, [txs, accounts, banks, range.end, static_?.openings, journalEntries]);
 
   const opening = useMemo(
     () => (ready && accounts.length > 0 ? openingStatus(static_?.openings, accounts, banks) : null),
@@ -205,18 +139,12 @@ export default function BalancoPage() {
 
   // Encerramento e DLPA do exercício da data final.
   const year = range.end.slice(0, 4);
-  const journalEntries = useMemo(() => static_?.journalEntries ?? [], [static_]);
   const postingsBeforeClosing = useMemo(
     () =>
-      loading || !txs
-        ? null
-        : buildPostings(txs.list, banks, accounts, yearEndOf(year), static_?.openings, withoutClosingOf(journalEntries, year), txs.carry),
-    [loading, txs, banks, accounts, year, static_?.openings, journalEntries]
+      !txs ? null : buildPostings(txs.list, banks, accounts, yearEndOf(year), static_?.openings, withoutClosingOf(journalEntries, year), txs.carry),
+    [txs, banks, accounts, year, static_?.openings, journalEntries]
   );
-  const monthsWithData = useMemo(
-    () => new Set([...(txs?.list ?? []).map((t) => monthOf(t.date)), ...journalEntries.filter((j) => !j.yearClosing).map((j) => monthOf(j.date))]),
-    [txs, journalEntries]
-  );
+  const months = useMemo(() => monthsWithData(txs?.list ?? [], journalEntries), [txs, journalEntries]);
   const yearClosing = useYearClosing({
     clientId,
     year,
@@ -224,37 +152,22 @@ export default function BalancoPage() {
     accounts,
     journalEntries,
     locks: static_?.locks ?? EMPTY_LOCKS,
-    monthsWithData,
+    monthsWithData: months,
     implantation: opening?.date ?? null,
-    onChanged: () => setReloadCount((c) => c + 1),
+    onChanged: reload,
   });
   const dlpa = useMemo(() => buildDLPA(postings, accounts, journalEntries, range.end), [postings, accounts, journalEntries, range.end]);
   // DFC do período escolhido: os lançamentos do exercício já vêm um a um; o consolidado só compõe o caixa inicial.
   const [cashFlowDetail, setCashFlowDetail] = useState(false);
   const cashFlow = useMemo(
-    () =>
-      loading || !txs
-        ? null
-        : buildCashFlow({ transactions: txs.list, banks, accounts, range, openings: static_?.openings, journalEntries, carry: txs.carry }),
-    [loading, txs, banks, accounts, range, static_?.openings, journalEntries]
+    () => (!txs ? null : buildCashFlow({ transactions: txs.list, banks, accounts, range, openings: static_?.openings, journalEntries, carry: txs.carry })),
+    [txs, banks, accounts, range, static_?.openings, journalEntries]
   );
 
-  const porte = porteOf(currentClient);
-  const standardNote =
-    view === 'dfc' && porte === 'MICROENTIDADE'
-      ? 'Microentidade (NBC TG 1002): a DFC é facultativa. Apresente-a se ajudar a leitura das demonstrações.'
-      : (view === 'bs' || view === 'dlpa') && porte === 'PEQUENA_EMPRESA'
-        ? 'Pequena empresa (NBC TG 1001): o conjunto completo inclui a Demonstração dos Fluxos de Caixa, na aba DFC.'
-        : null;
-
-  const missingOpening = banks.filter((b) => b.openingBalance === undefined);
-  const unlinked = banks.filter((b) => !b.ledgerAccountId);
+  const standardNote = standardNoteFor(view, porteOf(currentClient));
+  const { missingOpening, unlinked } = bankSetupIssues(banks);
   const hasData = postings.length > 0;
-
-  const signatories = () => ({
-    legalRepresentative: { name: currentClient?.legalRepresentativeName, cpf: currentClient?.legalRepresentativeCpf },
-    accountant: static_?.org ? { name: static_.org.accountantName, crc: static_.org.accountantCrc } : undefined,
-  });
+  const signatories = () => statementSignatories(currentClient, static_?.org);
 
   const exportPdf = async () => {
     if (!currentClient) return;

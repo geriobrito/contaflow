@@ -94,8 +94,8 @@ export const lastReportedStatement = <T extends Pick<ImportBatch, 'accountKey' |
     .filter((x) => x.accountKey === accountKey && x.ledgerBalance !== undefined && x.ledgerDate)
     .sort((x, y) => (y.ledgerDate ?? '').localeCompare(x.ledgerDate ?? ''))[0];
 
-const ASSET_TYPES = new Set(['ASSET', 'ATIVO']);
-const LIABILITY_TYPES = new Set(['LIABILITY', 'PASSIVO']);
+const ASSET_TYPES = new Set(['ASSET']);
+const LIABILITY_TYPES = new Set(['LIABILITY']);
 
 /**
  * Contas do plano que podem representar um banco ou cartão:

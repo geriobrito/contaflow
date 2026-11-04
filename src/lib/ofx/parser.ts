@@ -62,12 +62,6 @@ export function normalizeOFXAmount(raw: string | null | undefined): number | nul
   return negative ? -amount : amount;
 }
 
-/** @deprecated use `normalizeOFXDate` (devolve '' quando a data é inválida). */
-export const parseOFXDate = (dateStr: string): string => normalizeOFXDate(dateStr) ?? '';
-
-/** @deprecated use `normalizeOFXAmount` (devolve 0 quando não há número). */
-export const parseOFXAmount = (amountStr: string): number => normalizeOFXAmount(amountStr) ?? 0;
-
 /** Hash FNV-1a (32 bits) em base 36 — curto, estável e sem dependências. */
 function hashString(value: string): string {
   let h = 0x811c9dc5;

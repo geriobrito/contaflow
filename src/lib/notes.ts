@@ -61,11 +61,11 @@ function equityText(year: string, f: NoteFigures | null | undefined): string {
 }
 
 export function defaultNotes(
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'regime' | 'taxRegime' | 'porte'>,
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'regime' | 'porte'>,
   year: string,
   figures?: NoteFigures | null
 ): NoteBlock[] {
-  const regime = client.regime ?? client.taxRegime;
+  const regime = client.regime;
   const small = porteOf(client) === 'PEQUENA_EMPRESA';
   // "NBC TG 1002 - Contabilidade para Microentidades".
   const standard = accountingStandard(client).replace(' - ', ' - Contabilidade para ');

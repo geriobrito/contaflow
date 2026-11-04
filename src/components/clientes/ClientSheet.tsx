@@ -31,7 +31,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [name, setName] = useState(client?.name ?? '');
   const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
   const [city, setCity] = useState(client?.city ?? '');
-  const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? client?.taxRegime ?? 'SIMPLES_NACIONAL');
+  const [regime, setRegime] = useState<TaxRegime>(client?.regime ?? 'SIMPLES_NACIONAL');
   const [porte, setPorte] = useState<CompanyPorte>(porteOf(client));
   const [email, setEmail] = useState(client?.email ?? '');
   const [phone, setPhone] = useState(client?.phone ?? '');
@@ -81,7 +81,6 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       cnpj: formatCNPJ(cnpjChars),
       city: city.trim() || undefined,
       regime,
-      taxRegime: regime,
       porte,
       // Dados gravados fora deste formulário (Plano de Contas, Livro Diário) seguem com o cadastro.
       ...fieldsKeptOutsideForm(client),

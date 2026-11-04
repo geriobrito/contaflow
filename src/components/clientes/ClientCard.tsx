@@ -25,7 +25,7 @@ interface ClientCardProps {
 
 /** Cartão de uma empresa da carteira. */
 export function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, onAskDelete, onDelete, deleting }: ClientCardProps) {
-  const regime = client.regime ?? client.taxRegime;
+  const regime = client.regime;
   const label = client.tradeName || client.name;
 
   // A exclusão apaga os dados em vários lotes; se parou no meio, a empresa fica só para ser retomada.

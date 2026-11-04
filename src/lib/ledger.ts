@@ -41,9 +41,9 @@ export interface Posting {
 }
 
 
-const PATRIMONIAL: ReadonlySet<AccountType> = new Set(['ASSET', 'ATIVO', 'LIABILITY', 'PASSIVO', 'EQUITY']);
-const ASSET: ReadonlySet<AccountType> = new Set(['ASSET', 'ATIVO']);
-const LIABILITY: ReadonlySet<AccountType> = new Set(['LIABILITY', 'PASSIVO']);
+const PATRIMONIAL: ReadonlySet<AccountType> = new Set(['ASSET', 'LIABILITY', 'EQUITY']);
+const ASSET: ReadonlySet<AccountType> = new Set(['ASSET']);
+const LIABILITY: ReadonlySet<AccountType> = new Set(['LIABILITY']);
 
 export type AccountKind = 'ASSET' | 'LIABILITY' | 'EQUITY' | 'RESULT';
 
@@ -589,7 +589,7 @@ export function accountNaturalNature(
   const kind = accountKind(account);
   if (kind === 'ASSET') return isContraAccount(account) ? 'C' : 'D';
   if (kind === 'LIABILITY' || kind === 'EQUITY') return isContraAccount(account) ? 'D' : 'C';
-  if (account.type === 'REVENUE' || account.type === 'RECEITA') return 'C';
+  if (account.type === 'REVENUE') return 'C';
   return 'D';
 }
 

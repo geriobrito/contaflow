@@ -94,6 +94,6 @@ const TRANSIT_NAME = /tr[aâ]nsito|transfer[êe]ncias entre contas/i;
 export function findTransitAccount(accounts: readonly ChartAccount[]): ChartAccount | undefined {
   return (
     accounts.find((a) => a.code === TRANSIT_ACCOUNT.code && a.nature === 'ANALYTIC') ??
-    accounts.find((a) => a.nature === 'ANALYTIC' && (a.type === 'ASSET' || a.type === 'ATIVO') && TRANSIT_NAME.test(a.name))
+    accounts.find((a) => a.nature === 'ANALYTIC' && a.type === 'ASSET' && TRANSIT_NAME.test(a.name))
   );
 }

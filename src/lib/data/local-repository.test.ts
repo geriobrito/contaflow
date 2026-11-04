@@ -145,10 +145,10 @@ describe('repositório local (modo único, sem Firestore)', () => {
     await expect(repo.deleteClient('global', actor)).rejects.toThrow();
   });
 
-  it('extrato: lançamentos pelo lote (ou pela data de gravação, nos antigos) e exclusão com alterações', async () => {
+  it('extrato: lançamentos pelo lote e exclusão com alterações', async () => {
     const batch = { id: 'bt', clientId: 'c1', fileName: 'x.ofx', fileSize: 0, totalTransactions: 2, importedCount: 2, duplicateCount: 0, autoClassifiedCount: 0, totalDebit: 0, totalCredit: 0, importedAt: 'T0' };
     await repo.insertTransactions(
-      [tx('n1', '2025-04-01', { importBatchId: 'bt', transferPairId: 'a' }), tx('n2', '2025-04-02', { createdAt: 'T0' }), tx('n3', '2025-04-03', { createdAt: 'T0', importBatchId: 'outro' })],
+      [tx('n1', '2025-04-01', { importBatchId: 'bt', transferPairId: 'a' }), tx('n2', '2025-04-02', { importBatchId: 'bt' }), tx('n3', '2025-04-03', { createdAt: 'T0', importBatchId: 'outro' })],
       batch
     );
     const txs = await repo.listBatchTransactions(batch);

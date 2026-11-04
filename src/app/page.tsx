@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
-import type { BankAccount, ChartAccount, ReconciliationStatus, RuleMatchType } from '@/types/firestore';
+import type { BankAccount, ChartAccount, RuleMatchType } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation } from '@/hooks/useReconciliation';
@@ -36,14 +36,14 @@ import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
-import { matchTransaction } from '@/lib/utils/search';
+import { approvableIds, bankFilterOptions, bankNamesByKey, filterByBank, mainSplitAccountId, parseConciliationLink, payeeCandidates, upsertBank, visibleTransactions, type StatusFilter } from '@/lib/reconciliation-list';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { reportError } from '@/lib/monitoring';
 
 /** Linhas por página na tabela de lançamentos. */
 const PAGE_SIZE = 50;
 
-type Filter = 'ALL' | ReconciliationStatus;
+type Filter = StatusFilter;
 
 const loadFailure = (what: string, e: unknown): string => {
   reportError(e, { area: 'conciliacao', op: `carregar ${what}` });
@@ -95,16 +95,13 @@ export default function ConciliacaoPage() {
     getLatestTransactionDate(clientId)
       .then((latest) => {
         if (!active) return;
-        // Links do painel: /?mes=AAAA-MM[&filtro=PENDING|AUTO_CLASSIFIED][&conta=KEY] abrem o mês e filtros pedidos.
-        const params = new URLSearchParams(window.location.search);
-        const mes = params.get('mes');
-        const filtro = params.get('filtro');
-        const conta = params.get('conta');
-        if (conta) setBankFilter(conta);
-        if (mes && /^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) {
+        // Links do painel abrem o mês e os filtros pedidos.
+        const link = parseConciliationLink(window.location.search);
+        if (link.bank) setBankFilter(link.bank);
+        if (link.month) {
           setMode('month');
-          jumpTo(`${mes}-01`);
-          if (filtro === 'PENDING' || filtro === 'AUTO_CLASSIFIED') setFilter(filtro);
+          jumpTo(`${link.month}-01`);
+          if (link.filter) setFilter(link.filter);
         } else if (latest) jumpTo(latest);
         setPositionedFor(clientId);
       })
@@ -148,12 +145,7 @@ export default function ConciliacaoPage() {
     };
   }, [clientId, statementsKey]);
 
-  const handleBankAccountUpdated = (updated: BankAccount) => {
-    setBanks((prev) => {
-      const idx = prev.findIndex((b) => b.id === updated.id);
-      return idx >= 0 ? prev.map((b, i) => (i === idx ? updated : b)) : [...prev, updated];
-    });
-  };
+  const handleBankAccountUpdated = (updated: BankAccount) => setBanks((prev) => upsertBank(prev, updated));
 
   // Históricos de importações antigas com acentuação quebrada: a correção fica em Contas e Extratos.
   const hasBrokenText = useMemo(() => transactions.some((t) => hasMojibake(t.memo)), [transactions]);
@@ -194,70 +186,19 @@ export default function ConciliacaoPage() {
   const confirmSplit = async (drafts: SplitDraft[], invoiceId?: string) => {
     const txId = selected?.id;
     const saved = await flow.handleSplit(drafts);
-    const main = drafts.filter((d) => !d.reduces).reduce<SplitDraft | null>((best, d) => (!best || d.cents > best.cents ? d : best), null);
-    if (saved && txId && invoiceId && main) await invoices.link(txId, invoiceId, main.accountId);
+    const mainAccountId = mainSplitAccountId(drafts);
+    if (saved && txId && invoiceId && mainAccountId) await invoices.link(txId, invoiceId, mainAccountId);
   };
 
   /* ── Lista: filtro por conta, status, busca, visão por favorecido e paginação ── */
-  const bankNamesByKey = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const b of banks) {
-      map.set(b.accountKey, b.nickname || b.bankName || b.accountKey);
-    }
-    return map;
-  }, [banks]);
-
-  const bankOptions = useMemo(() => {
-    const countsByKey = new Map<string, number>();
-    let unlinkedCount = 0;
-    for (const t of transactions) {
-      if (t.accountKey) {
-        countsByKey.set(t.accountKey, (countsByKey.get(t.accountKey) ?? 0) + 1);
-      } else {
-        unlinkedCount++;
-      }
-    }
-
-    const opts: { value: string; label: string; count: number }[] = [];
-    const seen = new Set<string>();
-    for (const b of banks) {
-      seen.add(b.accountKey);
-      const count = countsByKey.get(b.accountKey) ?? 0;
-      const prefix = b.kind === 'CARD' ? 'Cartão · ' : '';
-      opts.push({
-        value: b.accountKey,
-        label: `${prefix}${b.nickname || b.bankName || b.accountKey}`,
-        count,
-      });
-    }
-    for (const [key, count] of countsByKey) {
-      if (!seen.has(key)) {
-        opts.push({ value: key, label: key, count });
-      }
-    }
-    if (unlinkedCount > 0) {
-      opts.push({ value: '__unlinked__', label: 'Sem conta identificada', count: unlinkedCount });
-    }
-    return opts;
-  }, [banks, transactions]);
-
-  const byBank = useMemo(() => {
-    if (bankFilter === 'ALL') return transactions;
-    if (bankFilter === '__unlinked__') return transactions.filter((t) => !t.accountKey);
-    return transactions.filter((t) => t.accountKey === bankFilter);
-  }, [transactions, bankFilter]);
-
-  const visible = useMemo(() => {
-    const byFilter = filter === 'ALL' ? byBank : byBank.filter((t) => t.status === filter);
-    return searchQuery.trim() ? byFilter.filter((t) => matchTransaction(t, searchQuery)) : byFilter;
-  }, [byBank, filter, searchQuery]);
+  const bankNames = useMemo(() => bankNamesByKey(banks), [banks]);
+  const bankOptions = useMemo(() => bankFilterOptions(banks, transactions), [banks, transactions]);
+  const byBank = useMemo(() => filterByBank(transactions, bankFilter), [transactions, bankFilter]);
+  const visible = useMemo(() => visibleTransactions(byBank, filter, searchQuery), [byBank, filter, searchQuery]);
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
   const [view, setView] = useState<'list' | 'payee'>('list');
-  const payeeGroups = useMemo(
-    () => groupByPayee(byBank.filter((t) => t.status === 'PENDING' && !t.transferPairId && !isMonthLocked(t.date, lockedMonths))),
-    [byBank, lockedMonths]
-  );
+  const payeeGroups = useMemo(() => groupByPayee(payeeCandidates(byBank, lockedMonths)), [byBank, lockedMonths]);
   const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
 
   // Volta à 1ª página ao trocar filtro, conta, busca, período ou cliente.
@@ -271,16 +212,7 @@ export default function ConciliacaoPage() {
     setPage(next);
     tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
   };
-  const approvableIds = useMemo(
-    () =>
-      new Set(
-        byBank
-          .filter((t) => t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths))
-          .map((t) => t.id)
-      ),
-    [byBank, lockedMonths]
-  );
-  const approvable = approvableIds.size;
+  const approvable = useMemo(() => approvableIds(byBank, lockedMonths), [byBank, lockedMonths]);
 
   /* ── Seleção múltipla e ações em lote ──────────────────────────────── */
   const bulk = useBulkSelection({
@@ -482,13 +414,13 @@ export default function ConciliacaoPage() {
 
             <button
               type="button"
-              disabled={approvable === 0 || isSaving}
-              onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvableIds : undefined)}
+              disabled={approvable.size === 0 || isSaving}
+              onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvable : undefined)}
               className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
             >
               <CheckCheck className="w-4 h-4" strokeWidth={2} />
               Aprovar todos os auto-classificados
-              <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable}</span>
+              <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable.size}</span>
             </button>
           </div>
         </div>
@@ -522,7 +454,7 @@ export default function ConciliacaoPage() {
             currentPage={currentPage}
             pageCount={pageCount}
             onGoToPage={goToPage}
-            bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNamesByKey : undefined}
+            bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNames : undefined}
             invoiceHints={invoiceHints}
           />
         )}
@@ -545,7 +477,7 @@ export default function ConciliacaoPage() {
           onAskClient={flow.handleAskClient}
           invoiceMatch={selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id)}
           linkedInvoice={invoices.linked.get(selected.id)}
-          regime={currentClient?.regime ?? currentClient?.taxRegime}
+          regime={currentClient?.regime}
         />
       )}
 

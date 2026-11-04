@@ -26,7 +26,7 @@ rules_version = '2';
 //      apenas as respostas (campo `answers`, texto de até 2000 caracteres cada; o link tem
 //      de 1 a 24 perguntas, que não mudam), enquanto o link estiver
 //      aberto e dentro da validade; ninguém lista a coleção. O cliente não
-//      envia arquivos: client_request_files é legado e não aceita novos documentos.
+//      envia arquivos.
 //   9. Lançamento novo nunca entra conciliado: importar em competência fechada não altera
 //      o resultado dela.
 //  10. Lançamentos manuais (journal_entries) respeitam as partidas dobradas (débitos =
@@ -470,13 +470,6 @@ service cloud.firestore {
             && validAnswers(request.resource.data.answers)
             && request.resource.data.respondedAt is string
             && request.resource.data.respondedAt.size() <= 40);
-    }
-
-    // Legado: o cliente não envia mais arquivos. Nada novo é gravado; o escritório ainda
-    // lê e apaga comprovantes antigos (ex.: ao excluir a empresa).
-    match /client_request_files/{fileId} {
-      allow get, list, delete: if isMine(resource.data);
-      allow create, update: if false;
     }
 
     // ── Fechamento de competência ────────────────────────────────────────

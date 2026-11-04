@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeTransaction, normalizeOFXAmount, normalizeOFXDate, parseOFXAmount, parseOFXDate, parseOFXString } from '@/lib/ofx/parser';
+import { describeTransaction, normalizeOFXAmount, normalizeOFXDate, parseOFXString } from '@/lib/ofx/parser';
 import { SAMPLE_BRAZILIAN_OFX } from '@/lib/mock/sample-ofx';
 
 const wrap = (transactions: string) => `OFXHEADER:100
@@ -14,17 +14,17 @@ ${transactions}
 </BANKTRANLIST>
 </STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>`;
 
-describe('parseOFXDate / parseOFXAmount', () => {
+describe('normalizeOFXDate / normalizeOFXAmount', () => {
   it('converte datas OFX com e sem fuso', () => {
-    expect(parseOFXDate('20240315120000[-3:BRT]')).toBe('2024-03-15');
-    expect(parseOFXDate('20240315')).toBe('2024-03-15');
+    expect(normalizeOFXDate('20240315120000[-3:BRT]')).toBe('2024-03-15');
+    expect(normalizeOFXDate('20240315')).toBe('2024-03-15');
   });
 
   it('entende ponto, vírgula e milhar brasileiro', () => {
-    expect(parseOFXAmount('-802.66')).toBe(-802.66);
-    expect(parseOFXAmount('-802,66')).toBe(-802.66);
-    expect(parseOFXAmount('1.250,50')).toBe(1250.5);
-    expect(parseOFXAmount('abc')).toBe(0);
+    expect(normalizeOFXAmount('-802.66')).toBe(-802.66);
+    expect(normalizeOFXAmount('-802,66')).toBe(-802.66);
+    expect(normalizeOFXAmount('1.250,50')).toBe(1250.5);
+    expect(normalizeOFXAmount('abc')).toBeNull();
   });
 });
 
@@ -84,7 +84,7 @@ describe('normalizeOFXDate', () => {
     expect(normalizeOFXDate('20250230')).toBeNull();
     expect(normalizeOFXDate('31/04/2025')).toBeNull();
     expect(normalizeOFXDate('abc')).toBeNull();
-    expect(parseOFXDate('29/03/2025')).toBe('2025-03-29');
+    expect(normalizeOFXDate('29/03/2025')).toBe('2025-03-29');
   });
 });
 
@@ -109,7 +109,6 @@ describe('normalizeOFXAmount', () => {
   it('devolve null quando não há número', () => {
     expect(normalizeOFXAmount('')).toBeNull();
     expect(normalizeOFXAmount('R$')).toBeNull();
-    expect(parseOFXAmount('R$')).toBe(0);
   });
 });
 

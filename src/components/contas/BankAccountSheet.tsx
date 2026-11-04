@@ -13,7 +13,7 @@ import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
 
-const LIABILITY_TYPES = new Set(['LIABILITY', 'PASSIVO']);
+const LIABILITY_TYPES = new Set(['LIABILITY']);
 
 /** Cadastro ou edição de uma conta bancária ou cartão de crédito: tipo, nome, conta contábil vinculada e saldo inicial. */
 export function BankAccountSheet({

@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
-import { parseMoneyInput } from '@/lib/opening';
+import { JOURNAL_TEMPLATES, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
+import { buildJournalEntry, emptyJournalLines, nextJournalLine, parseTemplateValues, type JournalEntryInput } from '@/lib/journal-form';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { reportError } from '@/lib/monitoring';
@@ -22,7 +22,7 @@ import { reportError } from '@/lib/monitoring';
 interface JournalEntryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (entry: Omit<JournalEntry, 'id' | 'entryNumber' | 'createdAt' | 'updatedAt'>, existingId?: string) => Promise<void>;
+  onSave: (entry: JournalEntryInput, existingId?: string) => Promise<void>;
   initialEntry?: JournalEntry | null;
   accounts: readonly ChartAccount[];
   clientId: string;
@@ -55,15 +55,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   const [memo, setMemo] = useState<string>(initialEntry?.memo ?? '');
   const [documentRef, setDocumentRef] = useState<string>(initialEntry?.documentRef ?? '');
   const [attachmentUrl, setAttachmentUrl] = useState<string>(initialEntry?.attachmentUrl ?? '');
-  const [lines, setLines] = useState<JournalEntryLine[]>(() => {
-    if (initialEntry && initialEntry.lines.length > 0) {
-      return initialEntry.lines;
-    }
-    return [
-      { id: 'l1', accountId: '', type: 'DEBIT', amount: 0, memo: '' },
-      { id: 'l2', accountId: '', type: 'CREDIT', amount: 0, memo: '' },
-    ];
-  });
+  const [lines, setLines] = useState<JournalEntryLine[]>(() =>
+    initialEntry && initialEntry.lines.length > 0 ? initialEntry.lines : emptyJournalLines()
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<JournalTemplateId | null>(null);
@@ -93,24 +87,12 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   if (!isOpen) return null;
 
   const handleAddLine = () => {
-    if (lines.length >= MAX_JOURNAL_LINES) {
+    const next = nextJournalLine(lines, `l_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`);
+    if (!next) {
       setError(`Um lançamento aceita no máximo ${MAX_JOURNAL_LINES} partidas. Divida-o em dois lançamentos.`);
       return;
     }
-    const nextId = `l_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const lastLine = lines[lines.length - 1];
-    const newType = lastLine?.type === 'DEBIT' ? 'CREDIT' : 'DEBIT';
-    const remainingDiff = Math.max(0, totalDebit - totalCredit);
-    setLines((prev) => [
-      ...prev,
-      {
-        id: nextId,
-        accountId: '',
-        type: newType,
-        amount: remainingDiff > 0 && newType === 'CREDIT' ? remainingDiff : 0,
-        memo: '',
-      },
-    ]);
+    setLines((prev) => [...prev, next]);
   };
 
   const handleRemoveLine = (id: string) => {
@@ -135,13 +117,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   const template = JOURNAL_TEMPLATES.find((t) => t.id === templateId) ?? null;
   const applyTemplate = () => {
     if (!template) return;
-    const values: Record<string, number> = {};
-    for (const f of template.fields) {
-      const n = parseMoneyInput(templateValues[f.key] ?? '');
-      if (n === null) return setTemplateError(`${f.label}: valor inválido (use números, como 1.234,56).`);
-      values[f.key] = n;
-    }
-    const { draft, problem } = templateDraft(template, values, accounts, date);
+    const parsed = parseTemplateValues(template, templateValues);
+    if ('problem' in parsed) return setTemplateError(parsed.problem);
+    const { draft, problem } = templateDraft(template, parsed.values, accounts, date);
     if (!draft) return setTemplateError(problem);
     setTemplateError(null);
     setError(null);
@@ -154,54 +132,21 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (locked) {
-      setError(`A competência ${month} está bloqueada para alterações.`);
-      return;
-    }
-    if (!memo.trim()) {
-      setError('Informe a descrição / histórico do lançamento.');
-      return;
-    }
     // Mesma validação aplicada pelos repositórios e pelas regras do Firestore.
-    const problem = journalEntryProblem({ date, lines });
-    if (problem) {
-      setError(problem);
-      return;
-    }
-    if (attachment && 'problem' in attachment) {
-      setError(`Link do comprovante: ${attachment.problem}`);
+    const built = buildJournalEntry(
+      { clientId, date, category, memo, documentRef, attachmentUrl, lines, createdByUid: initialEntry?.createdByUid },
+      accounts,
+      locked ? month : null
+    );
+    if ('problem' in built) {
+      setError(built.problem);
       return;
     }
 
     setSaving(true);
     setError(null);
     try {
-      const byId = new Map(accounts.map((a) => [a.id, a] as const));
-      await onSave(
-        {
-          clientId,
-          date,
-          memo: memo.trim(),
-          category,
-          lines: lines.map((l) => {
-            const acc = byId.get(l.accountId);
-            return {
-              id: l.id,
-              accountId: l.accountId,
-              accountCode: acc?.code,
-              accountName: acc?.name,
-              type: l.type,
-              amount: Number(l.amount),
-              memo: l.memo?.trim() || undefined,
-            };
-          }),
-          totalAmount: totalDebit,
-          documentRef: documentRef.trim() || undefined,
-          attachmentUrl: attachment && 'url' in attachment ? attachment.url : undefined,
-          createdByUid: initialEntry?.createdByUid ?? '',
-        },
-        initialEntry?.id
-      );
+      await onSave(built.entry, initialEntry?.id);
       onClose();
     } catch (err) {
       reportError(err, { area: 'lancamentos', op: 'salvar' });

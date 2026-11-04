@@ -67,7 +67,6 @@ export const COL = {
   bankAccounts: 'bank_accounts',
   openings: 'opening_balances',
   requests: 'client_requests',
-  requestFiles: 'client_request_files',
   journalEntries: 'journal_entries',
   journalCounters: 'journal_counters',
   snapshots: 'period_snapshots',
@@ -286,8 +285,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
         REOPENS_PER_BATCH
       );
-      // `requestFiles` é legado (comprovantes de quando o cliente podia anexar): só limpeza.
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requestFiles, COL.requests]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -495,13 +493,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       await setDoc(doc(db, COL.batches, batch.id), stamp(batch), { merge: true });
     },
     async listBatchTransactions(batch) {
-      const found = new Map<string, BankTransaction>();
-      const byBatch = await getDocs(scoped(COL.transactions, where('clientId', '==', batch.clientId), where('importBatchId', '==', batch.id)));
-      byBatch.docs.forEach((d) => found.set(d.id, txFrom(d)));
-      // Extratos importados antes do vínculo explícito: mesma data/hora de gravação do lote.
-      const legacy = await getDocs(scoped(COL.transactions, where('clientId', '==', batch.clientId), where('createdAt', '==', batch.importedAt)));
-      legacy.docs.map(txFrom).filter((t) => !t.importBatchId).forEach((t) => found.set(t.id, t));
-      return [...found.values()].sort((a, b) => a.date.localeCompare(b.date));
+      const snap = await getDocs(scoped(COL.transactions, where('clientId', '==', batch.clientId), where('importBatchId', '==', batch.id)));
+      return snap.docs.map(txFrom).sort((a, b) => a.date.localeCompare(b.date));
     },
     async deleteImportBatch(batch, transactions, changes) {
       const groups = changeGroups(changes);
