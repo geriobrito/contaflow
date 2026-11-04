@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useLedgerData } from '@/hooks/useLedgerData';
 import { usePagination } from '@/hooks/usePagination';
@@ -13,8 +13,9 @@ import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { openingStatus } from '@/lib/opening';
-import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
-import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { StatementChecks } from '@/components/ui/StatementChecks';
+import { openingCheck } from '@/lib/statement-checks';
+import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { reportError } from '@/lib/monitoring';
 
@@ -158,6 +159,8 @@ export default function DiarioPage() {
     }, SAVE_DELAY_MS);
   };
 
+  const signature = useSignatureReminder(static_?.org);
+
   const exportPdf = async () => {
     if (!daybook || !currentClient) return;
     setExporting(true);
@@ -175,6 +178,7 @@ export default function DiarioPage() {
         },
       });
       downloadBlob(blob, fileName);
+      signature.remind();
     } catch (e) {
       reportError(e, { area: 'diario', op: 'gerar PDF' });
       setError(`Não foi possível gerar o PDF (${describeError(e)}).`);
@@ -201,7 +205,6 @@ export default function DiarioPage() {
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
 
-      <AccountantNotice org={static_?.org} ready={Boolean(static_)} />
 
       {/* Dados que só os termos usam */}
       <section className={`${SURFACE} rounded-[22px] p-5 space-y-3`} aria-label="Dados dos termos de abertura e encerramento">
@@ -225,14 +228,19 @@ export default function DiarioPage() {
         </div>
       </section>
 
-      <OpeningStatusNotice status={opening} />
-
-      {provisional && (
-        <p role="status" className="flex gap-2 rounded-2xl px-4 py-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 text-[13px] text-amber-800 dark:text-amber-300">
-          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>Diário provisório: {provisional}. O PDF sai com esse aviso nos termos.</span>
-        </p>
-      )}
+      <StatementChecks
+        checks={[
+          openingCheck(opening),
+          Boolean(provisional) && {
+            id: 'provisional',
+            level: 'warn',
+            title: `Diário provisório: ${provisional}`,
+            items: ['O PDF sai com esse aviso nos termos.'],
+            href: '/',
+            linkLabel: 'Abrir na Conciliação',
+          },
+        ]}
+      />
 
       {loading ? (
         // Falha de carga: fica só o erro acima, sem Diário parcial nem "carregando" eterno.
@@ -334,6 +342,7 @@ export default function DiarioPage() {
           </section>
         </>
       )}
+      {signature.toast}
     </main>
   );
 }

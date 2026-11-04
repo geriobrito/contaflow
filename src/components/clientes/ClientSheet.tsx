@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, type Dispatch, type SetStateAction } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, Search, Sparkles, XCircle } from 'lucide-react';
 import type { ClientCompany, CompanyPorte, TaxRegime } from '@/types/firestore';
-import type { CNPJLookupResult } from '@/lib/cnpj';
+import type { ClientFormFields } from '@/lib/cnpj-review';
+import { CnpjReviewPanel } from '@/components/clientes/CnpjReviewPanel';
 import { saveClient } from '@/lib/services/data-service';
 import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
@@ -18,11 +19,6 @@ interface ClientSheetProps {
   client: ClientCompany | null;
   onClose: () => void;
   onSaved: (client: ClientCompany) => void;
-}
-
-/** Preenche um campo com o valor da Receita; sem `overwrite`, só se ele estiver vazio. */
-function fillFrom(setter: Dispatch<SetStateAction<string>>, value: string | undefined, overwrite: boolean) {
-  if (value) setter((prev) => (overwrite || !prev.trim() ? value : prev));
 }
 
 /** Painel de cadastro / edição de empresa, com preenchimento pelo CNPJ. */
@@ -51,22 +47,24 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const cpfError = cpfDigits && !(cpfDigits.length === 11 && isValidCPF(cpfDigits)) ? 'CPF inválido.' : null;
   const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError && !cpfError;
 
-  const applyLookup = (data: CNPJLookupResult, overwrite: boolean) => {
-    fillFrom(setName, data.name, overwrite);
-    fillFrom(setTradeName, data.tradeName, overwrite);
-    fillFrom(setCity, data.city, overwrite);
-    fillFrom(setEmail, data.email, overwrite);
-    fillFrom(setPhone, data.phone, overwrite);
-    fillFrom(setRepName, data.legalRepresentativeName, overwrite);
-    if (data.regime) setRegime(data.regime);
-    if (data.porte) setPorte(data.porte);
+  /** Grava no formulário os campos vindos da Receita (já conferidos por `reviewLookup`). */
+  const applyFields = (fields: Partial<ClientFormFields>) => {
+    if (fields.name !== undefined) setName(fields.name);
+    if (fields.tradeName !== undefined) setTradeName(fields.tradeName);
+    if (fields.city !== undefined) setCity(fields.city);
+    if (fields.email !== undefined) setEmail(fields.email);
+    if (fields.phone !== undefined) setPhone(fields.phone);
+    if (fields.legalRepresentativeName !== undefined) setRepName(fields.legalRepresentativeName);
+    if (fields.regime) setRegime(fields.regime);
+    if (fields.porte) setPorte(fields.porte);
   };
 
   const lookup = useCnpjLookup({
     cnpj: cnpjChars,
     valid: cnpjValid,
     savedCnpj: client ? cleanCNPJ(client.cnpj) : null,
-    onResult: applyLookup,
+    getForm: () => ({ name, tradeName, city, email, phone, legalRepresentativeName: repName, regime, porte }),
+    apply: applyFields,
   });
 
   const submit = async () => {
@@ -156,7 +154,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               value={cnpj}
               onChange={(e) => {
                 setCnpj(maskCNPJ(e.target.value));
-                if (notice) lookup.clearNotice();
+                if (notice || lookup.pending) lookup.clearNotice();
               }}
               placeholder="00.000.000/0000-00"
               aria-invalid={Boolean(cnpjError)}
@@ -192,6 +190,9 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               {notice.kind === 'warn' && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
               <span>{notice.text}</span>
             </p>
+          )}
+          {!cnpjError && !lookup.loading && lookup.pending && (
+            <CnpjReviewPanel pending={lookup.pending} onAccept={lookup.acceptPending} onDismiss={lookup.dismissPending} />
           )}
         </div>
 

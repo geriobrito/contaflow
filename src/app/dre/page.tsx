@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { FileSpreadsheet, FileText, Loader2, Lock, Printer } from 'lucide-react';
+import { FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useClient } from '@/contexts/ClientContext';
 import { useDREData, type DREView } from '@/hooks/dre/useDREData';
@@ -9,11 +9,11 @@ import { formatDateBR } from '@/lib/utils/formatters';
 import type { DREExportContext } from '@/lib/export/dre-rows';
 import { BUTTON, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { DRECompareTable } from '@/components/dre/DRECompareTable';
-import { DREConsistencyCard } from '@/components/dre/DREConsistencyCard';
 import { DREResultCard } from '@/components/dre/DREResultCard';
 import { DREStatement } from '@/components/dre/DREStatement';
-import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
-import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { StatementChecks } from '@/components/ui/StatementChecks';
+import { awaitingApprovalCheck, dreConsistencyChecks, openingCheck, periodLockCheck } from '@/lib/statement-checks';
+import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 import { reportError } from '@/lib/monitoring';
 
@@ -33,6 +33,7 @@ export default function DREPage() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+  const signature = useSignatureReminder(org);
   const canExport = hasData && !isLoading && Boolean(currentClient);
   const busy = isGeneratingPdf || isGeneratingExcel;
 
@@ -65,6 +66,7 @@ export default function DREPage() {
           : import('@/lib/export/dre-excel').then((m) => m.generateDREExcel(ctx)),
       ]);
       downloadBlob(file.blob, file.fileName);
+      signature.remind();
     } catch (e) {
       reportError(e, { area: 'dre', op: 'exportar' });
       setExportError(`Não foi possível gerar o ${format === 'pdf' ? 'PDF' : 'Excel'}. Tente novamente.`);
@@ -124,8 +126,6 @@ export default function DREPage() {
         }
       />
 
-      <AccountantNotice org={org} ready={!isLoading} />
-
       {/* Seletor de período e visão */}
       <div className="flex flex-wrap items-center gap-3 print:hidden">
         <PeriodPicker period={period} />
@@ -140,16 +140,6 @@ export default function DREPage() {
           ]}
         />
       </div>
-      {Boolean(clientId) && lockStatus.total > 0 && (
-        <p className="-mt-4 text-[12px] text-stone-500 print:hidden">
-          <Lock className="inline w-3 h-3 -mt-0.5 mr-1" />
-          {lockStatus.closed === lockStatus.total
-            ? 'Todas as competências deste período estão fechadas: esta DRE é definitiva.'
-            : lockStatus.closed > 0
-              ? `${lockStatus.closed} de ${lockStatus.total} competência(s) fechada(s); as demais ainda podem mudar.`
-              : 'Nenhuma competência deste período foi fechada; os valores ainda podem mudar.'}
-        </p>
-      )}
       {blockingError && (
         <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden">
           Não foi possível carregar a DRE: {blockingError}
@@ -167,22 +157,20 @@ export default function DREPage() {
         </p>
       )}
 
-      <OpeningStatusNotice status={opening} />
-
       {/* Resultado em destaque */}
       <DREResultCard dre={dre} tone={tone} profit={profit} isLoading={isLoading} failed={failed} periodLabel={periodLabel} />
 
-      {consistency && !isLoading && hasData && (
-        <div className="print:hidden">
-          <DREConsistencyCard consistency={consistency} date={range.end} />
-        </div>
-      )}
-
-      {!failed && dre.awaitingApproval > 0 && (
-        <p className="text-[13px] text-stone-500 print:hidden">
-          <span className="font-mono tabular-nums text-accent-ink">{dre.awaitingApproval}</span> lançamento(s) auto-classificado(s)
-          neste período aguardam aprovação na Conciliação e ainda não entram na DRE.
-        </p>
+      {/* Abertura, competências, aprovação e conferência com o Balanço, num bloco só. */}
+      {!isLoading && !failed && (
+        <StatementChecks
+          checks={[
+            openingCheck(opening),
+            clientId ? periodLockCheck(lockStatus, 'esta DRE') : null,
+            // A conferência com o Balanço já cita os aguardando aprovação; sem ela, o aviso vem sozinho.
+            !(consistency && hasData) && awaitingApprovalCheck(dre.awaitingApproval),
+            ...(consistency && hasData ? dreConsistencyChecks(consistency, range.end) : []),
+          ]}
+        />
       )}
 
       {view !== 'simple' && (
@@ -224,6 +212,7 @@ export default function DREPage() {
         Baseado em <span className="font-mono tabular-nums">{dre.reconciledCount}</span> lançamento(s) conciliado(s). Valores entre
         parênteses reduzem o resultado.
       </p>
+      {signature.toast}
     </main>
   );
 }

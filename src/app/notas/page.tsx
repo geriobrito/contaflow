@@ -8,7 +8,7 @@ import { accountingStandard } from '@/lib/accounting-standard';
 import { placeholdersIn } from '@/lib/notes';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
-import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { TextSkeleton } from '@/components/ui/Skeleton';
 
 const thisYear = new Date().getFullYear();
@@ -28,6 +28,7 @@ export default function NotasPage() {
   const { list, figures, org, saveState, remote, error: saveError, update, restore } = useExplanatoryNotes(currentClient ?? null, year);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const signature = useSignatureReminder(org);
 
   const pending = useMemo(() => (list ?? []).filter((n) => n.enabled).flatMap((n) => placeholdersIn(n.text)), [list]);
 
@@ -47,6 +48,7 @@ export default function NotasPage() {
         },
       });
       downloadBlob(blob, fileName);
+      signature.remind();
     } catch (e) {
       setError(`Não foi possível gerar o PDF (${describeError(e)}).`);
     } finally {
@@ -76,8 +78,6 @@ export default function NotasPage() {
       />
 
       {(error ?? saveError) && <p role="alert" className="text-[13px] text-rose-600">{error ?? saveError}</p>}
-
-      <AccountantNotice org={org} ready={Boolean(list)} />
 
       {!currentClient ? (
         <section className={`${SURFACE} rounded-[22px]`}>
@@ -147,6 +147,7 @@ export default function NotasPage() {
           })}
         </>
       )}
+      {signature.toast}
     </main>
   );
 }

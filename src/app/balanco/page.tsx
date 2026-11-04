@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, BookOpen, CheckCircle2, FileSpreadsheet, FileText, Info, Loader2, Printer } from 'lucide-react';
+import { BookOpen, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
@@ -22,8 +22,9 @@ import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
-import { OpeningStatusNotice } from '@/components/abertura/OpeningStatusNotice';
-import { AccountantNotice } from '@/components/ui/AccountantNotice';
+import { StatementChecks } from '@/components/ui/StatementChecks';
+import { balanceSheetChecks, openingCheck } from '@/lib/statement-checks';
+import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 import { AccountingAmount } from '@/components/ui/Amount';
@@ -168,6 +169,7 @@ export default function BalancoPage() {
   const { missingOpening, unlinked } = bankSetupIssues(banks);
   const hasData = postings.length > 0;
   const signatories = () => statementSignatories(currentClient, static_?.org);
+  const signature = useSignatureReminder(static_?.org);
 
   const exportPdf = async () => {
     if (!currentClient) return;
@@ -179,12 +181,14 @@ export default function BalancoPage() {
         const { generateCashFlowPdf } = await import('@/lib/export/cash-flow-export');
         const file = generateCashFlowPdf({ client: currentClient, statement: cashFlow, detail: cashFlowDetail, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
+        signature.remind();
         return;
       }
       if (view === 'dlpa') {
         const { generateDLPAPdf } = await import('@/lib/export/dlpa-export');
         const file = generateDLPAPdf({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
+        signature.remind();
         return;
       }
       const { generateLedgerPdf } = await import('@/lib/export/ledger-pdf');
@@ -200,6 +204,7 @@ export default function BalancoPage() {
         signatories: signatories(),
       });
       downloadBlob(file.blob, file.fileName);
+      signature.remind();
     } catch (e) {
       setError(`Não foi possível gerar o PDF (${e instanceof Error ? e.message : 'erro'}).`);
     } finally {
@@ -217,12 +222,14 @@ export default function BalancoPage() {
         const { generateCashFlowExcel } = await import('@/lib/export/cash-flow-export');
         const file = await generateCashFlowExcel({ client: currentClient, statement: cashFlow, detail: cashFlowDetail, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
+        signature.remind();
         return;
       }
       if (view === 'dlpa') {
         const { generateDLPAExcel } = await import('@/lib/export/dlpa-export');
         const file = await generateDLPAExcel({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
+        signature.remind();
         return;
       }
       const { generateLedgerExcel } = await import('@/lib/export/ledger-excel');
@@ -236,6 +243,7 @@ export default function BalancoPage() {
         signatories: signatories(),
       });
       downloadBlob(file.blob, file.fileName);
+      signature.remind();
     } catch (e) {
       setError(`Não foi possível gerar o Excel (${e instanceof Error ? e.message : 'erro'}).`);
     } finally {
@@ -333,85 +341,29 @@ export default function BalancoPage() {
 
       {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
 
-      <AccountantNotice org={static_?.org} ready={ready} />
-
-      <OpeningStatusNotice status={opening} />
-
-      {standardNote && (
-        <p role="note" className="flex items-start gap-2 rounded-2xl px-4 py-3 bg-sky-50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 text-[13px] text-sky-900 dark:text-sky-200 print:hidden">
-          <Info className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{standardNote}</span>
-        </p>
-      )}
-
-      {!loading && hasData && (
-        <div className="space-y-2 print:hidden">
-          {bs.suspense !== 0 && (
-            <p className="flex items-start gap-2 text-[13px] text-amber-700">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              {formatCurrency(Math.abs(bs.suspense))} em lançamentos ainda não conciliados até {formatDateBR(range.end)} aparecem como “Lançamentos a classificar”. Concilie-os para um balanço definitivo.
-            </p>
-          )}
-          {unlinked.length > 0 && (
-            <p className="flex items-start gap-2 text-[13px] text-amber-700">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              {unlinked.length} conta(s) bancária(s) sem conta contábil ({unlinked.map((b) => b.nickname).join(', ')}). Vincule em Contas e extratos.
-            </p>
-          )}
-          {missingOpening.length > 0 && (
-            <p className="flex items-start gap-2 text-[13px] text-amber-700">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              Sem saldo inicial: {missingOpening.map((b) => b.nickname).join(', ')}. O saldo dos bancos parte de zero até ser informado em Contas e extratos.
-            </p>
-          )}
-          {view === 'bs' && inverted.length > 0 && (
-            <div role="note" className="flex items-start gap-2 text-[13px] text-amber-700">
-              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-              <div>
-                <p>Saldo invertido: confira {inverted.length === 1 ? 'a conta abaixo' : `as ${inverted.length} contas abaixo`}, com saldo contrário à natureza do grupo.</p>
-                <ul className="mt-1 space-y-0.5">
-                  {inverted.map(({ line, side }) => (
-                    <li key={line.accountId}>
-                      <span className="font-mono tabular-nums">{line.code}</span> {line.name}: {formatCurrency(-line.value)}{' '}
-                      {side === 'ASSET' ? 'credor no ativo' : 'devedor no passivo'}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-          {view === 'bs' && missingCapital && (
-            <p role="note" className="flex items-start gap-2 text-[12px] text-stone-500 dark:text-stone-400">
-              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              <span>
-                Capital social ({CAPITAL_GROUP_CODE}) sem saldo. Registre-o na{' '}
-                <Link href="/abertura" className="underline underline-offset-2 hover:text-stone-800 dark:hover:text-stone-200">Abertura</Link> ou por{' '}
-                <Link href="/lancamentos" className="underline underline-offset-2 hover:text-stone-800 dark:hover:text-stone-200">lançamento contábil</Link>.
-              </span>
-            </p>
-          )}
-          <p className={`flex items-center gap-2 text-[13px] ${(view !== 'tb' ? bs.difference === 0 : tb.balanced) ? 'text-emerald-700' : 'text-rose-700'}`}>
-            {(view !== 'tb' ? bs.difference === 0 : tb.balanced) ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            {view !== 'tb'
-              ? bs.difference === 0
-                ? 'Ativo = Passivo + Patrimônio líquido'
-                : `Diferença de ${formatCurrency(bs.difference)} entre ativo e passivo + PL`
-              : tb.balanced
-                ? 'Débitos = créditos'
-                : 'Débitos e créditos não conferem'}
-          </p>
-          {consistency && (
-            <p className={`flex items-center gap-2 text-[13px] ${consistency.isConsistent ? 'text-emerald-700' : 'text-amber-700'}`}>
-              {consistency.isConsistent ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-              {consistency.isConsistent
-                ? `Conferência DRE: O Resultado do Exercício no PL (${formatCurrency(consistency.balanceCurrentResult)}) confere exatamente com a DRE do exercício.`
-                : `Conferência DRE: Resultado no PL (${formatCurrency(consistency.balanceCurrentResult)}) difere da DRE (${formatCurrency(consistency.dreNetResult)}) em ${formatCurrency(Math.abs(consistency.difference))}${
-                    consistency.suspenseAmount !== 0 ? ` (${formatCurrency(Math.abs(consistency.suspenseAmount))} em lançamentos a classificar)` : ''
-                  }.`}
-            </p>
-          )}
-        </div>
-      )}
+      {/* Abertura, pendências e conferências do balanço, num bloco só. */}
+      <StatementChecks
+        checks={[
+          openingCheck(opening),
+          ...(!loading && hasData
+            ? balanceSheetChecks({
+                trialBalance: view === 'tb',
+                date: range.end,
+                suspense: bs.suspense,
+                unlinkedBanks: unlinked.map((b) => b.nickname),
+                missingOpeningBanks: missingOpening.map((b) => b.nickname),
+                inverted: view === 'bs' ? inverted.map(({ line, side }) => ({ code: line.code, name: line.name, value: line.value, side })) : [],
+                missingCapitalCode: view === 'bs' && missingCapital ? CAPITAL_GROUP_CODE : null,
+                difference: bs.difference,
+                trialBalanced: tb.balanced,
+                consistency,
+                standardNote,
+              })
+            : standardNote
+              ? [{ id: 'standard', level: 'info' as const, title: standardNote }]
+              : []),
+        ]}
+      />
 
       {loading ? (
         // Falha de carga: fica só o erro acima, sem relatório parcial nem "carregando" eterno.
@@ -549,6 +501,7 @@ export default function BalancoPage() {
         client={currentClient}
         org={static_?.org}
       />
+      {signature.toast}
     </main>
   );
 }
