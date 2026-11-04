@@ -17,6 +17,7 @@ import { JOURNAL_TEMPLATES, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl
 import { buildJournalEntry, emptyJournalLines, nextJournalLine, parseTemplateValues, type JournalEntryInput } from '@/lib/journal-form';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { reportError } from '@/lib/monitoring';
 
 interface JournalEntryModalProps {
@@ -387,20 +388,16 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                           </td>
 
                           <td className="py-2 px-3">
-                            <select
+                            <AccountSelectField
+                              accounts={analyticAccounts}
                               value={line.accountId}
-                              onChange={(e) => handleLineChange(line.id, 'accountId', e.target.value)}
+                              onChange={(accountId) => handleLineChange(line.id, 'accountId', accountId)}
                               disabled={saving || locked}
-                              required
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] outline-none focus:border-accent/60"
-                            >
-                              <option value="">Selecione a conta analítica...</option>
-                              {analyticAccounts.map((acc) => (
-                                <option key={acc.id} value={acc.id}>
-                                  {acc.code} — {acc.name} ({acc.type})
-                                </option>
-                              ))}
-                            </select>
+                              label={`Conta da partida ${idx + 1}`}
+                              placeholder="Selecione a conta analítica…"
+                              panelWidth={420}
+                              triggerClassName="h-9"
+                            />
                           </td>
 
                           <td className="py-2 px-3">

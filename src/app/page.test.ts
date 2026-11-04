@@ -111,5 +111,30 @@ describe('tela de conciliação', () => {
     // Aviso de acentuação quebrada e aprovação em lote disponível.
     expect(html).toContain('Corrigir em Contas e Extratos');
     expect(html).toContain('Aprovar todos os auto-classificados');
+    // Importar fica no cabeçalho.
+    expect(html).toContain('Importar extrato');
+  });
+
+  it('sem auto-classificados, o botão de aprovar em lote some', async () => {
+    const original = recon.transactions;
+    recon.transactions = original.filter((t) => t.status !== 'AUTO_CLASSIFIED');
+    try {
+      const html = render((await import('@/app/page')).default);
+      expect(html).not.toContain('Aprovar todos os auto-classificados');
+    } finally {
+      recon.transactions = original;
+    }
+  });
+
+  it('período sem lançamentos: a tabela convida a importar, com o extrato modelo', async () => {
+    const original = recon.transactions;
+    recon.transactions = [];
+    try {
+      const html = render((await import('@/app/page')).default);
+      expect(html).toContain('Nenhum lançamento ainda');
+      expect(html).toContain('Usar arquivo modelo');
+    } finally {
+      recon.transactions = original;
+    }
   });
 });

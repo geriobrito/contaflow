@@ -1,12 +1,21 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import type { ParsedOFXItem } from '@/components/conciliacao/OFXDropzone';
+import type { ParsedOFXItem } from '@/components/conciliacao/StatementImport';
 import type { DuplicateImportInfo } from '@/components/ui/DuplicateImportModal';
 import type { DateRange } from '@/lib/data/repository';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import type { ImportResult, MemoUpdate, PreImportCheck, UseReconciliationReturn } from '@/hooks/useReconciliation';
 import { reportError } from '@/lib/monitoring';
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Aviso da importação: lançamentos novos, auto-classificados e duplicados ignorados. */
+export function importToastMessage(r: Pick<ImportResult, 'added' | 'autoClassified' | 'duplicates'>): string {
+  const parts = [plural(r.added, 'importado', 'importados'), plural(r.autoClassified, 'auto-classificado', 'auto-classificados')];
+  if (r.duplicates > 0) parts.push(plural(r.duplicates, 'duplicado ignorado', 'duplicados ignorados'));
+  return parts.join(' · ');
+}
 
 /** Extrato aguardando decisão do usuário (sobreposição parcial) ou bloqueado (duplicado). */
 export interface PendingDuplicate {
@@ -84,6 +93,7 @@ export function useImportFlow({
   const runImport = async (result: OFXParseResult, fileName: string) => {
     const imported = await importFile(result, fileName);
     setLastImport(imported);
+    notify(importToastMessage(imported));
     onStatementsChanged();
     // Leva o período até o extrato recém-importado, se ele estiver fora da janela atual.
     if (isOutsideRange(imported.latestDate)) jumpTo(imported.latestDate);

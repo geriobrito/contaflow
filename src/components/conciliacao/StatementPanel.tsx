@@ -55,22 +55,23 @@ export function BalanceCheckBadge({ check }: { check?: BalanceCheck }) {
  * Extratos importados do cliente: cobertura por conta, saldo final informado pelo
  * banco, conferência contra a movimentação e lacunas de datas entre extratos.
  */
-export function StatementPanel({ clientId, refreshKey }: { clientId: string; refreshKey: number }) {
-  const [batches, setBatches] = useState<ImportBatch[] | null>(null);
+export function useStatementBatches(clientId: string | null, refreshKey: number) {
+  const [loaded, setLoaded] = useState<{ clientId: string; batches: ImportBatch[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
+    if (!clientId) return;
     let active = true;
     getRepository()
       .listImportBatches(clientId)
-      .then((b) => active && (setBatches(b), setError(null)))
+      .then((b) => active && (setLoaded({ clientId, batches: b }), setError(null)))
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar extratos.'));
     return () => {
       active = false;
     };
   }, [clientId, refreshKey]);
 
+  const batches = loaded && loaded.clientId === clientId ? loaded.batches : null;
   const withAccount = useMemo(
     () =>
       (batches ?? [])
@@ -80,40 +81,49 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
   );
   const gaps = useMemo(() => findCoverageGaps(withAccount), [withAccount]);
   const mismatches = withAccount.filter((b) => b.balanceCheck?.status === 'MISMATCH').length;
-  const alerts = gaps.length + mismatches;
+  return { withAccount, gaps, mismatches, alerts: gaps.length + mismatches, error };
+}
 
-  if (error) return <p role="alert" className="text-[13px] text-rose-600">Extratos: {error}</p>;
-  if (!batches || withAccount.length === 0) return null;
+export type StatementSummary = ReturnType<typeof useStatementBatches>;
 
+/** Atalho compacto ("2 extratos · sem alertas") que abre os detalhes. */
+export function StatementChip({ summary, open, onToggle }: { summary: StatementSummary; open: boolean; onToggle: () => void }) {
+  const { withAccount, gaps, mismatches, alerts, error } = summary;
+  if (error) return <p role="alert" className="text-[12px] text-rose-600">Extratos: {error}</p>;
+  if (withAccount.length === 0) return null;
   return (
-    <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="w-full flex items-center gap-3 px-5 py-3.5 text-left hover:bg-black/2 transition-colors"
-      >
-        <FileText className="w-4 h-4 text-stone-400" />
-        <span className="flex-1 text-[14px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
-          Extratos e saldos
-          <span className="ml-2 text-[12px] font-normal text-stone-500">
-            {withAccount.length} extrato(s) ·{' '}
-            {alerts > 0 ? (
-              <span className="text-rose-600">
-                {mismatches > 0 && `${mismatches} diferença(s) de saldo`}
-                {mismatches > 0 && gaps.length > 0 && ' · '}
-                {gaps.length > 0 && `${gaps.length} lacuna(s) de datas`}
-              </span>
-            ) : (
-              <span className="text-emerald-700">sem alertas</span>
-            )}
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:bg-black/4 dark:hover:bg-white/6 transition-colors"
+    >
+      <FileText className="w-3.5 h-3.5 text-stone-400" />
+      <span className="font-medium text-stone-700 dark:text-stone-200">Extratos e saldos</span>
+      <span>
+        {withAccount.length} extrato(s) ·{' '}
+        {alerts > 0 ? (
+          <span className="text-rose-600">
+            {mismatches > 0 && `${mismatches} diferença(s) de saldo`}
+            {mismatches > 0 && gaps.length > 0 && ' · '}
+            {gaps.length > 0 && `${gaps.length} lacuna(s) de datas`}
           </span>
-        </span>
-        <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
+        ) : (
+          <span className="text-emerald-700">sem alertas</span>
+        )}
+      </span>
+      <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+    </button>
+  );
+}
 
-      {open && (
-        <div className="border-t border-black/4 dark:border-white/6 animate-fade-in">
+/** Detalhes dos extratos: lacunas de datas e conferência de saldo de cada extrato. */
+export function StatementDetails({ summary }: { summary: StatementSummary }) {
+  const { withAccount, gaps } = summary;
+  if (withAccount.length === 0) return null;
+  return (
+    <section aria-label="Extratos e saldos" className={`${SURFACE} rounded-[22px] overflow-hidden animate-fade-in`}>
+        <div>
           {gaps.length > 0 && (
             <ul className="px-5 py-3 space-y-1 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-200/40">
               {gaps.map((g) => (
@@ -162,7 +172,6 @@ export function StatementPanel({ clientId, refreshKey }: { clientId: string; ref
             </table>
           </div>
         </div>
-      )}
     </section>
   );
 }

@@ -5,6 +5,7 @@ import type { BankTransaction } from '@/types/firestore';
 import type { ClassifyOptions, UseReconciliationReturn } from '@/hooks/useReconciliation';
 import type { TransferPair } from '@/lib/transfers';
 import type { UndoPlan } from '@/hooks/reconciliation/types';
+import { rememberRecentAccounts } from '@/lib/recent-accounts';
 
 interface BulkSelectionParams extends Pick<UseReconciliationReturn, 'classifyMany' | 'askClient'> {
   transactions: readonly BankTransaction[];
@@ -15,13 +16,15 @@ interface BulkSelectionParams extends Pick<UseReconciliationReturn, 'classifyMan
   notify: (message: string) => void;
   /** Aviso com o botão "Desfazer" da classificação em lote. */
   offerUndo: (message: string, plan: UndoPlan) => void;
+  /** Empresa ativa: a conta escolhida no lote entra nas recentes dela. */
+  clientId?: string | null;
 }
 
 /**
  * Seleção múltipla e ações em lote da tabela de conciliação: classificar vários, perguntar
  * ao cliente sobre vários e casar dois lançamentos como transferência entre contas próprias.
  */
-export function useBulkSelection({ transactions, pageRows, classifyMany, askClient, reconcileTransferPairs, notify, offerUndo }: BulkSelectionParams) {
+export function useBulkSelection({ transactions, pageRows, classifyMany, askClient, reconcileTransferPairs, notify, offerUndo, clientId }: BulkSelectionParams) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showBulkClassify, setShowBulkClassify] = useState(false);
   const [showBulkAsk, setShowBulkAsk] = useState(false);
@@ -83,6 +86,7 @@ export function useBulkSelection({ transactions, pageRows, classifyMany, askClie
   const handleConfirmBulkClassify = async (ids: string[], accountId: string, options: ClassifyOptions) => {
     try {
       const r = await classifyMany(ids, accountId, options);
+      rememberRecentAccounts(clientId, [accountId]);
       setShowBulkClassify(false);
       setSelectedIds(new Set());
       const parts = [`${r.classified} lançamento(s) classificado(s)`];

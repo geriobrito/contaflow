@@ -9,6 +9,7 @@ import { describeError } from '@/lib/utils/errors';
 import { newRuleId } from '@/lib/utils/id';
 import { peekActor } from '@/lib/data/scope';
 import { BUTTON, INPUT, SURFACE } from '@/components/ui/primitives';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
 import { MatchTypeSelect } from '@/components/regras/RuleRow';
 
@@ -97,19 +98,14 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
           aria-label="Termo"
           className={`${INPUT} font-mono text-[13px]`}
         />
-        <select
+        <AccountSelectField
+          accounts={analytic}
           value={newAccountId}
-          onChange={(e) => setNewAccountId(e.target.value)}
-          aria-label="Conta de destino"
-          className={`${INPUT} min-w-0 ${newAccountId ? '' : 'text-stone-400'}`}
-        >
-          <option value="">Conta de destino…</option>
-          {analytic.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.code} · {a.name}
-            </option>
-          ))}
-        </select>
+          onChange={setNewAccountId}
+          label="Conta de destino"
+          placeholder="Conta de destino…"
+          triggerClassName="h-11"
+        />
         <button type="submit" disabled={adding || !clientId} className={`${BUTTON.primary} h-11 px-5`}>
           <Plus className="w-4 h-4" strokeWidth={2} />
           {adding ? 'Adicionando…' : 'Adicionar'}

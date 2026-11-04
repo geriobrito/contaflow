@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Plus, Search, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Plus, X } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { grossNetDrafts, grossOriginsFor, newSplitId, retentionPresetsFor, summarizeSplits, toCents, type RetentionOption, type SplitDraft } from '@/lib/splits';
 
 const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -28,117 +29,6 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
         }}
         className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
       />
-    </div>
-  );
-}
-
-/* =========================================================================
-   Seletor de conta analítica com busca (popover)
-   ========================================================================= */
-
-function AccountPicker({
-  accounts,
-  value,
-  onChange,
-  label,
-}: {
-  accounts: readonly ChartAccount[];
-  value: string;
-  onChange: (id: string) => void;
-  label: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-  const selected = accounts.find((a) => a.id === value);
-
-  const options = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return accounts.filter((a) => !term || `${a.code} ${a.name}`.toLowerCase().includes(term)).slice(0, 80);
-  }, [accounts, search]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey, true);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey, true);
-    };
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative min-w-0">
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => {
-          setSearch('');
-          setOpen((v) => !v);
-        }}
-        className={`w-full h-10 px-3 flex items-center gap-2 rounded-xl border text-left transition-all duration-150 active:scale-[0.99] ${
-          open
-            ? 'border-accent/60 shadow-[0_0_0_4px_rgba(181,85,47,0.12)] bg-white dark:bg-stone-800'
-            : 'border-black/8 dark:border-white/10 bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
-        }`}
-      >
-        {selected ? (
-          <span className="flex-1 min-w-0 truncate text-[13px] text-stone-900 dark:text-stone-100">
-            <span className="font-mono tabular-nums text-[11px] text-stone-400 mr-1.5">{selected.code}</span>
-            {selected.name}
-          </span>
-        ) : (
-          <span className="flex-1 text-[13px] text-stone-400">Selecionar conta…</span>
-        )}
-        <ChevronDown className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-      </button>
-
-      {open && (
-        <div className="absolute z-20 left-0 right-0 mt-1.5 rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-xl border border-black/8 dark:border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.14)] overflow-hidden animate-pop-in">
-          <div className="relative border-b border-black/5 dark:border-white/6">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Código ou nome"
-              className="w-full h-9 pl-8 pr-3 bg-transparent text-[13px] placeholder:text-stone-400 outline-none"
-            />
-          </div>
-          <ul role="listbox" className="max-h-56 overflow-y-auto overscroll-contain">
-            {options.length === 0 && <li className="px-3 py-4 text-center text-[12px] text-stone-400">Nenhuma conta</li>}
-            {options.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={a.id === value}
-                  onClick={() => {
-                    onChange(a.id);
-                    setOpen(false);
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-black/3 dark:hover:bg-white/4"
-                >
-                  <span className="w-[86px] shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{a.code}</span>
-                  <span className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200">{a.name}</span>
-                  {a.id === value && <Check className="w-3.5 h-3.5 text-accent-ink shrink-0" strokeWidth={2.5} />}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
@@ -215,7 +105,7 @@ function GrossNetPanel({
             <span className="block text-[11px] text-amber-700">Conta {origin.code} fora do plano: complete o plano com o modelo.</span>
           )
         ) : (
-          <AccountPicker accounts={accounts} value={pickedId} onChange={setPickedId} label="Conta do valor bruto" />
+          <AccountSelectField accounts={accounts} value={pickedId} onChange={setPickedId} label="Conta do valor bruto" />
         )}
       </div>
       <div className="grid grid-cols-2 gap-2.5">
@@ -368,7 +258,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
             <div className="flex items-center gap-2">
               <span className="w-5 shrink-0 text-center font-mono tabular-nums text-[11px] text-stone-400">{i + 1}</span>
               <div className="flex-1 min-w-0">
-                <AccountPicker
+                <AccountSelectField
                   accounts={analytic}
                   value={d.accountId}
                   onChange={(accountId) => update(d.id, { accountId })}

@@ -8,7 +8,8 @@ import { assessRuleTerm, type PayeeGroup } from '@/lib/payee';
 import { matchesRule } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, SearchField, Sheet } from '@/components/ui/primitives';
-import { AccountPicker } from '@/components/conciliacao/AccountPicker';
+import { AccountPicker } from '@/components/ui/AccountCombobox';
+import { orderAccountsByDirection, type AccountSuggestion } from '@/lib/account-suggestions';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
 
 /* =========================================================================
@@ -93,12 +94,15 @@ interface GroupClassifySheetProps {
   accounts: readonly ChartAccount[];
   /** Todos os lançamentos carregados: avaliam o termo e mostram o efeito da regra. */
   pool: readonly BankTransaction[];
+  /** Contas sugeridas no topo do seletor. */
+  suggestions?: readonly AccountSuggestion[];
   isSaving: boolean;
   onClose: () => void;
   onConfirm: (transactionIds: string[], accountId: string, options: ClassifyOptions) => Promise<void>;
 }
 
-export function GroupClassifySheet({ group, accounts, pool, isSaving, onClose, onConfirm }: GroupClassifySheetProps) {
+export function GroupClassifySheet({ group, accounts, pool, suggestions, isSaving, onClose, onConfirm }: GroupClassifySheetProps) {
+  const pickerAccounts = useMemo(() => orderAccountsByDirection(accounts, group.direction), [accounts, group.direction]);
   const [picked, setPicked] = useState<Set<string>>(() => new Set(group.transactions.map((t) => t.id)));
   const [accountId, setAccountId] = useState('');
   const [learn, setLearn] = useState(true);
@@ -181,7 +185,7 @@ export function GroupClassifySheet({ group, accounts, pool, isSaving, onClose, o
 
         <section className="space-y-2">
           <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-          <AccountPicker accounts={accounts} value={accountId} onChange={setAccountId} autoFocus />
+          <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus />
         </section>
 
         <RuleLearnPanel

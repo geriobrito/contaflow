@@ -5,7 +5,8 @@ import { CheckSquare, Loader2, X } from 'lucide-react';
 import type { BankTransaction, ChartAccount, RuleMatchType } from '@/types/firestore';
 import type { ClassifyOptions } from '@/hooks/useReconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { AccountPicker } from '@/components/conciliacao/AccountPicker';
+import { AccountPicker } from '@/components/ui/AccountCombobox';
+import { directionOf, orderAccountsByDirection, type AccountSuggestion } from '@/lib/account-suggestions';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
 import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { BUTTON } from '@/components/ui/primitives';
@@ -19,6 +20,8 @@ interface BulkClassifyModalProps {
   onClose: () => void;
   onConfirm: (ids: string[], accountId: string, options: ClassifyOptions) => Promise<void>;
   memoPool?: readonly string[];
+  /** Contas sugeridas no topo do seletor. */
+  suggestions?: readonly AccountSuggestion[];
 }
 
 export function BulkClassifyModal({
@@ -29,6 +32,7 @@ export function BulkClassifyModal({
   onClose,
   onConfirm,
   memoPool = [],
+  suggestions,
 }: BulkClassifyModalProps) {
   // Tenta sugerir um termo caso todos os itens compartilhem algo em comum
   const firstMemo = transactions[0]?.memo ?? '';
@@ -59,6 +63,12 @@ export function BulkClassifyModal({
     () => transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
     [transactions]
   );
+
+  // Todos no mesmo sentido: a lista começa pelas despesas (saídas) ou receitas (entradas).
+  const pickerAccounts = useMemo(() => {
+    const directions = new Set(transactions.map((t) => directionOf(t.amount)));
+    return orderAccountsByDirection(accounts, directions.size === 1 ? [...directions][0] : null);
+  }, [accounts, transactions]);
 
   if (!isOpen || transactions.length === 0) return null;
 
@@ -135,9 +145,10 @@ export function BulkClassifyModal({
               Conta do plano de contas <span className="text-rose-500">*</span>
             </label>
             <AccountPicker
-              accounts={accounts}
+              accounts={pickerAccounts}
               value={accountId}
               onChange={setAccountId}
+              suggestions={suggestions}
             />
           </div>
 

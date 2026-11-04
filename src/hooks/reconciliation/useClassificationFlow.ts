@@ -10,6 +10,8 @@ import type { SplitDraft } from '@/lib/splits';
 import type { TransferPair } from '@/lib/transfers';
 import type { UndoPlan } from '@/hooks/reconciliation/types';
 import type { ToastAction } from '@/components/ui/Toast';
+import { rememberRecentAccounts } from '@/lib/recent-accounts';
+import { mainSplitAccountId } from '@/lib/reconciliation-list';
 
 interface ClassificationFlowParams
   extends Pick<
@@ -97,6 +99,7 @@ export function useClassificationFlow({
         matchType,
       });
       setSelected(null);
+      rememberRecentAccounts(clientId, [accountId]);
       const verb = selected.status === 'PENDING' ? 'Conciliado' : 'Classificação atualizada';
       offerUndo(propagated > 0 ? `${verb} · ${propagated} semelhante(s) classificado(s)` : verb, plan);
       return true;
@@ -113,6 +116,7 @@ export function useClassificationFlow({
       const plan = await splitTransaction(selected.id, drafts);
       setExpanded((prev) => new Set(prev).add(selected.id));
       setSelected(null);
+      rememberRecentAccounts(clientId, [mainSplitAccountId(drafts)]);
       offerUndo(`Lançamento rateado em ${drafts.length} contas`, plan);
       return true;
     } catch {
@@ -172,6 +176,7 @@ export function useClassificationFlow({
   const handleGroupConfirm = async (ids: string[], accountId: string, options: ClassifyOptions) => {
     try {
       const r = await classifyMany(ids, accountId, options);
+      rememberRecentAccounts(clientId, [accountId]);
       setGroupSheet(null);
       const parts = [`${r.classified} lançamento(s) classificado(s)`];
       if (r.rule) parts.push(`regra “${r.rule.pattern}” salva`);
