@@ -4,6 +4,7 @@ import {
   BookOpen,
   BookText,
   Building2,
+  Car,
   ClipboardList,
   FilePenLine,
   History,
@@ -38,6 +39,7 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
       { href: '/contas', label: 'Contas e Extratos', icon: Wallet, keywords: 'bancos saldo inicial importacoes' },
       { href: '/nfe', label: 'Notas Fiscais', icon: ReceiptText, keywords: 'nfe nf-e xml compras vendas fornecedor cfop' },
       { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine, keywords: 'partidas dobradas provisao folha depreciacao' },
+      { href: '/imobilizado', label: 'Imobilizado', icon: Car, keywords: 'bens ativo depreciacao amortizacao intangivel baixa patrimonio' },
     ],
   },
   {

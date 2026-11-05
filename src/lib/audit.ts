@@ -88,6 +88,7 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   JOURNAL_DELETE: 'Excluiu lançamento manual no Diário',
   YEAR_CLOSE: 'Encerrou o exercício',
   YEAR_REOPEN: 'Reabriu o exercício',
+  ASSET_SAVE: 'Atualizou o cadastro do imobilizado',
 };
 
 /** Descrição curta de um estado de classificação. */

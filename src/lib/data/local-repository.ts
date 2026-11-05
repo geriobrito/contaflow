@@ -7,6 +7,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ExplanatoryNotes,
+  FixedAssetRegister,
   ImportBatch,
   InvoiceSummary,
   JournalCounter,
@@ -56,6 +57,7 @@ export const LOCAL_KEYS = {
   snapshots: 'contaflow_period_snapshots',
   notes: 'contaflow_explanatory_notes',
   invoices: 'contaflow_invoice_summaries',
+  fixedAssets: 'contaflow_fixed_assets',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -149,7 +151,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
 
   const inScope = (owner: string, clientId: string) => owner === clientId || owner === 'global';
 
-  return {
+  const repo: DataRepository = {
     mode: 'local',
 
     async getOrgSettings() {
@@ -207,6 +209,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.snapshots,
         LOCAL_KEYS.notes,
         LOCAL_KEYS.invoices,
+        LOCAL_KEYS.fixedAssets,
       ]) {
         write(
           key,
@@ -621,6 +624,23 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       remove<InvoiceSummary>(LOCAL_KEYS.invoices, id);
     },
 
+    async getFixedAssets(clientId) {
+      return read<FixedAssetRegister>(LOCAL_KEYS.fixedAssets).find((r) => r.clientId === clientId) ?? null;
+    },
+    // Valida o lançamento antes de gravar qualquer coisa: entra tudo ou nada, como no Firestore.
+    async saveFixedAssets(register, audit, journal = {}) {
+      const id = register.clientId;
+      if (journal.create) assertValidJournalEntry(journal.create);
+      const created = journal.create ? await repo.createJournalEntry(journal.create) : null;
+      if (journal.deleteId) await repo.deleteJournalEntry(journal.deleteId);
+      write(LOCAL_KEYS.fixedAssets, [
+        ...read<FixedAssetRegister>(LOCAL_KEYS.fixedAssets).filter((r) => r.clientId !== id),
+        stamp(JSON.parse(JSON.stringify({ ...register, id })) as FixedAssetRegister),
+      ]);
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+      return created;
+    },
+
     async getExplanatoryNotes(clientId, year) {
       return read<ExplanatoryNotes>(LOCAL_KEYS.notes).find((n) => n.clientId === clientId && n.year === year) ?? null;
     },
@@ -644,4 +664,5 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       write(LOCAL_KEYS.requests, all);
     },
   };
+  return repo;
 }

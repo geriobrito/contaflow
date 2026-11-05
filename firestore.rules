@@ -44,7 +44,8 @@ rules_version = '2';
 //      juntos, com dezembro fechado, numa gravação com um único registro em audit_log, e só
 //      saem juntos pela reabertura (administrador), também auditada. Nenhum lançamento manual
 //      antes da data de implantação.
-//  15. explanatory_notes guarda o texto das notas explicativas por cliente e exercício.
+//  15. explanatory_notes guarda o texto das notas explicativas por cliente e exercício, e
+//      fixed_assets o cadastro do imobilizado (um documento por cliente).
 //  16. lock_state/{clientId} resume os fechamentos da empresa (`count` competências fechadas
 //      agora e `seq` monotônico a cada fechamento de competência ou encerramento do exercício).
 //      Nasce junto com a empresa (`count = 0, seq = 0`) ou via Admin SDK (backfill).
@@ -402,6 +403,25 @@ service cloud.firestore {
                 && stampsCurrentSeq(resource.data.clientId, request.resource.data)));
     }
 
+    // ── Imobilizado (um documento por cliente, id = clientId) ────────────
+    // A lista de bens; as cotas são calculadas pelo app (src/lib/fixed-assets.ts) e só os
+    // lançamentos delas, em journal_entries, respeitam as competências fechadas.
+    function validFixedAssets(data) {
+      return data.assets is list && data.assets.size() <= 300;
+    }
+    match /fixed_assets/{docId} {
+      // Cliente sem cadastro (documento inexistente): o próprio escritório lê o vazio.
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && validFixedAssets(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && validFixedAssets(request.resource.data);
+    }
+
     // ── Notas explicativas (um documento por cliente e exercício) ────────
     match /explanatory_notes/{docId} {
       // Exercício sem notas gravadas (documento inexistente): o próprio escritório lê o vazio.
@@ -632,7 +652,7 @@ service cloud.firestore {
       return ['CLASSIFY', 'RECLASSIFY', 'SPLIT', 'UNRECONCILE', 'APPROVE', 'AUTO_CLASSIFY',
         'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
         'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
-        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN'];
+        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE'];
     }
 
     // Fechamento da competência citada no registro (`${clientId}_${month}`).

@@ -6,6 +6,8 @@ import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
 import type { BankAccount, ChartAccount, RuleMatchType } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
+import { useMonthDepreciation } from '@/hooks/imobilizado/useMonthDepreciation';
+import { manualDepreciationWarning } from '@/lib/fixed-assets';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
 import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
@@ -119,6 +121,24 @@ export default function ConciliacaoPage() {
   const recon = useReconciliation({ clientId, accounts, range });
   const { transactions, rules, metrics, isLoading, isSaving, error, locks, lockedMonths, closeMonth, reopenMonth, loadAudit } = recon;
   const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
+  // Depreciação do imobilizado do mês: enquanto faltar, a competência não fecha.
+  const monthDep = useMonthDepreciation(clientId ?? undefined, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)));
+  const dep = monthDep.depreciation;
+  const depreciationNotice = dep
+    ? dep.closeProblem
+      ? {
+          message: monthDep.error ?? dep.closeProblem,
+          actionLabel: (dep.status.kind === 'PENDING' && dep.status.existing) || dep.status.kind === 'REMOVE' ? 'Atualizar lançamento' : 'Lançar depreciação',
+          blocking: true,
+          busy: monthDep.busy,
+          onPost: () => {
+            void monthDep.post().then((message) => message && setToast(message));
+          },
+        }
+      : manualDepreciationWarning(dep.status, selectedMonth ?? '')
+        ? { message: manualDepreciationWarning(dep.status, selectedMonth ?? '')!, actionLabel: null, blocking: false, busy: false, onPost: () => undefined }
+        : null
+    : null;
   const [statementsKey, setStatementsKey] = useState(0);
 
   useEffect(() => {
@@ -318,6 +338,7 @@ export default function ConciliacaoPage() {
             locks={locks}
             openItems={metrics.pending + metrics.autoClassified}
             busy={isSaving}
+            depreciation={depreciationNotice}
             onClose={async (m) => {
               await closeMonth(m);
               setToast(`Competência de ${formatMonth(m)} fechada`);

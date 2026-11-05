@@ -84,6 +84,10 @@ export default function LancamentosPage() {
       setNotice(yearClosingLockedMessage(entry));
       return;
     }
+    if (entry.fixedAssetId) {
+      setNotice(`O lançamento #${entry.entryNumber} é a baixa de um bem: desfaça-a na tela Imobilizado.`);
+      return;
+    }
     const m = entry.date.slice(0, 7);
     if (isMonthLocked(m)) {
       setNotice(`A competência ${m} está bloqueada para alterações. Reabra-a para excluir o lançamento #${entry.entryNumber}.`);
@@ -113,6 +117,12 @@ export default function LancamentosPage() {
       setNotice(yearClosingLockedMessage(entry));
       return;
     }
+    if (entry?.id && (entry.depreciationMonth || entry.fixedAssetId)) {
+      setNotice(
+        `O lançamento #${entry.entryNumber} é gerado pelo cadastro do imobilizado: altere o bem na tela Imobilizado, e o lançamento ${entry.fixedAssetId ? 'da baixa acompanha' : 'é atualizado ao lançar a depreciação do mês'}.`
+      );
+      return;
+    }
     setEditingEntry(entry);
     setModalKey((k) => k + 1);
     setIsModalOpen(true);
@@ -121,8 +131,10 @@ export default function LancamentosPage() {
   const handleDuplicate = (entry: JournalEntry) => {
     openModal({
       ...entry,
-      // A cópia é um lançamento comum, não um encerramento de exercício.
+      // A cópia é um lançamento comum, não um encerramento de exercício nem um gerado pelo imobilizado.
       yearClosing: undefined,
+      depreciationMonth: undefined,
+      fixedAssetId: undefined,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,

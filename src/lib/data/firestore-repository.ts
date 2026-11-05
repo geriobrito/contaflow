@@ -15,6 +15,7 @@ import {
   type DocumentData,
   type Firestore,
   type QueryConstraint,
+  type Transaction,
   type WriteBatch,
 } from 'firebase/firestore';
 import type {
@@ -26,6 +27,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ExplanatoryNotes,
+  FixedAssetRegister,
   ImportBatch,
   InvoiceSummary,
   JournalEntry,
@@ -35,7 +37,7 @@ import type {
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
 // Leituras contadas para o medidor da cota diária (ver read-meter.ts).
 import { getCountFromServer, getDoc, getDocs } from '@/lib/data/counted-reads';
 import { addReads } from '@/lib/data/read-meter';
@@ -72,6 +74,7 @@ export const COL = {
   snapshots: 'period_snapshots',
   notes: 'explanatory_notes',
   invoices: 'invoice_summaries',
+  fixedAssets: 'fixed_assets',
 } as const;
 
 /** Limites do Firestore. */
@@ -216,6 +219,48 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
   const txFrom = (d: { id: string; data: () => DocumentData }) => ({ ...(d.data() as BankTransaction), id: d.id });
 
+  /**
+   * Grava um lançamento manual novo com o próximo número da sequência do cliente e, na mesma
+   * transação, o registro de auditoria e as escritas de `extra` (ex.: o cadastro do imobilizado
+   * na baixa de um bem).
+   */
+  async function createJournalWith(draft: JournalEntryDraft, audit?: AuditEntry, extra?: (t: Transaction) => void): Promise<JournalEntry> {
+    assertValidJournalEntry(draft);
+    const counterRef = doc(db, COL.journalCounters, draft.clientId);
+    // Cliente ainda sem contador: a sequência parte do maior número já usado. A consulta
+    // fica fora da transação, que só lê documentos por referência.
+    let seed = 0;
+    if (!(await getDoc(counterRef)).exists()) {
+      const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', draft.clientId)));
+      seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
+    }
+    // Número e lançamento gravados juntos: dois usuários simultâneos nunca recebem o mesmo número.
+    for (let attempt = 1; ; attempt++) {
+      let seen: number | null = null;
+      try {
+        return await runTransaction(db, async (t) => {
+          const counter = await t.get(counterRef);
+          addReads(1);
+          seen = counter.exists() ? Number(counter.data().last) || 0 : null;
+          const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
+          t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
+          t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
+          if (audit) t.set(doc(db, COL.audit, audit.id), auditData(audit));
+          extra?.(t);
+          return entry;
+        });
+      } catch (err) {
+        // Se outro usuário avançou o contador entre a leitura e a gravação, as regras recusam
+        // o número repetido (em vez de a transação repetir sozinha). Só nesse caso tenta de
+        // novo; qualquer outra recusa (ex.: competência fechada) sobe ao chamador.
+        const current = await getDoc(counterRef);
+        const now = current.exists() ? Number(current.data().last) || 0 : null;
+        if (now === seen || attempt >= JOURNAL_NUMBER_ATTEMPTS) throw err;
+      }
+    }
+  }
+
+
   return {
     mode: 'firestore',
 
@@ -285,7 +330,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
         REOPENS_PER_BATCH
       );
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -640,6 +685,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
 
     /* ── Lançamentos manuais de fechamento (Diário Avulso) ─────────────── */
     async listJournalEntries(clientId, range) {
+      // Com `range`, índice composto: (orgId, clientId, date).
       const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
       if (range) {
         constraints.push(where('date', '>=', range.start), where('date', '<=', range.end));
@@ -650,38 +696,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
     },
     async createJournalEntry(draft, audit) {
-      assertValidJournalEntry(draft);
-      const counterRef = doc(db, COL.journalCounters, draft.clientId);
-      // Cliente ainda sem contador: a sequência parte do maior número já usado. A consulta
-      // fica fora da transação, que só lê documentos por referência.
-      let seed = 0;
-      if (!(await getDoc(counterRef)).exists()) {
-        const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', draft.clientId)));
-        seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
-      }
-      // Número e lançamento gravados juntos: dois usuários simultâneos nunca recebem o mesmo número.
-      for (let attempt = 1; ; attempt++) {
-        let seen: number | null = null;
-        try {
-          return await runTransaction(db, async (t) => {
-            const counter = await t.get(counterRef);
-            addReads(1);
-            seen = counter.exists() ? Number(counter.data().last) || 0 : null;
-            const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
-            t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
-            t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
-            if (audit) t.set(doc(db, COL.audit, audit.id), auditData(audit));
-            return entry;
-          });
-        } catch (err) {
-          // Se outro usuário avançou o contador entre a leitura e a gravação, as regras recusam
-          // o número repetido (em vez de a transação repetir sozinha). Só nesse caso tenta de
-          // novo; qualquer outra recusa (ex.: competência fechada) sobe ao chamador.
-          const current = await getDoc(counterRef);
-          const now = current.exists() ? Number(current.data().last) || 0 : null;
-          if (now === seen || attempt >= JOURNAL_NUMBER_ATTEMPTS) throw err;
-        }
-      }
+      return createJournalWith(draft, audit);
     },
     async updateJournalEntry(entry, audit) {
       assertValidJournalEntry(entry);
@@ -778,6 +793,26 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
     async deleteInvoice(id) {
       await deleteDoc(doc(db, COL.invoices, id));
+    },
+
+    /* ── Imobilizado ──────────────────────────────────────────────────── */
+    async getFixedAssets(clientId) {
+      const snap = await getDoc(doc(db, COL.fixedAssets, clientId));
+      return snap.exists() ? ({ ...(snap.data() as FixedAssetRegister), id: snap.id }) : null;
+    },
+    async saveFixedAssets(register, audit, journal = {}) {
+      const ref = doc(db, COL.fixedAssets, register.clientId);
+      // Os bens são objetos aninhados: campos `undefined` saem pelo JSON (o Firestore os recusa).
+      const data = stamp(JSON.parse(JSON.stringify({ ...register, id: register.clientId })) as FixedAssetRegister);
+      if (journal.create) {
+        return createJournalWith(journal.create, audit, (t) => t.set(ref, data));
+      }
+      const b = writeBatch(db);
+      b.set(ref, data);
+      if (journal.deleteId) b.delete(doc(db, COL.journalEntries, journal.deleteId));
+      auditWrite(audit)(b);
+      await b.commit();
+      return null;
     },
 
     /* ── Notas explicativas ───────────────────────────────────────────── */

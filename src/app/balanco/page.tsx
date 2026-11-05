@@ -11,7 +11,7 @@ import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { CAPITAL_GROUP_CODE, equityMovements, invertedBalances, missingShareCapital, openingPostings } from '@/lib/balance-sheet-checks';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { porteOf } from '@/lib/accounting-standard';
-import { openingStatus } from '@/lib/opening';
+import { implantationDate, openingStatus } from '@/lib/opening';
 import { bankSetupIssues, formatDC as dc, hasClosingIn, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
 import { buildDLPA, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
 import { buildCashFlow } from '@/lib/cash-flow';
@@ -23,7 +23,8 @@ import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { activityCheck, balanceSheetChecks, dmplCheck, openingCheck, transitoryCheck } from '@/lib/statement-checks';
+import { activityCheck, balanceSheetChecks, dmplCheck, fixedAssetCheck, openingCheck, transitoryCheck } from '@/lib/statement-checks';
+import { naturalAssetBalances, reconcileWithLedger } from '@/lib/fixed-assets';
 import { closedYearsOf, describeTransitory, transitoryBalanceAt, transitoryReminder } from '@/lib/opening-transitory';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
@@ -105,6 +106,20 @@ export default function BalancoPage() {
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const inverted = useMemo(() => invertedBalances(bs), [bs]);
+  // Cadastro do imobilizado × balanço, no fim do período (só com bens cadastrados).
+  const fixedAssetRows = useMemo(() => {
+    const assets = static_?.fixedAssets?.assets;
+    if (!assets?.length || !txs) return null;
+    const implantation = implantationDate(static_?.openings, banks);
+    const balances = naturalAssetBalances(bs.assets, accounts);
+    return reconcileWithLedger({
+      assets,
+      month: range.end.slice(0, 7),
+      implantationMonth: implantation ? implantation.slice(0, 7) : null,
+      accounts,
+      ledgerBalance: (id) => balances.get(id) ?? 0,
+    });
+  }, [static_?.fixedAssets, static_?.openings, txs, banks, bs, accounts, range.end]);
   const missingCapital = useMemo(() => missingShareCapital(bs), [bs]);
   // Conta transitória 2.3.3.04 com saldo: lembra de zerar; em 31/12, impede o balanço de encerramento.
   const transitory = useMemo(() => transitoryBalanceAt(postings, accounts, range.end), [postings, accounts, range.end]);
@@ -389,6 +404,7 @@ export default function BalancoPage() {
           !loading && hasData && view !== 'dfc' && transitoryIssue,
           !loading && hasData && view !== 'tb' && activityCheck(currentClient),
           !loading && hasData && (view === 'bs' || view === 'dlpa') && dmplCheck(porte, equityMoves, year),
+          !loading && hasData && view === 'bs' && fixedAssetCheck(fixedAssetRows, range.end),
           ...(!loading && hasData
             ? balanceSheetChecks({
                 trialBalance: view === 'tb',

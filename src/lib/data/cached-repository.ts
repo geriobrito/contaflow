@@ -1,4 +1,4 @@
-import type { BankAccount, ChartAccount, LockState, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, FixedAssetRegister, LockState, PeriodLock } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
@@ -36,8 +36,9 @@ function listCache<T>(now: () => number, ttlMs: number) {
 }
 
 /**
- * Repositório com cache de leitura do plano de contas, das contas bancárias e dos fechamentos
- * — o que quase toda tela relê ao abrir e só muda por gravações deste mesmo repositório. Cada
+ * Repositório com cache de leitura do plano de contas, das contas bancárias, dos fechamentos e do
+ * cadastro do imobilizado — o que quase toda tela relê ao abrir e só muda por gravações deste
+ * mesmo repositório. Cada
  * gravação que os altera limpa o cache correspondente antes (uma leitura iniciada durante a
  * gravação não fica guardada) e depois (a próxima leitura vê o resultado).
  *
@@ -54,6 +55,7 @@ export function withReadCache(
   const banks = listCache<BankAccount>(now, ttlMs);
   const locks = listCache<PeriodLock>(now, ttlMs);
   const lockStates = listCache<LockState>(now, ttlMs);
+  const fixedAssets = listCache<FixedAssetRegister>(now, ttlMs);
   const key = (clientId: string) => `${scope()}|${clientId}`;
 
   /** Gravação que invalida os caches informados. */
@@ -82,6 +84,16 @@ export function withReadCache(
       return found ? { ...found, ...(found.lastEvent ? { lastEvent: { ...found.lastEvent } } : {}) } : null;
     },
 
+    async getFixedAssets(clientId) {
+      const [found] = await fixedAssets.get(key(clientId), async () => {
+        const r = await repo.getFixedAssets(clientId);
+        return r ? [r] : [];
+      });
+      // Cópia profunda: quem edita a lista de bens recebida não mexe na guardada.
+      return found ? (structuredClone(found) as FixedAssetRegister) : null;
+    },
+    saveFixedAssets: writing(repo.saveFixedAssets, fixedAssets),
+
     // Contas globais valem para todos os clientes, e a exclusão não informa o cliente: limpa tudo.
     saveClient: writing(repo.saveClient, lockStates),
     saveAccount: writing(repo.saveAccount, accounts),
@@ -93,6 +105,6 @@ export function withReadCache(
     closePeriod: writing(repo.closePeriod, locks, lockStates),
     reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
     closeYear: writing(repo.closeYear, lockStates),
-    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates),
+    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets),
   };
 }

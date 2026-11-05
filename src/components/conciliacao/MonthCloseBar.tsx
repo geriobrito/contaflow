@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Lock, LockOpen } from 'lucide-react';
+import { Landmark, Lock, LockOpen } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { formatMonth, monthsBetween } from '@/lib/periods';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
@@ -17,13 +17,18 @@ interface MonthCloseBarProps {
   busy: boolean;
   onClose: (month: string) => Promise<void>;
   onReopen: (month: string, reason: string) => Promise<void>;
+  /**
+   * Depreciação do imobilizado que falta lançar (ou atualizar) na competência: enquanto houver,
+   * o fechamento fica bloqueado e a barra oferece o lançamento.
+   */
+  depreciation?: { message: string; actionLabel: string | null; blocking: boolean; busy: boolean; onPost: () => void } | null;
 }
 
 /**
  * Fechamento de competência: trava o mês entregue ao cliente. Fechar exige dois toques
  * (com aviso de pendências); reabrir exige motivo — ambos vão para a trilha de auditoria.
  */
-export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, onReopen }: MonthCloseBarProps) {
+export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, onReopen, depreciation }: MonthCloseBarProps) {
   const [armed, setArmed] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState('');
@@ -110,9 +115,26 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
       <span className="inline-flex items-center gap-1.5 text-[12px] text-stone-500">
         <LockOpen className="w-3 h-3" /> {formatMonth(month)} aberta
       </span>
+      {depreciation && (
+        <span role="status" className="inline-flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1 text-[12px] text-amber-900 dark:text-amber-200">
+          <Landmark className="w-3 h-3 shrink-0" />
+          {depreciation.message}
+          {depreciation.actionLabel && (
+            <button
+              type="button"
+              disabled={depreciation.busy}
+              onClick={depreciation.onPost}
+              className="rounded-lg bg-amber-600 px-2 py-0.5 text-[12px] font-medium text-white hover:bg-amber-700 disabled:opacity-40 active:scale-[0.97] transition-all duration-150"
+            >
+              {depreciation.busy ? 'Lançando…' : depreciation.actionLabel}
+            </button>
+          )}
+        </span>
+      )}
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || Boolean(depreciation?.blocking)}
+        title={depreciation?.blocking ? 'Lance a depreciação do mês antes de fechar' : undefined}
         onClick={() => {
           if (armed) {
             setArmed(false);

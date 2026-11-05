@@ -144,6 +144,8 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.2.1.01', name: 'Custo das Mercadorias Vendidas' },
   { code: '3.2.1.02', name: 'Custo dos Produtos Vendidos' },
   { code: '3.2.1.03', name: 'Custo dos Serviços Prestados' },
+  // Depreciação dos bens usados na atividade-fim (src/lib/fixed-assets.ts): custo, não despesa.
+  { code: '3.2.1.04', name: 'Depreciação e Amortização Aplicadas aos Custos' },
 
   { code: '3.3', name: 'DESPESAS OPERACIONAIS' },
   { code: '3.3.1', name: 'Despesas com Vendas', dre: 'OPERATING_EXPENSES' },

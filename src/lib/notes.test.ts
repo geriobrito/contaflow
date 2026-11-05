@@ -71,4 +71,33 @@ describe('notas explicativas', () => {
     expect(merged.find((n) => n.id === 'context')?.title).toBe('Contexto');
     expect(mergeNotes(defaults, null)).toEqual(defaults);
   });
+  it('imobilizado: taxas por classe nas práticas e quadro com custo, acumulada e líquido', () => {
+    const figures = {
+      capital: 0,
+      capitalToPay: 0,
+      netResult: 0,
+      distributions: 0,
+      retained: 0,
+      closed: false,
+      fixedAssets: [
+        { accountCode: '1.2.3.04', accountName: 'Veículos', rates: [20], cost: 72280, accumulated: 12046.7, net: 60233.3 },
+        { accountCode: '1.2.3.05', accountName: 'Móveis e Utensílios', rates: [10], cost: 5000, accumulated: 500, net: 4500 },
+      ],
+    };
+    const notes = defaultNotes(client, '2026', figures);
+    const policies = notes.find((n) => n.id === 'policies')!.text;
+    expect(policies).toMatch(/20% para veículos e 10% para móveis e utensílios, previstas na Instrução Normativa RFB nº 1\.700\/2017/);
+    expect(policies).not.toMatch(/\[informe as taxas/);
+    expect(policies).not.toMatch(/expediente prático/);
+    const small = defaultNotes({ ...client, porte: 'PEQUENA_EMPRESA' }, '2026', figures).find((n) => n.id === 'policies')!.text;
+    expect(small).toMatch(/expediente prático/);
+
+    const note = notes.find((n) => n.id === 'fixed-assets')!;
+    expect(note.enabled).toBe(true);
+    expect(note.text).toMatch(/- Veículos \(20% a\.a\.\): custo R\$\s72\.280,00, depreciação acumulada R\$\s12\.046,70, valor líquido R\$\s60\.233,30;/);
+    expect(note.text).toMatch(/- Total: custo R\$\s77\.280,00/);
+    expect(placeholdersIn(note.text)).toEqual([]);
+    // Sem cadastro: a nota fica desmarcada, com o texto a preencher.
+    expect(defaultNotes(client, '2026').find((n) => n.id === 'fixed-assets')!.enabled).toBe(false);
+  });
 });

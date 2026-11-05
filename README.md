@@ -81,6 +81,19 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 - **Repetir do mês anterior** (Lançamentos Manuais): copia para a competência selecionada os lançamentos manuais do mês anterior ainda não repetidos, com as mesmas contas e valores, a data no mesmo dia do mês e a competência citada no histórico e no documento atualizada (`repeatCandidates`/`repeatDraft` em `src/lib/journal.ts`). Folha, depreciação, tributos e provisões vêm marcados; a cópia guarda a origem em `repeatedFromId`, para não ser oferecida duas vezes.
 - **Comprovante do lançamento manual**: é um link (http/https) para o documento na nuvem, validado ao salvar (`parseAttachmentUrl`); caminho do computador e nome de arquivo são recusados com explicação. O sistema não armazena arquivos.
 
+### Imobilizado e depreciação
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `fixed_assets` | Cadastro dos bens da empresa (um documento por cliente, id = clientId): conta do bem (1.2.3.x ou 1.2.4.x), uso (atividade-fim → custo; administrativo/comercial → despesa), data da nota, data de início de uso, composição do custo (nota + frete/instalação + tributos não recuperáveis − descontos), taxa anual, residual, depreciação já lançada fora da rotina e baixa. | Isolado por escritório; até 300 bens. Gravações auditadas (`ASSET_SAVE`). |
+
+- **Cálculo** (`src/lib/fixed-assets.ts`): linha reta, cota mensal = (custo − residual) × taxa ÷ 12, em centavos. O primeiro mês é proporcional aos dias desde o início de uso (dia 1º = mês cheio); a última cota é o que falta para a base. Na baixa, a depreciação vai até a data, também proporcional. Taxas sugeridas pela conta (IN RFB 1700/2017, Anexo III): edificações 4%, máquinas e móveis 10%, veículos, informática e softwares 20%, terrenos 0%.
+- **Lançamento mensal**: um por competência, no último dia (`depreciationMonth`), com D 3.2.1.04 (custo) e/ou D 3.3.2.15 (despesa) e C 1.2.3.07 / 1.2.4.03 por classe de bem. Se o cadastro muda com o mês aberto, o lançamento é atualizado. Contas do modelo que faltam (ex.: 3.2.1.04) entram no plano ao lançar.
+- **Fechamento**: com bens cadastrados, a competência só fecha com a depreciação do mês lançada e conferida com o cadastro (a norma pede o lançamento mensal). A barra de fechamento da Conciliação mostra o aviso e o botão de lançar; a tela Imobilizado lança os meses abertos que ficaram para trás.
+- **Competências fechadas**: bem com cota em mês fechado não muda custo, taxa, conta, uso nem datas (dá para editar a descrição, ou dar baixa e recadastrar). Bem novo cujas cotas cairiam em meses fechados pede a "depreciação já contabilizada" até o último deles (a da abertura ou a lançada à mão antes do cadastro).
+- **Baixa**: D acumulada até a data, D 3.3.9.04 (valor contábil) e C conta do bem, gravados junto com o cadastro (`fixedAssetId`); o valor de venda entra pelo extrato em 3.3.9.02.
+- **Conferência**: o Balanço avisa quando custo por conta ou acumulada diferem do cadastro; a tela Imobilizado confere com o balancete sob demanda e exporta o relatório analítico (PDF/Excel). As notas explicativas trazem as taxas por classe e o quadro custo × acumulada × líquido.
+
 ### Leituras
 
 - **Cache em memória** (`src/lib/data/cached-repository.ts`): plano de contas, contas bancárias e fechamentos ficam guardados por cliente e são relidos só depois de uma gravação que os altere, ou após 5 minutos (limite da defasagem em relação a outra aba ou aparelho). Recarregar a página zera o cache.

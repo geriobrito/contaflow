@@ -39,6 +39,7 @@ const GROUP: Record<AuditAction, Filter> = {
   JOURNAL_DELETE: 'MANUAL',
   YEAR_CLOSE: 'PERIOD',
   YEAR_REOPEN: 'PERIOD',
+  ASSET_SAVE: 'PERIOD',
 };
 
 const LIMIT = 300;

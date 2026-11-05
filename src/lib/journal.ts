@@ -151,8 +151,9 @@ export function repeatCandidates(
   const done = new Set(entries.filter((e) => e.date.startsWith(targetMonth) && e.repeatedFromId).map((e) => e.repeatedFromId));
   const analytic = new Set(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => a.id));
   return entries
-    // Encerramento do exercício não se repete: é gerado pela rotina própria, uma vez por ano.
-    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing)
+    // Encerramento do exercício, depreciação do cadastro do imobilizado e baixa de bem não se
+    // repetem: são gerados pelas rotinas próprias.
+    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing && !e.depreciationMonth && !e.fixedAssetId)
     .sort((a, b) => a.date.localeCompare(b.date) || a.entryNumber - b.entryNumber)
     .map((entry) => {
       const missing = entry.lines.find((l) => !analytic.has(l.accountId));
@@ -272,7 +273,7 @@ export const JOURNAL_TEMPLATES: readonly JournalTemplate[] = [
   {
     id: 'DEPRECIATION',
     label: 'Depreciação',
-    description: 'Depreciação mensal do imobilizado.',
+    description: 'Depreciação mensal do imobilizado, informada à mão. Com os bens cadastrados na tela Imobilizado, a depreciação é calculada e lançada por lá: não use este modelo junto.',
     category: 'DEPRECIATION',
     fields: [{ key: 'amount', label: 'Depreciação do mês' }],
     lines: [

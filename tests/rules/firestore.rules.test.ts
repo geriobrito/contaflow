@@ -1660,3 +1660,73 @@ describe('notas fiscais (resumos dos XML)', () => {
     });
   });
 });
+
+describe('imobilizado (cadastro de bens)', () => {
+  const asset = { id: 'fa1', description: 'Veículo', accountId: 'v', accountCode: '1.2.3.04', use: 'EXPENSE', acquisitionDate: '2025-03-01', inUseDate: '2025-03-01', invoiceValue: 72280, annualRate: 20, createdAt: 'T', updatedAt: 'T' };
+  const register = (clientId = 'cA', assets: unknown[] = [asset]) => ({ id: clientId, clientId, assets, updatedAt: 'T' });
+  const audit = (id: string) => ({ id, clientId: 'cA', action: 'ASSET_SAVE', actorUid: 'alice', at: 'T' }) as const;
+  const disposal = (id: string, date = '2025-03-31') => ({
+    id,
+    clientId: 'cA',
+    date,
+    memo: 'Baixa do bem Veículo por venda',
+    category: 'ADJUSTMENT' as const,
+    lines: [
+      { id: 'b1', accountId: 'acum', type: 'DEBIT' as const, amount: 1204.67 },
+      { id: 'b2', accountId: 'perda', type: 'DEBIT' as const, amount: 71075.33 },
+      { id: 'b3', accountId: 'v', type: 'CREDIT' as const, amount: 72280 },
+    ],
+    totalAmount: 72280,
+    fixedAssetId: 'fa1',
+    createdAt: 'T',
+    updatedAt: 'T',
+    createdByUid: 'alice',
+  });
+
+  it('grava com auditoria, lê o vazio do próprio escritório e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getFixedAssets('cA')).toBeNull();
+    await repo.saveFixedAssets(register() as never, audit('au-fa1'));
+    expect((await repo.getFixedAssets('cA'))?.assets).toHaveLength(1);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['ASSET_SAVE']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'fixed_assets/cA')));
+    await assertFails(getDoc(doc(asUser('bob'), 'fixed_assets/cA_inexistente')));
+    await assertFails(setDoc(doc(asUser('bob'), 'fixed_assets/cA'), { ...register(), orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'fixed_assets/outro'), { ...register(), orgId: ORG_A })); // id ≠ cliente
+    await assertFails(updateDoc(doc(asUser('alice'), 'fixed_assets/cA'), { clientId: 'cB' }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'fixed_assets/cA'), { assets: 'x' }));
+  });
+
+  it('a baixa cria o lançamento numerado e grava o cadastro na mesma operação; desfazer exclui os dois juntos', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const disposed = { ...asset, disposal: { date: '2025-03-31', reason: 'SALE', journalEntryId: 'jb1' } };
+    const entry = await repo.saveFixedAssets(register('cA', [disposed]) as never, audit('au-fa2'), { create: disposal('jb1') });
+    expect(entry?.entryNumber).toBe(1);
+    expect((await repo.listJournalEntries('cA')).map((e) => e.fixedAssetId)).toEqual(['fa1']);
+    expect((await repo.getFixedAssets('cA'))?.assets[0].disposal?.journalEntryId).toBe('jb1');
+
+    await repo.saveFixedAssets(register() as never, audit('au-fa3'), { deleteId: 'jb1' });
+    expect(await repo.listJournalEntries('cA')).toEqual([]);
+    expect((await repo.getFixedAssets('cA'))?.assets[0].disposal).toBeUndefined();
+  });
+
+  it('baixa em competência fechada é recusada inteira: nem lançamento nem cadastro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveFixedAssets(register() as never, audit('au-fa4'));
+    await closeMonth(asUser('alice'));
+    const disposed = { ...asset, disposal: { date: '2025-03-31', reason: 'SALE', journalEntryId: 'jb2' } };
+    await expect(repo.saveFixedAssets(register('cA', [disposed]) as never, audit('au-fa5'), { create: disposal('jb2') })).rejects.toThrow();
+    expect((await repo.getFixedAssets('cA'))?.assets[0].disposal).toBeUndefined();
+    expect(await repo.listJournalEntries('cA')).toEqual([]);
+  });
+
+  it('excluir a empresa remove o cadastro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveFixedAssets(register() as never, audit('au-fa6'));
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'fixed_assets/cA'))).exists()).toBe(false);
+    });
+  });
+});

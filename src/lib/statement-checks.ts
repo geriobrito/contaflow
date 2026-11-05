@@ -254,3 +254,33 @@ export function balanceSheetChecks(i: BalanceChecksInput): StatementCheck[] {
   ];
   return out.filter((c): c is StatementCheck => Boolean(c));
 }
+
+/** Linha da conferência cadastro do imobilizado × balanço (ver `reconcileWithLedger` em src/lib/fixed-assets.ts). */
+export interface FixedAssetCheckRow {
+  accountCode: string;
+  accountName: string;
+  register: number;
+  ledger: number;
+  difference: number;
+}
+
+/**
+ * Cadastro do imobilizado × saldos do balanço: custo por conta de bem e acumulada nas
+ * retificadoras. Diferença é bem comprado e não cadastrado, cadastrado e não contabilizado ou
+ * depreciação lançada fora da rotina. Null sem cadastro.
+ */
+export function fixedAssetCheck(rows: readonly FixedAssetCheckRow[] | null, date: string): StatementCheck | null {
+  if (!rows) return null;
+  const diverging = rows.filter((r) => Math.abs(r.difference) >= 0.005);
+  if (!diverging.length) return { id: 'fixed-assets', level: 'ok', title: 'Imobilizado confere com o cadastro de bens' };
+  return {
+    id: 'fixed-assets',
+    level: 'warn',
+    title: `Imobilizado difere do cadastro de bens em ${diverging.length} conta(s) em ${formatDateBR(date)}`,
+    items: diverging.map(
+      (r) => `${r.accountCode} ${r.accountName}: balanço ${formatCurrency(r.ledger)}, cadastro ${formatCurrency(r.register)} (diferença de ${formatCurrency(r.difference)})`
+    ),
+    href: '/imobilizado',
+    linkLabel: 'Conferir no Imobilizado',
+  };
+}

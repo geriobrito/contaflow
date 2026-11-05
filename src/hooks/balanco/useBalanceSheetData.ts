@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, FixedAssetRegister, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import type { Posting } from '@/lib/ledger';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
@@ -14,6 +14,8 @@ export interface BalanceSheetStatic {
   openings: OpeningBalances | null;
   journalEntries: JournalEntry[];
   locks: PeriodLock[];
+  /** Cadastro do imobilizado, para a conferência com o balanço. */
+  fixedAssets: FixedAssetRegister | null;
 }
 
 /**
@@ -44,12 +46,13 @@ export function useBalanceSheetData(clientId: string | undefined, range: { start
       // Sem os lançamentos manuais o balanço sairia com valores errados: a falha bloqueia o relatório.
       repo.listJournalEntries(clientId),
       repo.listPeriodLocks(clientId),
+      repo.getFixedAssets(clientId),
     ])
-      .then(([accounts, banks, org, latest, openings, journalEntries, locks]) => {
+      .then(([accounts, banks, org, latest, openings, journalEntries, locks, fixedAssets]) => {
         if (!active) return;
         // Recarga depois do encerramento: fica no período escolhido.
         if (latest && reloadCount === 0) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks });
+        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks, fixedAssets });
         setError(null);
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));

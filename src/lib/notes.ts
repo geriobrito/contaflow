@@ -7,7 +7,7 @@ import { formatCNPJ, formatCurrency } from '@/lib/utils/formatters';
  * PDF. Trechos entre colchetes ([...]) são o que falta preencher com dados da empresa.
  */
 
-export type NoteId = 'context' | 'basis' | 'policies' | 'equity' | 'consumption-taxes' | 'subsequent';
+export type NoteId = 'context' | 'basis' | 'policies' | 'fixed-assets' | 'equity' | 'consumption-taxes' | 'subsequent';
 
 export interface NoteBlock extends ExplanatoryNoteBlock {
   id: NoteId;
@@ -49,6 +49,54 @@ export interface NoteFigures {
    * DMPL no lugar da DLPA (NBC TG 1001).
    */
   equityMovement?: boolean;
+  /** Bens no balanço em 31/12 por conta (cadastro do imobilizado); ausente sem cadastro. */
+  fixedAssets?: readonly FixedAssetClass[];
+}
+
+/** Classe de bens no quadro da nota (ver `classSummary` em src/lib/fixed-assets.ts). */
+export interface FixedAssetClass {
+  accountCode: string;
+  accountName: string;
+  rates: readonly number[];
+  cost: number;
+  accumulated: number;
+  net: number;
+}
+
+const isIntangible = (code: string) => code.startsWith('1.2.4.');
+const pct = (n: number) => `${n.toLocaleString('pt-BR')}%`;
+const joinList = (items: readonly string[]) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`);
+
+/** Item d) das práticas contábeis: as taxas por classe quando há cadastro de bens. */
+function fixedAssetPolicy(classes: readonly FixedAssetClass[] | undefined, small: boolean): string {
+  if (!classes?.length) {
+    return 'd) Imobilizado: registrado pelo custo de aquisição, deduzido da depreciação acumulada, calculada pelo método linear [informe as taxas ou a vida útil adotadas].';
+  }
+  const depreciated = classes.filter((c) => c.rates.some((r) => r > 0));
+  const rates = depreciated.map((c) => `${joinList(c.rates.filter((r) => r > 0).map(pct))} para ${c.accountName.toLowerCase()}`);
+  const land = classes.some((c) => c.rates.every((r) => r === 0)) ? ' Terrenos e bens sem vida útil definida não são depreciados.' : '';
+  const intangible = classes.some((c) => isIntangible(c.accountCode));
+  return [
+    `d) Imobilizado${intangible ? ' e intangível' : ''}: registrado${intangible ? 's' : ''} pelo custo de aquisição, que inclui os gastos para colocar os bens em condições de uso, deduzido da depreciação${intangible ? ' e da amortização' : ''} acumulada${intangible ? 's' : ''}.`,
+    rates.length
+      ? ` A depreciação${intangible ? ' e a amortização são calculadas' : ' é calculada'} pelo método linear, mês a mês, a partir da data em que os bens ficam disponíveis para uso, às taxas anuais de ${joinList(rates)}, previstas na Instrução Normativa RFB nº 1.700/2017 (Anexo III).`
+      : '',
+    land,
+    small && rates.length ? ' Essas taxas são adotadas como expediente prático, por não distorcerem materialmente a vida útil econômica dos bens.' : '',
+  ].join('');
+}
+
+/** Nota do imobilizado: custo, acumulada e valor líquido por classe em 31/12. */
+function fixedAssetText(year: string, classes: readonly FixedAssetClass[] | undefined): string {
+  if (!classes?.length) return `Em 31 de dezembro de ${year}, o imobilizado compõe-se de: [classe do bem: custo, depreciação acumulada e valor líquido].`;
+  const line = (c: FixedAssetClass) =>
+    `- ${c.accountName} (${c.rates.map(pct).join(', ')} a.a.): custo ${formatCurrency(c.cost)}, ${isIntangible(c.accountCode) ? 'amortização' : 'depreciação'} acumulada ${formatCurrency(c.accumulated)}, valor líquido ${formatCurrency(c.net)};`;
+  const sum = (k: 'cost' | 'accumulated' | 'net') => classes.reduce((s, c) => s + Math.round(c[k] * 100), 0) / 100;
+  return [
+    `Em 31 de dezembro de ${year}, o imobilizado${classes.some((c) => isIntangible(c.accountCode)) ? ' e o intangível compõem-se' : ' compõe-se'} de:`,
+    ...classes.map(line),
+    `- Total: custo ${formatCurrency(sum('cost'))}, depreciação e amortização acumuladas ${formatCurrency(sum('accumulated'))}, valor líquido ${formatCurrency(sum('net'))}.`,
+  ].join('\n');
 }
 
 function equityText(year: string, f: NoteFigures | null | undefined): string {
@@ -109,8 +157,14 @@ export function defaultNotes(
         'a) Regime de competência: receitas e despesas são reconhecidas no período em que ocorrem, independentemente de recebimento ou pagamento.',
         'b) Caixa e equivalentes de caixa: saldos em caixa, depósitos bancários e aplicações financeiras de liquidez imediata.',
         'c) Contas a receber e a pagar: registradas pelo valor das operações[, ajustadas por perdas estimadas quando aplicável].',
-        'd) Imobilizado: registrado pelo custo de aquisição, deduzido da depreciação acumulada, calculada pelo método linear [informe as taxas ou a vida útil adotadas].',
+        fixedAssetPolicy(figures?.fixedAssets, small),
       ].join('\n'),
+    },
+    {
+      id: 'fixed-assets',
+      title: 'Imobilizado',
+      enabled: Boolean(figures?.fixedAssets?.length),
+      text: fixedAssetText(year, figures?.fixedAssets),
     },
     {
       id: 'equity',

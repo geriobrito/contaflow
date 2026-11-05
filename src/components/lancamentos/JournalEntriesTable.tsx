@@ -76,6 +76,11 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                       >
                         {catCfg.label}
                       </span>
+                      {(entry.depreciationMonth || entry.fixedAssetId) && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelo cadastro do imobilizado; altere o bem na tela Imobilizado">
+                          {entry.fixedAssetId ? 'Baixa de bem · Imobilizado' : 'Gerado pelo Imobilizado'}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 font-medium text-stone-900 dark:text-stone-100">

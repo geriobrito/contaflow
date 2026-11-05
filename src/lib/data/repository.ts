@@ -9,6 +9,7 @@ import type {
   ClientCompany,
   ClientDaybookInfo,
   ExplanatoryNotes,
+  FixedAssetRegister,
   ImportBatch,
   InvoiceLink,
   InvoiceSummary,
@@ -58,6 +59,12 @@ export interface ChangeSet {
 
 /** Lançamento manual ainda sem número: o repositório atribui o próximo da sequência do cliente. */
 export type JournalEntryDraft = Omit<JournalEntry, 'entryNumber'>;
+
+/** Lançamento gravado junto com o cadastro do imobilizado: o da baixa (criar) ou o de uma baixa desfeita (excluir). */
+export interface FixedAssetJournalChange {
+  create?: JournalEntryDraft;
+  deleteId?: string;
+}
 
 /**
  * Contrato único de persistência. Duas implementações — Firestore e localStorage — e a
@@ -205,6 +212,15 @@ export interface DataRepository {
   /** Vincula um lançamento do extrato à nota (troca o vínculo anterior do mesmo lançamento). */
   linkInvoice(invoiceId: string, link: InvoiceLink): Promise<InvoiceSummary>;
   deleteInvoice(invoiceId: string): Promise<void>;
+
+  /* Imobilizado e intangível (um documento por cliente, id = clientId; src/lib/fixed-assets.ts) */
+  getFixedAssets(clientId: string): Promise<FixedAssetRegister | null>;
+  /**
+   * Grava o cadastro e o registro de auditoria numa única operação e, se informado, também cria
+   * o lançamento da baixa (com o próximo número da sequência) ou exclui o de uma baixa desfeita.
+   * Devolve o lançamento criado.
+   */
+  saveFixedAssets(register: FixedAssetRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;

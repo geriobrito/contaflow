@@ -364,7 +364,8 @@ export type AuditAction =
   | 'JOURNAL_UPDATE'
   | 'JOURNAL_DELETE'
   | 'YEAR_CLOSE'
-  | 'YEAR_REOPEN';
+  | 'YEAR_REOPEN'
+  | 'ASSET_SAVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -720,9 +721,93 @@ export interface JournalEntry {
    * `${closingAuditId}_reopen` junto com a exclusão de todos.
    */
   closingAuditId?: string;
+  /**
+   * Competência (YYYY-MM) da depreciação gerada pelo cadastro do imobilizado
+   * (src/lib/fixed-assets.ts): um lançamento por mês, atualizado enquanto o mês está aberto.
+   */
+  depreciationMonth?: string;
+  /** Bem baixado por este lançamento (baixa por venda, perda ou sucata). */
+  fixedAssetId?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;
+}
+
+/* =========================================================================
+   Imobilizado e intangível (controle patrimonial)
+   ========================================================================= */
+
+/** Onde a depreciação do bem cai no resultado: custo (atividade-fim) ou despesa (administrativo/comercial). */
+export type FixedAssetUse = 'COST' | 'EXPENSE';
+
+export type FixedAssetDisposalReason = 'SALE' | 'LOSS' | 'SCRAP';
+
+export interface FixedAssetPriorDepreciation {
+  /** Última competência (YYYY-MM) contida no valor. */
+  through: string;
+  amount: number;
+}
+
+/** Baixa do bem: a depreciação para na data, e o lançamento tira custo e acumulada do balanço. */
+export interface FixedAssetDisposal {
+  /** YYYY-MM-DD. */
+  date: string;
+  reason: FixedAssetDisposalReason;
+  note?: string;
+  /** Lançamento manual da baixa (journal_entries). */
+  journalEntryId: string;
+}
+
+/**
+ * Bem do imobilizado (1.2.3.x) ou do intangível (1.2.4.x). O custo é a soma das partes:
+ * valor da nota + gastos para pôr o bem em uso + tributos não recuperáveis − descontos.
+ */
+export interface FixedAsset {
+  id: string;
+  description: string;
+  /** Conta analítica do bem no plano (ex.: 1.2.3.04 Veículos). */
+  accountId: string;
+  accountCode: string;
+  accountName?: string;
+  use: FixedAssetUse;
+  /** Data da nota fiscal (YYYY-MM-DD). */
+  acquisitionDate: string;
+  /** Data em que o bem ficou disponível para uso (YYYY-MM-DD): a depreciação começa nela, proporcional aos dias. */
+  inUseDate: string;
+  invoiceValue: number;
+  /** Frete, transporte, montagem, instalação. */
+  additionalCosts?: number;
+  /** Tributos não recuperáveis (ex.: IPI sem crédito, imposto de importação). */
+  nonRecoverableTaxes?: number;
+  /** Descontos incondicionais e abatimentos. */
+  discounts?: number;
+  /** Dispensável na microentidade (NBC TG 1002); padrão zero. */
+  residualValue?: number;
+  /** Taxa anual em % (ex.: 20 = 20% ao ano; IN RFB 1700/2017, Anexo III). Zero não deprecia (terrenos). */
+  annualRate: number;
+  /** Número da nota fiscal ou outro documento. */
+  documentRef?: string;
+  /** Chave da NF-e, quando o bem veio de uma nota importada. */
+  invoiceKey?: string;
+  /**
+   * Depreciação já contabilizada fora desta rotina até o fim da competência `through` (YYYY-MM):
+   * a do bem anterior à implantação (está nos saldos de abertura) ou a lançada à mão em meses já
+   * fechados. As cotas geradas começam no mês seguinte, a partir desse acumulado.
+   */
+  priorDepreciation?: FixedAssetPriorDepreciation;
+  disposal?: FixedAssetDisposal;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Controle patrimonial da empresa (coleção `fixed_assets`, um documento por cliente, id = clientId). */
+export interface FixedAssetRegister {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  assets: FixedAsset[];
+  updatedAt: string;
+  updatedByUid?: string;
 }
 
 /* =========================================================================

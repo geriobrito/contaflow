@@ -10,6 +10,13 @@ import { buildDLPA, closingEntriesOf, yearEndOf, yearStartOf } from '@/lib/year-
 import { defaultNotes, mergeNotes, type NoteBlock, type NoteFigures } from '@/lib/notes';
 import { describeError } from '@/lib/utils/errors';
 import { equityMovements, openingPostings } from '@/lib/balance-sheet-checks';
+import { classSummary } from '@/lib/fixed-assets';
+import { implantationDate } from '@/lib/opening';
+import type { ChartAccount, FixedAsset } from '@/types/firestore';
+
+/** Quadro do imobilizado em 31/12 para as notas (bens ainda no balanço). */
+const fixedAssetClasses = (assets: readonly FixedAsset[], year: string, implantation: string | null, accounts: readonly ChartAccount[]) =>
+  classSummary(assets, `${year}-12`, implantation ? implantation.slice(0, 7) : null, accounts);
 
 /* Cópia local: rascunho do navegador, usado se o servidor não responder (e o das versões antigas). */
 const cacheKey = (clientId: string, year: string) => `contaflow_notes_${clientId}_${year}`;
@@ -39,11 +46,12 @@ export type NotesSaveState = 'idle' | 'saving' | 'saved' | 'local';
 /** Saldos do exercício em 31/12 para a nota de patrimônio líquido. */
 async function loadFigures(clientId: string, year: string): Promise<NoteFigures | null> {
   const repo = getRepository();
-  const [accounts, banks, openings, journalEntries] = await Promise.all([
+  const [accounts, banks, openings, journalEntries, register] = await Promise.all([
     repo.listAccounts(clientId),
     repo.listBankAccounts(clientId),
     repo.getOpeningBalances(clientId),
     repo.listJournalEntries(clientId),
+    repo.getFixedAssets(clientId),
   ]);
   if (accounts.length === 0) return null;
   const end = yearEndOf(year);
@@ -63,6 +71,7 @@ async function loadFigures(clientId: string, year: string): Promise<NoteFigures 
     retained: dlpa.closing,
     closed: closingEntriesOf(journalEntries, year).length > 0,
     equityMovement: equityMovements(postings, openingPostings(openings, banks, accounts), accounts, { start: yearStartOf(year), end }).length > 0,
+    ...(register?.assets.length ? { fixedAssets: fixedAssetClasses(register.assets, year, implantationDate(openings, banks), accounts) } : {}),
   };
 }
 

@@ -6,6 +6,7 @@ import type {
   ClassificationRule,
   ClientCompany,
   ClientRequest,
+  FixedAssetRegister,
   ImportBatch,
   InvoiceSummary,
   JournalEntry,
@@ -40,6 +41,8 @@ export interface ClientBackup {
   clientRequests: ClientRequest[];
   /** Resumos das notas fiscais importadas (os XML não são guardados). */
   invoices: InvoiceSummary[];
+  /** Cadastro do imobilizado (ausente em backups anteriores a ele). */
+  fixedAssets: FixedAssetRegister | null;
   /** Mais recentes primeiro. */
   audit: AuditEntry[];
   /** A trilha tem mais registros do que o teto do backup: os mais antigos ficaram de fora. */
@@ -53,7 +56,7 @@ export async function buildClientBackup(
   exportedAt: string = new Date().toISOString()
 ): Promise<ClientBackup> {
   const id = client.id;
-  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, audit] =
+  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, audit] =
     await Promise.all([
       repo.listAccounts(id),
       repo.listRules(id),
@@ -65,6 +68,7 @@ export async function buildClientBackup(
       repo.listPeriodLocks(id),
       repo.listClientRequests(id),
       repo.listInvoices(id),
+      repo.getFixedAssets(id),
       repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
     ]);
   return {
@@ -82,6 +86,7 @@ export async function buildClientBackup(
     periodLocks,
     clientRequests,
     invoices,
+    fixedAssets,
     audit,
     auditTruncated: audit.length >= BACKUP_AUDIT_LIMIT,
   };
