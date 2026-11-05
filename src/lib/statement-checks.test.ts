@@ -139,3 +139,13 @@ describe('Balanço', () => {
     expect(s.infos).toEqual([]);
   });
 });
+
+describe('activityCheck', () => {
+  it('avisa sem a atividade; com ela ou sem empresa, nada', async () => {
+    const { activityCheck } = await import('@/lib/statement-checks');
+    expect(activityCheck({ activity: '  ' })).toMatchObject({ id: 'activity', level: 'info', href: '/clientes' });
+    expect(activityCheck({})).not.toBeNull();
+    expect(activityCheck({ activity: 'Padaria' })).toBeNull();
+    expect(activityCheck(null)).toBeNull();
+  });
+});

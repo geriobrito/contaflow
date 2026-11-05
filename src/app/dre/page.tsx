@@ -12,7 +12,7 @@ import { DRECompareTable } from '@/components/dre/DRECompareTable';
 import { DREResultCard } from '@/components/dre/DREResultCard';
 import { DREStatement } from '@/components/dre/DREStatement';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { awaitingApprovalCheck, dreConsistencyChecks, openingCheck, periodLockCheck } from '@/lib/statement-checks';
+import { activityCheck, awaitingApprovalCheck, dreConsistencyChecks, openingCheck, periodLockCheck } from '@/lib/statement-checks';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
 import { reportError } from '@/lib/monitoring';
@@ -169,6 +169,7 @@ export default function DREPage() {
             // A conferência com o Balanço já cita os aguardando aprovação; sem ela, o aviso vem sozinho.
             !(consistency && hasData) && awaitingApprovalCheck(dre.awaitingApproval),
             ...(consistency && hasData ? dreConsistencyChecks(consistency, range.end) : []),
+            hasData && activityCheck(currentClient),
           ]}
         />
       )}

@@ -19,7 +19,7 @@ export interface DREExportRow {
 }
 
 export interface DREExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   range: DateRange;
   statement: DREStatement;
   /** Data de emissão; padrão: agora. */

@@ -8,12 +8,12 @@ import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { EQUITY_GROUP_CODE, OPENING_ACCOUNT_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
-import { CAPITAL_GROUP_CODE, invertedBalances, missingShareCapital } from '@/lib/balance-sheet-checks';
+import { CAPITAL_GROUP_CODE, equityMovements, invertedBalances, missingShareCapital, openingPostings } from '@/lib/balance-sheet-checks';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { porteOf } from '@/lib/accounting-standard';
 import { openingStatus } from '@/lib/opening';
 import { bankSetupIssues, formatDC as dc, hasClosingIn, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
-import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
+import { buildDLPA, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { useBalanceSheetData } from '@/hooks/balanco/useBalanceSheetData';
@@ -23,7 +23,7 @@ import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { balanceSheetChecks, openingCheck, transitoryCheck } from '@/lib/statement-checks';
+import { activityCheck, balanceSheetChecks, dmplCheck, openingCheck, transitoryCheck } from '@/lib/statement-checks';
 import { closedYearsOf, describeTransitory, transitoryBalanceAt, transitoryReminder } from '@/lib/opening-transitory';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
@@ -158,6 +158,15 @@ export default function BalancoPage() {
 
   // Encerramento e DLPA do exercício da data final.
   const year = range.end.slice(0, 4);
+  // Pequena empresa: movimento em Capital ou Reservas no exercício exige a DMPL (NBC TG 1001).
+  const porte = porteOf(currentClient);
+  const equityMoves = useMemo(
+    () =>
+      porte === 'PEQUENA_EMPRESA'
+        ? equityMovements(postings, openingPostings(static_?.openings, banks, accounts), accounts, { start: yearStartOf(year), end: range.end })
+        : [],
+    [porte, postings, static_?.openings, banks, accounts, year, range.end]
+  );
   const postingsBeforeClosing = useMemo(
     () =>
       !txs ? null : buildPostings(txs.list, banks, accounts, yearEndOf(year), static_?.openings, withoutClosingOf(journalEntries, year), txs.carry),
@@ -378,6 +387,8 @@ export default function BalancoPage() {
         checks={[
           openingCheck(opening),
           !loading && hasData && view !== 'dfc' && transitoryIssue,
+          !loading && hasData && view !== 'tb' && activityCheck(currentClient),
+          !loading && hasData && (view === 'bs' || view === 'dlpa') && dmplCheck(porte, equityMoves, year),
           ...(!loading && hasData
             ? balanceSheetChecks({
                 trialBalance: view === 'tb',

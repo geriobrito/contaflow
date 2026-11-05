@@ -156,6 +156,11 @@ service cloud.firestore {
             && shortText(data.daybook, 'registry'));
     }
 
+    // Atividade principal (declaração de conformidade das demonstrações): texto de até 300 caracteres.
+    function validActivity(data) {
+      return !('activity' in data) || (data.activity is string && data.activity.size() <= 300);
+    }
+
     match /clients/{clientId} {
       // Ler id ainda inexistente permite ao saveClient saber se está criando (com lock_state) ou atualizando.
       allow get: if (resource == null && hasProfile()) || isMine(resource.data);
@@ -163,9 +168,11 @@ service cloud.firestore {
       allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data)
         && existsAfter(lockStatePath(clientId))
-        && validDaybook(request.resource.data);
+        && validDaybook(request.resource.data)
+        && validActivity(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId')
-        && validDaybook(request.resource.data);
+        && validDaybook(request.resource.data)
+        && validActivity(request.resource.data);
     }
 
     // ── Dados vinculados a uma empresa ───────────────────────────────────

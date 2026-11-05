@@ -5,7 +5,7 @@ import type { DateRange } from '@/lib/data/repository';
 import { EQUITY_GROUP_CODE, sectionLines, type BalanceSheet, type BalanceSheetLine, type TrialBalance } from '@/lib/ledger';
 import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { accountingStandard } from '@/lib/accounting-standard';
+import { accountingStandard, conformityStatement } from '@/lib/accounting-standard';
 
 /* ── Paleta corporativa e sóbria (RGB) — legibilidade máxima em tela e impressão P&B ── */
 export const INK: [number, number, number] = [28, 25, 23];
@@ -19,7 +19,7 @@ export const GRAND_TOTAL_FILL: [number, number, number] = [228, 228, 226];
 export const MARGIN_X = 12; // mm (permite acomodar as 6 colunas do Balancete com folga perfeita em A4 Retrato)
 
 export interface LedgerPdfExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   range: DateRange;
   balanceSheet: BalanceSheet;
   trialBalance: TrialBalance;
@@ -133,6 +133,27 @@ export function addPageFooters(doc: jsPDF, title: string, clientName: string) {
     doc.text(`${clientName.toUpperCase()}  •  ${title}`, MARGIN_X, footerY);
     doc.text(`Página ${i} de ${totalPages}`, pageWidth - MARGIN_X, footerY, { align: 'right' });
   }
+}
+
+/**
+ * Declaração de conformidade com a norma do porte (e a atividade da entidade) no fim da
+ * demonstração, antes das assinaturas. Devolve o Y onde ela termina, para `renderSignatures`.
+ */
+export function renderConformity(doc: jsPDF, startY: number, client: Pick<ClientCompany, 'porte' | 'activity'>): number {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageBottom = doc.internal.pageSize.getHeight() - 18;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  const lines = doc.splitTextToSize(conformityStatement(client), pageWidth - MARGIN_X * 2) as string[];
+  const height = lines.length * 3.8;
+  let y = startY + 8;
+  if (y + height > pageBottom) {
+    doc.addPage();
+    y = 26;
+  }
+  doc.setTextColor(...MUTED);
+  doc.text(lines, MARGIN_X, y);
+  return y + height - 3.8;
 }
 
 /**
@@ -361,7 +382,7 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
     nextY += 2;
   }
 
-  renderSignatures(doc, nextY, issuedAt, ctx.signatories);
+  renderSignatures(doc, renderConformity(doc, nextY, ctx.client), issuedAt, ctx.signatories);
   addPageFooters(doc, 'BALANÇO PATRIMONIAL', ctx.client.name);
 }
 

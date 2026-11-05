@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   fetchCNPJFromProviders,
+  formatActivity,
   formatBrazilianPhone,
   formatCityUF,
   mapBrasilApiResponse,
@@ -97,6 +98,22 @@ describe('consulta e mapeamento de CNPJ', () => {
       situacaoCadastral: 'Ativa',
       source: 'cnpjws',
     });
+  });
+
+  it('atividade principal: descrição do CNAE nas duas fontes, em frase normal', () => {
+    expect(formatActivity('COMERCIO VAREJISTA DE PRODUTOS DE PADARIA')).toBe('Comercio varejista de produtos de padaria');
+    expect(formatActivity('  Desenvolvimento de programas   de computador sob encomenda ')).toBe('Desenvolvimento de programas de computador sob encomenda');
+    expect(formatActivity('')).toBeUndefined();
+    expect(formatActivity('x'.repeat(400))).toHaveLength(300);
+
+    const brasil = mapBrasilApiResponse({ cnpj: '11222333000181', razao_social: 'PADARIA LTDA', cnae_fiscal_descricao: 'Fabricação de produtos de panificação industrial' });
+    expect(brasil?.activity).toBe('Fabricação de produtos de panificação industrial');
+    const ws = mapCnpjWsResponse({
+      razao_social: 'PADARIA LTDA',
+      estabelecimento: { cnpj: '11222333000181', atividade_principal: { id: '1091101', descricao: 'Fabricação de produtos de panificação industrial' } },
+    });
+    expect(ws?.activity).toBe('Fabricação de produtos de panificação industrial');
+    expect(mapBrasilApiResponse({ cnpj: '11222333000181', razao_social: 'PADARIA LTDA' })?.activity).toBeUndefined();
   });
 
   it('faz fallback automático quando o provedor primário falha e retorna 404 quando inexistente', async () => {

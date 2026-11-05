@@ -12,12 +12,13 @@ import {
   MUTED,
   RULE,
   addPageFooters,
+  renderConformity,
   renderSignatures,
   renderStatementHeader,
   sanitizeFileName,
   type LedgerPdfExportContext,
 } from '@/lib/export/ledger-pdf';
-import { renderSheetHeader, renderSignatures as renderSheetSignatures } from '@/lib/export/ledger-excel';
+import { renderConformityRow, renderSheetHeader, renderSignatures as renderSheetSignatures } from '@/lib/export/ledger-excel';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /** Demonstração de Lucros ou Prejuízos Acumulados em PDF (A4 retrato) e Excel. */
@@ -25,7 +26,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 export const DLPA_TITLE = 'DEMONSTRAÇÃO DE LUCROS OU PREJUÍZOS ACUMULADOS';
 
 export interface DLPAExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   dlpa: DLPA;
   issuedAt?: Date;
   signatories?: LedgerPdfExportContext['signatories'];
@@ -71,7 +72,7 @@ export function generateDLPAPdf(ctx: DLPAExportContext): { blob: Blob; fileName:
     },
   });
   const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y + 40;
-  renderSignatures(doc, finalY, issuedAt, ctx.signatories);
+  renderSignatures(doc, renderConformity(doc, finalY, ctx.client), issuedAt, ctx.signatories);
   addPageFooters(doc, 'DLPA', ctx.client.name);
   return { blob: doc.output('blob'), fileName: `${fileBase(ctx)}.pdf` };
 }
@@ -108,7 +109,8 @@ export async function generateDLPAExcel(ctx: DLPAExportContext): Promise<{ blob:
     }
   });
 
-  renderSheetSignatures(ws, ctx, first + ctx.dlpa.rows.length + 4, 1, 1, 2, 2);
+  renderConformityRow(ws, first + ctx.dlpa.rows.length + 2, ctx.client, 1, 2);
+  renderSheetSignatures(ws, ctx, first + ctx.dlpa.rows.length + 5, 1, 1, 2, 2);
   const buffer = await wb.xlsx.writeBuffer();
   return {
     blob: new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),

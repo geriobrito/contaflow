@@ -344,6 +344,15 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   if (!org?.accountantName || !org?.accountantCrc) {
     add({ id: 'office', severity: 'low', title: 'Contador responsável não cadastrado', detail: 'As demonstrações exportadas saem sem a assinatura do profissional.', href: '/escritorio' });
   }
+  if (!client.activity?.trim()) {
+    add({
+      id: 'activity',
+      severity: 'low',
+      title: 'Atividade principal da empresa não cadastrada',
+      detail: 'A declaração de conformidade no fim das demonstrações sai sem ela (obrigatória na NBC TG 1002).',
+      href: '/clientes',
+    });
+  }
   if (!client.legalRepresentativeName || !client.legalRepresentativeCpf) {
     add({ id: 'representative', severity: 'low', title: 'Representante legal da empresa não cadastrado', detail: 'Nome e CPF assinam a DRE exportada.', href: '/clientes' });
   }

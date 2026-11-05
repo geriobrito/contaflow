@@ -3,7 +3,7 @@ import { reviewLookup, type ClientFormFields } from '@/lib/cnpj-review';
 import { sameCompany } from '@/lib/company-name';
 import type { CNPJLookupResult } from '@/lib/cnpj';
 
-const empty: ClientFormFields = { name: '', tradeName: '', city: '', email: '', phone: '', legalRepresentativeName: '', regime: 'SIMPLES_NACIONAL', porte: 'MICROENTIDADE' };
+const empty: ClientFormFields = { name: '', tradeName: '', city: '', email: '', phone: '', legalRepresentativeName: '', activity: '', regime: 'SIMPLES_NACIONAL', porte: 'MICROENTIDADE' };
 
 const receita: CNPJLookupResult = {
   cnpj: '11222333000181',
@@ -77,5 +77,15 @@ describe('resposta da Receita no cadastro', () => {
   it('atualização pelo botão com o nome de outra empresa: marca a divergência', () => {
     const r = reviewLookup({ ...empty, name: 'Mercado Bom Preço' }, receita, true);
     expect(r).toMatchObject({ kind: 'changes', otherCompany: true });
+  });
+
+  it('atividade principal: preenche quando vazia e entra na lista de mudanças', () => {
+    const withActivity = { ...receita, activity: 'Fabricação de produtos de panificação' };
+    const filled = reviewLookup({ ...empty, name: receita.name }, withActivity, false);
+    expect(filled).toMatchObject({ kind: 'apply', fields: { activity: 'Fabricação de produtos de panificação' } });
+    const kept = reviewLookup({ ...empty, name: receita.name, activity: 'Padaria e confeitaria' }, withActivity, false);
+    expect(kept.kind === 'apply' && kept.fields.activity).toBeFalsy();
+    const update = reviewLookup({ ...empty, name: receita.name, activity: 'Padaria e confeitaria' }, withActivity, true);
+    expect(update.kind === 'changes' && update.changes.find((c) => c.field === 'activity')).toMatchObject({ from: 'Padaria e confeitaria', to: 'Fabricação de produtos de panificação' });
   });
 });

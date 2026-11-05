@@ -12,12 +12,13 @@ import {
   MUTED,
   RULE,
   addPageFooters,
+  renderConformity,
   renderSignatures,
   renderStatementHeader,
   sanitizeFileName,
   type LedgerPdfExportContext,
 } from '@/lib/export/ledger-pdf';
-import { renderSheetHeader, renderSignatures as renderSheetSignatures } from '@/lib/export/ledger-excel';
+import { renderConformityRow, renderSheetHeader, renderSignatures as renderSheetSignatures } from '@/lib/export/ledger-excel';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 /** Demonstração dos Fluxos de Caixa (método direto) em PDF (A4 retrato) e Excel. */
@@ -25,7 +26,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 export const DFC_TITLE = 'DEMONSTRAÇÃO DOS FLUXOS DE CAIXA';
 
 export interface CashFlowExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   statement: CashFlowStatement;
   /** Mostra as contas de cada linha. */
   detail?: boolean;
@@ -88,7 +89,7 @@ export function generateCashFlowPdf(ctx: CashFlowExportContext): { blob: Blob; f
     },
   });
   const finalY = (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y + 40;
-  renderSignatures(doc, finalY, issuedAt, ctx.signatories);
+  renderSignatures(doc, renderConformity(doc, finalY, ctx.client), issuedAt, ctx.signatories);
   addPageFooters(doc, 'DFC', ctx.client.name);
   return { blob: doc.output('blob'), fileName: `${fileBase(ctx)}.pdf` };
 }
@@ -134,7 +135,8 @@ export async function generateCashFlowExcel(ctx: CashFlowExportContext): Promise
     }
   });
 
-  renderSheetSignatures(ws, ctx, first + rows.length + 4, 1, 1, 2, 2);
+  renderConformityRow(ws, first + rows.length + 2, ctx.client, 1, 2);
+  renderSheetSignatures(ws, ctx, first + rows.length + 5, 1, 1, 2, 2);
   const buffer = await wb.xlsx.writeBuffer();
   return {
     blob: new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),

@@ -413,6 +413,23 @@ describe('termos do Livro Diário no cadastro da empresa', () => {
   });
 });
 
+describe('atividade principal no cadastro da empresa', () => {
+  it('aceita texto de até 300 caracteres; recusa mais longo ou não texto', async () => {
+    const ref = doc(asUser('alice'), 'clients/cA');
+    await assertSucceeds(updateDoc(ref, { activity: 'Fabricação de produtos de panificação' }));
+    await assertSucceeds(updateDoc(ref, { activity: 'x'.repeat(300) }));
+    await assertFails(updateDoc(ref, { activity: 'x'.repeat(301) }));
+    await assertFails(updateDoc(ref, { activity: 1091101 }));
+  });
+
+  it('o formulário grava e mantém a atividade', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const [stored] = (await repo.listClients()).filter((c) => c.id === 'cA');
+    await repo.saveClient({ ...stored, activity: 'Comércio varejista de padaria' });
+    expect((await repo.listClients()).find((c) => c.id === 'cA')).toMatchObject({ activity: 'Comércio varejista de padaria' });
+  });
+});
+
 describe('fechamento de competência', () => {
   const march = lockOf('2025-03');
 

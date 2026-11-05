@@ -11,6 +11,8 @@ export interface CNPJLookupResult {
   email?: string;
   phone?: string;
   legalRepresentativeName?: string;
+  /** Descrição do CNAE principal, em frase normal. */
+  activity?: string;
   situacaoCadastral?: string;
   source: 'brasilapi' | 'cnpjws';
 }
@@ -91,6 +93,20 @@ function pickAdministrator(
   return admin?.name?.trim();
 }
 
+/** Tamanho máximo da atividade principal no cadastro (as regras do Firestore conferem o mesmo). */
+export const ACTIVITY_MAX = 300;
+
+/**
+ * Descrição do CNAE como frase: a Receita às vezes manda tudo em maiúsculas
+ * ("COMERCIO VAREJISTA DE PADARIA"), que vira "Comercio varejista de padaria".
+ */
+export function formatActivity(raw?: string | null): string | undefined {
+  const text = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  const sentence = text === text.toUpperCase() ? text.charAt(0) + text.slice(1).toLowerCase() : text;
+  return sentence.slice(0, ACTIVITY_MAX);
+}
+
 /** Mapeia o payload da BrasilAPI (`GET https://brasilapi.com.br/api/cnpj/v1/{cnpj}`). */
 export function mapBrasilApiResponse(raw: unknown): CNPJLookupResult | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -128,6 +144,7 @@ export function mapBrasilApiResponse(raw: unknown): CNPJLookupResult | null {
     typeof data.descricao_situacao_cadastral === 'string' && data.descricao_situacao_cadastral.trim()
       ? data.descricao_situacao_cadastral.trim()
       : undefined;
+  const activity = formatActivity(typeof data.cnae_fiscal_descricao === 'string' ? data.cnae_fiscal_descricao : undefined);
 
   return {
     cnpj,
@@ -139,6 +156,7 @@ export function mapBrasilApiResponse(raw: unknown): CNPJLookupResult | null {
     ...(email ? { email } : {}),
     ...(phone ? { phone } : {}),
     ...(legalRepresentativeName ? { legalRepresentativeName } : {}),
+    ...(activity ? { activity } : {}),
     ...(situacaoCadastral ? { situacaoCadastral } : {}),
     source: 'brasilapi',
   };
@@ -197,6 +215,8 @@ export function mapCnpjWsResponse(raw: unknown): CNPJLookupResult | null {
     typeof estab.situacao_cadastral === 'string' && estab.situacao_cadastral.trim()
       ? estab.situacao_cadastral.trim()
       : undefined;
+  const principal = (estab.atividade_principal && typeof estab.atividade_principal === 'object' ? estab.atividade_principal : {}) as Record<string, unknown>;
+  const activity = formatActivity(typeof principal.descricao === 'string' ? principal.descricao : undefined);
 
   return {
     cnpj,
@@ -208,6 +228,7 @@ export function mapCnpjWsResponse(raw: unknown): CNPJLookupResult | null {
     ...(email ? { email } : {}),
     ...(phone ? { phone } : {}),
     ...(legalRepresentativeName ? { legalRepresentativeName } : {}),
+    ...(activity ? { activity } : {}),
     ...(situacaoCadastral ? { situacaoCadastral } : {}),
     source: 'cnpjws',
   };

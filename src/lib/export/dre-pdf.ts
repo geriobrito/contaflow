@@ -9,7 +9,7 @@ import {
   periodLabel,
   type DREExportContext,
 } from '@/lib/export/dre-rows';
-import { INK, MARGIN_X, MUTED, RULE, addPageFooters, renderSignatures, renderStatementHeader } from '@/lib/export/ledger-pdf';
+import { INK, MARGIN_X, MUTED, RULE, addPageFooters, renderConformity, renderSignatures, renderStatementHeader } from '@/lib/export/ledger-pdf';
 import { accountingStandard } from '@/lib/accounting-standard';
 
 /* Preenchimentos em tons de cinza (RGB) — imprime bem em P&B. */
@@ -106,7 +106,7 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
     (doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y + 20;
 
   /* ── Encerramento, assinaturas (Anexo 9) e paginação ───────────────── */
-  renderSignatures(doc, finalY, issuedAt, ctx.signatories);
+  renderSignatures(doc, renderConformity(doc, finalY, ctx.client), issuedAt, ctx.signatories);
   addPageFooters(doc, DRE_TITLE, ctx.client.name);
 
   return {

@@ -42,6 +42,11 @@ export interface ClientCompany {
   phone?: string;
   /** Município/UF da sede (ex.: "Recife/PE"), usado também nos termos do Livro Diário. */
   city?: string;
+  /**
+   * Atividade principal (descrição do CNAE ou do objeto social), até 300 caracteres. Sai na
+   * declaração de conformidade no fim das demonstrações (obrigatória na NBC TG 1002).
+   */
+  activity?: string;
   /** Representante legal / administrador que assina as demonstrações. */
   legalRepresentativeName?: string;
   legalRepresentativeCpf?: string;

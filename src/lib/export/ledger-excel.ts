@@ -5,7 +5,7 @@ import { EQUITY_GROUP_CODE, sectionLines, type AccountLedger, type BalanceSheet,
 import { cnpjLabel, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { round2 } from '@/lib/money';
-import { accountingStandard } from '@/lib/accounting-standard';
+import { accountingStandard, conformityStatement } from '@/lib/accounting-standard';
 
 /**
  * Balanço patrimonial e balancete de verificação em .xlsx com acabamento executivo.
@@ -35,7 +35,7 @@ const font = (overrides: Partial<ExcelJS.Font> = {}): Partial<ExcelJS.Font> => (
 });
 
 export interface LedgerExportContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   range: DateRange;
   balanceSheet: BalanceSheet;
   trialBalance: TrialBalance;
@@ -49,7 +49,7 @@ export interface LedgerExportContext {
 }
 
 export interface SheetHeaderContext {
-  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte'>;
+  client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   issuedAt?: Date;
 }
 
@@ -105,6 +105,16 @@ export function renderSheetHeader(
   // Linha em branco separadora
   ws.addRow([]);
   return lines.length + 2;
+}
+
+/** Declaração de conformidade (norma do porte e atividade) numa linha mesclada, antes das assinaturas. */
+export function renderConformityRow(ws: ExcelJS.Worksheet, row: number, client: Pick<ClientCompany, 'porte' | 'activity'>, firstCol: number, lastCol: number) {
+  if (lastCol > firstCol) ws.mergeCells(row, firstCol, row, lastCol);
+  const cell = ws.getCell(row, firstCol);
+  cell.value = conformityStatement(client);
+  cell.alignment = { wrapText: true, vertical: 'top' };
+  cell.font = font({ size: 9, color: { argb: 'FF555555' } });
+  ws.getRow(row).height = 40;
 }
 
 /** Renderiza bloco formal de assinaturas */
@@ -280,8 +290,10 @@ export async function generateLedgerExcel(ctx: LedgerExportContext): Promise<{ b
   ];
   checkRow.font = font({ italic: true, size: 9, color: { argb: balanced ? 'FF15803D' : 'FFB91C1C' } });
 
-  // Bloco de assinaturas
+  // Declaração de conformidade e bloco de assinaturas
   curBsRow += 2;
+  renderConformityRow(wsBs, curBsRow, ctx.client, 1, 4);
+  curBsRow += 3;
   renderSignatures(wsBs, ctx, curBsRow, 1, 2, 3, 4);
 
   // Larguras ajustadas

@@ -9,6 +9,7 @@ import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
 import { buildDLPA, closingEntriesOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
 import { defaultNotes, mergeNotes, type NoteBlock, type NoteFigures } from '@/lib/notes';
 import { describeError } from '@/lib/utils/errors';
+import { equityMovements, openingPostings } from '@/lib/balance-sheet-checks';
 
 /* Cópia local: rascunho do navegador, usado se o servidor não responder (e o das versões antigas). */
 const cacheKey = (clientId: string, year: string) => `contaflow_notes_${clientId}_${year}`;
@@ -61,6 +62,7 @@ async function loadFigures(clientId: string, year: string): Promise<NoteFigures 
     distributions: Math.abs(dlpa.distributions),
     retained: dlpa.closing,
     closed: closingEntriesOf(journalEntries, year).length > 0,
+    equityMovement: equityMovements(postings, openingPostings(openings, banks, accounts), accounts, { start: yearStartOf(year), end }).length > 0,
   };
 }
 

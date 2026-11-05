@@ -125,3 +125,75 @@ describe('PDF da DLPA', () => {
     expect(texts.slice(0, 4)).toEqual(['EMPRESA TESTE LTDA', 'CNPJ: 11.222.333/0001-81', 'DEMONSTRAÇÃO DE LUCROS OU PREJUÍZOS ACUMULADOS', 'NBC TG 1002 - Microentidades']);
   });
 });
+
+describe('declaração de conformidade no fim das demonstrações', () => {
+  const withActivity = { ...client, activity: 'Fabricação de produtos de panificação' };
+  const range = { start: '2025-01-01', end: '2025-12-31' };
+  const emptyBs = { date: '2025-12-31', assets: [], liabilities: [], equity: [], totalAssets: 0, totalLiabilities: 0, totalEquity: 0, difference: 0, suspense: 0, unlinkedBanks: 0 } as unknown as BalanceSheet;
+  const tb = { rows: [], totals: { previous: 0, debits: 0, credits: 0, final: 0 }, balanced: true };
+  const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, openingBalance: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };
+  const statement = buildDRE([], buildITG1000Chart('c1', '2025-01-01T00:00:00.000Z'), range);
+  /** Texto desenhado inteiro (a declaração quebra em linhas). */
+  const joined = async (blob: Blob) => drawn(await pdfText(blob)).join(' ');
+
+  it('Balanço, DRE e DLPA: norma do porte e atividade, antes das assinaturas', async () => {
+    const files = [
+      generateLedgerPdf({ client: withActivity, range, balanceSheet: emptyBs, trialBalance: tb, documentType: 'bs', signatories }).blob,
+      generateDREPdf({ client: withActivity, range, statement, signatories }).blob,
+      generateDLPAPdf({ client: withActivity, dlpa, signatories }).blob,
+    ];
+    for (const blob of files) {
+      const text = await joined(blob);
+      expect(text).toMatch(/Declaração de conformidade: estas demonstrações contábeis foram elaboradas de acordo com a NBC TG 1002 - Contabilidade para\s+Microentidades/);
+      expect(text).toMatch(/Atividade operacional da entidade: Fabricação de produtos de\s+panificação\./);
+      expect(text.indexOf('Declaração de conformidade')).toBeLessThan(text.indexOf('Profissional da Contabilidade'));
+    }
+  });
+
+  it('pequena empresa cita a NBC TG 1001; sem atividade, só a declaração; o balancete não leva', async () => {
+    const small = await joined(generateDREPdf({ client: { ...withActivity, porte: 'PEQUENA_EMPRESA' }, range, statement, signatories }).blob);
+    expect(small).toMatch(/NBC TG 1001 - Contabilidade para\s+Pequenas Empresas/);
+    const noActivity = await joined(generateDREPdf({ client, range, statement, signatories }).blob);
+    expect(noActivity).toMatch(/Declaração de conformidade/);
+    expect(noActivity).not.toMatch(/Atividade operacional/);
+    const trial = await joined(generateLedgerPdf({ client: withActivity, range, balanceSheet: emptyBs, trialBalance: tb, documentType: 'tb', signatories }).blob);
+    expect(trial).not.toMatch(/Declaração de conformidade/);
+  });
+});
+
+describe('declaração de conformidade no Excel', () => {
+  const withActivity = { ...client, activity: 'Fabricação de produtos de panificação' };
+  const range = { start: '2025-01-01', end: '2025-12-31' };
+  /** Textos das células de cada aba, na ordem das linhas. */
+  const cells = async (blob: Blob) => {
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await blob.arrayBuffer());
+    return wb.worksheets.map((ws) => {
+      const out: string[] = [];
+      ws.eachRow((row) => row.eachCell((c) => typeof c.value === 'string' && out.push(c.value)));
+      return out;
+    });
+  };
+
+  it('Balanço (sem o balancete), DRE e DLPA levam a declaração antes das assinaturas', async () => {
+    const { generateLedgerExcel } = await import('@/lib/export/ledger-excel');
+    const { generateDREExcel } = await import('@/lib/export/dre-excel');
+    const { generateDLPAExcel } = await import('@/lib/export/dlpa-export');
+    const emptyBs = { date: '2025-12-31', assets: [], liabilities: [], equity: [], totalAssets: 0, totalLiabilities: 0, totalEquity: 0, difference: 0, suspense: 0, unlinkedBanks: 0 } as unknown as BalanceSheet;
+    const tb = { rows: [], totals: { previous: 0, debits: 0, credits: 0, final: 0 }, balanced: true };
+    const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, openingBalance: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };
+    const statement = buildDRE([], buildITG1000Chart('c1', '2025-01-01T00:00:00.000Z'), range);
+
+    const [bsSheet, tbSheet] = await cells((await generateLedgerExcel({ client: withActivity, range, balanceSheet: emptyBs, trialBalance: tb, signatories })).blob);
+    const [dreSheet] = await cells((await generateDREExcel({ client: withActivity, range, statement, signatories })).blob);
+    const [dlpaSheet] = await cells((await generateDLPAExcel({ client: withActivity, dlpa, signatories })).blob);
+    for (const sheet of [bsSheet, dreSheet, dlpaSheet]) {
+      const at = sheet.findIndex((t) => t.startsWith('Declaração de conformidade'));
+      expect(at).toBeGreaterThan(-1);
+      expect(sheet[at]).toMatch(/NBC TG 1002 - Contabilidade para Microentidades.*Atividade operacional da entidade: Fabricação de produtos de panificação\.$/);
+      expect(at).toBeLessThan(sheet.indexOf('Profissional da Contabilidade'));
+    }
+    expect(tbSheet.some((t) => t.startsWith('Declaração de conformidade'))).toBe(false);
+  });
+});

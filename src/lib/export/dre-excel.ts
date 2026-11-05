@@ -12,6 +12,7 @@ import {
   type DREExportRow,
 } from '@/lib/export/dre-rows';
 import { accountingStandard } from '@/lib/accounting-standard';
+import { renderConformityRow } from '@/lib/export/ledger-excel';
 
 const FONT_NAME = 'Aptos';
 /** Formato contábil: positivos, negativos em vermelho com sinal, e zero. */
@@ -134,7 +135,8 @@ export async function generateDREExcel(ctx: DREExportContext): Promise<{ blob: B
   ws.getCell(r, 1).value = `Emitido em ${formatIssueDate(issuedAt)}.`;
   ws.getCell(r, 1).font = font({ size: 9 });
 
-  r += 4;
+  renderConformityRow(ws, r + 2, ctx.client, 1, 3);
+  r += 6;
   const legal = ctx.signatories?.legalRepresentative;
   const accountant = ctx.signatories?.accountant;
   const signature: [string, string][] = [

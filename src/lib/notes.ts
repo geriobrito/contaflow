@@ -1,4 +1,4 @@
-import type { ClientCompany, ExplanatoryNoteBlock, TaxRegime } from '@/types/firestore';
+import type { ClientCompany, CompanyPorte, ExplanatoryNoteBlock, TaxRegime } from '@/types/firestore';
 import { accountingStandard, porteOf } from '@/lib/accounting-standard';
 import { formatCNPJ, formatCurrency } from '@/lib/utils/formatters';
 
@@ -44,6 +44,11 @@ export interface NoteFigures {
   retained: number;
   /** Exercício já encerrado (ARE lançada). */
   closed: boolean;
+  /**
+   * Movimento em Capital ou Reservas no exercício (sem a abertura). Na pequena empresa, exige a
+   * DMPL no lugar da DLPA (NBC TG 1001).
+   */
+  equityMovement?: boolean;
 }
 
 function equityText(year: string, f: NoteFigures | null | undefined): string {
@@ -90,8 +95,10 @@ export function defaultNotes(
       enabled: true,
       text: `As demonstrações contábeis do exercício findo em ${end} foram elaboradas de acordo com a ${standard}, aprovada pelo Conselho Federal de Contabilidade (CFC), e compreendem ${
         small
-          ? 'o Balanço Patrimonial, a Demonstração do Resultado, a Demonstração de Lucros ou Prejuízos Acumulados e a Demonstração dos Fluxos de Caixa (método direto) [e as demais demonstrações apresentadas]'
-          : 'o Balanço Patrimonial e a Demonstração do Resultado'
+          ? `o Balanço Patrimonial, a Demonstração do Resultado, ${
+              figures?.equityMovement ? 'a Demonstração das Mutações do Patrimônio Líquido' : 'a Demonstração de Lucros ou Prejuízos Acumulados'
+            } e a Demonstração dos Fluxos de Caixa (método direto) [e as demais demonstrações apresentadas]`
+          : 'o Balanço Patrimonial, a Demonstração do Resultado e a Demonstração de Lucros ou Prejuízos Acumulados'
       }, acompanhadas destas notas. Os valores estão expressos em reais (R$).`,
     },
     {
@@ -124,6 +131,30 @@ export function defaultNotes(
       text: 'Não ocorreram, entre a data do balanço e a data de autorização destas demonstrações, eventos que exigissem ajuste ou divulgação [ou descreva-os].',
     },
   ];
+}
+
+/**
+ * Problema de uma nota gravada em relação à norma, ou null. Só a "Base de preparação":
+ * - microentidade: a NBC TG 1002 exige Balanço, DRE e DLPA; textos gravados antes da correção
+ *   (ou editados) podem não citar a DLPA;
+ * - pequena empresa com movimento em Capital ou Reservas: a NBC TG 1001 exige a DMPL.
+ * O texto salvo prevalece sobre o padrão (`mergeNotes`), então a tela avisa e oferece o texto
+ * atualizado.
+ */
+export function noteIssue(
+  note: Pick<NoteBlock, 'id' | 'text' | 'enabled'>,
+  porte: CompanyPorte,
+  figures?: Pick<NoteFigures, 'equityMovement'> | null
+): string | null {
+  if (note.id !== 'basis' || !note.enabled) return null;
+  if (porte === 'MICROENTIDADE') {
+    if (/lucros ou preju[ií]zos acumulados|\bDLPA\b/i.test(note.text)) return null;
+    return 'A NBC TG 1002 exige também a Demonstração de Lucros ou Prejuízos Acumulados (DLPA), e esta nota não a cita.';
+  }
+  if (figures?.equityMovement && !/muta[cç][oõ]es do patrim[oô]nio|\bDMPL\b/i.test(note.text)) {
+    return 'Houve movimento em Capital ou Reservas no exercício: a NBC TG 1001 exige a Demonstração das Mutações do Patrimônio Líquido (DMPL), e esta nota não a cita.';
+  }
+  return null;
 }
 
 /**

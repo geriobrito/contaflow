@@ -15,6 +15,7 @@ export interface ClientFormFields {
   email: string;
   phone: string;
   legalRepresentativeName: string;
+  activity: string;
   regime: TaxRegime;
   porte: CompanyPorte;
 }
@@ -28,6 +29,7 @@ export const FIELD_LABEL: Record<ClientField, string> = {
   email: 'E-mail',
   phone: 'Telefone',
   legalRepresentativeName: 'Representante legal',
+  activity: 'Atividade principal',
   regime: 'Regime',
   porte: 'Porte',
 };
@@ -49,7 +51,7 @@ export type LookupReview =
   /** Atualização pedida pelo botão, e o cadastro já está igual ao da Receita. */
   | { kind: 'unchanged' };
 
-const TEXT_FIELDS = ['name', 'tradeName', 'city', 'email', 'phone', 'legalRepresentativeName'] as const;
+const TEXT_FIELDS = ['name', 'tradeName', 'city', 'email', 'phone', 'legalRepresentativeName', 'activity'] as const;
 
 /** Valores que a Receita informou, por campo do formulário. */
 function receitaFields(data: CNPJLookupResult): Partial<ClientFormFields> {

@@ -11,6 +11,7 @@ import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, 
 import { newClientId } from '@/lib/utils/id';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
 import { useCnpjLookup } from '@/hooks/clientes/useCnpjLookup';
+import { ACTIVITY_MAX } from '@/lib/cnpj';
 import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
 import { PORTES, REGIMES } from '@/components/clientes/options';
 
@@ -31,6 +32,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const [porte, setPorte] = useState<CompanyPorte>(porteOf(client));
   const [email, setEmail] = useState(client?.email ?? '');
   const [phone, setPhone] = useState(client?.phone ?? '');
+  const [activity, setActivity] = useState(client?.activity ?? '');
   const [repName, setRepName] = useState(client?.legalRepresentativeName ?? '');
   const [repCpf, setRepCpf] = useState(client?.legalRepresentativeCpf ? maskCPF(client.legalRepresentativeCpf) : '');
   const [saving, setSaving] = useState(false);
@@ -55,6 +57,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     if (fields.email !== undefined) setEmail(fields.email);
     if (fields.phone !== undefined) setPhone(fields.phone);
     if (fields.legalRepresentativeName !== undefined) setRepName(fields.legalRepresentativeName);
+    if (fields.activity !== undefined) setActivity(fields.activity);
     if (fields.regime) setRegime(fields.regime);
     if (fields.porte) setPorte(fields.porte);
   };
@@ -63,7 +66,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     cnpj: cnpjChars,
     valid: cnpjValid,
     savedCnpj: client ? cleanCNPJ(client.cnpj) : null,
-    getForm: () => ({ name, tradeName, city, email, phone, legalRepresentativeName: repName, regime, porte }),
+    getForm: () => ({ name, tradeName, city, email, phone, legalRepresentativeName: repName, activity, regime, porte }),
     apply: applyFields,
   });
 
@@ -84,6 +87,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       ...fieldsKeptOutsideForm(client),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
+      activity: activity.trim().slice(0, ACTIVITY_MAX) || undefined,
       legalRepresentativeName: repName.trim() || undefined,
       legalRepresentativeCpf: cpfDigits ? maskCPF(cpfDigits) : undefined,
       createdAt: client?.createdAt ?? now,
@@ -232,6 +236,17 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
           </div>
           <p className="text-[11px] text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
         </div>
+
+        <Field label="Atividade principal" hint="Descrição do CNAE ou do objeto social. Sai na declaração de conformidade, no fim das demonstrações; vem da consulta à Receita.">
+          <textarea
+            value={activity}
+            onChange={(e) => setActivity(e.target.value)}
+            maxLength={ACTIVITY_MAX}
+            rows={2}
+            placeholder="ex.: Fabricação de produtos de panificação"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[14px] leading-snug tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+          />
+        </Field>
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="E-mail" error={emailError}>

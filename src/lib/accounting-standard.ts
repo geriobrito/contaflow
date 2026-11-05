@@ -43,3 +43,17 @@ export function accountingStandard(client?: Pick<ClientCompany, 'porte'> | null)
   const { code, scope } = STANDARD[porteOf(client)];
   return `${code} - ${scope}`;
 }
+
+/**
+ * Declaração de conformidade no fim das demonstrações (Balanço, DRE, DLPA e DFC). Obrigatória
+ * nas três normas; na NBC TG 1002, com a descrição da atividade operacional, porque as notas
+ * explicativas são facultativas. Sem a atividade no cadastro, sai só a declaração (a tela avisa).
+ */
+export function conformityStatement(client?: Pick<ClientCompany, 'porte' | 'activity'> | null): string {
+  const { code, scope } = STANDARD[porteOf(client)];
+  const activity = client?.activity?.replace(/\s+/g, ' ').trim().replace(/[.;\s]+$/, '');
+  return [
+    `Declaração de conformidade: estas demonstrações contábeis foram elaboradas de acordo com a ${code} - Contabilidade para ${scope}, aprovada pelo Conselho Federal de Contabilidade (CFC).`,
+    ...(activity ? [`Atividade operacional da entidade: ${activity}.`] : []),
+  ].join(' ');
+}

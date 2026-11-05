@@ -2,6 +2,8 @@ import type { OpeningStatus } from '@/lib/opening';
 import type { ConsistencyCheck } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
+import type { CompanyPorte } from '@/types/firestore';
+import type { EquityMovement } from '@/lib/balance-sheet-checks';
 import { describeTransitory } from '@/lib/opening-transitory';
 
 /**
@@ -65,6 +67,40 @@ export function transitoryCheck(balance: number, date: string, dueYear: string):
     level: date.slice(5) === '12-31' ? 'block' : 'warn',
     title: date === dueEnd ? `${title} em ${formatDateBR(date)}` : `${title}: o exercício de ${dueYear} não foi encerrado`,
     items: [`A partir de 31/12/${dueYear}, o balanço não pode ter saldo nela. Encerre o exercício de ${dueYear}: o encerramento zera a conta contra ${target}.`],
+  };
+}
+
+/**
+ * Atividade da empresa não cadastrada: a declaração de conformidade no fim das demonstrações
+ * sai sem ela (na NBC TG 1002 ela é obrigatória, porque as notas são facultativas).
+ */
+export function activityCheck(client: { activity?: string } | null | undefined): StatementCheck | null {
+  if (!client || client.activity?.trim()) return null;
+  return {
+    id: 'activity',
+    level: 'info',
+    title: 'Atividade principal da empresa não cadastrada',
+    items: ['A declaração de conformidade no fim das demonstrações sai sem a descrição da atividade operacional.'],
+    href: '/clientes',
+    linkLabel: 'Cadastrar em Clientes',
+  };
+}
+
+/**
+ * Pequena empresa com movimento em Capital ou Reservas no exercício: a NBC TG 1001 exige a DMPL
+ * (a DLPA sozinha só basta quando o PL se mexe apenas em Lucros ou Prejuízos Acumulados), e o
+ * sistema não a gera. Microentidade nunca recebe o aviso (DMPL facultativa).
+ */
+export function dmplCheck(porte: CompanyPorte, movements: readonly EquityMovement[], year: string): StatementCheck | null {
+  if (porte !== 'PEQUENA_EMPRESA' || movements.length === 0) return null;
+  return {
+    id: 'dmpl',
+    level: 'warn',
+    title: `Movimento em Capital ou Reservas em ${year}: a NBC TG 1001 exige a DMPL`,
+    items: [
+      ...movements.map((m) => `${m.code} ${m.name}: ${m.value === 0 ? `${m.count} lançamento(s) que se anulam` : `${m.value > 0 ? 'aumento' : 'redução'} de ${formatCurrency(Math.abs(m.value))}`}`),
+      'O sistema gera a DLPA, mas não a Demonstração das Mutações do Patrimônio Líquido: elabore-a à parte e cite-a nas notas explicativas.',
+    ],
   };
 }
 

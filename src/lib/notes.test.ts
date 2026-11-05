@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultNotes, mergeNotes, placeholdersIn } from '@/lib/notes';
+import { defaultNotes, mergeNotes, noteIssue, placeholdersIn } from '@/lib/notes';
 
 const client = { name: 'ALPHA LTDA', cnpj: '11222333000181', regime: 'SIMPLES_NACIONAL' as const };
 
@@ -12,6 +12,22 @@ describe('notas explicativas', () => {
     expect(small.text).toMatch(/NBC TG 1001 - Contabilidade para Pequenas Empresas/);
     expect(small.text).toMatch(/Lucros ou Prejuízos Acumulados/);
     for (const n of defaultNotes(client, '2025')) expect(n.text).not.toMatch(/ITG 1000/);
+  });
+
+  it('microentidade: a base de preparação lista Balanço, DRE e DLPA (NBC TG 1002)', () => {
+    const micro = defaultNotes(client, '2025').find((n) => n.id === 'basis')!;
+    expect(micro.text).toMatch(/compreendem o Balanço Patrimonial, a Demonstração do Resultado e a Demonstração de Lucros ou Prejuízos Acumulados, acompanhadas/);
+    expect(micro.text).not.toMatch(/Fluxos de Caixa/);
+    expect(noteIssue(micro, 'MICROENTIDADE')).toBeNull();
+  });
+
+  it('nota gravada sem a DLPA na microentidade: avisa; pequena empresa e nota fora do PDF, não', () => {
+    const old = { id: 'basis' as const, enabled: true, text: 'As demonstrações (...) compreendem o Balanço Patrimonial e a Demonstração do Resultado, acompanhadas destas notas.' };
+    expect(noteIssue(old, 'MICROENTIDADE')).toMatch(/DLPA/);
+    expect(noteIssue({ ...old, text: `${old.text} Inclui a DLPA.` }, 'MICROENTIDADE')).toBeNull();
+    expect(noteIssue({ ...old, enabled: false }, 'MICROENTIDADE')).toBeNull();
+    expect(noteIssue(old, 'PEQUENA_EMPRESA')).toBeNull();
+    expect(noteIssue({ ...old, id: 'context' as const }, 'MICROENTIDADE')).toBeNull();
   });
 
   it('contexto traz razão social, CNPJ formatado e regime', () => {

@@ -143,3 +143,11 @@ describe('buildDashboard: cadastros', () => {
     expect(d.allClear).toBe(true);
   });
 });
+
+describe('buildDashboard: atividade principal', () => {
+  it('lembra de cadastrar a atividade (declaração de conformidade); com ela, não', () => {
+    expect(buildDashboard(base()).alerts.find((a) => a.id === 'activity')).toMatchObject({ severity: 'low', href: '/clientes' });
+    const client = { ...base().client, activity: 'Fabricação de produtos de panificação' };
+    expect(ids(buildDashboard(base({ client })))).not.toContain('activity');
+  });
+});

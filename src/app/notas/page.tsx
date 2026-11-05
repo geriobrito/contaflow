@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileText, Loader2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileSignature, FileText, Loader2, RotateCcw } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useExplanatoryNotes } from '@/hooks/notas/useExplanatoryNotes';
-import { accountingStandard } from '@/lib/accounting-standard';
-import { placeholdersIn } from '@/lib/notes';
+import { accountingStandard, porteOf } from '@/lib/accounting-standard';
+import { noteIssue, placeholdersIn } from '@/lib/notes';
+import { letterGaps } from '@/lib/responsibility-letter';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
@@ -27,6 +28,7 @@ export default function NotasPage() {
   const [year, setYear] = useState(String(thisYear - 1));
   const { list, figures, org, saveState, remote, error: saveError, update, restore } = useExplanatoryNotes(currentClient ?? null, year);
   const [exporting, setExporting] = useState(false);
+  const [letterBusy, setLetterBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const signature = useSignatureReminder(org);
 
@@ -55,6 +57,26 @@ export default function NotasPage() {
       setExporting(false);
     }
   };
+
+  /** Carta de responsabilidade do exercício: texto-padrão, assinada pelo representante legal. */
+  const exportLetter = async () => {
+    if (!currentClient) return;
+    setLetterBusy(true);
+    setError(null);
+    try {
+      const [{ generateResponsibilityLetterPdf }, { downloadBlob }] = await Promise.all([
+        import('@/lib/export/responsibility-letter-pdf'),
+        import('@/lib/export/dre-rows'),
+      ]);
+      const { blob, fileName } = generateResponsibilityLetterPdf({ client: currentClient, org, year });
+      downloadBlob(blob, fileName);
+    } catch (e) {
+      setError(`Não foi possível gerar a carta (${describeError(e)}).`);
+    } finally {
+      setLetterBusy(false);
+    }
+  };
+  const gaps = currentClient ? letterGaps(currentClient, org) : [];
 
   const saveLabel = saveState === 'saved' ? (remote ? 'Salvo para a empresa (visto em qualquer aparelho do escritório)' : 'Salvo (modo local)') : SAVE_LABEL[saveState];
 
@@ -118,6 +140,7 @@ export default function NotasPage() {
 
           {list.map((n, i) => {
             const order = list.slice(0, i + 1).filter((x) => x.enabled).length;
+            const issue = noteIssue(n, porteOf(currentClient), figures);
             return (
               <section key={n.id} className={`${SURFACE} rounded-[22px] p-5 space-y-3 ${n.enabled ? '' : 'opacity-60'}`} aria-label={n.title}>
                 <div className="flex flex-wrap items-center gap-3">
@@ -135,6 +158,22 @@ export default function NotasPage() {
                     <RotateCcw className="w-3.5 h-3.5" /> Texto-padrão
                   </button>
                 </div>
+                {issue && (
+                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 bg-amber-50 dark:bg-amber-950/30 text-[13px] text-amber-800 dark:text-amber-300">
+                    <span className="flex items-start gap-2 min-w-0">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      {issue}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => restore(n.id)}
+                      title="Substitui o texto desta nota pelo texto-padrão atualizado"
+                      className="shrink-0 font-medium text-accent-ink hover:underline"
+                    >
+                      Usar o texto atualizado
+                    </button>
+                  </div>
+                )}
                 <textarea
                   aria-label={`Texto da nota ${n.title}`}
                   value={n.text}
@@ -145,6 +184,32 @@ export default function NotasPage() {
               </section>
             );
           })}
+
+          <section aria-label="Carta de responsabilidade da administração" className={`${SURFACE} rounded-[22px] p-5 space-y-3`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <h2 className="text-[14px] font-semibold tracking-tight">Carta de responsabilidade da administração</h2>
+                <p className="text-[12px] text-stone-500 max-w-2xl">
+                  O representante legal declara a você que as informações e os documentos do exercício de {year} são fidedignos, que os documentos são idôneos, que
+                  os estoques foram levantados e que não há fraudes nem fatos que afetem a continuidade. Texto-padrão: gere, imprima e colete a assinatura.
+                </p>
+              </div>
+              <button type="button" disabled={letterBusy} onClick={() => void exportLetter()} className={BUTTON.secondary}>
+                {letterBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSignature className="w-4 h-4" strokeWidth={1.75} />}
+                {letterBusy ? 'Gerando…' : 'Gerar carta (PDF)'}
+              </button>
+            </div>
+            {gaps.length > 0 && (
+              <ul className="space-y-1">
+                {gaps.map((g) => (
+                  <li key={g} className="flex items-start gap-2 text-[12px] text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    {g}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </>
       )}
       {signature.toast}

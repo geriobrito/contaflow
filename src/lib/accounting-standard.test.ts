@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CompanyPorte } from '@/types/firestore';
-import { accountingStandard, accountingStandardCode, porteOf } from '@/lib/accounting-standard';
+import { accountingStandard, accountingStandardCode, conformityStatement, porteOf } from '@/lib/accounting-standard';
 
 describe('norma contábil pelo porte', () => {
   it('microentidade: NBC TG 1002; pequena empresa: NBC TG 1001', () => {
@@ -20,5 +20,21 @@ describe('norma contábil pelo porte', () => {
     for (const porte of ['MICROENTIDADE', 'PEQUENA_EMPRESA'] as const) {
       expect(accountingStandard({ porte })).not.toMatch(/ITG/);
     }
+  });
+});
+
+describe('declaração de conformidade', () => {
+  it('cita a norma do porte e a atividade operacional', () => {
+    expect(conformityStatement({ porte: 'MICROENTIDADE', activity: 'Fabricação de produtos de panificação.' })).toBe(
+      'Declaração de conformidade: estas demonstrações contábeis foram elaboradas de acordo com a NBC TG 1002 - Contabilidade para Microentidades, aprovada pelo Conselho Federal de Contabilidade (CFC). Atividade operacional da entidade: Fabricação de produtos de panificação.'
+    );
+    expect(conformityStatement({ porte: 'PEQUENA_EMPRESA', activity: 'Comércio varejista' })).toMatch(/NBC TG 1001 - Contabilidade para Pequenas Empresas.*Atividade operacional da entidade: Comércio varejista\.$/);
+  });
+
+  it('sem atividade no cadastro, sai só a declaração', () => {
+    const text = conformityStatement({ porte: 'MICROENTIDADE', activity: '   ' });
+    expect(text).toMatch(/\(CFC\)\.$/);
+    expect(text).not.toMatch(/Atividade/);
+    expect(conformityStatement(null)).toMatch(/NBC TG 1002/);
   });
 });
