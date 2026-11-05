@@ -132,7 +132,7 @@ test('carteira no painel, busca rápida (Ctrl+K), tema e telas sem erro', async 
   expect(nav.scroll).toBeLessThanOrEqual(nav.client);
 
   // ── Esqueletos: todas as telas abrem sem erro ───────────────────────
-  for (const path of ['/', '/pendencias', '/contas', '/lancamentos', '/dre', '/balanco', '/diario', '/razao', '/notas', '/abertura', '/clientes', '/plano-de-contas', '/regras', '/escritorio', '/auditoria']) {
+  for (const path of ['/', '/pendencias', '/contas', '/lancamentos', '/imobilizado', '/dre', '/balanco', '/diario', '/razao', '/notas', '/abertura', '/clientes', '/plano-de-contas', '/regras', '/escritorio', '/auditoria']) {
     await page.goto(path);
     await expect(page.locator('main').first()).toBeVisible();
   }
