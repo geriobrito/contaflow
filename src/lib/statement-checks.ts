@@ -1,6 +1,8 @@
 import type { OpeningStatus } from '@/lib/opening';
 import type { ConsistencyCheck } from '@/lib/dre/consistency';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
+import { describeTransitory } from '@/lib/opening-transitory';
 
 /**
  * Avisos das demonstrações (DRE, Balanço, Diário) num formato único, para o bloco "Pendências
@@ -42,6 +44,28 @@ export function summarizeChecks(checks: readonly MaybeCheck[]) {
 export function openingCheck(status: OpeningStatus | null): StatementCheck | null {
   if (!status || status.verified) return null;
   return { id: 'opening', level: 'warn', title: 'Abertura não conferida', items: status.problems, href: '/abertura', linkLabel: 'Conferir saldos de abertura' };
+}
+
+/**
+ * Conta transitória 2.3.3.04 Balanço de Abertura com saldo na data do balanço. `dueYear` é o
+ * exercício cujo encerramento deve zerá-la (ver `transitoryReminder`). Em 31/12 desse exercício
+ * ou depois dele, o balanço está errado: impede em 31/12 e pede atenção no resto do ano. Antes,
+ * só lembra. `id` 'transitory' (a tela liga a ação de ir ao encerramento).
+ */
+export function transitoryCheck(balance: number, date: string, dueYear: string): StatementCheck | null {
+  if (Math.abs(balance) < 0.005) return null;
+  const target = balance > 0 ? 'Lucros Acumulados (2.3.3.01)' : 'Prejuízos Acumulados (2.3.3.02)';
+  const title = `Conta transitória ${OPENING_ACCOUNT_CODE} Balanço de Abertura com saldo ${describeTransitory(balance)}`;
+  const dueEnd = `${dueYear}-12-31`;
+  if (date < dueEnd) {
+    return { id: 'transitory', level: 'info', title, items: [`É uma conta temporária: o encerramento do exercício de ${dueYear} a zera contra ${target}.`] };
+  }
+  return {
+    id: 'transitory',
+    level: date.slice(5) === '12-31' ? 'block' : 'warn',
+    title: date === dueEnd ? `${title} em ${formatDateBR(date)}` : `${title}: o exercício de ${dueYear} não foi encerrado`,
+    items: [`A partir de 31/12/${dueYear}, o balanço não pode ter saldo nela. Encerre o exercício de ${dueYear}: o encerramento zera a conta contra ${target}.`],
+  };
 }
 
 /** Competências do período: todas fechadas (definitiva) ou parte aberta (valores podem mudar). */

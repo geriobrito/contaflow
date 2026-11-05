@@ -1,4 +1,4 @@
-import { jsPDF } from 'jspdf';
+import { GState, jsPDF } from 'jspdf';
 import { autoTable } from 'jspdf-autotable';
 import type { ClientCompany } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
@@ -28,6 +28,11 @@ export interface LedgerPdfExportContext {
   /** Antes ou depois do encerramento do exercício, quando ele cai no período do balancete. */
   trialBalanceStage?: string;
   issuedAt?: Date;
+  /**
+   * Rascunho: marca d'água "RASCUNHO" em todas as páginas e o motivo no rodapé da última
+   * (ex.: a conta transitória Balanço de Abertura ainda tem saldo). Sem ele, é o documento oficial.
+   */
+  draft?: string;
   signatories?: {
     legalRepresentative?: { name?: string; cpf?: string };
     accountant?: { name?: string; crc?: string };
@@ -491,6 +496,28 @@ function renderTrialBalancePdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   addPageFooters(doc, 'BALANCETE DE VERIFICAÇÃO', ctx.client.name);
 }
 
+/** "RASCUNHO" diagonal e translúcido em cada página, e o motivo acima do rodapé da última. */
+function addDraftWatermark(doc: jsPDF, reason: string) {
+  const pages = doc.getNumberOfPages();
+  const width = doc.internal.pageSize.getWidth();
+  const height = doc.internal.pageSize.getHeight();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.saveGraphicsState();
+    doc.setGState(new GState({ opacity: 0.12 }));
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(84);
+    doc.setTextColor(180, 30, 30);
+    doc.text('RASCUNHO', width / 2, height / 2, { align: 'center', angle: 45 });
+    doc.restoreGraphicsState();
+  }
+  doc.setPage(pages);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.setTextColor(180, 30, 30);
+  doc.text(`Rascunho, sem valor oficial: ${reason}`, MARGIN_X, height - 15, { maxWidth: width - MARGIN_X * 2 });
+}
+
 /* =========================================================================
    Função principal de geração
    ========================================================================= */
@@ -514,11 +541,12 @@ export function generateLedgerPdf(ctx: LedgerPdfExportContext): { blob: Blob; fi
   } else {
     renderTrialBalancePdf(doc, ctx);
   }
+  if (ctx.draft) addDraftWatermark(doc, ctx.draft);
 
   const clientSlug = sanitizeFileName(ctx.client.tradeName || ctx.client.name);
   const dateSlug = isBalanceSheet ? ctx.balanceSheet.date : `${ctx.range.start}_a_${ctx.range.end}`;
   const prefix = isBalanceSheet ? 'Balanco_Patrimonial' : 'Balancete';
-  const fileName = `${prefix}_${clientSlug || 'Cliente'}_${dateSlug}.pdf`;
+  const fileName = `${ctx.draft ? 'RASCUNHO_' : ''}${prefix}_${clientSlug || 'Cliente'}_${dateSlug}.pdf`;
 
   return {
     blob: doc.output('blob'),

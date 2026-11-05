@@ -9,6 +9,7 @@ import {
   missingOpeningAccounts,
   openingAccounts,
   openingModeOf,
+  openingSaveProblem,
   openingStatus,
   parseMoneyInput,
   parseSignedMoneyInput,
@@ -169,5 +170,24 @@ describe('parseMoneyInput', () => {
     expect(parseSignedMoneyInput('250')).toBe(250);
     expect(parseSignedMoneyInput('-')).toBeNull();
     expect(parseSignedMoneyInput('')).toBe(0);
+  });
+});
+
+describe('openingSaveProblem', () => {
+  const ok = { mode: 'OPENING_BALANCE' as const, date: '2025-01-01', summary: { difference: 500, balanced: false }, invalidAccounts: 0, invalidBanks: 0 };
+
+  it('balanço de abertura salva com diferença (vai para a 2.3.3.04)', () => {
+    expect(openingSaveProblem(ok)).toBeNull();
+  });
+
+  it('implantação com balanço anterior só salva fechada', () => {
+    expect(openingSaveProblem({ ...ok, mode: 'CONTINUITY' })).toMatch(/^Divergência de R\$\s500,00 entre Ativo e Passivo \+ PL\. Concilie os saldos antes de salvar\.$/);
+    expect(openingSaveProblem({ ...ok, mode: 'CONTINUITY', summary: { difference: 0, balanced: true } })).toBeNull();
+  });
+
+  it('data e valores inválidos', () => {
+    expect(openingSaveProblem({ ...ok, date: '2025-02-30' })).toMatch(/data/);
+    expect(openingSaveProblem({ ...ok, invalidAccounts: 1 })).toMatch(/contas/);
+    expect(openingSaveProblem({ ...ok, invalidBanks: 2 })).toMatch(/banco/);
   });
 });

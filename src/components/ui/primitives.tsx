@@ -192,9 +192,11 @@ interface SheetProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   side?: 'center' | 'right';
+  /** Largura do modal central: padrão (460px) ou largo (920px, para tabelas de conferência). */
+  size?: 'md' | 'lg';
 }
 
-export function Sheet({ title, subtitle, onClose, children, footer, side = 'center' }: SheetProps) {
+export function Sheet({ title, subtitle, onClose, children, footer, side = 'center', size = 'md' }: SheetProps) {
   const titleId = useId();
 
   useEffect(() => {
@@ -223,7 +225,7 @@ export function Sheet({ title, subtitle, onClose, children, footer, side = 'cent
         className={`relative w-full flex flex-col overflow-hidden bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/6 dark:border-white/8 shadow-[0_24px_64px_rgba(0,0,0,0.18)] ${
           right
             ? 'max-w-[420px] max-h-[calc(100vh-1.5rem)] rounded-[24px] animate-panel-in'
-            : 'max-w-[460px] max-h-[calc(100vh-2rem)] my-auto rounded-[28px] animate-sheet-in'
+            : `${size === 'lg' ? 'max-w-[920px]' : 'max-w-[460px]'} max-h-[calc(100vh-2rem)] my-auto rounded-[28px] animate-sheet-in`
         }`}
       >
         <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">

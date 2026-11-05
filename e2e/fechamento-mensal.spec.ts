@@ -283,18 +283,32 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByRole('button', { name: 'Fechar competência' })).toBeVisible();
 
     await page.goto('/abertura');
-    await expect(page.getByRole('radio', { name: /Balanço de abertura \(sem contabilidade anterior/ })).toBeChecked();
+    // Sem contabilidade anterior: balanço de abertura, com a contrapartida automática na 2.3.3.04.
+    await expect(page.getByRole('radiogroup', { name: 'A empresa já tinha contabilidade?' }).getByRole('radio', { name: 'Não' })).toBeChecked();
     // Movimento em 2025: a data sugerida nunca é do ano corrente.
     await expect(page.getByLabel(/Data do balanço de abertura/)).toHaveValue(/^2025-/);
     // Banco 1.500 e capital 1.000: os 500 de diferença vão, credores, para a 2.3.3.04.
-    await page.locator('input[id^="bank-"]').first().fill('1.500,00');
+    // Só as contas com saldo aparecem; as outras entram pelo "+ adicionar conta" da seção.
+    await expect(page.getByLabel(/^Capital Subscrito$/)).toHaveCount(0);
+    await page.locator('input[id^="bank-"]').first().fill('1500');
+    await page.getByRole('button', { name: /Adicionar conta em PATRIMÔNIO LÍQUIDO/i }).click();
+    await page.getByRole('combobox', { name: 'Código ou nome' }).fill('capital subscrito');
+    await page.getByRole('option', { name: /Capital Subscrito/ }).click();
+    // A conta adicionada recebe o foco; o banco, ao perder o foco, fica formatado.
+    await expect(page.getByLabel(/^Capital Subscrito$/)).toBeFocused();
+    await expect(page.locator('input[id^="bank-"]').first()).toHaveValue('1.500,00');
     await page.getByLabel(/^Capital Subscrito$/).fill('1.000,00');
     await expect(page.getByText(/Contrapartida automática na conta 2\.3\.3\.04 Balanço de Abertura: R\$\s500,00 \(Credor\)/)).toBeVisible();
+    // Sair com alterações não salvas pede confirmação.
+    await page.getByRole('link', { name: 'Painel' }).first().click();
+    await expect(page.getByRole('alertdialog', { name: 'Sair sem salvar?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Continuar editando' }).click();
+    await expect(page).toHaveURL(/\/abertura$/);
     await page.getByRole('button', { name: 'Salvar' }).click();
     await expect(page.getByRole('status').filter({ hasText: /Abertura salva às/ })).toBeVisible();
     await page.reload();
-    await expect(page.getByLabel(/^Capital Subscrito$/)).toHaveValue('1000,00');
-    await expect(page.locator('input[id^="bank-"]').first()).toHaveValue('1500,00');
+    await expect(page.getByLabel(/^Capital Subscrito$/)).toHaveValue('1.000,00');
+    await expect(page.locator('input[id^="bank-"]').first()).toHaveValue('1.500,00');
 
     // Fecha novamente março/2025 e confirma que a tela de abertura volta a congelar.
     await page.goto('/?mes=2025-03');

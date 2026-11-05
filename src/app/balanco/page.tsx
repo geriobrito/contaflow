@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { EQUITY_GROUP_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine } from '@/lib/ledger';
+import { EQUITY_GROUP_CODE, OPENING_ACCOUNT_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine } from '@/lib/ledger';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { CAPITAL_GROUP_CODE, invertedBalances, missingShareCapital } from '@/lib/balance-sheet-checks';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -17,13 +17,14 @@ import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { useBalanceSheetData } from '@/hooks/balanco/useBalanceSheetData';
-import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, Sheet, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { balanceSheetChecks, openingCheck } from '@/lib/statement-checks';
+import { balanceSheetChecks, openingCheck, transitoryCheck } from '@/lib/statement-checks';
+import { closedYearsOf, describeTransitory, transitoryBalanceAt, transitoryReminder } from '@/lib/opening-transitory';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
@@ -105,6 +106,23 @@ export default function BalancoPage() {
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
   const inverted = useMemo(() => invertedBalances(bs), [bs]);
   const missingCapital = useMemo(() => missingShareCapital(bs), [bs]);
+  // Conta transitória 2.3.3.04 com saldo: lembra de zerar; em 31/12, impede o balanço de encerramento.
+  const transitory = useMemo(() => transitoryBalanceAt(postings, accounts, range.end), [postings, accounts, range.end]);
+  const transitoryDue = useMemo(
+    () => transitoryReminder({ balance: transitory, implantation: static_?.openings?.date ?? null, closedYears: closedYearsOf(journalEntries), today: range.end }),
+    [transitory, static_?.openings?.date, journalEntries, range.end]
+  );
+  const transitoryIssue = transitoryDue ? transitoryCheck(transitory, range.end, transitoryDue.year) : null;
+  /** Balanço de 31/12 com a conta transitória: o PDF oficial é recusado (só rascunho). */
+  const [pdfBlocked, setPdfBlocked] = useState(false);
+  /** "Ir para o encerramento": rola até o painel quando ele aparecer (o período pode ter de recarregar). */
+  const scrollToClosing = useRef(false);
+  const goToClosing = () => {
+    // Encerramento do exercício que deve zerar a conta: dezembro dele, na aba DLPA.
+    if (transitoryDue) jumpTo(`${transitoryDue.year}-12-31`);
+    setView('dlpa');
+    scrollToClosing.current = true;
+  };
   // Balancete antes (padrão) ou depois do encerramento do exercício que cai no período: antes, as
   // contas de resultado aparecem com os saldos do ano; depois, zeradas contra a ARE.
   const [ignoreClosing, setIgnoreClosing] = useState(true);
@@ -157,6 +175,13 @@ export default function BalancoPage() {
     implantation: opening?.date ?? null,
     onChanged: reload,
   });
+  useEffect(() => {
+    if (!scrollToClosing.current || view !== 'dlpa' || !yearClosing.state) return;
+    const panel = document.getElementById('encerramento');
+    if (!panel) return;
+    scrollToClosing.current = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [view, yearClosing.state]);
   const dlpa = useMemo(() => buildDLPA(postings, accounts, journalEntries, range.end), [postings, accounts, journalEntries, range.end]);
   // DFC do período escolhido: os lançamentos do exercício já vêm um a um; o consolidado só compõe o caixa inicial.
   const [cashFlowDetail, setCashFlowDetail] = useState(false);
@@ -171,7 +196,7 @@ export default function BalancoPage() {
   const signatories = () => statementSignatories(currentClient, static_?.org);
   const signature = useSignatureReminder(static_?.org);
 
-  const exportPdf = async () => {
+  const exportPdf = async (draft?: string) => {
     if (!currentClient) return;
     setGeneratingPdf(true);
     try {
@@ -202,9 +227,10 @@ export default function BalancoPage() {
         trialBalanceStage: tbStage,
         issuedAt: new Date(),
         signatories: signatories(),
+        ...(draft ? { draft } : {}),
       });
       downloadBlob(file.blob, file.fileName);
-      signature.remind();
+      if (!draft) signature.remind();
     } catch (e) {
       setError(`Não foi possível gerar o PDF (${e instanceof Error ? e.message : 'erro'}).`);
     } finally {
@@ -278,7 +304,7 @@ export default function BalancoPage() {
             <button
               type="button"
               disabled={!hasData || generatingPdf || exporting}
-              onClick={() => void exportPdf()}
+              onClick={() => (view === 'bs' && transitoryIssue?.level === 'block' ? setPdfBlocked(true) : void exportPdf())}
               className={BUTTON.primary}
               title={`Gerar PDF oficial: ${TITLE[view]}`}
             >
@@ -343,8 +369,15 @@ export default function BalancoPage() {
 
       {/* Abertura, pendências e conferências do balanço, num bloco só. */}
       <StatementChecks
+        actions={{
+          transitory: {
+            label: 'Ir para o encerramento',
+            onClick: goToClosing,
+          },
+        }}
         checks={[
           openingCheck(opening),
+          !loading && hasData && view !== 'dfc' && transitoryIssue,
           ...(!loading && hasData
             ? balanceSheetChecks({
                 trialBalance: view === 'tb',
@@ -502,6 +535,44 @@ export default function BalancoPage() {
         org={static_?.org}
       />
       {signature.toast}
+
+      {pdfBlocked && (
+        <Sheet
+          title="Balanço oficial bloqueado"
+          subtitle={`Posição em ${formatDateBR(range.end)}`}
+          onClose={() => setPdfBlocked(false)}
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfBlocked(false);
+                  void exportPdf(`a conta transitória ${OPENING_ACCOUNT_CODE} Balanço de Abertura tem saldo ${describeTransitory(transitory)}; encerre o exercício de ${transitoryDue?.year} para zerá-la.`);
+                }}
+                className={BUTTON.secondary}
+              >
+                Gerar rascunho
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfBlocked(false);
+                  goToClosing();
+                }}
+                className={BUTTON.primary}
+              >
+                Ir para o encerramento
+              </button>
+            </div>
+          }
+        >
+          <p className="pb-3 text-[14px] leading-relaxed text-stone-600 dark:text-stone-300">
+            A conta transitória {OPENING_ACCOUNT_CODE} Balanço de Abertura tem saldo {describeTransitory(transitory)} e não pode aparecer no balanço patrimonial
+            oficial. Encerre o exercício de {transitoryDue?.year}: o encerramento a zera contra {transitory > 0 ? 'Lucros Acumulados' : 'Prejuízos Acumulados'}. Até lá, dá para
+            gerar um rascunho com marca d&apos;água.
+          </p>
+        </Sheet>
+      )}
     </main>
   );
 }

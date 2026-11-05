@@ -52,6 +52,22 @@ const mockSignatories = {
 };
 
 describe('generateLedgerPdf', () => {
+  it("rascunho: marca d'água, motivo no rodapé e nome de arquivo marcado", async () => {
+    const res = generateLedgerPdf({
+      client: mockClient,
+      range: mockRange,
+      balanceSheet: mockBalanceSheet,
+      trialBalance: mockTrialBalance,
+      documentType: 'bs',
+      signatories: mockSignatories,
+      draft: 'conta transitória com saldo',
+    });
+    expect(res.fileName).toMatch(/^RASCUNHO_Balanco_Patrimonial_/);
+    const text = await res.blob.text();
+    expect(text).toContain('RASCUNHO');
+    expect(text).toContain('/ca 0.12');
+  });
+
   it('gera PDF oficial do Balanço Patrimonial em formato A4 Retrato', () => {
     const res = generateLedgerPdf({
       client: mockClient,

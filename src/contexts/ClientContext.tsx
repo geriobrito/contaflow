@@ -1,12 +1,18 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientCompany } from '@/types/firestore';
 import { deleteClient, getClients } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { reportError } from '@/lib/monitoring';
 
 const STORAGE_KEY = 'contaflow_active_client';
+
+/**
+ * Guarda da troca de empresa, registrada por uma tela com alterações não salvas: devolve true
+ * para segurar a troca e chama `proceed` depois, se o usuário confirmar.
+ */
+export type ClientSwitchGuard = (next: ClientCompany, proceed: () => void) => boolean;
 
 export interface ClientContextType {
   /** Toda a carteira, inclusive empresas com exclusão incompleta (`deletingAt`), que só a tela de Clientes mostra. */
@@ -17,6 +23,8 @@ export interface ClientContextType {
   /** Falha ao carregar a carteira (ex.: regras do Firestore recusaram, rede). */
   loadError: string | null;
   selectClient: (client: ClientCompany) => void;
+  /** Registra (ou remove, com null) a guarda da troca de empresa. Só uma por vez. */
+  setSwitchGuard: (guard: ClientSwitchGuard | null) => void;
   refreshClients: () => Promise<ClientCompany[]>;
   /** Troca em memória o cadastro de uma empresa já gravada (sem reler a carteira inteira). */
   replaceClient: (client: ClientCompany) => void;
@@ -84,7 +92,7 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isAuthenticated, orgId, refreshClients]);
 
-  const selectClient = useCallback((client: ClientCompany) => {
+  const applySelect = useCallback((client: ClientCompany) => {
     setClients((prev) => (prev.some((c) => c.id === client.id) ? prev : [client, ...prev]));
     setCurrentId(client.id);
     try {
@@ -93,6 +101,20 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       /* armazenamento indisponível */
     }
   }, []);
+
+  const guardRef = useRef<ClientSwitchGuard | null>(null);
+  const setSwitchGuard = useCallback((guard: ClientSwitchGuard | null) => {
+    guardRef.current = guard;
+  }, []);
+
+  const selectClient = useCallback(
+    (client: ClientCompany) => {
+      const guard = guardRef.current;
+      if (guard && guard(client, () => applySelect(client))) return;
+      applySelect(client);
+    },
+    [applySelect]
+  );
 
   const replaceClient = useCallback((client: ClientCompany) => {
     setClients((prev) => prev.map((c) => (c.id === client.id ? client : c)));
@@ -131,11 +153,12 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
       isLoading,
       loadError,
       selectClient,
+      setSwitchGuard,
       refreshClients,
       replaceClient,
       removeClient,
     }),
-    [clients, currentId, isLoading, loadError, selectClient, refreshClients, replaceClient, removeClient]
+    [clients, currentId, isLoading, loadError, selectClient, setSwitchGuard, refreshClients, replaceClient, removeClient]
   );
 
   return <ClientContext.Provider value={value}>{children}</ClientContext.Provider>;

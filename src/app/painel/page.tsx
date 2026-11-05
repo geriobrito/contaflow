@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, CheckCircle2, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, JournalEntry, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { isFirebaseConfigured } from '@/lib/firebase-config';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
@@ -52,6 +52,8 @@ interface Loaded {
   requests: ClientRequest[];
   org: OrgSettings | null;
   openings: OpeningBalances | null;
+  /** Só no balanço de abertura com contrapartida (lembrete de zerar a 2.3.3.04). */
+  journalEntries?: JournalEntry[];
   today: string;
   nowMs: number;
 }
@@ -153,7 +155,11 @@ export default function PainelPage() {
     ])
       .then(async ([accounts, batches, banks, locks, requests, org, openings, openQueries]) => {
         // Meses fechados entram pelas contagens consolidadas; só o período aberto é lido lançamento a lançamento.
-        const ledger = await loadLedgerWindow({ clientId, accounts, banks, locks });
+        // Lançamentos manuais só no balanço de abertura com contrapartida: lembrete de zerar a 2.3.3.04.
+        const [ledger, journalEntries] = await Promise.all([
+          loadLedgerWindow({ clientId, accounts, banks, locks }),
+          openings?.mode === 'OPENING_BALANCE' ? repo.listJournalEntries(clientId) : Promise.resolve(undefined),
+        ]);
         if (!active) return;
         setData({
           id: clientId,
@@ -167,6 +173,7 @@ export default function PainelPage() {
           requests,
           org,
           openings,
+          journalEntries,
           today: new Date().toISOString().slice(0, 10),
           nowMs: Date.now(),
         });

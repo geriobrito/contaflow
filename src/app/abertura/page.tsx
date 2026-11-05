@@ -1,264 +1,173 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, Lock, Scale, Wallet } from 'lucide-react';
-import type { BankAccount, ChartAccount, LockState, OpeningBalances, OpeningMode, PeriodLock } from '@/types/firestore';
-import { getRepository } from '@/lib/services/data-service';
+import { CheckCircle2, ClipboardPaste, Lock, Plus } from 'lucide-react';
+import type { BankAccount, ChartAccount, OpeningMode } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
-import { frozenMessage, isOpeningFrozen } from '@/lib/lock-guard';
-import { DEFAULT_OPENING_MEMO, OPENING_ACCOUNT_CODE, accountKind, isContraAccount, openingSign, type AccountKind } from '@/lib/ledger';
-import {
-  OPENING_MODE_LABEL,
-  defaultOpeningDate,
-  describePlug,
-  missingOpeningAccounts,
-  openingAccounts,
-  openingModeOf,
-  openingPlug,
-  parseMoneyInput,
-  parseSignedMoneyInput,
-  summarizeOpening,
-} from '@/lib/opening';
-import { isISODate } from '@/lib/periods';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+import { useOpeningBalances } from '@/hooks/abertura/useOpeningBalances';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { accountMatches } from '@/lib/account-search';
+import { normalizeText } from '@/lib/utils/search';
+import { frozenMessage } from '@/lib/lock-guard';
+import { openingAccounts } from '@/lib/opening';
+import { buildOpeningSheet } from '@/lib/opening-view';
 import { round2 } from '@/lib/money';
+import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { OpeningColumn } from '@/components/abertura/OpeningColumn';
+import { OpeningFooter } from '@/components/abertura/OpeningFooter';
+import { PasteTrialBalanceSheet } from '@/components/abertura/PasteTrialBalanceSheet';
+import type { ImportResult } from '@/lib/opening-import';
 
-const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
-const toInput = (n: number | undefined) => (n ? n.toFixed(2).replace('.', ',') : '');
-
-const SECTIONS: { kind: AccountKind; title: string; hint: string }[] = [
-  { kind: 'ASSET', title: 'Ativo', hint: 'Clientes a receber, estoque, imobilizado… Retificadoras ((-) Depreciação Acumulada) entram a crédito e reduzem o ativo.' },
-  { kind: 'LIABILITY', title: 'Passivo', hint: 'Fornecedores, impostos e DAS em aberto, obrigações trabalhistas, empréstimos.' },
-  { kind: 'EQUITY', title: 'Patrimônio líquido', hint: 'Capital subscrito, reservas e lucros ou prejuízos acumulados. (-) Capital a Integralizar entra a débito.' },
+/** "A empresa já tinha contabilidade?": Não = balanço de abertura; Sim = implantação com balanço anterior. */
+const MODE_OPTIONS: readonly { value: OpeningMode; label: string }[] = [
+  { value: 'OPENING_BALANCE', label: 'Não' },
+  { value: 'CONTINUITY', label: 'Sim' },
 ];
 
 const MODE_HINT: Record<OpeningMode, string> = {
-  OPENING_BALANCE:
-    'A empresa começa a escrituração sem balanço anterior. Informe os saldos conhecidos; a diferença entre débitos e créditos vai, como contrapartida, para a conta 2.3.3.04 Balanço de Abertura.',
-  CONTINUITY: 'A empresa já tinha contabilidade e traz um balanço fechado (ativo = passivo + PL). Débitos e créditos precisam fechar pelos saldos informados.',
+  OPENING_BALANCE: 'Informe os saldos conhecidos. A diferença vai sozinha para a conta transitória Balanço de Abertura, no PL, que o encerramento do exercício zera contra Lucros ou Prejuízos Acumulados.',
+  CONTINUITY: 'Traga os saldos do balanço anterior, já fechado: o ativo precisa ser igual a passivo + PL.',
 };
 
-interface Loaded {
-  id: string;
-  accounts: ChartAccount[];
-  banks: BankAccount[];
-  saved: OpeningBalances | null;
-  lockState: LockState | null;
-  locks: PeriodLock[];
-  firstStatement: string | null;
+/** Contas mais comuns numa abertura de MEI ou Simples, sugeridas na primeira vez (códigos do modelo do CFC). */
+const COMMON_CODES = ['1.1.1.01', '1.1.2.01', '1.1.3.01', '2.1.2.01', '2.1.5.01', '2.3.1.01'];
+
+/** Campos de valor da tela, na ordem em que aparecem (Ativo e depois Passivo e PL). */
+const FIELD_SELECTOR = 'input[data-opening-field]';
+
+/** Enter vai para o próximo campo de valor; Shift+Enter, para o anterior. */
+function moveOnEnter(e: React.KeyboardEvent<HTMLElement>) {
+  if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+  const target = e.target as HTMLElement;
+  if (!target.matches(FIELD_SELECTOR)) return;
+  e.preventDefault();
+  const fields = Array.from(e.currentTarget.querySelectorAll<HTMLInputElement>(FIELD_SELECTOR));
+  const next = fields[fields.indexOf(target as HTMLInputElement) + (e.shiftKey ? -1 : 1)];
+  if (next) {
+    next.focus();
+    next.select();
+  } else {
+    // Último campo: sai dele para o valor ser formatado.
+    target.blur();
+  }
 }
 
 export default function AberturaPage() {
   const { currentClient } = useClient();
-  const clientId = currentClient?.id;
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [date, setDate] = useState('');
-  const [mode, setMode] = useState<OpeningMode>('OPENING_BALANCE');
-  const [memo, setMemo] = useState(DEFAULT_OPENING_MEMO);
-  const [values, setValues] = useState<Record<string, string>>({});
-  const [bankValues, setBankValues] = useState<Record<string, string>>({});
+  const o = useOpeningBalances(currentClient?.id);
+  const { ready, accounts, banks, frozen, parsed, bankDrafts, plug } = o;
   const [search, setSearch] = useState('');
-  const [onlyFilled, setOnlyFilled] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [plugId, setPlugId] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [imported, setImported] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  /** Conta recém-adicionada: o campo dela recebe o foco quando aparecer. */
+  const focusId = useRef<string | null>(null);
+  const leave = useUnsavedChangesGuard(o.unsaved && !frozen);
 
-  const hydrate = useCallback((data: Loaded) => {
-    const { saved, banks } = data;
-    setLoaded(data);
-    setDate(saved?.date ?? defaultOpeningDate(banks, data.firstStatement));
-    // Documento anterior ao tipo de implantação: implantação com balanço anterior, como era.
-    setMode(saved ? openingModeOf(saved) : 'OPENING_BALANCE');
-    setMemo(saved?.memo ?? DEFAULT_OPENING_MEMO);
-    setValues(Object.fromEntries((saved?.entries ?? []).map((e) => [e.accountId, toInput(e.amount)])));
-    setBankValues(Object.fromEntries(banks.map((b) => [b.id, toInput(b.openingBalance)])));
-    setError(null);
-  }, []);
+  const term = search.trim();
+  const searching = Boolean(term);
+  const { values } = o;
+
+  const sheet = useMemo(() => {
+    const bankText = normalizeText(term);
+    return buildOpeningSheet({
+      accounts,
+      banks: bankDrafts.next,
+      amounts: parsed.amounts,
+      plug,
+      // Busca acha qualquer conta, preenchida ou não; sem busca, só as com saldo, as em edição e as adicionadas.
+      // Travada, a tela só consulta: mostra as contas com saldo.
+      showAccount: (a: ChartAccount, amount: number) => {
+        if (searching && !accountMatches(a, term)) return false;
+        if (frozen) return amount > 0;
+        return searching || showAll || amount > 0 || parsed.invalid.has(a.id) || a.id in values;
+      },
+      showBank: (b: BankAccount) => !searching || normalizeText(`${b.ledgerAccountCode ?? ''} ${b.nickname} ${b.ledgerAccountName ?? ''}`).includes(bankText),
+    });
+  }, [accounts, bankDrafts.next, parsed.amounts, parsed.invalid, plug, term, searching, frozen, showAll, values]);
+
+  const editable = useMemo(() => openingAccounts(accounts, banks), [accounts, banks]);
+  const hasAccounts = editable.length > 0;
+
+  // Primeira abertura do cliente: atalhos para as contas mais comuns que ainda não estão na lista.
+  const common = useMemo(() => {
+    if (!ready || ready.saved || frozen) return [];
+    return COMMON_CODES.map((code) => editable.find((a) => a.code === code)).filter((a): a is ChartAccount => Boolean(a) && !(a!.id in values));
+  }, [ready, frozen, editable, values]);
+
+  /** Põe a conta na lista (abrindo a seção, se recolhida) e leva o foco ao campo dela. */
+  const applyImport = (result: ImportResult) => {
+    o.applyImport(result);
+    setPasting(false);
+    // Contas preenchidas podem estar em seções recolhidas: abre todas para conferir.
+    setCollapsed(new Set());
+    const banksFilled = result.bankValues.size;
+    setImported(
+      `Balancete aplicado: ${result.values.size} conta(s)${banksFilled ? ` e ${banksFilled} banco(s)` : ''} preenchido(s). Confira os valores e salve.`
+    );
+  };
+
+  const addAccount = (accountId: string) => {
+    const section = [...sheet.assets, ...sheet.claims].find((s) => s.addable.some((a) => a.id === accountId));
+    if (section) setCollapsed((prev) => (prev.has(section.key) ? new Set([...prev].filter((k) => k !== section.key)) : prev));
+    o.pinAccount(accountId);
+    focusId.current = accountId;
+  };
 
   useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    const repo = getRepository();
-    Promise.all([
-      repo.listAccounts(clientId),
-      repo.listBankAccounts(clientId),
-      repo.getOpeningBalances(clientId),
-      repo.listImportBatches(clientId),
-      repo.getLockState(clientId),
-      repo.listPeriodLocks(clientId),
-    ])
-      .then(([accounts, banks, saved, batches, lockState, locks]) => {
-        if (!active) return;
-        const firstStatement = batches.map((b) => b.startDate).filter((d): d is string => Boolean(d)).sort()[0] ?? null;
-        hydrate({ id: clientId, accounts, banks, saved, lockState, locks, firstStatement });
-      })
-      .catch((e: unknown) => active && setError(describe(e)));
-    return () => {
-      active = false;
-    };
-  }, [clientId, hydrate]);
+    const id = focusId.current;
+    if (!id) return;
+    const field = document.getElementById(`op-${id}`);
+    if (!(field instanceof HTMLInputElement)) return;
+    focusId.current = null;
+    field.focus();
+    field.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [sheet, collapsed]);
 
-  const ready = loaded?.id === clientId ? loaded : null;
-  const accounts = useMemo(() => ready?.accounts ?? [], [ready]);
-  const banks = useMemo(() => ready?.banks ?? [], [ready]);
-  const rows = useMemo(() => openingAccounts(accounts, banks), [accounts, banks]);
-  const frozen = ready ? isOpeningFrozen(ready.saved, ready.lockState) : false;
-  const lockedMonths = useMemo(() => (ready?.locks ?? []).map((l) => l.month).sort(), [ready]);
-  const firstLockedMonth = lockedMonths[0];
-
-  const parsed = useMemo(() => {
-    const entries: { accountId: string; amount: number }[] = [];
-    const invalid = new Set<string>();
-    for (const [accountId, text] of Object.entries(values)) {
-      const n = parseMoneyInput(text);
-      if (n === null) invalid.add(accountId);
-      else if (n > 0) entries.push({ accountId, amount: n });
-    }
-    return { entries, invalid };
-  }, [values]);
-
-  /** Bancos como ficam ao salvar: saldo digitado e a data da abertura. Campo vazio num banco sem saldo não mexe nele. */
-  const bankDrafts = useMemo(() => {
-    const invalid = new Set<string>();
-    const next = banks.map((b): BankAccount => {
-      const text = bankValues[b.id] ?? '';
-      if (!text.trim() && b.openingBalance === undefined) return b;
-      const n = parseSignedMoneyInput(text);
-      if (n === null) {
-        invalid.add(b.id);
-        return b;
-      }
-      return { ...b, openingBalance: n, openingDate: date };
+  const toggle = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
     });
-    const changed = next.filter((b, i) => b.openingBalance !== banks[i].openingBalance || b.openingDate !== banks[i].openingDate);
-    return { next, changed, invalid };
-  }, [banks, bankValues, date]);
 
-  const summary = useMemo(() => summarizeOpening(parsed.entries, accounts, bankDrafts.next), [parsed.entries, accounts, bankDrafts.next]);
-  const plug = mode === 'OPENING_BALANCE' ? openingPlug(summary) : null;
-
-  const dirty = useMemo(() => {
-    const saved = ready?.saved;
-    if (bankDrafts.changed.length > 0) return true;
-    if (!saved) return parsed.entries.length > 0 || bankDrafts.next.some((b) => b.openingBalance !== undefined);
-    if (saved.date !== date || openingModeOf(saved) !== mode || (saved.memo ?? DEFAULT_OPENING_MEMO) !== memo) return true;
-    const a = new Map(saved.entries.map((e) => [e.accountId, e.amount] as const));
-    return a.size !== parsed.entries.length || parsed.entries.some((e) => a.get(e.accountId) !== e.amount);
-  }, [ready, parsed.entries, bankDrafts, date, mode, memo]);
-
-  const term = search.trim().toLowerCase();
-  const visible = (kind: AccountKind) =>
-    rows.filter(
-      (a) =>
-        accountKind(a) === kind &&
-        (!term || `${a.code} ${a.name}`.toLowerCase().includes(term)) &&
-        (!onlyFilled || (parseMoneyInput(values[a.id] ?? '') ?? 1) > 0)
-    );
-
-  const equityRows = rows.filter((a) => accountKind(a) === 'EQUITY');
-  const suggestedPlug = (summary.difference >= 0 ? equityRows.find((a) => a.code === '2.3.3.01') : equityRows.find((a) => a.code === '2.3.3.02')) ?? equityRows[0];
-  const plugAccount = equityRows.find((a) => a.id === plugId) ?? suggestedPlug;
-
-  /** Implantação com balanço anterior: lança a diferença na conta de PL escolhida, para a abertura fechar. */
-  const plugInto = () => {
-    if (!plugAccount || summary.balanced) return;
-    const current = parseMoneyInput(values[plugAccount.id] ?? '') ?? 0;
-    // Retificadora de PL (ex.: prejuízos acumulados) reduz o PL: o sinal do ajuste se inverte.
-    const next = round2(current + (isContraAccount(plugAccount) ? -1 : 1) * summary.difference);
-    if (next < 0) {
-      setError(`Não dá para ajustar ${plugAccount.code} ${plugAccount.name}: o valor ficaria negativo. Escolha outra conta de patrimônio líquido.`);
-      return;
-    }
-    setError(null);
-    setValues((v) => ({ ...v, [plugAccount.id]: toInput(next) }));
+  const column = {
+    frozen,
+    date: o.date,
+    values: o.values,
+    invalid: parsed.invalid,
+    onValue: o.setValue,
+    onValueBlur: o.normalizeValue,
+    bankValues: o.bankValues,
+    bankInvalid: bankDrafts.invalid,
+    onBankValue: o.setBankValue,
+    onBankValueBlur: o.normalizeBankValue,
+    collapsed,
+    onToggle: toggle,
+    searching,
+    onAdd: addAccount,
   };
 
-  const save = async () => {
-    if (!clientId || !ready || frozen) return;
-    if (!isISODate(date)) return setError('Informe a data do balanço de abertura.');
-    if (parsed.invalid.size) return setError('Há valores inválidos nas contas (use números positivos, como 1.234,56).');
-    if (bankDrafts.invalid.size) return setError('Há saldos de banco inválidos (use números como 1.234,56 ou -250,00 para saldo devedor).');
-    setSaving(true);
-    setError(null);
-    try {
-      const actor = getActor();
-      const now = new Date().toISOString();
-      const byId = new Map(accounts.map((a) => [a.id, a] as const));
-      // Balanço de abertura: a 2.3.3.04 (e os grupos dela) entram no plano se faltarem.
-      const created = mode === 'OPENING_BALANCE' ? missingOpeningAccounts(clientId, accounts, now) : [];
-      const balances: OpeningBalances = {
-        id: clientId,
-        clientId,
-        date,
-        mode,
-        memo: memo.trim() || DEFAULT_OPENING_MEMO,
-        entries: parsed.entries.map((e) => ({ ...e, accountCode: byId.get(e.accountId)?.code, accountName: byId.get(e.accountId)?.name })),
-        updatedAt: now,
-        updatedByUid: actor.uid,
-      };
-      const changedBanks = bankDrafts.changed.map((b) => ({ ...b, updatedAt: now }));
-      const tail = plug
-        ? ` · ${OPENING_ACCOUNT_CODE} ${plug.nature === 'C' ? 'credora' : 'devedora'} ${formatCurrency(plug.amount)}`
-        : summary.balanced
-          ? ''
-          : ` · a detalhar ${formatCurrency(summary.difference)}`;
-      await getRepository().saveOpeningBalances(
-        balances,
-        {
-          id: newAuditId(),
-          clientId,
-          action: 'OPENING_SAVE',
-          actorUid: actor.uid,
-          ...(actor.email ? { actorEmail: actor.email } : {}),
-          at: now,
-          note: `${mode === 'OPENING_BALANCE' ? 'Balanço de abertura' : 'Implantação de saldos'} em ${date} · ${parsed.entries.length} conta(s), ${changedBanks.length} banco(s) · ativo ${formatCurrency(summary.assets + summary.banks)} · passivo + PL ${formatCurrency(summary.liabilities + summary.equity)}${tail}`,
-        },
-        { bankAccounts: changedBanks, accounts: created }
-      );
-      const seq = ready.lockState?.seq;
-      const stampedOpening = seq !== undefined ? { ...balances, lockSeq: seq } : balances;
-      const stampedCreated = seq !== undefined ? created.map((a) => (a.clientId === 'global' ? a : { ...a, lockSeq: seq })) : created;
-      const savedBanks = new Map(
-        changedBanks.map((b) => [b.id, seq !== undefined ? { ...b, lockSeq: seq } : b] as const)
-      );
-      setLoaded({
-        ...ready,
-        saved: stampedOpening,
-        accounts: [...accounts, ...stampedCreated],
-        banks: banks.map((b) => savedBanks.get(b.id) ?? b),
-      });
-      setSavedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
-    } catch (e) {
-      setSavedAt(null);
-      setError(`Não foi possível salvar; nada foi gravado (${describe(e)}).`);
-    } finally {
-      setSaving(false);
-    }
-  };
+  const firstLockedMonth = o.lockedMonths[0];
 
   return (
     <main className={PAGE}>
       <PageHeader
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Balanço de abertura"
-        description="Implantação dos saldos no início da escrituração: bancos, clientes, fornecedores, impostos, imobilizado e capital. Com eles o balanço patrimonial sai completo, não só com os bancos."
-        actions={
-          <button type="button" disabled={!ready || frozen || saving || !dirty} onClick={() => void save()} className={BUTTON.accent}>
-            {saving ? 'Salvando…' : 'Salvar'}
-          </button>
-        }
+        description="Saldo de cada conta no dia em que a contabilidade começa no sistema. Com ele, o balanço patrimonial sai completo, não só com os bancos."
       />
+
       {ready && frozen && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-4 py-3 text-[13px] text-amber-900 dark:text-amber-200">
           <span className="flex items-start gap-2.5 min-w-0">
             <Lock className="w-4 h-4 mt-0.5 shrink-0 text-amber-700 dark:text-amber-400" />
-            <span>{frozenMessage('opening_balances', { lockState: ready.lockState, lockedMonths, firstTime: !ready.saved })}</span>
+            <span>{frozenMessage('opening_balances', { lockState: ready.lockState, lockedMonths: o.lockedMonths, firstTime: !ready.saved })}</span>
           </span>
           {firstLockedMonth && (
             <Link href={`/?mes=${firstLockedMonth}`} className="shrink-0 font-medium text-accent-ink hover:underline">
@@ -267,226 +176,125 @@ export default function AberturaPage() {
           )}
         </div>
       )}
-      {error && (
-        <p role="alert" className="flex items-start gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 text-[13px] text-rose-700">
-          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-          {error}
-        </p>
-      )}
-      {savedAt && !dirty && !error && (
-        <p role="status" className="flex items-center gap-2 text-[13px] text-emerald-700">
-          <CheckCircle2 className="w-4 h-4" /> Abertura salva às {savedAt}: saldos, bancos e auditoria gravados juntos.
-        </p>
-      )}
 
       {!ready ? (
-        <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-          <TableSkeleton rows={8} label="Carregando saldos de abertura…" />
-        </section>
-      ) : rows.length === 0 ? (
+        <>
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <TableSkeleton rows={8} label="Carregando saldos de abertura…" />
+          </section>
+          {o.error && (
+            <p role="alert" className="rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 text-[13px] text-rose-700">
+              {o.error}
+            </p>
+          )}
+        </>
+      ) : !hasAccounts ? (
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Plano de contas vazio" description="Aplique o modelo de plano de contas (CFC) em Plano de Contas para informar os saldos de abertura." />
         </section>
       ) : (
         <>
-          {/* Tipo de implantação */}
-          <fieldset disabled={frozen} className={`${SURFACE} rounded-[22px] p-5 space-y-3 disabled:opacity-70`}>
-            <legend className="sr-only">Tipo de implantação</legend>
-            <p className="text-[14px] font-semibold tracking-tight">Tipo de implantação</p>
-            <div className="grid gap-3 grid-cols-2">
-              {(['OPENING_BALANCE', 'CONTINUITY'] as const).map((m) => (
-                <label
-                  key={m}
-                  className={`flex gap-3 rounded-2xl border px-4 py-3 ${frozen ? 'cursor-not-allowed' : 'cursor-pointer'} transition-colors ${
-                    mode === m ? 'border-accent bg-accent/4' : 'border-black/8 dark:border-white/10 hover:bg-black/2'
-                  }`}
-                >
-                  <input disabled={frozen} type="radio" name="opening-mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1" />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-medium text-stone-900 dark:text-stone-100">{OPENING_MODE_LABEL[m]}</span>
-                    <span className="block text-[12px] text-stone-500">{MODE_HINT[m]}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* Data, resumo e fechamento */}
-          <section className={`${SURFACE} rounded-[22px] p-5 grid gap-5 grid-cols-[240px_1fr] items-start`}>
-            <div className="space-y-4">
-              <Field label="Data do balanço de abertura" hint="Posição no início do dia. Os lançamentos do extrato e os manuais contam a partir dela, inclusive.">
-                <input disabled={frozen} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
-              </Field>
-              {mode === 'OPENING_BALANCE' && (
-                <Field label="Histórico no Diário">
-                  <input disabled={frozen} value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={200} className={INPUT} />
+          {/* Data, tipo de implantação e histórico */}
+          <section className={`${SURFACE} rounded-[22px] px-5 py-4 space-y-3`}>
+            <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
+              <div className="w-48">
+                <Field label="Data do balanço de abertura" hint="Posição no início do dia.">
+                  <input disabled={frozen} type="date" value={o.date} onChange={(e) => o.setDate(e.target.value)} className={`${INPUT} h-10 font-mono tabular-nums`} />
                 </Field>
-              )}
-            </div>
-            <div className="space-y-3">
-              <dl className="grid grid-cols-4 gap-3 text-[13px]">
-                {[
-                  ['Ativo (contas)', summary.assets],
-                  ['Bancos', summary.banks],
-                  ['Passivo', summary.liabilities],
-                  ['Patrimônio líquido', summary.equity],
-                ].map(([label, v]) => (
-                  <div key={label as string} className="rounded-2xl bg-black/3 dark:bg-white/4 px-3.5 py-2.5">
-                    <dt className="text-[11px] text-stone-500">{label}</dt>
-                    <dd className="font-mono tabular-nums text-[15px] font-medium">{formatCurrency(v as number)}</dd>
-                  </div>
-                ))}
-              </dl>
-              {mode === 'OPENING_BALANCE' ? (
-                <p className="flex items-start gap-2 text-[13px] text-emerald-700">
-                  <Scale className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span>
-                    {plug ? (
-                      <>
-                        <b className="font-medium">{describePlug(plug)}</b>. Débitos = créditos: a abertura fecha.
-                      </>
-                    ) : (
-                      'Débitos = créditos sem contrapartida: ativo = passivo + patrimônio líquido.'
-                    )}
-                  </span>
-                </p>
-              ) : summary.balanced ? (
-                <p className="flex items-center gap-2 text-[13px] text-emerald-700">
-                  <CheckCircle2 className="w-4 h-4" /> A abertura fecha: ativo = passivo + patrimônio líquido.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  <p className="flex items-start gap-2 text-[13px] text-amber-700">
-                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>
-                      Falta detalhar <b className="font-mono tabular-nums">{formatCurrency(Math.abs(summary.difference))}</b>{' '}
-                      {summary.difference > 0 ? '(ativo maior que passivo + PL)' : '(passivo + PL maior que o ativo)'}. O balanço anterior precisa fechar; enquanto
-                      isso, o balanço mostra a diferença em “Saldos de abertura (a detalhar)”.
-                    </span>
-                  </p>
-                  {!frozen && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        aria-label="Conta de patrimônio líquido para a diferença"
-                        value={plugAccount?.id ?? ''}
-                        onChange={(e) => setPlugId(e.target.value)}
-                        className={`${INPUT} h-9 w-auto max-w-full text-[13px]`}
-                      >
-                        {equityRows.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.code} · {a.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" onClick={plugInto} className={`${BUTTON.secondary} h-9`}>
-                        Lançar a diferença nesta conta
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Bancos: saldo inicial editável, gravado na data da abertura */}
-          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="px-5 py-3.5 border-b border-black/4 dark:border-white/6">
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-stone-400" />
-                <h2 className="text-[14px] font-semibold tracking-tight">Bancos</h2>
               </div>
-              <p className="text-[12px] text-stone-500">
-                Saldo de cada conta no início do dia {isISODate(date) ? formatDateBR(date) : 'da abertura'}. Ao salvar, a data do saldo inicial de cada banco passa a ser a
-                da abertura. Saldo devedor (cheque especial): use o sinal de menos.
-              </p>
+              <div className="flex-1 min-w-[280px] space-y-1.5">
+                <span className="block text-[12px] font-medium text-stone-500 px-0.5">A empresa já tinha contabilidade?</span>
+                <SegmentedControl ariaLabel="A empresa já tinha contabilidade?" value={o.mode} onChange={o.setMode} options={MODE_OPTIONS} disabled={frozen} />
+                <span className="block text-[12px] text-stone-400 px-0.5">{MODE_HINT[o.mode]}</span>
+              </div>
             </div>
-            {banks.length === 0 ? (
-              <p className="px-5 py-5 text-[12px] text-stone-500">Nenhuma conta bancária cadastrada. Importe um extrato OFX para cadastrá-la.</p>
-            ) : (
-              <ul className="divide-y divide-black/4 dark:divide-white/5">
-                {banks.map((b) => {
-                  const bad = bankDrafts.invalid.has(b.id);
-                  const moves = b.openingDate && isISODate(date) && b.openingDate !== date && b.openingBalance !== undefined;
-                  return (
-                    <li key={b.id} className="flex items-center gap-3 px-5 py-2">
-                      <label htmlFor={`bank-${b.id}`} className="flex-1 min-w-0 text-[13px] text-stone-800 dark:text-stone-200">
-                        <span className="block truncate">{b.nickname}</span>
-                        <span className="block text-[11px] text-stone-400">
-                          {b.ledgerAccountCode ? `${b.ledgerAccountCode} ${b.ledgerAccountName ?? ''}` : 'sem conta contábil vinculada'}
-                          {moves && <span className="text-amber-700"> · saldo hoje em {formatDateBR(b.openingDate)}, passa a {formatDateBR(date)} ao salvar</span>}
-                        </span>
-                      </label>
-                      <div className="w-40 shrink-0">
-                        <input
-                          id={`bank-${b.id}`}
-                          disabled={frozen}
-                          value={bankValues[b.id] ?? ''}
-                          onChange={(e) => setBankValues((v) => ({ ...v, [b.id]: e.target.value }))}
-                          placeholder={b.openingBalance === undefined ? 'não informado' : '0,00'}
-                          aria-invalid={bad}
-                          className={`${INPUT} h-9 text-right font-mono tabular-nums text-[13px] ${bad ? 'border-rose-300' : ''}`}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+            {o.mode === 'OPENING_BALANCE' && (
+              <details className="group">
+                <summary className="cursor-pointer select-none text-[12px] font-medium text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Mais opções</summary>
+                <div className="pt-3 max-w-xl">
+                  <Field label="Histórico no Diário">
+                    <input disabled={frozen} value={o.memo} onChange={(e) => o.setMemo(e.target.value)} maxLength={200} className={`${INPUT} h-10`} />
+                  </Field>
+                </div>
+              </details>
             )}
           </section>
 
-          <div className="flex items-center gap-3">
-            <SearchField value={search} onChange={setSearch} placeholder="Buscar conta por código ou nome" className="flex-1" />
-            <label className="flex items-center gap-2 text-[13px] text-stone-600">
-              <input type="checkbox" checked={onlyFilled} onChange={(e) => setOnlyFilled(e.target.checked)} /> Só as preenchidas
-            </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <SearchField value={search} onChange={setSearch} placeholder="Buscar conta ou banco por código ou nome" className="flex-1 min-w-[260px]" />
+            {!frozen && (
+              <label className="flex items-center gap-2 text-[13px] text-stone-600 dark:text-stone-300">
+                <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Mostrar todas as contas
+              </label>
+            )}
+            {!frozen && (
+              <button type="button" onClick={() => setPasting(true)} className={BUTTON.secondary}>
+                <ClipboardPaste className="w-4 h-4" strokeWidth={1.75} />
+                Colar balancete
+              </button>
+            )}
           </div>
 
-          {SECTIONS.map(({ kind, title, hint }) => {
-            const list = visible(kind);
-            return (
-              <section key={kind} className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-                <div className="px-5 py-3.5 border-b border-black/4 dark:border-white/6">
-                  <h2 className="text-[14px] font-semibold tracking-tight">{title}</h2>
-                  <p className="text-[12px] text-stone-500">{hint}</p>
-                </div>
-                {list.length === 0 ? (
-                  <p className="px-5 py-5 text-[13px] text-stone-400">Nenhuma conta {term || onlyFilled ? 'neste filtro' : 'neste grupo'}.</p>
-                ) : (
-                  <ul className="divide-y divide-black/4 dark:divide-white/5">
-                    {list.map((a) => {
-                      const bad = parsed.invalid.has(a.id);
-                      const contra = isContraAccount(a);
-                      return (
-                        <li key={a.id} className="flex items-center gap-3 px-5 py-2">
-                          <span className="w-28 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
-                          <label htmlFor={`op-${a.id}`} className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200" title={a.name}>
-                            {a.name}
-                            {contra && (
-                              <span className="ml-2 rounded-full bg-black/5 dark:bg-white/8 px-2 py-0.5 text-[11px] text-stone-500">
-                                retificadora · a {openingSign(a) > 0 ? 'débito' : 'crédito'}
-                              </span>
-                            )}
-                          </label>
-                          <div className="w-40 shrink-0">
-                            <input
-                              id={`op-${a.id}`}
-                              disabled={frozen}
-                              value={values[a.id] ?? ''}
-                              onChange={(e) => setValues((v) => ({ ...v, [a.id]: e.target.value }))}
-                              placeholder="0,00"
-                              aria-invalid={bad}
-                              className={`${INPUT} h-9 text-right font-mono tabular-nums text-[13px] ${bad ? 'border-rose-300' : ''}`}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
-            );
-          })}
+          {imported && (
+            <p role="status" className="flex items-center gap-2 -mt-4 text-[13px] text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="w-4 h-4 shrink-0" /> {imported}
+            </p>
+          )}
+
+          {common.length > 0 && !searching && !showAll && (
+            <div className="flex flex-wrap items-center gap-2 -mt-4">
+              <span className="text-[12px] text-stone-500">Contas mais comuns:</span>
+              {common.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => addAccount(a.id)}
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full border border-black/8 dark:border-white/10 bg-white/70 dark:bg-stone-800/60 text-[12px] text-stone-700 dark:text-stone-200 hover:bg-white dark:hover:bg-stone-800 transition-colors"
+                >
+                  <Plus aria-hidden className="w-3 h-3 text-stone-400" />
+                  {a.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-2 items-start" onKeyDown={moveOnEnter}>
+            <OpeningColumn title="Ativo" total={sheet.totals.assets} sections={sheet.assets} {...column} />
+            <OpeningColumn title="Passivo e patrimônio líquido" total={round2(sheet.totals.liabilities + sheet.totals.equity)} sections={sheet.claims} {...column} />
+          </div>
+
+          <OpeningFooter
+            totals={sheet.totals}
+            mode={o.mode}
+            plug={plug}
+            frozen={frozen}
+            saving={o.saving}
+            dirty={o.dirty}
+            unsaved={o.unsaved}
+            divergent={o.divergent}
+            savedAt={o.savedAt}
+            error={o.error}
+            onSave={() => void o.save()}
+            equityAccounts={o.equityAccounts}
+            plugAccount={o.plugAccount}
+            onPlugAccount={o.setPlugId}
+            onPlugInto={o.plugInto}
+          />
         </>
+      )}
+
+      {pasting && ready && <PasteTrialBalanceSheet accounts={accounts} banks={banks} onApply={applyImport} onClose={() => setPasting(false)} />}
+
+      {leave.pending && (
+        <ConfirmDialog
+          title="Sair sem salvar?"
+          description="Os saldos de abertura alterados nesta tela ainda não foram salvos e vão ser descartados."
+          confirmLabel="Sair sem salvar"
+          cancelLabel="Continuar editando"
+          destructive
+          onConfirm={leave.confirm}
+          onCancel={leave.cancel}
+        />
       )}
     </main>
   );

@@ -20,7 +20,7 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
   const numbers = state.entries.map((e) => `#${e.entryNumber}`).join(', ');
 
   return (
-    <section className={`${SURFACE} rounded-[22px] p-5 space-y-3 print:hidden`} aria-label="Encerramento do exercício">
+    <section id="encerramento" className={`${SURFACE} rounded-[22px] p-5 space-y-3 print:hidden`} aria-label="Encerramento do exercício">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold tracking-tight">Encerramento do exercício de {year}</h2>
@@ -94,7 +94,10 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
           description={
             <>
               Entram no Diário, em 31/12/{year}, os lançamentos que zeram as contas de resultado contra a ARE e levam o {describeResult(state.netResult)} para o
-              patrimônio líquido. A DRE de {year} não muda. Cada lançamento fica registrado na auditoria.
+              patrimônio líquido.
+              {state.openingTransfer !== 0 &&
+                ` A conta transitória 2.3.3.04 Balanço de Abertura é zerada: o saldo ${state.openingTransfer > 0 ? 'credor' : 'devedor'} de ${formatCurrency(Math.abs(state.openingTransfer))} vai para ${state.openingTransfer > 0 ? 'Lucros Acumulados' : 'Prejuízos Acumulados'}.`}{' '}
+              A DRE de {year} não muda. Cada lançamento fica registrado na auditoria.
             </>
           }
           confirmLabel="Encerrar exercício"

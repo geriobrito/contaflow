@@ -5,6 +5,7 @@ import type {
   ClientCompany,
   ClientRequest,
   ImportBatch,
+  JournalEntry,
   MonthCounts,
   OpeningBalances,
   OrgSettings,
@@ -13,6 +14,7 @@ import type {
 import { addDays, findCoverageGaps, type CoverageGap } from '@/lib/statement';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 import { openingStatus } from '@/lib/opening';
+import { closedYearsOf, describeTransitory, transitoryBalance, transitoryReminder } from '@/lib/opening-transitory';
 import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
 import { answerAt } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -39,6 +41,11 @@ export interface DashboardInput {
   requests: readonly ClientRequest[];
   org: OrgSettings | null;
   openings: OpeningBalances | null;
+  /**
+   * Lançamentos manuais (com os de encerramento): para o lembrete de zerar a conta transitória
+   * 2.3.3.04. Sem eles, o lembrete não aparece.
+   */
+  journalEntries?: readonly JournalEntry[];
   /** Hoje (YYYY-MM-DD) e em ms (validade dos links). */
   today: string;
   nowMs: number;
@@ -295,6 +302,34 @@ export function buildDashboard(input: DashboardInput): Dashboard {
             : `Faltam ${formatCurrency(Math.abs(opening.pending))} para ativo = passivo + patrimônio líquido.`,
         href: '/abertura',
       });
+    }
+    // Conta transitória do balanço de abertura: zerada no encerramento do exercício.
+    if (input.journalEntries) {
+      const reminder = transitoryReminder({
+        balance: transitoryBalance(openings, banks, accounts, input.journalEntries),
+        implantation: opening.date,
+        closedYears: closedYearsOf(input.journalEntries),
+        today,
+      });
+      if (reminder) {
+        add(
+          reminder.overdue
+            ? {
+                id: 'transitory',
+                severity: 'high',
+                title: `Balanço de Abertura (${OPENING_ACCOUNT_CODE}) ainda com saldo: encerre o exercício de ${reminder.year}`,
+                detail: `Saldo ${describeTransitory(reminder.balance)} na conta transitória. O encerramento do exercício a zera contra Lucros ou Prejuízos Acumulados.`,
+                href: '/balanco',
+              }
+            : {
+                id: 'transitory',
+                severity: 'low',
+                title: `Zerar o Balanço de Abertura no encerramento de ${reminder.year}`,
+                detail: `Saldo ${describeTransitory(reminder.balance)} na conta transitória ${OPENING_ACCOUNT_CODE}. O encerramento do exercício o leva a Lucros ou Prejuízos Acumulados.`,
+                href: '/balanco',
+              }
+        );
+      }
     }
     if (opening.mismatchedBanks.length > 0) {
       add({

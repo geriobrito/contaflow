@@ -3,6 +3,7 @@ import { OPENING_ACCOUNT_CODE, VIRTUAL, accountKind, isContraAccount, openingCon
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import { round2 } from '@/lib/money';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { isISODate } from '@/lib/periods';
 
 /**
  * Balanço de abertura e implantação de saldos: quais contas aceitam saldo, se a abertura fecha
@@ -79,6 +80,32 @@ export function summarizeOpening(entries: readonly Pick<OpeningEntry, 'accountId
     balanced: Math.abs(difference) < 0.005,
   };
 }
+
+/**
+ * Motivo de recusar a gravação da abertura, ou null. A tela desabilita o Salvar pelas mesmas
+ * regras, e a gravação confere de novo antes de enviar.
+ * - Balanço de abertura (sem contabilidade anterior): a diferença vai para a 2.3.3.04.
+ * - Implantação com balanço anterior: o balanço já vinha fechado, então ativo = passivo + PL é
+ *   obrigatório; com divergência, não salva (nada de conta transitória nem de "a detalhar").
+ */
+export function openingSaveProblem(args: {
+  mode: OpeningMode;
+  date: string;
+  summary: Pick<OpeningSummary, 'difference' | 'balanced'>;
+  invalidAccounts: number;
+  invalidBanks: number;
+}): string | null {
+  const { mode, date, summary } = args;
+  if (!isISODate(date)) return 'Informe a data do balanço de abertura.';
+  if (args.invalidAccounts > 0) return 'Há valores inválidos nas contas (use números positivos, como 1.234,56).';
+  if (args.invalidBanks > 0) return 'Há saldos de banco inválidos (use números como 1.234,56 ou -250,00 para saldo devedor).';
+  if (mode === 'CONTINUITY' && !summary.balanced) return continuityDivergence(summary.difference);
+  return null;
+}
+
+/** Aviso da implantação com balanço anterior que não fecha. */
+export const continuityDivergence = (difference: number): string =>
+  `Divergência de ${formatCurrency(Math.abs(difference))} entre Ativo e Passivo + PL. Concilie os saldos antes de salvar.`;
 
 /** Sinal de uma entrada (para testes e telas): +1 débito, -1 crédito. */
 export { openingSign };

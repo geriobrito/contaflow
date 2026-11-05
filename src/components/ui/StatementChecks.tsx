@@ -11,7 +11,13 @@ const ICON: Record<Exclude<CheckLevel, 'ok'>, React.ReactNode> = {
   info: <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />,
 };
 
-function CheckItem({ check }: { check: StatementCheck }) {
+/** Ação na própria tela para um aviso (ex.: ir ao encerramento do exercício), pelo `id` do aviso. */
+export interface CheckAction {
+  label: string;
+  onClick: () => void;
+}
+
+function CheckItem({ check, action }: { check: StatementCheck; action?: CheckAction }) {
   return (
     <li className="flex items-start gap-2.5 px-4 py-2.5">
       {ICON[check.level as Exclude<CheckLevel, 'ok'>]}
@@ -25,7 +31,11 @@ function CheckItem({ check }: { check: StatementCheck }) {
           </ul>
         )}
       </div>
-      {check.href && check.linkLabel && (
+      {action ? (
+        <button type="button" onClick={action.onClick} className="shrink-0 self-center text-[12px] font-medium text-accent-ink hover:underline">
+          {action.label}
+        </button>
+      ) : check.href && check.linkLabel && (
         <Link href={check.href} className="shrink-0 self-center text-[12px] font-medium text-accent-ink hover:underline">
           {check.linkLabel}
         </Link>
@@ -38,7 +48,15 @@ function CheckItem({ check }: { check: StatementCheck }) {
  * Bloco único de avisos das demonstrações: recolhido numa linha ("Pendências desta demonstração
  * (3)"), aberto sozinho quando algo impede a emissão; o que confere fica numa linha verde curta.
  */
-export function StatementChecks({ checks, ariaLabel = 'Pendências desta demonstração' }: { checks: readonly (StatementCheck | null | undefined | false)[]; ariaLabel?: string }) {
+export function StatementChecks({
+  checks,
+  ariaLabel = 'Pendências desta demonstração',
+  actions,
+}: {
+  checks: readonly (StatementCheck | null | undefined | false)[];
+  ariaLabel?: string;
+  actions?: Readonly<Record<string, CheckAction>>;
+}) {
   const { issues, infos, oks, pending, blocking } = summarizeChecks(checks);
   // null: segue o automático (aberto se algo impede); depois do clique, vale a escolha.
   const [chosen, setChosen] = useState<boolean | null>(null);
@@ -74,7 +92,7 @@ export function StatementChecks({ checks, ariaLabel = 'Pendências desta demonst
           {open && (
             <ul className="border-t border-black/5 dark:border-white/6 divide-y divide-black/4 dark:divide-white/5 bg-white/50 dark:bg-stone-900/30 animate-fade-in">
               {listed.map((c) => (
-                <CheckItem key={c.id} check={c} />
+                <CheckItem key={c.id} check={c} action={actions?.[c.id]} />
               ))}
             </ul>
           )}
