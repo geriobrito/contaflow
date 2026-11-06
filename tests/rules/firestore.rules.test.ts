@@ -1642,6 +1642,9 @@ describe('notas fiscais (resumos dos XML)', () => {
     await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), nfse));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ibs: '1,50' }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, serviceCode: 'x'.repeat(11) }));
+    // Retenções da NFS-e: mapa com até 8 tributos.
+    await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, retentions: { irrf: 11.25, pis: 4.87, cofins: 22.5, csll: 7.5 } }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, retentions: 46.12 }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY.slice(0, 43)}A1234`), { ...data, key: `${KEY.slice(0, 43)}A1234` })); // 48: nem NF-e nem NFS-e
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { key: '35250311444777000161550010000000021123456780' }));
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { clientId: 'cB' }));
@@ -1871,6 +1874,62 @@ describe('contratos de empréstimo, financiamento e parcelamento', () => {
     await repo.deleteClient('cA', { uid: 'alice' });
     await env.withSecurityRulesDisabled(async (ctx) => {
       expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'financing_contracts/cA'))).exists()).toBe(false);
+    });
+  });
+});
+
+describe('aplicações financeiras', () => {
+  const investment = { id: 'inv1', description: 'Caixinha', ledgerAccountId: 'a', ledgerAccountCode: '1.1.1.03', startMonth: '2025-12', balances: { '2025-12': 3088.42 }, createdAt: 'T', updatedAt: 'T' };
+  const register = (accounts: unknown[] = [investment]) => ({ id: 'cA', clientId: 'cA', accounts, updatedAt: 'T' });
+  const audit = (id: string) => ({ id, clientId: 'cA', action: 'INVESTMENT_SAVE', actorUid: 'alice', at: 'T' }) as const;
+
+  it('grava as aplicações com a auditoria, e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getInvestments('cA')).toBeNull();
+    await repo.saveInvestments(register() as never, audit('au-inv1'));
+    expect((await repo.getInvestments('cA'))?.accounts).toHaveLength(1);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['INVESTMENT_SAVE']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'investment_accounts/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'investment_accounts/cA'), { ...register(), orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'investment_accounts/outro'), { ...register(), orgId: ORG_A }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'investment_accounts/cA'), { accounts: 'x' }));
+  });
+
+  it('excluir a empresa remove as aplicações', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveInvestments(register() as never, audit('au-inv2'));
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'investment_accounts/cA'))).exists()).toBe(false);
+    });
+  });
+});
+
+describe('controle de estoque', () => {
+  const control = { id: 'cA', clientId: 'cA', stockAccountId: 's', stockAccountCode: '1.1.3.01', costAccountId: 'c', costAccountCode: '3.2.1.01', startMonth: '2026-07', frequency: 'MONTHLY', counts: { '2026-07': 511749.82 }, updatedAt: 'T' };
+  const audit = (id: string) => ({ id, clientId: 'cA', action: 'STOCK_SAVE', actorUid: 'alice', at: 'T' }) as const;
+
+  it('grava o controle com a auditoria, valida a frequência e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getStockControl('cA')).toBeNull();
+    await repo.saveStockControl(control as never, audit('au-st1'));
+    expect((await repo.getStockControl('cA'))?.counts).toEqual({ '2026-07': 511749.82 });
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['STOCK_SAVE']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'stock_controls/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'stock_controls/cA'), { ...control, orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'stock_controls/outro'), { ...control, orgId: ORG_A }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'stock_controls/cA'), { frequency: 'ANUAL' }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'stock_controls/cA'), { counts: 'x' }));
+  });
+
+  it('excluir a empresa remove o controle de estoque', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveStockControl(control as never, audit('au-st2'));
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'stock_controls/cA'))).exists()).toBe(false);
     });
   });
 });

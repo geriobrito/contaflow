@@ -1,4 +1,4 @@
-import type { BankTransaction, ChartAccount, TransactionSplit } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, InvoiceRetentions, TransactionSplit } from '@/types/firestore';
 import { generateId } from '@/lib/utils/id';
 import { fromCents, toCents } from '@/lib/money';
 
@@ -120,13 +120,30 @@ export interface RetentionPreset {
 
 /**
  * Retenções comuns entre o valor bruto e o que caiu no banco. No recebimento, o que o tomador
- * reteve é imposto a recuperar (IRRF, PIS/COFINS/CSLL); o ISS retido abate o imposto do mês já
+ * reteve é imposto a recuperar: o IRRF (compensa no IRPJ) e a CSRF, PIS/COFINS/CSLL (compensa
+ * nessas contribuições), em contas separadas; o ISS retido abate o imposto do mês já
  * provisionado (nunca uma segunda dedução da receita); a taxa da maquininha é despesa. No
- * pagamento, o que a empresa reteve do fornecedor é imposto a recolher.
+ * pagamento, o que a empresa reteve do fornecedor é imposto a recolher. Plano sem as contas
+ * separadas usa 1.1.2.05 Tributos a Recuperar.
  */
 export const RECEIPT_RETENTIONS: readonly RetentionPreset[] = [
-  { key: 'irrf', label: 'IRRF retido pelo tomador', options: [{ code: '1.1.2.05', hint: 'Tributos a recuperar (compensa no IRPJ)' }] },
-  { key: 'csrf', label: 'PIS/COFINS/CSLL retidos', options: [{ code: '1.1.2.05', hint: 'Tributos a recuperar (4,65%)' }] },
+  {
+    key: 'irrf',
+    label: 'IRRF retido pelo tomador',
+    options: [
+      { code: '1.1.2.09', hint: 'IRRF a recuperar (compensa no IRPJ)' },
+      { code: '1.1.2.05', hint: 'Tributos a recuperar' },
+    ],
+  },
+  {
+    key: 'csrf',
+    label: 'PIS/COFINS/CSLL retidos',
+    options: [
+      { code: '1.1.2.10', hint: 'PIS/COFINS/CSLL retidos a recuperar (4,65%)' },
+      { code: '1.1.2.05', hint: 'Tributos a recuperar' },
+    ],
+  },
+  { key: 'inss', label: 'INSS retido (11%)', options: [{ code: '1.1.2.05', hint: 'Tributos a recuperar (compensa no INSS da folha)' }] },
   {
     key: 'iss',
     label: 'ISS retido pelo tomador',
@@ -141,6 +158,7 @@ export const RECEIPT_RETENTIONS: readonly RetentionPreset[] = [
 
 export const PAYMENT_RETENTIONS: readonly RetentionPreset[] = [
   { key: 'irrf', label: 'IRRF retido do fornecedor', options: [{ code: '2.1.5.04', hint: 'IRRF a recolher' }] },
+  { key: 'csrf', label: 'PIS/COFINS/CSLL retidos do fornecedor', options: [{ code: '2.1.5.08', hint: 'PIS/COFINS/CSLL retidos a recolher (4,65%)' }] },
   { key: 'iss', label: 'ISS retido do fornecedor', options: [{ code: '2.1.5.03', hint: 'ISS a recolher' }] },
   { key: 'inss', label: 'INSS retido (11%)', options: [{ code: '2.1.1.03', hint: 'INSS a recolher' }] },
 ];
@@ -187,4 +205,58 @@ export function grossNetDrafts(args: {
     { id: newSplitId(), accountId: args.grossAccountId, memo: 'Valor bruto', cents: gross },
     ...kept.map((r) => ({ id: newSplitId(), accountId: r.accountId, memo: r.memo, cents: r.cents, reduces: true })),
   ];
+}
+
+/** Retenções da nota agrupadas pelas linhas do bruto × líquido (PIS, COFINS e CSLL juntos: CSRF). */
+export function retentionCentsByPreset(r: InvoiceRetentions): Record<'irrf' | 'csrf' | 'inss' | 'iss', number> {
+  const c = (v?: number) => toCents(v ?? 0);
+  return { irrf: c(r.irrf), csrf: c(r.pis) + c(r.cofins) + c(r.csll), inss: c(r.inss), iss: c(r.iss) };
+}
+
+export interface InvoiceRetentionSplit {
+  /** Rateio pronto, ou null quando falta no plano a única conta de alguma retenção. */
+  drafts: SplitDraft[] | null;
+  /** Contas preferidas fora do plano (a retenção usou a alternativa, ou ficou sem conta). */
+  missingCodes: string[];
+  /** Diferença que a nota não discrimina: fica para uma linha manual. */
+  otherCents: number;
+}
+
+/**
+ * Bruto × líquido montado com as retenções da NFS-e casada: o valor bruto na conta escolhida e
+ * cada retenção na conta dela, como redutora. Recebimento (empresa prestadora): IRRF e CSRF a
+ * recuperar; pagamento (tomadora): a recolher. A conta é a preferida do modelo, ou a
+ * alternativa que o plano tiver.
+ */
+export function invoiceRetentionSplit(args: {
+  transactionAmount: number;
+  grossAccountId: string;
+  retentions: InvoiceRetentions;
+  accounts: readonly ChartAccount[];
+  invoiceLabel: string;
+}): InvoiceRetentionSplit {
+  const byCode = new Map(args.accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => [a.code, a] as const));
+  const values = retentionCentsByPreset(args.retentions);
+  const missingCodes: string[] = [];
+  const lines: { accountId: string; memo: string; cents: number }[] = [];
+  let blocked = false;
+  for (const preset of retentionPresetsFor(args.transactionAmount)) {
+    const cents = values[preset.key as keyof typeof values] ?? 0;
+    if (cents <= 0) continue;
+    const option = preset.options.find((o) => byCode.has(o.code));
+    if (!option || option.code !== preset.options[0].code) missingCodes.push(preset.options[0].code);
+    if (!option) {
+      blocked = true;
+      continue;
+    }
+    lines.push({ accountId: byCode.get(option.code)!.id, memo: `${preset.label} - ${args.invoiceLabel}`, cents });
+  }
+  // Retenção da nota sem linha no bruto × líquido desta direção (ex.: INSS no pagamento sem a conta).
+  const covered = lines.reduce((s, l) => s + l.cents, 0);
+  const listed = Object.values(values).reduce((s, v) => s + v, 0);
+  const otherCents = toCents(args.retentions.other ?? 0) + (blocked ? 0 : listed - covered);
+  if (blocked || !args.grossAccountId || !lines.length) return { drafts: null, missingCodes, otherCents };
+  const drafts = grossNetDrafts({ transactionAmount: args.transactionAmount, grossAccountId: args.grossAccountId, retentions: lines });
+  drafts[0] = { ...drafts[0], memo: `Valor bruto - ${args.invoiceLabel}` };
+  return { drafts, missingCodes, otherCents };
 }

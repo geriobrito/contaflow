@@ -42,6 +42,8 @@ const GROUP: Record<AuditAction, Filter> = {
   ASSET_SAVE: 'PERIOD',
   PREPAID_SAVE: 'PERIOD',
   FINANCING_SAVE: 'PERIOD',
+  INVESTMENT_SAVE: 'PERIOD',
+  STOCK_SAVE: 'PERIOD',
 };
 
 const LIMIT = 300;

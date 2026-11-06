@@ -12,6 +12,8 @@ import {
   depreciationStatus,
   disposalDraft,
   disposalLockProblem,
+  intangibleTermProblem,
+  intangibleTermWarning,
   isAssetFrozen,
   lockedChangeProblem,
   monthlyQuotaCents,
@@ -203,8 +205,8 @@ describe('lançamento mensal', () => {
 });
 
 describe('baixa, conciliação e quadro', () => {
-  it('baixa: D acumulada, D perda (valor contábil), C custo', () => {
-    const { draft } = disposalDraft(asset(), '2026-04-30', 'SALE', null, chart);
+  it('baixa sem venda: D acumulada, D custo do bem baixado (valor contábil), C custo', () => {
+    const { draft } = disposalDraft(asset(), '2026-04-30', 'LOSS', null, chart);
     const lines = draft!.lines.map((l) => [l.accountCode, l.type, l.amount]);
     expect(lines).toEqual([
       ['1.2.3.07', 'DEBIT', 2409.34],
@@ -212,7 +214,34 @@ describe('baixa, conciliação e quadro', () => {
       ['1.2.3.04', 'CREDIT', 72280],
     ]);
     expect(draft!.fixedAssetId).toBe('fa1');
-    expect(draft!.memo).toBe('Baixa do bem Veículo de passeio por venda');
+    expect(draft!.memo).toBe('Baixa do bem Veículo de passeio por perda ou sinistro');
+  });
+
+  it('venda: receita contra o crédito a receber, pelo valor da nota, e a baixa no mesmo lançamento', () => {
+    // Venda por 70.000 de um bem com valor contábil de 69.870,66: ganho de 129,34 só pela diferença.
+    const { draft } = disposalDraft(asset(), '2026-04-30', 'SALE', null, chart, { amount: 70000, invoiceRef: '45' });
+    expect(draft!.lines.map((l) => [l.accountCode, l.type, l.amount])).toEqual([
+      ['1.1.2.11', 'DEBIT', 70000],
+      ['3.3.9.02', 'CREDIT', 70000],
+      ['1.2.3.07', 'DEBIT', 2409.34],
+      ['3.3.9.04', 'DEBIT', 69870.66],
+      ['1.2.3.04', 'CREDIT', 72280],
+    ]);
+    expect(draft!.totalAmount).toBe(142280);
+    expect(draft!.memo).toBe('Baixa do bem Veículo de passeio por venda - NF 45');
+    expect(disposalDraft(asset(), '2026-04-30', 'SALE', null, chart, { amount: 0 }).problem).toMatch(/valor da venda/);
+  });
+
+  it('intangível: prazo máximo de 5 anos na microentidade; na pequena empresa, aviso', () => {
+    const software = { accountCode: '1.2.4.01', annualRate: 10 };
+    expect(intangibleTermProblem(software, 'MICROENTIDADE')).toMatch(/no máximo 5 anos/);
+    expect(intangibleTermProblem(software, undefined)).toMatch(/no máximo 5 anos/);
+    expect(intangibleTermProblem({ ...software, annualRate: 0 }, 'MICROENTIDADE')).toMatch(/no máximo 5 anos/);
+    expect(intangibleTermProblem({ ...software, annualRate: 33.33 }, 'MICROENTIDADE')).toBeNull();
+    expect(intangibleTermProblem({ accountCode: '1.2.3.04', annualRate: 10 }, 'MICROENTIDADE')).toBeNull();
+    expect(intangibleTermProblem(software, 'PEQUENA_EMPRESA')).toBeNull();
+    expect(intangibleTermWarning(software, 'PEQUENA_EMPRESA')).toMatch(/acima de 5 anos/);
+    expect(intangibleTermWarning(software, 'MICROENTIDADE')).toBeNull();
   });
 
   it('cadastro × balancete por conta', () => {

@@ -75,6 +75,7 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 
 - **Transferências entre contas próprias**: saída e entrada de mesmo valor em contas diferentes, até 3 dias de distância, são conciliadas juntas na conta transitória 1.1.1.04 (criada se faltar). Reclassificar, ratear, desfazer ou excluir uma perna volta a outra para pendente.
 - **Balanço e balancete** são calculados por partidas dobradas a partir do extrato: conta do banco × conta classificada (ou rateio). Lançamentos não conciliados ficam em "Lançamentos a classificar"; saldos iniciais dos bancos entram no PL como "Saldos de abertura (a detalhar)".
+- **Retenções da NFS-e** (`src/lib/nfe/parser.ts`, `src/lib/nfe/retentions.ts`, `invoiceRetentionSplit` em `src/lib/splits.ts`): a importação lê da NFS-e do padrão nacional o IRRF, o PIS, a COFINS, a CSLL, o INSS e o ISS retidos (conferidos com a diferença entre serviço e líquido; o que a nota não discrimina fica como "não discriminado"). Quando a nota casa com o extrato pelo líquido, a Conciliação oferece o bruto × líquido pronto: no recebimento, a receita pelo bruto e o retido em 1.1.2.09 IRRF a Recuperar e 1.1.2.10 PIS/COFINS/CSLL Retidos a Recuperar (plano sem elas: 1.1.2.05); no pagamento, a despesa pelo bruto e o retido em 2.1.5.04 IRRF a Recolher e 2.1.5.08 PIS/COFINS/CSLL Retidos a Recolher. Prestadora do Simples Nacional com IRRF/CSRF retidos recebe aviso (retenção dispensada para optante: IN SRF 765/2007 e Lei 10.833/2003, art. 32). Notas importadas antes desta leitura não têm o detalhe: importe o XML de novo.
 - **Excluir extrato**: remove os lançamentos do lote (`importBatchId`) e registra `BATCH_DELETE` na auditoria. As regras recusam excluir lançamento de competência fechada.
 - **DRE comparativa**: mês a mês (com variação sobre o mês anterior) ou contra o mesmo período do ano anterior.
 - **Livro Diário** (`/diario`, `src/lib/daybook.ts`): todos os lançamentos do período em ordem cronológica — extrato (banco × conta classificada ou rateio), lançamentos manuais e saldos de abertura — com as partidas a débito e a crédito e número de ordem contado desde 1º de janeiro. Os totais são os do balancete do mesmo período. O PDF (`src/lib/export/daybook-pdf.ts`) sai com termo de abertura, lançamentos e termo de encerramento, com total de páginas e assinaturas; número do livro, sede e registro são informados na tela e ficam guardados no navegador. Enquanto houver lançamento a classificar ou competência aberta no período, a tela e os termos avisam que a emissão é provisória.
@@ -106,6 +107,27 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 - **Pós-fixado** (parcelamento pela Selic): sem encargos a transcorrer; ao classificar o pagamento na conta de curto prazo, a Conciliação sugere o rateio parcela-base + juros (3.4.1.01.007).
 - **Pagamentos** vêm pelo extrato, classificados na conta de curto prazo. O Balanço avisa quando obrigações e encargos divergem dos contratos (parcelas vencidas supostas pagas).
 
+### Aplicações financeiras
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `investment_accounts` | Aplicações da empresa (um documento por cliente): nome, conta do plano (padrão 1.1.1.03), primeira competência, encerramento e o saldo bruto do extrato da aplicação em cada competência. | Isolado por escritório; até 50 aplicações. Gravações auditadas (`INVESTMENT_SAVE`). |
+
+- **Tela** Bens e Contratos › Aplicações financeiras (`/aplicacoes`, `src/lib/investments.ts`): o saldo de cada aplicação na competência e a conferência com o razão.
+- **Aplicar e resgatar** pelo extrato da conta corrente: a saída vai para a conta da aplicação; a entrada nela é resgate, e a Conciliação oferece o bruto × líquido com o IR (3.3.2.19 IR sobre Aplicações Financeiras no Simples Nacional e no MEI, onde não se recupera; 1.1.2.12 IRRF sobre Aplicações a Recuperar no Presumido e no Real) e o IOF (3.4.1.01.003).
+- **Rendimento mensal** (`investmentMonth`), por competência: no último dia, D aplicação / C 3.4.1.02.001 pela diferença entre o saldo informado e o saldo contábil da conta sem o rendimento do próprio mês. Saldo contábil acima do extrato bloqueia (resgate, IR ou IOF não lançados; perda da aplicação vai à mão).
+- **Rotinas do mês**: com aplicação cadastrada, a competência só fecha com o saldo informado e o rendimento lançado; a barra de fechamento leva à tela para informar o saldo.
+
+### Estoque e CMV
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `stock_controls` | Controle do estoque da empresa (um documento por cliente): contas do estoque e do custo, primeira competência, frequência do relatório (mensal ou trimestral) e o estoque final informado em cada competência, com a origem. | Isolado por escritório. Gravações auditadas (`STOCK_SAVE`). |
+
+- **Tela** Bens e Contratos › Estoque e CMV (`/estoque`, `src/lib/stock.ts`). O controle do estoque é do cliente (sistema de vendas ou planilha); a tela copia um pedido pronto do estoque final para mandar ao cliente.
+- **CMV mensal** (`stockMonth`), no último dia: o lançamento leva o saldo contábil do estoque (sem o CMV do próprio mês) ao estoque final informado — D custo / C estoque quando o contábil é maior (compras lançadas no estoque) ou D estoque / C custo quando é menor (compras lançadas direto no custo). Nos dois casos, CMV = estoque inicial + compras − estoque final.
+- **Rotinas do mês**: estoque final informado e não lançado trava o fechamento; estoque não informado só avisa (há cliente que manda por trimestre), assim como lucros distribuídos (2.3.3.03) num mês sem CMV.
+
 ### Fechamento do exercício (checklist)
 
 | Coleção | Conteúdo | Regras |
@@ -122,11 +144,12 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 | --- | --- | --- |
 | `fixed_assets` | Cadastro dos bens da empresa (um documento por cliente, id = clientId): conta do bem (1.2.3.x ou 1.2.4.x), uso (atividade-fim → custo; administrativo/comercial → despesa), data da nota, data de início de uso, composição do custo (nota + frete/instalação + tributos não recuperáveis − descontos), taxa anual, residual, depreciação já lançada fora da rotina e baixa. | Isolado por escritório; até 300 bens. Gravações auditadas (`ASSET_SAVE`). |
 
-- **Cálculo** (`src/lib/fixed-assets.ts`): linha reta, cota mensal = (custo − residual) × taxa ÷ 12, em centavos. O primeiro mês é proporcional aos dias desde o início de uso (dia 1º = mês cheio); a última cota é o que falta para a base. Na baixa, a depreciação vai até a data, também proporcional. Taxas sugeridas pela conta (IN RFB 1700/2017, Anexo III): edificações 4%, máquinas e móveis 10%, veículos, informática e softwares 20%, terrenos 0%.
+- **Cálculo** (`src/lib/fixed-assets.ts`): linha reta, cota mensal = (custo − residual) × taxa ÷ 12, em centavos. O primeiro mês é proporcional aos dias desde o início de uso (dia 1º = mês cheio); a última cota é o que falta para a base. Na baixa, a depreciação vai até a data, também proporcional. Taxas sugeridas pela conta (IN RFB 1700/2017, Anexo III): edificações 4%, máquinas e móveis 10%, veículos, informática, softwares e marcas 20%, terrenos 0%.
 - **Lançamento mensal**: um por competência, no último dia (`depreciationMonth`), com D 3.2.1.04 (custo) e/ou D 3.3.2.15 (despesa) e C 1.2.3.07 / 1.2.4.03 por classe de bem. Se o cadastro muda com o mês aberto, o lançamento é atualizado. Contas do modelo que faltam (ex.: 3.2.1.04) entram no plano ao lançar.
 - **Fechamento**: com bens cadastrados, a competência só fecha com a depreciação do mês lançada e conferida com o cadastro (a norma pede o lançamento mensal). A barra de fechamento da Conciliação mostra o aviso e o botão de lançar; a tela Imobilizado lança os meses abertos que ficaram para trás.
 - **Competências fechadas**: bem com cota em mês fechado não muda custo, taxa, conta, uso nem datas (dá para editar a descrição, ou dar baixa e recadastrar). Bem novo cujas cotas cairiam em meses fechados pede a "depreciação já contabilizada" até o último deles (a da abertura ou a lançada à mão antes do cadastro).
-- **Baixa**: D acumulada até a data, D 3.3.9.04 (valor contábil) e C conta do bem, gravados junto com o cadastro (`fixedAssetId`); o valor de venda entra pelo extrato em 3.3.9.02.
+- **Baixa**: D acumulada até a data, D 3.3.9.04 Custo do Imobilizado e Intangível Baixado (valor contábil) e C conta do bem, gravados junto com o cadastro (`fixedAssetId`). Na venda, o mesmo lançamento traz D 1.1.2.11 Créditos pela Venda / C 3.3.9.02 Receita na Venda, pelo valor da nota: receita e custo separados, sem conta de "ganho" ou "perda" (o resultado da venda sai na DRE pela diferença). O recebimento vem pelo extrato em 1.1.2.11, que a DFC trata como atividade de investimento; a NF-e de venda de imobilizado (CFOP x551) sugere essa conta. O checklist do fechamento oferece renomear as contas 3.3.9.02/3.3.9.04 que ainda têm os nomes antigos.
+- **Intangível**: amortização na 1.2.4.03, com o mesmo motor. Na microentidade, prazo máximo de 5 anos (taxa de 20% ao ano ou maior; NBC TG 1002, seção 18), exigido no cadastro novo e na troca de taxa; na pequena empresa, só aviso.
 - **Conferência**: o Balanço avisa quando custo por conta ou acumulada diferem do cadastro; a tela Imobilizado confere com o balancete sob demanda e exporta o relatório analítico (PDF/Excel). As notas explicativas trazem as taxas por classe e o quadro custo × acumulada × líquido.
 
 ### Leituras

@@ -111,9 +111,22 @@ export function withoutProvisionTerm(name: string): string {
   return /a pagar\s*$/i.test(base) ? base : `${base} a Pagar`;
 }
 
+export type AccountRename = { account: ChartAccount; name: string };
+
 /** Contas de férias e 13º com "provisão" no nome, com o nome correto. */
-export function provisionRenames(accounts: readonly ChartAccount[]): { account: ChartAccount; name: string }[] {
+export function provisionRenames(accounts: readonly ChartAccount[]): AccountRename[] {
   return accounts.filter((a) => PROVISION_TERM.test(a.name)).map((account) => ({ account, name: withoutProvisionTerm(account.name) }));
+}
+
+/** Nomes antigos das contas da venda de bens no modelo ("ganho" e "perda" em vez de receita e custo). */
+const DISPOSAL_NAMES: readonly { code: string; term: RegExp; name: string }[] = [
+  { code: '3.3.9.02', term: /\bganhos?\b/i, name: 'Receita na Venda de Imobilizado e Intangível' },
+  { code: '3.3.9.04', term: /\bperdas?\b/i, name: 'Custo do Imobilizado e Intangível Baixado' },
+];
+
+/** Contas da venda de bens do modelo ainda com "ganho" ou "perda" no nome, com o nome correto. */
+export function disposalRenames(accounts: readonly ChartAccount[]): AccountRename[] {
+  return DISPOSAL_NAMES.flatMap(({ code, term, name }) => accounts.filter((a) => a.code === code && term.test(a.name)).map((account) => ({ account, name })));
 }
 
 const FINANCIAL_TERM = /\b(multas?|juros|tarifas?|iof|encargos financeiros)\b/i;
@@ -136,6 +149,18 @@ export function terminologyChecks(beforeClosing: TrialBalance, final: TrialBalan
       items: [
         ...renames.map((r) => `${label(r.account)} → ${r.name}`),
         'Férias e 13º têm valor e prazo conhecidos: são obrigações a pagar. Provisão é para obrigação incerta (ex.: processo trabalhista).',
+      ],
+    });
+  }
+  const disposal = disposalRenames(accounts);
+  if (disposal.length) {
+    out.push({
+      id: 'disposal-term',
+      level: 'warn',
+      title: '“Ganho” ou “perda” no nome das contas da venda de bens',
+      items: [
+        ...disposal.map((r) => `${label(r.account)} → ${r.name}`),
+        'Na venda de um bem, lançam-se a receita e o custo (valor contábil baixado) separados; o ganho ou a perda é a diferença, que só aparece na DRE.',
       ],
     });
   }

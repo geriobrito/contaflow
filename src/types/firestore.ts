@@ -191,6 +191,23 @@ export interface InvoiceLink {
 }
 
 /**
+ * Retenções da NFS-e, em reais; só as diferentes de zero. PIS, COFINS e CSLL juntos são a CSRF
+ * (Lei 10.833/2003, art. 30). `other`: parte da diferença entre serviço e líquido que a nota não
+ * discrimina.
+ */
+export interface InvoiceRetentions {
+  irrf?: number;
+  pis?: number;
+  cofins?: number;
+  csll?: number;
+  /** INSS retido (contribuição previdenciária, 11% na cessão de mão de obra). */
+  inss?: number;
+  /** ISS retido pelo tomador ou pelo intermediário. */
+  iss?: number;
+  other?: number;
+}
+
+/**
  * Resumo de uma NF-e (modelo 55), NFC-e (65) ou NFS-e do padrão nacional (`model` 'NFSE')
  * importada pelo XML. O arquivo não é guardado: o navegador lê o XML e grava só estes campos
  * (id `${clientId}_${key}`).
@@ -223,6 +240,8 @@ export interface InvoiceSummary {
   cbs?: number;
   /** NFS-e: código de tributação nacional do serviço (cTribNac, 6 dígitos). */
   serviceCode?: string;
+  /** NFS-e: tributos retidos pelo tomador (a diferença entre o serviço e o líquido). */
+  retentions?: InvoiceRetentions;
   cfops: InvoiceCfop[];
   installments: InvoiceInstallment[];
   status: InvoiceStatus;
@@ -367,7 +386,9 @@ export type AuditAction =
   | 'YEAR_REOPEN'
   | 'ASSET_SAVE'
   | 'PREPAID_SAVE'
-  | 'FINANCING_SAVE';
+  | 'FINANCING_SAVE'
+  | 'INVESTMENT_SAVE'
+  | 'STOCK_SAVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -738,6 +759,10 @@ export interface JournalEntry {
   financingMonth?: string;
   /** Contrato reconhecido por este lançamento (o inicial, na data do contrato). */
   financingId?: string;
+  /** Competência (YYYY-MM) do rendimento das aplicações financeiras (src/lib/investments.ts). */
+  investmentMonth?: string;
+  /** Competência (YYYY-MM) do CMV pelo estoque final informado (src/lib/stock.ts). */
+  stockMonth?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;
@@ -758,12 +783,22 @@ export interface FixedAssetPriorDepreciation {
   amount: number;
 }
 
+/** Venda do bem: a receita entra na data da nota, contra o crédito a receber do comprador. */
+export interface FixedAssetSale {
+  amount: number;
+  buyer?: string;
+  /** Número da nota fiscal de venda (ou do contrato). */
+  invoiceRef?: string;
+}
+
 /** Baixa do bem: a depreciação para na data, e o lançamento tira custo e acumulada do balanço. */
 export interface FixedAssetDisposal {
   /** YYYY-MM-DD. */
   date: string;
   reason: FixedAssetDisposalReason;
   note?: string;
+  /** Só na venda (reason SALE). Baixas antigas, de antes deste campo, não têm. */
+  sale?: FixedAssetSale;
   /** Lançamento manual da baixa (journal_entries). */
   journalEntryId: string;
 }
@@ -931,6 +966,78 @@ export interface FinancingRegister {
   orgId?: string;
   clientId: string;
   contracts: FinancingContract[];
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/* =========================================================================
+   Aplicações financeiras
+   ========================================================================= */
+
+/**
+ * Aplicação financeira (Caixinha, CDB, fundo): a conta do plano que a representa e o saldo bruto
+ * do extrato da aplicação no fim de cada competência. Aplicações e resgates vêm pelo extrato da
+ * conta corrente; o rendimento do mês é a diferença entre o saldo informado e o contábil.
+ */
+export interface InvestmentAccount {
+  id: string;
+  description: string;
+  /** Conta analítica do ativo (ex.: 1.1.1.03 Aplicações Financeiras de Liquidez Imediata). */
+  ledgerAccountId: string;
+  ledgerAccountCode: string;
+  ledgerAccountName?: string;
+  /** Primeira competência (YYYY-MM) com o saldo exigido. */
+  startMonth: string;
+  /** Última competência (YYYY-MM), quando a aplicação foi resgatada por inteiro. */
+  closedMonth?: string;
+  /** Saldo bruto do extrato da aplicação no fim de cada competência ('YYYY-MM' → reais). */
+  balances: Record<string, number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Aplicações da empresa (coleção `investment_accounts`, um documento por cliente, id = clientId). */
+export interface InvestmentRegister {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  accounts: InvestmentAccount[];
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/* =========================================================================
+   Estoque e CMV
+   ========================================================================= */
+
+/** Com que frequência o cliente manda o relatório do estoque. */
+export type StockCountFrequency = 'MONTHLY' | 'QUARTERLY';
+
+/**
+ * Controle do estoque da empresa (coleção `stock_controls`, um documento por cliente, id =
+ * clientId): o estoque final do relatório do cliente (Bling, planilha) em cada competência. O
+ * CMV do mês é estoque inicial + compras − estoque final: o lançamento leva o saldo contábil do
+ * estoque ao valor informado.
+ */
+export interface StockControl {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  /** Conta do estoque (ex.: 1.1.3.01 Mercadorias para Revenda). */
+  stockAccountId: string;
+  stockAccountCode: string;
+  stockAccountName?: string;
+  /** Conta do custo (ex.: 3.2.1.01 Custo das Mercadorias Vendidas). */
+  costAccountId: string;
+  costAccountCode: string;
+  costAccountName?: string;
+  /** Primeira competência (YYYY-MM) controlada. */
+  startMonth: string;
+  frequency: StockCountFrequency;
+  /** Estoque final pelo relatório do cliente ('YYYY-MM' → reais). */
+  counts: Record<string, number>;
+  /** Origem do valor (ex.: "Relatório Bling de 31/07"), por competência. */
+  notes?: Record<string, string>;
   updatedAt: string;
   updatedByUid?: string;
 }

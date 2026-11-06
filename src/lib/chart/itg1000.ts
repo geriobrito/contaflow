@@ -43,6 +43,16 @@ const ENTRIES: readonly TemplateEntry[] = [
   // Reforma tributária (LC 214/2025): créditos de IBS e CBS nas aquisições, no regime normal.
   { code: '1.1.2.07', name: 'IBS a Recuperar' },
   { code: '1.1.2.08', name: 'CBS a Recuperar' },
+  // Retidos pelo tomador nas notas de serviço (src/lib/splits.ts): o IRRF compensa no IRPJ; a
+  // CSRF (Lei 10.833/2003, art. 30), no PIS, na COFINS e na CSLL.
+  { code: '1.1.2.09', name: 'IRRF a Recuperar' },
+  { code: '1.1.2.10', name: 'PIS/COFINS/CSLL Retidos a Recuperar' },
+  // Venda de bem do imobilizado a receber (src/lib/fixed-assets.ts): separada de Clientes para o
+  // recebimento sair na DFC como atividade de investimento.
+  { code: '1.1.2.11', name: 'Créditos pela Venda de Imobilizado e Intangível' },
+  // IR retido no resgate de aplicações (src/lib/investments.ts): no Lucro Presumido e no Real,
+  // abate o IRPJ; no Simples Nacional não se recupera e vai para 3.3.2.19.
+  { code: '1.1.2.12', name: 'IRRF sobre Aplicações Financeiras a Recuperar' },
   { code: '1.1.3', name: 'Estoques' },
   { code: '1.1.3.01', name: 'Mercadorias para Revenda' },
   { code: '1.1.3.02', name: 'Produtos Acabados' },
@@ -107,6 +117,8 @@ const ENTRIES: readonly TemplateEntry[] = [
   // Reforma tributária (LC 214/2025): tributos sobre consumo do regime normal.
   { code: '2.1.5.06', name: 'IBS a Recolher' },
   { code: '2.1.5.07', name: 'CBS a Recolher' },
+  // CSRF retida dos fornecedores de serviço (Lei 10.833/2003, art. 30), recolhida por DARF.
+  { code: '2.1.5.08', name: 'PIS/COFINS/CSLL Retidos a Recolher' },
 
   { code: '2.2', name: 'PASSIVO NÃO CIRCULANTE' },
   { code: '2.2.1', name: 'Empréstimos e Financiamentos de Longo Prazo' },
@@ -182,11 +194,14 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.3.2.16', name: 'Taxas e Contribuições Diversas' },
   { code: '3.3.2.17', name: 'Outras Despesas Gerais' },
   { code: '3.3.2.18', name: 'Seguros' },
+  // Simples Nacional: o IR retido nos resgates é definitivo (não abate o DAS).
+  { code: '3.3.2.19', name: 'IR sobre Aplicações Financeiras' },
   { code: '3.3.9', name: 'Outros Resultados Operacionais' },
   { code: '3.3.9.01', name: 'Outras Receitas Operacionais', dre: 'OTHER_INCOME', type: 'REVENUE' },
-  { code: '3.3.9.02', name: 'Ganho na Venda de Imobilizado', dre: 'OTHER_INCOME', type: 'REVENUE' },
+  // Venda de bem: receita e custo separados (o ganho ou a perda só aparece na DRE, pela diferença).
+  { code: '3.3.9.02', name: 'Receita na Venda de Imobilizado e Intangível', dre: 'OTHER_INCOME', type: 'REVENUE' },
   { code: '3.3.9.03', name: 'Outras Despesas Operacionais', dre: 'OTHER_EXPENSES' },
-  { code: '3.3.9.04', name: 'Perda na Baixa de Imobilizado', dre: 'OTHER_EXPENSES' },
+  { code: '3.3.9.04', name: 'Custo do Imobilizado e Intangível Baixado', dre: 'OTHER_EXPENSES' },
 
   { code: '3.4', name: 'RESULTADO FINANCEIRO' },
   { code: '3.4.1', name: 'Resultado Financeiro Líquido' },

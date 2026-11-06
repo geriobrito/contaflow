@@ -9,7 +9,7 @@ import { buildPostings, buildTrialBalance, type TrialBalance } from '@/lib/ledge
 import { closingEntriesOf, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
 import { monthsWithData } from '@/lib/balance-sheet-view';
 import { monthsBetween } from '@/lib/periods';
-import { closingChecks, hasStockBalance, manualItems, provisionRenames } from '@/lib/closing-checklist';
+import { closingChecks, disposalRenames, hasStockBalance, manualItems, provisionRenames } from '@/lib/closing-checklist';
 import { activityCheck, periodLockCheck, type StatementCheck } from '@/lib/statement-checks';
 import { describeError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
@@ -107,7 +107,10 @@ export function useClosingChecklist(client: ClientCompany | null, year: string) 
   }, [current, client, year, yearClosed]);
 
   const items = useMemo(() => (current ? manualItems(hasStockBalance(current.final, current.accounts)) : []), [current]);
-  const renames = useMemo(() => (current ? provisionRenames(current.accounts) : []), [current]);
+  const renames = useMemo(
+    () => ({ provision: current ? provisionRenames(current.accounts) : [], disposal: current ? disposalRenames(current.accounts) : [] }),
+    [current]
+  );
 
   const persist = useCallback(
     async (change: (prev: ClosingChecklist) => ClosingChecklist) => {
@@ -140,13 +143,16 @@ export function useClosingChecklist(client: ClientCompany | null, year: string) 
       return next;
     });
 
-  /** Tira "provisão" do nome das contas de férias e 13º (o nome muda mesmo com competência fechada). */
-  const applyRenames = async () => {
+  /**
+   * Corrige o nome das contas da conferência: "provisão" em férias e 13º, ou "ganho"/"perda" na
+   * venda de bens. O nome muda mesmo com competência fechada.
+   */
+  const applyRenames = async (kind: keyof typeof renames) => {
     setSaving(true);
     try {
       const repo = getRepository();
       const now = new Date().toISOString();
-      for (const r of renames) await repo.saveAccount({ ...r.account, name: r.name, updatedAt: now });
+      for (const r of renames[kind]) await repo.saveAccount({ ...r.account, name: r.name, updatedAt: now });
       setReloadCount((c) => c + 1);
       setError(null);
     } catch (e) {

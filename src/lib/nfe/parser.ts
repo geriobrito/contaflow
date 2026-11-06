@@ -1,4 +1,4 @@
-import type { InvoiceCfop, InvoiceInstallment } from '@/types/firestore';
+import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 
 /**
@@ -45,6 +45,8 @@ export interface ParsedInvoice {
   cbs: number;
   /** NFS-e: código de tributação nacional (cTribNac). */
   serviceCode?: string;
+  /** NFS-e: tributos retidos (só quando o líquido é menor que o serviço). */
+  retentions?: InvoiceRetentions;
   cfops: InvoiceCfop[];
   installments: InvoiceInstallment[];
   /** Situação pelo protocolo (ou pelo resumo); UNKNOWN = XML sem protocolo de autorização. */
@@ -135,6 +137,48 @@ const NFSE_KEY = /^\d{50}$/;
 /** cStat da NFS-e gerada: 100 normal, 101 substituta, 102 decisão judicial, 103 avulsa. */
 const NFSE_GENERATED = ['100', '101', '102', '103'];
 
+/**
+ * Retenções da NFS-e (leiaute nacional): IRRF, CSLL e INSS (vRetIRRF, vRetCSLL, vRetCP), PIS e
+ * COFINS quando marcados como retidos (tpRetPisCofins 1) e o ISS retido pelo tomador ou pelo
+ * intermediário (tpRetISSQN 2 ou 3). Confere com a diferença entre o serviço (menos descontos)
+ * e o líquido: PIS/COFINS sem a marcação, mas necessários para fechar o vTotalRet, contam como
+ * retidos; o que sobra sem discriminação vai para `other`. Sem diferença, não há retenção.
+ */
+function nfseRetentions(own: string, dps: string, service: number, net: number): InvoiceRetentions | null {
+  const cents = (raw: string) => toCents(amount(raw));
+  const discounts = section(dps, 'vDescCondIncond');
+  const gap = toCents(service) - cents(text(discounts, 'vDescIncond')) - cents(text(discounts, 'vDescCond')) - toCents(net);
+  if (gap <= 0) return null;
+  const fed = section(dps, 'tribFed');
+  const pisCofins = section(fed ?? '', 'piscofins');
+  const mun = section(dps, 'tribMun');
+  const values: Record<keyof InvoiceRetentions, number> = {
+    irrf: cents(text(fed, 'vRetIRRF')),
+    csll: cents(text(fed, 'vRetCSLL')),
+    inss: cents(text(fed, 'vRetCP')),
+    pis: 0,
+    cofins: 0,
+    iss: ['2', '3'].includes(text(mun, 'tpRetISSQN')) ? cents(text(section(own, 'valores'), 'vISSQN')) : 0,
+    other: 0,
+  };
+  const pis = cents(text(pisCofins, 'vPis'));
+  const cofins = cents(text(pisCofins, 'vCofins'));
+  const others = values.irrf + values.csll + values.inss + values.iss;
+  const totalRet = text(section(own, 'valores'), 'vTotalRet');
+  const marked = text(pisCofins, 'tpRetPisCofins') === '1';
+  if (marked || (totalRet && cents(totalRet) === others + pis + cofins && pis + cofins > 0) || (!totalRet && gap === others + pis + cofins && pis + cofins > 0)) {
+    values.pis = pis;
+    values.cofins = cofins;
+  }
+  const known = others + values.pis + values.cofins;
+  // Mais retenção do que a diferença: o XML não fecha; melhor nada do que valores errados.
+  if (known > gap) return { other: fromCents(gap) };
+  values.other = gap - known;
+  const out: InvoiceRetentions = {};
+  for (const [k, v] of Object.entries(values) as [keyof InvoiceRetentions, number][]) if (v > 0) out[k] = fromCents(v);
+  return out;
+}
+
 function parseNFSe(xml: string): ParsedXml {
   const inf = section(xml, 'infNFSe');
   if (!inf) {
@@ -162,6 +206,7 @@ function parseNFSe(xml: string): ParsedXml {
 
   const service = amount(text(section(dps, 'vServPrest'), 'vServ'));
   const net = amount(text(section(own, 'valores'), 'vLiq')) || service;
+  const retentions = nfseRetentions(own, dps, service, net);
   const tax = ibsCbsOf(section(own, 'IBSCBS') ?? section(dps, 'IBSCBS'));
   const status = text(own, 'cStat');
   const recipientDoc = docOf(toma) || text(toma, 'NIF');
@@ -183,6 +228,7 @@ function parseNFSe(xml: string): ParsedXml {
       ...(service > net ? { altTotal: service } : {}),
       ...tax,
       ...(serviceCode ? { serviceCode } : {}),
+      ...(retentions ? { retentions } : {}),
       cfops: [],
       installments: [],
       situation: !status ? 'UNKNOWN' : NFSE_GENERATED.includes(status) ? 'AUTHORIZED' : 'UNKNOWN',

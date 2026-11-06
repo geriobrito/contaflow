@@ -24,7 +24,7 @@ export default function ImobilizadoPage() {
   const { user } = useAuth();
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const data = useFixedAssets(clientId, user?.uid);
+  const data = useFixedAssets(clientId, user?.uid, currentClient?.porte);
   const reconciliation = useFixedAssetReconciliation(clientId, data.ctx);
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [editing, setEditing] = useState<FixedAsset | 'new' | null>(null);
@@ -180,6 +180,7 @@ export default function ImobilizadoPage() {
           key={editing === 'new' ? 'new' : editing.id}
           asset={editing === 'new' ? null : editing}
           ctx={data.ctx}
+          porte={currentClient?.porte}
           busy={data.busy}
           error={data.error}
           onClose={() => setEditing(null)}

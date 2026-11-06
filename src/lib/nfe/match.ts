@@ -93,7 +93,9 @@ const SALE_CFOP: readonly [readonly string[], string][] = [
   [['101', '103', '105', '109', '111', '116', '401', '501'], '3.1.1.03'], // produção própria
   [['102', '104', '106', '108', '110', '113', '115', '117', '118', '119', '120', '123', '403', '405', '502', '656'], '3.1.1.02'], // revenda
   [['124', '125', '933'], '3.1.1.01'], // industrialização para terceiros e serviços
-  [['551'], '3.3.9.02'], // venda de ativo imobilizado
+  // Venda de ativo imobilizado: a receita entra na baixa do bem (Bens e Contratos), contra o
+  // crédito a receber; o recebimento baixa esse crédito.
+  [['551'], '1.1.2.11'],
 ];
 
 /** NFS-e (sem CFOP): receita de serviços na venda; despesa geral na compra, como o CFOP 933. */

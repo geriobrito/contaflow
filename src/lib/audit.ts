@@ -91,6 +91,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   ASSET_SAVE: 'Atualizou o cadastro do imobilizado',
   PREPAID_SAVE: 'Atualizou as despesas antecipadas',
   FINANCING_SAVE: 'Atualizou os contratos de empréstimo e financiamento',
+  INVESTMENT_SAVE: 'Atualizou as aplicações financeiras',
+  STOCK_SAVE: 'Atualizou o controle de estoque',
 };
 
 /** Descrição curta de um estado de classificação. */

@@ -1,7 +1,9 @@
 import type {
   ChartAccount,
+  CompanyPorte,
   FixedAsset,
   FixedAssetDisposalReason,
+  FixedAssetSale,
   FixedAssetUse,
   JournalEntry,
   JournalEntryLine,
@@ -28,7 +30,15 @@ export const DEPRECIATION_EXPENSE_CODE = '3.3.2.15';
 export const DEPRECIATION_COST_CODE = '3.2.1.04';
 export const ACCUMULATED_DEPRECIATION_CODE = '1.2.3.07';
 export const ACCUMULATED_AMORTIZATION_CODE = '1.2.4.03';
-export const DISPOSAL_LOSS_CODE = '3.3.9.04';
+/** Custo do bem baixado (valor contábil na data da baixa). */
+export const DISPOSAL_COST_CODE = '3.3.9.04';
+/** Receita na venda do bem, pelo valor da nota. */
+export const SALE_REVENUE_CODE = '3.3.9.02';
+/** Crédito a receber do comprador, baixado pelo recebimento no extrato. */
+export const SALE_RECEIVABLE_CODE = '1.1.2.11';
+
+/** Intangível na microentidade: amortização em até 5 anos (NBC TG 1002, seção 18). */
+export const INTANGIBLE_MIN_RATE = 20;
 
 const TANGIBLE_PREFIX = '1.2.3.';
 const INTANGIBLE_PREFIX = '1.2.4.';
@@ -46,6 +56,7 @@ export const SUGGESTED_RATES: Readonly<Record<string, number>> = {
   '1.2.3.05': 10,
   '1.2.3.06': 20,
   '1.2.4.01': 20,
+  '1.2.4.02': 20,
 };
 
 export const USE_LABEL: Record<FixedAssetUse, string> = {
@@ -218,6 +229,25 @@ export function accumulatedAtDisposalCents(asset: FixedAsset, disposalDate: stri
 /* =========================================================================
    Validação e trava por competência fechada
    ========================================================================= */
+
+/**
+ * Prazo do intangível: na microentidade (NBC TG 1002, seção 18), no máximo 5 anos, ou seja, taxa
+ * de 20% ao ano ou mais (prazo menor só com direito contratual ou legal mais curto). Cadastro
+ * antigo sem porte conta como microentidade. A pequena empresa (NBC TG 1001) usa a vida útil
+ * estimada: só um aviso (`intangibleTermWarning`).
+ */
+export function intangibleTermProblem(asset: Pick<FixedAsset, 'accountCode' | 'annualRate'>, porte: CompanyPorte | undefined): string | null {
+  if (!isIntangibleCode(asset.accountCode) || (porte ?? 'MICROENTIDADE') !== 'MICROENTIDADE') return null;
+  if (asset.annualRate >= INTANGIBLE_MIN_RATE) return null;
+  return 'Na microentidade, o intangível é amortizado em no máximo 5 anos (NBC TG 1002, seção 18): use taxa de 20% ao ano ou maior. Prazo menor só com direito contratual ou legal mais curto.';
+}
+
+export function intangibleTermWarning(asset: Pick<FixedAsset, 'accountCode' | 'annualRate'>, porte: CompanyPorte | undefined): string | null {
+  if (!isIntangibleCode(asset.accountCode) || porte !== 'PEQUENA_EMPRESA' || asset.annualRate >= INTANGIBLE_MIN_RATE) return null;
+  return asset.annualRate > 0
+    ? 'Prazo de amortização acima de 5 anos: confira se a vida útil estimada do direito justifica.'
+    : 'Intangível sem amortização: só se a vida útil for de fato indefinida.';
+}
 
 /** Primeiro problema que impede gravar o bem, ou null. */
 export function assetProblem(asset: FixedAsset, accounts: readonly ChartAccount[]): string | null {
@@ -527,25 +557,47 @@ export function pendingDepreciationMonths(args: {
    Baixa
    ========================================================================= */
 
+/** Texto da venda para os históricos: " a Fulano, NF 123". */
+function saleDetail(sale: FixedAssetSale): string {
+  const buyer = sale.buyer?.trim();
+  const ref = sale.invoiceRef?.trim();
+  return `${buyer ? ` a ${buyer}` : ''}${ref ? `${buyer ? ',' : ' -'} NF ${ref}` : ''}`;
+}
+
+/** Contas do modelo que o lançamento da baixa usa (a retificadora do bem e, na venda, as da venda). */
+export function disposalCodes(asset: Pick<FixedAsset, 'accountCode'>, reason: FixedAssetDisposalReason): string[] {
+  return [contraCodeFor(asset.accountCode), DISPOSAL_COST_CODE, ...(reason === 'SALE' ? [SALE_RECEIVABLE_CODE, SALE_REVENUE_CODE] : [])];
+}
+
 /**
- * Lançamento da baixa na data: tira o custo (crédito na conta do bem) e a acumulada até a data
- * (débito na retificadora); o valor contábil que sobra vai para 3.3.9.04 Perda na Baixa de
- * Imobilizado. O valor recebido numa venda entra pelo extrato, em 3.3.9.02.
+ * Lançamento da baixa na data, como a venda de qualquer bem: a receita e o custo separados,
+ * nunca uma conta de "ganho" ou "perda" (o resultado da venda aparece na DRE, pela diferença).
+ * - Venda: D 1.1.2.11 Créditos pela Venda / C 3.3.9.02 Receita na Venda, pelo valor da nota.
+ *   O recebimento vem pelo extrato, baixando o crédito.
+ * - Baixa (venda, perda ou sucata): D retificadora pela acumulada até a data, D 3.3.9.04 Custo
+ *   do Imobilizado Baixado pelo valor contábil, C conta do bem pelo custo.
  */
 export function disposalDraft(
   asset: FixedAsset,
   date: string,
   reason: FixedAssetDisposalReason,
   implantationMonth: string | null,
-  accounts: readonly ChartAccount[]
+  accounts: readonly ChartAccount[],
+  sale?: FixedAssetSale
 ): { draft: FixedAssetDraft | null; problem: string | null } {
   if (date < asset.inUseDate) return { draft: null, problem: 'A baixa não pode ser anterior ao início de uso.' };
+  const saleCents = reason === 'SALE' && sale ? toCents(sale.amount || 0) : 0;
+  if (reason === 'SALE' && sale && saleCents <= 0) return { draft: null, problem: 'Informe o valor da venda (o da nota fiscal).' };
   const analytic = new Map(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => [a.code, a] as const));
   const costCents = assetCostCents(asset);
   const accumulated = accumulatedAtDisposalCents(asset, date, implantationMonth);
   const net = costCents - accumulated;
   const contraCode = contraCodeFor(asset.accountCode);
-  const needed = [...(accumulated > 0 ? [contraCode] : []), ...(net > 0 ? [DISPOSAL_LOSS_CODE] : [])];
+  const needed = [
+    ...(saleCents > 0 ? [SALE_RECEIVABLE_CODE, SALE_REVENUE_CODE] : []),
+    ...(accumulated > 0 ? [contraCode] : []),
+    ...(net > 0 ? [DISPOSAL_COST_CODE] : []),
+  ];
   const missing = needed.filter((c) => !analytic.has(c));
   if (missing.length) return { draft: null, problem: `Faltam no plano, como analíticas, as contas ${missing.join(', ')}. Complete o plano com o modelo em Plano de Contas.` };
   const assetAccount = accounts.find((a) => a.id === asset.accountId);
@@ -554,13 +606,18 @@ export function disposalDraft(
   const lines: JournalEntryLine[] = [];
   const push = (acc: ChartAccount, type: 'DEBIT' | 'CREDIT', cents: number, memo: string) =>
     lines.push({ id: `b${lines.length + 1}`, accountId: acc.id, accountCode: acc.code, accountName: acc.name, type, amount: fromCents(cents), memo });
+  if (saleCents > 0) {
+    const memo = `Venda do bem ${asset.description}${saleDetail(sale!)}`;
+    push(analytic.get(SALE_RECEIVABLE_CODE)!, 'DEBIT', saleCents, memo);
+    push(analytic.get(SALE_REVENUE_CODE)!, 'CREDIT', saleCents, memo);
+  }
   if (accumulated > 0) push(analytic.get(contraCode)!, 'DEBIT', accumulated, `Baixa da ${isIntangibleCode(asset.accountCode) ? 'amortização' : 'depreciação'} acumulada - ${asset.description}`);
-  if (net > 0) push(analytic.get(DISPOSAL_LOSS_CODE)!, 'DEBIT', net, `Valor contábil baixado - ${asset.description}`);
+  if (net > 0) push(analytic.get(DISPOSAL_COST_CODE)!, 'DEBIT', net, `Custo do bem baixado (valor contábil) - ${asset.description}`);
   push(assetAccount, 'CREDIT', costCents, `Baixa do custo - ${asset.description}`);
 
   const draft: FixedAssetDraft = {
     date,
-    memo: `Baixa do bem ${asset.description} por ${DISPOSAL_REASON_LABEL[reason]}`,
+    memo: `Baixa do bem ${asset.description} por ${DISPOSAL_REASON_LABEL[reason]}${saleCents > 0 ? saleDetail(sale!) : ''}`,
     category: 'ADJUSTMENT',
     lines,
     totalAmount: journalTotals(lines).debit,

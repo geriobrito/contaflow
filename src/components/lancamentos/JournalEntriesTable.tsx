@@ -86,6 +86,16 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           {entry.financingId ? 'Contrato · Financiamentos' : 'Juros · Financiamentos'}
                         </span>
                       )}
+                      {entry.stockMonth && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelo estoque final informado; altere em Bens e Contratos">
+                          CMV · Estoque
+                        </span>
+                      )}
+                      {entry.investmentMonth && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelos saldos das aplicações; altere em Bens e Contratos">
+                          Rendimento · Aplicações financeiras
+                        </span>
+                      )}
                       {(entry.prepaidMonth || entry.prepaidId) && (
                         <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelas despesas antecipadas; altere em Bens e Contratos">
                           {entry.prepaidId ? 'Apólice · Despesas antecipadas' : 'Apropriação · Despesas antecipadas'}

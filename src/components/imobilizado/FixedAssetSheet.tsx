@@ -2,12 +2,15 @@
 
 import React, { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
-import type { FixedAsset, FixedAssetUse } from '@/types/firestore';
+import type { CompanyPorte, FixedAsset, FixedAssetUse } from '@/types/firestore';
 import type { FixedAssetContext } from '@/lib/services/fixed-asset-service';
 import {
   assetAccounts,
   assetCostCents,
+  intangibleTermProblem,
+  intangibleTermWarning,
   isAssetFrozen,
+  isIntangibleCode,
   monthlyQuotaCents,
   SUGGESTED_RATES,
   suggestPriorDepreciation,
@@ -26,6 +29,7 @@ const newAssetId = () => `fa_${Date.now().toString(36)}_${Math.random().toString
 export function FixedAssetSheet({
   asset,
   ctx,
+  porte,
   busy,
   error,
   onClose,
@@ -33,6 +37,8 @@ export function FixedAssetSheet({
 }: {
   asset: FixedAsset | null;
   ctx: FixedAssetContext;
+  /** Porte da empresa: no intangível da microentidade, o prazo máximo é de 5 anos. */
+  porte?: CompanyPorte;
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -104,6 +110,10 @@ export function FixedAssetSheet({
   const cost = fromCents(assetCostCents(current));
   const quota = fromCents(monthlyQuotaCents(current));
   const life = usefulLifeMonths(current.annualRate);
+  const intangible = isIntangibleCode(current.accountCode);
+  const rateChanged = !asset || asset.annualRate !== current.annualRate || asset.accountCode !== current.accountCode;
+  const termProblem = rateChanged && Number.isFinite(rateValue) ? intangibleTermProblem(current, porte) : null;
+  const termWarning = Number.isFinite(rateValue) ? intangibleTermWarning(current, porte) : null;
   // Cotas fora desta rotina (antes da implantação ou em mês fechado): sugere a depreciação já lançada.
   const suggestion =
     !frozen && current.inUseDate && cost > 0 && current.annualRate > 0
@@ -132,7 +142,8 @@ export function FixedAssetSheet({
     setLocalError(null);
     if (!use) return setLocalError('Escolha onde a depreciação cai no resultado: atividade-fim (custo) ou administrativo/comercial (despesa).');
     if (invalidMoney) return setLocalError('Há valor inválido. Use o formato 1.234,56.');
-    if (!Number.isFinite(rateValue)) return setLocalError('Informe a taxa anual de depreciação (em %).');
+    if (!Number.isFinite(rateValue)) return setLocalError(`Informe a taxa anual de ${intangible ? 'amortização' : 'depreciação'} (em %).`);
+    if (termProblem) return setLocalError(termProblem);
     if (await onSave(draft())) onClose();
   };
 
@@ -177,6 +188,12 @@ export function FixedAssetSheet({
             ))}
           </select>
         </Field>
+
+        {intangible && (
+          <p className="-mt-2 px-0.5 text-[12px] text-stone-500">
+            Só entra no intangível o que foi comprado de terceiros (software, marca ou patente adquirida). Marca criada pela própria empresa e gastos com pesquisa e desenvolvimento são despesa.
+          </p>
+        )}
 
         <Field label="Uso do bem" hint="Atividade-fim: o bem produz o serviço ou o produto (ex.: computador do escritório contábil, máquina da fábrica). A depreciação vai para custo.">
           <select disabled={frozen} value={use} onChange={(e) => setUse(e.target.value as FixedAssetUse)} className={`${INPUT} ${use ? '' : 'text-stone-400'}`}>
@@ -231,11 +248,15 @@ export function FixedAssetSheet({
         </p>
 
         <Field
-          label="Taxa anual de depreciação (%)"
+          label={intangible ? 'Taxa anual de amortização (%)' : 'Taxa anual de depreciação (%)'}
+          error={termProblem}
           hint={
-            account && SUGGESTED_RATES[account.code] !== undefined
-              ? `Sugerida para ${account.name}: ${SUGGESTED_RATES[account.code]}% ao ano (IN RFB 1700/2017, Anexo III).`
-              : 'Use a taxa da IN RFB 1700/2017 (Anexo III) ou a vida útil estimada.'
+            termWarning ??
+            (intangible && (porte ?? 'MICROENTIDADE') === 'MICROENTIDADE'
+              ? 'Microentidade: prazo máximo de 5 anos (taxa mínima de 20% ao ano; NBC TG 1002, seção 18).'
+              : account && SUGGESTED_RATES[account.code] !== undefined
+                ? `Sugerida para ${account.name}: ${SUGGESTED_RATES[account.code]}% ao ano${intangible ? '' : ' (IN RFB 1700/2017, Anexo III)'}.`
+                : 'Use a taxa da IN RFB 1700/2017 (Anexo III) ou a vida útil estimada.')
           }
         >
           <input

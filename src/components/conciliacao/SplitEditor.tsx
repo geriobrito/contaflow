@@ -4,7 +4,14 @@ import React, { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
-import { grossNetDrafts, grossOriginsFor, newSplitId, retentionPresetsFor, summarizeSplits, toCents, type RetentionOption, type SplitDraft } from '@/lib/splits';
+import { grossNetDrafts, grossOriginsFor, newSplitId, retentionPresetsFor, summarizeSplits, toCents, type GrossOrigin, type RetentionOption, type RetentionPreset, type SplitDraft } from '@/lib/splits';
+
+/** Bruto × líquido com outras linhas que as de nota (ex.: resgate de aplicação, com IR e IOF). */
+export interface GrossNetMode {
+  origins: readonly GrossOrigin[];
+  presets: readonly RetentionPreset[];
+  note: string;
+}
 
 const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const formatCents = (cents: number): string => BRL.format(cents / 100);
@@ -46,14 +53,16 @@ function GrossNetPanel({
   accounts,
   defaultAccountId,
   onApply,
+  mode,
 }: {
   transactionAmount: number;
   accounts: readonly ChartAccount[];
   defaultAccountId?: string;
   onApply: (drafts: SplitDraft[]) => void;
+  mode?: GrossNetMode;
 }) {
-  const presets = retentionPresetsFor(transactionAmount);
-  const origins = grossOriginsFor(transactionAmount);
+  const presets = mode?.presets ?? retentionPresetsFor(transactionAmount);
+  const origins = mode?.origins ?? grossOriginsFor(transactionAmount);
   const byCode = useMemo(() => new Map(accounts.map((a) => [a.code, a] as const)), [accounts]);
   const [originKey, setOriginKey] = useState(origins[0].key);
   const origin = origins.find((o) => o.key === originKey) ?? origins[0];
@@ -72,7 +81,9 @@ function GrossNetPanel({
   return (
     <div className="rounded-2xl bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 p-3 space-y-3">
       <p className="text-[12px] text-sky-900 dark:text-sky-200">
-        {receipt
+        {mode
+          ? mode.note
+          : receipt
           ? 'O banco recebeu o líquido. Informe as retenções e a taxa: o valor bruto entra na conta escolhida e cada retenção, na conta dela.'
           : 'O banco pagou o líquido. Informe o que foi retido do fornecedor: o valor bruto entra na conta escolhida e a retenção vai para o imposto a recolher.'}
       </p>
@@ -179,9 +190,11 @@ interface SplitEditorProps {
   defaultAccountId?: string;
   /** Abre já no atalho bruto × líquido. */
   startWithGrossNet?: boolean;
+  /** Linhas do bruto × líquido diferentes das de nota (resgate de aplicação). */
+  grossNetMode?: GrossNetMode;
 }
 
-export function SplitEditor({ transactionAmount, accounts, drafts, onChange, defaultAccountId, startWithGrossNet = false }: SplitEditorProps) {
+export function SplitEditor({ transactionAmount, accounts, drafts, onChange, defaultAccountId, startWithGrossNet = false, grossNetMode }: SplitEditorProps) {
   const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
   const summary = summarizeSplits(transactionAmount, drafts);
   const balanced = summary.isBalanced;
@@ -241,6 +254,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
           transactionAmount={transactionAmount}
           accounts={analytic}
           defaultAccountId={defaultAccountId}
+          mode={grossNetMode}
           onApply={(next) => {
             onChange(next);
             setGrossNet(false);

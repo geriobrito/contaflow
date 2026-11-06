@@ -5,6 +5,7 @@ import { buildTrialBalance, type Posting } from '@/lib/ledger';
 import {
   closingChecks,
   depreciationCheck,
+  disposalRenames,
   hasStockBalance,
   invertedBalancesCheck,
   manualItems,
@@ -50,7 +51,7 @@ describe('checklist do fechamento: conferências automáticas', () => {
   it('terminologia: provisão de férias, lucro no ativo, multa fora do financeiro e contas genéricas', () => {
     const legacy = chart.map((a) => (a.code === '2.1.1.05' ? { ...a, name: 'Provisão de Férias e Encargos' } : a));
     const multa = { ...chart.find((a) => a.code === '3.3.2.17')!, id: 'multa', code: '3.3.2.18', name: 'Multas de trânsito' };
-    const antecipacao = { ...chart.find((a) => a.code === '1.1.2.06')!, id: 'ant', code: '1.1.2.09', name: 'Antecipação de Lucros' };
+    const antecipacao = { ...chart.find((a) => a.code === '1.1.2.06')!, id: 'ant', code: '1.1.2.99', name: 'Antecipação de Lucros' };
     const accounts = [...legacy, multa, antecipacao];
     const postings: Posting[] = [
       { accountId: 'multa', date: '2025-05-01', value: 120 },
@@ -69,6 +70,19 @@ describe('checklist do fechamento: conferências automáticas', () => {
     expect(withoutProvisionTerm('Provisão para férias')).toBe('Férias a Pagar');
     expect(withoutProvisionTerm('PROVISAO DE FERIAS A PAGAR')).toBe('FERIAS A PAGAR');
     expect(provisionRenames(chart)).toEqual([]);
+  });
+
+  it('contas da venda de bens com "ganho" ou "perda": aviso e nome novo (receita e custo)', () => {
+    const legacy = chart.map((a) =>
+      a.code === '3.3.9.02' ? { ...a, name: 'Ganho na Venda de Imobilizado' } : a.code === '3.3.9.04' ? { ...a, name: 'Perda na Baixa de Imobilizado' } : a
+    );
+    expect(disposalRenames(legacy).map((r) => [r.account.code, r.name])).toEqual([
+      ['3.3.9.02', 'Receita na Venda de Imobilizado e Intangível'],
+      ['3.3.9.04', 'Custo do Imobilizado e Intangível Baixado'],
+    ]);
+    const check = terminologyChecks(tb([]), tb([]), legacy).find((c) => c.id === 'disposal-term')!;
+    expect(check.items![0]).toBe('3.3.9.02 Ganho na Venda de Imobilizado → Receita na Venda de Imobilizado e Intangível');
+    expect(disposalRenames(chart)).toEqual([]);
   });
 
   it('grupo de lucros acumulados com saldo além de lucros/prejuízos acumulados, só depois do encerramento', () => {

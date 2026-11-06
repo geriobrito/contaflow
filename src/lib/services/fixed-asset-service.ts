@@ -1,4 +1,4 @@
-import type { AuditEntry, ChartAccount, FixedAsset, FixedAssetDisposalReason, FixedAssetRegister, JournalEntry } from '@/types/firestore';
+import type { AuditEntry, ChartAccount, CompanyPorte, FixedAsset, FixedAssetDisposalReason, FixedAssetRegister, FixedAssetSale, JournalEntry } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
@@ -10,11 +10,11 @@ import {
   assetProblem,
   depreciationCloseProblem,
   depreciationStatus,
+  disposalCodes,
   disposalDraft,
   disposalLockProblem,
+  intangibleTermProblem,
   lastDayOf,
-  contraCodeFor,
-  DISPOSAL_LOSS_CODE,
   isAssetFrozen,
   lockedChangeProblem,
   missingDepreciationCodes,
@@ -70,11 +70,17 @@ const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substr
  * Grava um bem novo ou alterado. Recusa o que não fecha (`assetProblem`) e o que mexeria em
  * cotas de competência fechada (`lockedChangeProblem`).
  */
-export async function saveFixedAsset(clientId: string, asset: FixedAsset, ctx: FixedAssetContext): Promise<void> {
+export async function saveFixedAsset(clientId: string, asset: FixedAsset, ctx: FixedAssetContext, porte?: CompanyPorte): Promise<void> {
   const problem = assetProblem(asset, ctx.accounts);
   if (problem) throw new Error(problem);
   const register = ctx.register ?? emptyRegister(clientId);
   const before = register.assets.find((a) => a.id === asset.id) ?? null;
+  // O prazo do intangível vale para o cadastro novo e para a troca de conta ou de taxa: um bem
+  // antigo continua editável (descrição, nota) mesmo fora da regra.
+  if (!before || before.annualRate !== asset.annualRate || before.accountCode !== asset.accountCode) {
+    const term = intangibleTermProblem(asset, porte);
+    if (term) throw new Error(term);
+  }
   if (before?.disposal && !asset.disposal) throw new Error('Desfaça a baixa pelo botão próprio.');
   const locked = lockedChangeProblem(before, asset, ctx.lockedMonths, ctx.implantationMonth);
   if (locked) throw new Error(locked);
@@ -98,11 +104,19 @@ export async function deleteFixedAsset(clientId: string, asset: FixedAsset, ctx:
   );
 }
 
-/** Baixa do bem: grava o cadastro e o lançamento da baixa juntos. */
+export interface DisposalInput {
+  date: string;
+  reason: FixedAssetDisposalReason;
+  note?: string;
+  /** Obrigatória na venda: a receita entra junto com a baixa. */
+  sale?: FixedAssetSale;
+}
+
+/** Baixa do bem: grava o cadastro e o lançamento da baixa (com a venda, se houver) juntos. */
 export async function disposeFixedAsset(
   clientId: string,
   asset: FixedAsset,
-  disposal: { date: string; reason: FixedAssetDisposalReason; note?: string },
+  disposal: DisposalInput,
   ctx: FixedAssetContext,
   authorUid: string
 ): Promise<JournalEntry | null> {
@@ -111,15 +125,30 @@ export async function disposeFixedAsset(
   if (before) throw new Error(before);
   const lock = disposalLockProblem(asset, disposal.date, ctx.lockedMonths, ctx.implantationMonth);
   if (lock) throw new Error(lock);
-  const accounts = await ensureTemplateCodes(clientId, [contraCodeFor(asset.accountCode), DISPOSAL_LOSS_CODE], ctx.accounts);
-  const { draft, problem } = disposalDraft(asset, disposal.date, disposal.reason, ctx.implantationMonth, accounts);
+  const sale: FixedAssetSale | undefined =
+    disposal.reason === 'SALE'
+      ? {
+          amount: disposal.sale?.amount ?? 0,
+          ...(disposal.sale?.buyer?.trim() ? { buyer: disposal.sale.buyer.trim() } : {}),
+          ...(disposal.sale?.invoiceRef?.trim() ? { invoiceRef: disposal.sale.invoiceRef.trim() } : {}),
+        }
+      : undefined;
+  if (sale && !(sale.amount > 0)) throw new Error('Informe o valor da venda (o da nota fiscal).');
+  const accounts = await ensureTemplateCodes(clientId, disposalCodes(asset, disposal.reason), ctx.accounts);
+  const { draft, problem } = disposalDraft(asset, disposal.date, disposal.reason, ctx.implantationMonth, accounts, sale);
   if (!draft) throw new Error(problem ?? 'Não foi possível montar o lançamento da baixa.');
   const now = new Date().toISOString();
   const journalId = newJournalId();
   const register = ctx.register ?? emptyRegister(clientId);
   const disposed: FixedAsset = {
     ...asset,
-    disposal: { date: disposal.date, reason: disposal.reason, ...(disposal.note?.trim() ? { note: disposal.note.trim() } : {}), journalEntryId: journalId },
+    disposal: {
+      date: disposal.date,
+      reason: disposal.reason,
+      ...(disposal.note?.trim() ? { note: disposal.note.trim() } : {}),
+      ...(sale ? { sale } : {}),
+      journalEntryId: journalId,
+    },
     updatedAt: now,
   };
   return getRepository().saveFixedAssets(

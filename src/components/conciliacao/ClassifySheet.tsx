@@ -16,7 +16,9 @@ import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
-import { newSplitId, splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { invoiceRetentionSplit, newSplitId, splitsToDrafts, summarizeSplits, type InvoiceRetentionSplit, type SplitDraft } from '@/lib/splits';
+import { paidNet, retentionParts, simplesRetentionWarning } from '@/lib/nfe/retentions';
+import { INVESTMENT_DEFAULT_CODE, irIsExpense, redemptionPresets } from '@/lib/investments';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { floatingPaymentSplit } from '@/lib/financing';
 import { ModalPortal } from '@/components/ui/ModalPortal';
@@ -55,6 +57,8 @@ interface ClassifySheetProps {
   suggestions?: readonly AccountSuggestion[];
   /** Contratos com juros pós-fixados (parcelamento pela Selic): o pagamento acima da parcela-base vira parcela + juros. */
   floatingContracts?: readonly FinancingContract[];
+  /** Contas das aplicações financeiras cadastradas: a entrada nelas é resgate (bruto × líquido com IR e IOF). */
+  investmentAccountIds?: readonly string[];
 }
 
 type SheetMode = 'single' | 'split' | 'ask' | 'history';
@@ -63,6 +67,51 @@ type SheetMode = 'single' | 'split' | 'ask' | 'history';
 const defaultQuestion = (t: BankTransaction) =>
   `O que é o lançamento de ${formatCurrency(Math.abs(t.amount))} em ${formatDateBR(t.date)} (“${t.memo}”)? Informe do que se trata (ex.: fornecedor, serviço, número da nota).`;
 
+
+/** NFS-e casada com retenções: o líquido caiu no banco; propõe o bruto × líquido pela nota. */
+function RetentionNotice({
+  invoice,
+  regime,
+  split,
+  hasAccount,
+  onApply,
+}: {
+  invoice: InvoiceSummary;
+  regime?: TaxRegime;
+  split: InvoiceRetentionSplit;
+  hasAccount: boolean;
+  onApply: () => void;
+}) {
+  const parts = retentionParts(invoice.retentions);
+  const totalCents = parts.reduce((s, p) => s + p.cents, 0);
+  const simples = simplesRetentionWarning(invoice, regime);
+  const receipt = invoice.direction === 'SALE';
+  return (
+    <div role="status" className="rounded-2xl border border-sky-200/70 bg-sky-50/80 dark:bg-sky-950/25 dark:border-sky-800/40 px-3.5 py-3 text-[12px] text-sky-900 dark:text-sky-200 space-y-2">
+      <p>
+        A nota tem {formatCurrency(totalCents / 100)} de retenções ({parts.map((p) => `${p.label} ${formatCurrency(p.cents / 100)}`).join('; ')}). O extrato traz o líquido:{' '}
+        {receipt ? 'a receita entra pelo bruto e o retido fica a recuperar.' : 'a despesa entra pelo bruto e o retido fica a recolher.'}
+      </p>
+      {simples && <p className="text-amber-800 dark:text-amber-300">{simples}</p>}
+      {split.missingCodes.length > 0 && (
+        <p className="text-amber-800 dark:text-amber-300">
+          Conta {split.missingCodes.join(', ')} fora do plano: inclua pelo Plano de Contas (completar com o modelo).
+          {split.drafts ? ' Por ora, o valor vai para 1.1.2.05 Tributos a Recuperar.' : ''}
+        </p>
+      )}
+      {split.otherCents > 0 && <p>{formatCurrency(split.otherCents / 100)} da diferença não está discriminado na nota: inclua a linha à mão no rateio.</p>}
+      <button
+        type="button"
+        disabled={!hasAccount || !split.drafts}
+        onClick={onApply}
+        className="rounded-lg bg-sky-700 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-sky-800 disabled:opacity-40 active:scale-[0.97] transition-all duration-150"
+      >
+        Lançar com as retenções da nota
+      </button>
+      {!hasAccount && <p className="text-[11px] text-sky-800/80 dark:text-sky-300/80">Escolha antes a conta do valor bruto ({receipt ? 'a receita' : 'a despesa'}).</p>}
+    </div>
+  );
+}
 
 export function ClassifySheet({
   transaction,
@@ -82,6 +131,7 @@ export function ClassifySheet({
   regime,
   suggestions,
   floatingContracts,
+  investmentAccountIds,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -98,6 +148,8 @@ export function ClassifySheet({
   const [mode, setMode] = useState<SheetMode>(locked ? 'history' : transaction.isSplit ? 'split' : 'single');
   /** Atalho "bruto × líquido" da conta única: o rateio abre já no painel de retenções. */
   const [grossNetFirst, setGrossNetFirst] = useState(false);
+  /** O bruto × líquido é de resgate de aplicação (IR e IOF), não de nota. */
+  const [redemption, setRedemption] = useState(false);
   const openQuery = transaction.clientQuery?.status === 'OPEN' ? transaction.clientQuery : undefined;
   const [question, setQuestion] = useState(openQuery?.question ?? defaultQuestion(transaction));
   const [audit, setAudit] = useState<AuditEntry[] | null>(null);
@@ -135,6 +187,15 @@ export function ClassifySheet({
     () => (credit?.status === 'CREDIT' ? creditSplitDrafts(transaction.amount, accountId, credit, accounts) : null),
     [credit, transaction.amount, accountId, accounts]
   );
+  // NFS-e com retenções e o extrato pelo líquido: bruto na conta escolhida, retenções nas contas delas.
+  const withheld = invoiceMatch && !invoiceRejected && paidNet(invoiceMatch.invoice, invoiceMatch.amount) ? invoiceMatch.invoice : null;
+  const retentionSplit = useMemo(
+    () =>
+      withheld?.retentions
+        ? invoiceRetentionSplit({ transactionAmount: transaction.amount, grossAccountId: accountId, retentions: withheld.retentions, accounts, invoiceLabel: describeInvoice(withheld) })
+        : null,
+    [withheld, transaction.amount, accountId, accounts]
+  );
   // Em edição, só atualiza regra por padrão se o lançamento veio de uma.
   const [learnRule, setLearnRule] = useState(isEditing ? Boolean(sourceRule) : true);
   // Termo sugerido: a descrição como aparece na lista ("Pix recebido - Fulano"), sem CPF/dados bancários;
@@ -170,6 +231,9 @@ export function ClassifySheet({
     [accountId, floatingContracts, transaction.amount]
   );
   const negative = transaction.amount < 0;
+  // Entrada classificada numa conta de aplicação: resgate, com IR e IOF entre o bruto e o líquido.
+  const isRedemption =
+    !negative && Boolean(accountId) && (investmentAccountIds?.includes(accountId) || accounts.find((a) => a.id === accountId)?.code === INVESTMENT_DEFAULT_CODE);
   // Saída: despesas e custos primeiro; entrada: receitas primeiro.
   const pickerAccounts = useMemo(() => orderAccountsByDirection(accounts, directionOf(transaction.amount)), [accounts, transaction.amount]);
 
@@ -313,6 +377,15 @@ export function ClassifySheet({
                 onChange={setDrafts}
                 defaultAccountId={accountId || undefined}
                 startWithGrossNet={grossNetFirst}
+                grossNetMode={
+                  redemption
+                    ? {
+                        origins: [{ key: 'redemption', label: 'Resgate de aplicação', hint: 'Sai da aplicação o valor bruto (o do extrato da aplicação).' }],
+                        presets: redemptionPresets(regime),
+                        note: `O banco recebeu o líquido do resgate. Informe o IR e o IOF do extrato da aplicação: o bruto sai da aplicação${irIsExpense(regime) ? ' e, no Simples, o IR vai para a despesa (não se recupera)' : ' e o IR fica a recuperar (abate o IRPJ)'}.`,
+                      }
+                    : undefined
+                }
               />
             </div>
           ) : (
@@ -335,6 +408,20 @@ export function ClassifySheet({
                       }
                     : undefined
                 }
+              />
+            )}
+            {withheld && retentionSplit && (
+              <RetentionNotice
+                invoice={withheld}
+                regime={regime}
+                split={retentionSplit}
+                hasAccount={Boolean(accountId)}
+                onApply={() => {
+                  if (!retentionSplit.drafts) return;
+                  setDrafts(retentionSplit.drafts);
+                  setGrossNetFirst(false);
+                  setMode('split');
+                }}
               />
             )}
             {!invoiceMatch && linkedInvoice && <LinkedInvoiceNote invoice={linkedInvoice} />}
@@ -364,10 +451,27 @@ export function ClassifySheet({
                   </button>
                 </div>
               )}
+              {isRedemption && (
+                <div role="status" className="rounded-2xl border border-sky-200/70 bg-sky-50/80 dark:bg-sky-950/25 dark:border-sky-800/40 px-3.5 py-3 text-[12px] text-sky-900 dark:text-sky-200 space-y-2">
+                  <p>Entrada na conta da aplicação: é resgate. Se houve IR ou IOF, sai da aplicação o bruto e o extrato traz o líquido.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGrossNetFirst(true);
+                      setRedemption(true);
+                      setMode('split');
+                    }}
+                    className="rounded-lg bg-sky-700 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-sky-800 active:scale-[0.97] transition-all duration-150"
+                  >
+                    Resgate com IR ou IOF: lançar bruto × líquido
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   setGrossNetFirst(true);
+                  setRedemption(false);
                   setMode('split');
                 }}
                 className="px-1 text-[12px] font-medium text-accent-ink hover:underline"

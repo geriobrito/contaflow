@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { FixedAsset, FixedAssetDisposalReason, JournalEntry } from '@/types/firestore';
+import type { CompanyPorte, FixedAsset, JournalEntry } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import {
+  type DisposalInput,
   deleteFixedAsset,
   disposeFixedAsset,
   loadFixedAssetContext,
@@ -25,7 +26,7 @@ const currentMonth = () => new Date().toISOString().slice(0, 7);
  * gravações: bem novo ou alterado, exclusão, baixa, desfazer baixa e lançar a depreciação dos
  * meses abertos que ficaram para trás. Toda gravação recarrega.
  */
-export function useFixedAssets(clientId: string | undefined, authorUid: string | undefined) {
+export function useFixedAssets(clientId: string | undefined, authorUid: string | undefined, porte?: CompanyPorte) {
   const [ctx, setCtx] = useState<(FixedAssetContext & { id: string; entries: JournalEntry[] }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -92,9 +93,9 @@ export function useFixedAssets(clientId: string | undefined, authorUid: string |
     return current;
   };
 
-  const save = (asset: FixedAsset) => run('salvar bem', async () => saveFixedAsset(clientId!, asset, requireCtx()));
+  const save = (asset: FixedAsset) => run('salvar bem', async () => saveFixedAsset(clientId!, asset, requireCtx(), porte));
   const remove = (asset: FixedAsset) => run('excluir bem', async () => deleteFixedAsset(clientId!, asset, requireCtx()));
-  const dispose = (asset: FixedAsset, disposal: { date: string; reason: FixedAssetDisposalReason; note?: string }) =>
+  const dispose = (asset: FixedAsset, disposal: DisposalInput) =>
     run('baixar bem', async () => disposeFixedAsset(clientId!, asset, disposal, requireCtx(), authorUid ?? 'local'));
   const undoDisposal = (asset: FixedAsset) => run('desfazer baixa', async () => undoFixedAssetDisposal(clientId!, asset, requireCtx()));
 

@@ -11,6 +11,8 @@ import type {
   FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
+  InvestmentRegister,
+  StockControl,
   PrepaidRegister,
   InvoiceSummary,
   JournalCounter,
@@ -64,6 +66,8 @@ export const LOCAL_KEYS = {
   checklists: 'contaflow_closing_checklists',
   prepaid: 'contaflow_prepaid_expenses',
   financing: 'contaflow_financing_contracts',
+  investments: 'contaflow_investment_accounts',
+  stock: 'contaflow_stock_controls',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -230,6 +234,8 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.checklists,
         LOCAL_KEYS.prepaid,
         LOCAL_KEYS.financing,
+        LOCAL_KEYS.investments,
+        LOCAL_KEYS.stock,
       ]) {
         write(
           key,
@@ -661,6 +667,18 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     },
     async saveFinancingContracts(register, audit, journal = {}) {
       return saveRegister(LOCAL_KEYS.financing, register, audit, journal);
+    },
+    async getInvestments(clientId) {
+      return read<InvestmentRegister>(LOCAL_KEYS.investments).find((r) => r.clientId === clientId) ?? null;
+    },
+    async saveInvestments(register, audit) {
+      return saveRegister(LOCAL_KEYS.investments, register, audit, {});
+    },
+    async getStockControl(clientId) {
+      return read<StockControl>(LOCAL_KEYS.stock).find((r) => r.clientId === clientId) ?? null;
+    },
+    async saveStockControl(control, audit) {
+      return saveRegister(LOCAL_KEYS.stock, control, audit, {});
     },
 
     async getClosingChecklist(clientId, year) {

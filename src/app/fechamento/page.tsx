@@ -78,8 +78,13 @@ export default function FechamentoPage() {
                   key={c.id}
                   check={c}
                   action={
-                    c.id === 'provision-term' && data.renames.length > 0 ? (
-                      <button type="button" disabled={data.saving} onClick={() => void data.applyRenames()} className={`${BUTTON.secondary} h-8 shrink-0`}>
+                    (c.id === 'provision-term' && data.renames.provision.length > 0) || (c.id === 'disposal-term' && data.renames.disposal.length > 0) ? (
+                      <button
+                        type="button"
+                        disabled={data.saving}
+                        onClick={() => void data.applyRenames(c.id === 'provision-term' ? 'provision' : 'disposal')}
+                        className={`${BUTTON.secondary} h-8 shrink-0`}
+                      >
                         Renomear
                       </button>
                     ) : undefined

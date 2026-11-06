@@ -135,6 +135,14 @@ export default function LancamentosPage() {
       setNotice(`O lançamento #${entry.entryNumber} é gerado pelos contratos de empréstimo e financiamento: altere o contrato em Bens e Contratos › Empréstimos e financiamentos.`);
       return;
     }
+    if (entry?.id && entry.stockMonth) {
+      setNotice(`O lançamento #${entry.entryNumber} é o CMV gerado pelo estoque final informado: corrija o estoque em Bens e Contratos › Estoque e CMV e lance o CMV do mês de novo.`);
+      return;
+    }
+    if (entry?.id && entry.investmentMonth) {
+      setNotice(`O lançamento #${entry.entryNumber} é o rendimento gerado pelos saldos das aplicações: corrija o saldo em Bens e Contratos › Aplicações financeiras e lance o rendimento do mês de novo.`);
+      return;
+    }
     if (entry?.id && (entry.prepaidMonth || entry.prepaidId)) {
       setNotice(`O lançamento #${entry.entryNumber} é gerado pelas despesas antecipadas: altere a apólice em Bens e Contratos › Seguros e despesas antecipadas.`);
       return;
@@ -155,6 +163,8 @@ export default function LancamentosPage() {
       prepaidId: undefined,
       financingMonth: undefined,
       financingId: undefined,
+      investmentMonth: undefined,
+      stockMonth: undefined,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,

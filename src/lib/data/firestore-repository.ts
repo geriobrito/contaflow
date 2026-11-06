@@ -31,6 +31,8 @@ import type {
   FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
+  InvestmentRegister,
+  StockControl,
   InvoiceSummary,
   PrepaidRegister,
   JournalEntry,
@@ -81,6 +83,8 @@ export const COL = {
   checklists: 'closing_checklists',
   prepaid: 'prepaid_expenses',
   financing: 'financing_contracts',
+  investments: 'investment_accounts',
+  stock: 'stock_controls',
 } as const;
 
 /** Limites do Firestore. */
@@ -359,7 +363,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
         REOPENS_PER_BATCH
       );
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets, COL.checklists, COL.prepaid, COL.financing]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets, COL.checklists, COL.prepaid, COL.financing, COL.investments, COL.stock]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -849,6 +853,24 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
     async saveFinancingContracts(register, audit, journal = {}) {
       return saveRegister(COL.financing, register, audit, journal);
+    },
+
+    /* ── Aplicações financeiras ──────────────────────────────────────── */
+    async getInvestments(clientId) {
+      const snap = await getDoc(doc(db, COL.investments, clientId));
+      return snap.exists() ? ({ ...(snap.data() as InvestmentRegister), id: snap.id }) : null;
+    },
+    async saveInvestments(register, audit) {
+      return saveRegister(COL.investments, register, audit, {});
+    },
+
+    /* ── Estoque e CMV ───────────────────────────────────────────────── */
+    async getStockControl(clientId) {
+      const snap = await getDoc(doc(db, COL.stock, clientId));
+      return snap.exists() ? ({ ...(snap.data() as StockControl), id: snap.id }) : null;
+    },
+    async saveStockControl(control, audit) {
+      return saveRegister(COL.stock, control, audit, {});
     },
 
     /* ── Checklist do fechamento ──────────────────────────────────────── */

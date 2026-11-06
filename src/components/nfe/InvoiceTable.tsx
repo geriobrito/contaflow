@@ -4,6 +4,7 @@ import { Trash2 } from 'lucide-react';
 import type { InvoiceSummary } from '@/types/firestore';
 import { paymentStateOf, type InvoicePaymentState } from '@/lib/nfe/import';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
+import { retentionParts } from '@/lib/nfe/retentions';
 import { formatCNPJ, formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { ConfirmButton } from '@/components/ui/primitives';
 
@@ -65,7 +66,10 @@ export function InvoiceTable({ invoices, busy, onDelete }: InvoiceTableProps) {
                     </p>
                   )}
                   {Boolean(inv.altTotal) && inv.model === NFSE_MODEL && (
-                    <p className="text-[11px] text-stone-400">Serviço {formatCurrency(inv.altTotal ?? 0)}, líquido das retenções</p>
+                    <p className="text-[11px] text-stone-400">
+                      Serviço {formatCurrency(inv.altTotal ?? 0)}, líquido das retenções
+                      {inv.retentions ? `: ${retentionParts(inv.retentions).map((p) => `${p.label} ${formatCurrency(p.cents / 100)}`).join(' · ')}` : ''}
+                    </p>
                   )}
                 </td>
                 <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-500" title={inv.cfops.map((c) => `${c.cfop}: ${formatCurrency(c.amount)}`).join('\n')}>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { draftsToSplits, grossNetDrafts, grossOriginsFor, retentionPresetsFor, splitsToDrafts, summarizeSplits, toCents, type SplitDraft } from '@/lib/splits';
+import { draftsToSplits, grossNetDrafts, grossOriginsFor, invoiceRetentionSplit, retentionPresetsFor, splitsToDrafts, summarizeSplits, toCents, type SplitDraft } from '@/lib/splits';
+import { paidNet, retentionParts, simplesRetentionWarning } from '@/lib/nfe/retentions';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 
 const accounts = buildITG1000Chart('c', 'x');
@@ -129,5 +130,66 @@ describe('bruto × líquido (linhas redutoras)', () => {
       ['1.1.2.01', 1000],
       ['1.1.2.05', -15],
     ]);
+  });
+});
+
+describe('bruto × líquido pelas retenções da NFS-e', () => {
+  // Caso da aula: serviço de 750,00 com IRRF 11,25 e CSRF 34,87 (PIS 4,87 + COFINS 22,50 + CSLL 7,50).
+  const retentions = { irrf: 11.25, pis: 4.87, cofins: 22.5, csll: 7.5 };
+  const lines = (drafts: SplitDraft[] | null) => drafts?.map((d) => [d.accountId.replace('c_itg22_', ''), d.cents, Boolean(d.reduces)]);
+
+  it('recebimento (prestadora): receita pelo bruto, IRRF e CSRF a recuperar em contas separadas', () => {
+    const r = invoiceRetentionSplit({ transactionAmount: 703.88, grossAccountId: id('3.1.1.01'), retentions, accounts, invoiceLabel: 'NFS-e 145' });
+    expect(lines(r.drafts)).toEqual([
+      ['3.1.1.01', 75_000, false],
+      ['1.1.2.09', 1_125, true],
+      ['1.1.2.10', 3_487, true],
+    ]);
+    expect(summarizeSplits(703.88, r.drafts!, byId).isBalanced).toBe(true);
+    expect(r.drafts![1].memo).toBe('IRRF retido pelo tomador - NFS-e 145');
+    expect(r.missingCodes).toEqual([]);
+  });
+
+  it('pagamento (tomadora): despesa pelo bruto, IRRF e CSRF a recolher', () => {
+    const r = invoiceRetentionSplit({ transactionAmount: -703.88, grossAccountId: id('3.3.2.11'), retentions, accounts, invoiceLabel: 'NFS-e 145' });
+    expect(lines(r.drafts)).toEqual([
+      ['3.3.2.11', 75_000, false],
+      ['2.1.5.04', 1_125, true],
+      ['2.1.5.08', 3_487, true],
+    ]);
+  });
+
+  it('plano sem as contas novas: recebimento usa 1.1.2.05; pagamento sem 2.1.5.08 não monta', () => {
+    const old = accounts.filter((a) => !['1.1.2.09', '1.1.2.10', '2.1.5.08'].includes(a.code));
+    const receipt = invoiceRetentionSplit({ transactionAmount: 703.88, grossAccountId: id('3.1.1.01'), retentions, accounts: old, invoiceLabel: 'n' });
+    expect(lines(receipt.drafts)?.slice(1)).toEqual([
+      ['1.1.2.05', 1_125, true],
+      ['1.1.2.05', 3_487, true],
+    ]);
+    expect(receipt.missingCodes).toEqual(['1.1.2.09', '1.1.2.10']);
+    const payment = invoiceRetentionSplit({ transactionAmount: -703.88, grossAccountId: id('3.3.2.11'), retentions, accounts: old, invoiceLabel: 'n' });
+    expect(payment.drafts).toBeNull();
+    expect(payment.missingCodes).toEqual(['2.1.5.08']);
+  });
+
+  it('diferença não discriminada fica para linha manual; sem conta do bruto, não monta', () => {
+    const r = invoiceRetentionSplit({ transactionAmount: 970, grossAccountId: id('3.1.1.01'), retentions: { iss: 20, other: 10 }, accounts, invoiceLabel: 'n' });
+    expect(r.otherCents).toBe(1_000);
+    expect(lines(r.drafts)).toEqual([
+      ['3.1.1.01', 99_000, false],
+      ['2.1.5.03', 2_000, true],
+    ]);
+    expect(invoiceRetentionSplit({ transactionAmount: 703.88, grossAccountId: '', retentions, accounts, invoiceLabel: 'n' }).drafts).toBeNull();
+  });
+
+  it('aviso: prestadora do Simples com IRRF/CSRF retidos; pagamento pelo líquido', () => {
+    const sale = { direction: 'SALE' as const, retentions, total: 703.88 };
+    expect(simplesRetentionWarning(sale, 'SIMPLES_NACIONAL')).toMatch(/IN SRF 765\/2007/);
+    expect(simplesRetentionWarning(sale, 'LUCRO_PRESUMIDO')).toBeNull();
+    expect(simplesRetentionWarning({ ...sale, direction: 'PURCHASE' }, 'SIMPLES_NACIONAL')).toBeNull();
+    expect(simplesRetentionWarning({ ...sale, retentions: { inss: 110 } }, 'SIMPLES_NACIONAL')).toBeNull();
+    expect(paidNet(sale, 703.88)).toBe(true);
+    expect(paidNet(sale, 750)).toBe(false);
+    expect(retentionParts(retentions).map((p) => p.label)).toEqual(['IRRF', 'PIS', 'COFINS', 'CSLL']);
   });
 });

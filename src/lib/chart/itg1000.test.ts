@@ -9,8 +9,8 @@ const byCode = new Map(chart.map((a) => [a.code, a] as const));
 describe('Modelo de plano de contas do CFC (NBC TG 1002)', () => {
   it('tem 149 contas, 107 analíticas, códigos únicos e IDs determinísticos', () => {
     expect(chart).toHaveLength(ITG1000_ACCOUNT_COUNT);
-    expect(chart).toHaveLength(159);
-    expect(chart.filter((a) => a.nature === 'ANALYTIC')).toHaveLength(117);
+    expect(chart).toHaveLength(165);
+    expect(chart.filter((a) => a.nature === 'ANALYTIC')).toHaveLength(123);
     expect(new Set(chart.map((a) => a.code)).size).toBe(chart.length);
     expect(buildITG1000Chart('c').map((a) => a.id)).toEqual(chart.map((a) => a.id));
   });

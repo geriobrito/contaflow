@@ -124,20 +124,31 @@ export default function ConciliacaoPage() {
   const monthRoutines = useMonthRoutines(clientId ?? undefined, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)));
   const routines = monthRoutines.routines;
   const routineLabel = (pending: readonly string[]) =>
-    pending.length > 1 ? 'Lançar rotinas do mês' : pending[0] === 'prepaid' ? 'Lançar apropriação' : pending[0] === 'financing' ? 'Lançar juros' : 'Lançar depreciação';
+    pending.length > 1
+      ? 'Lançar rotinas do mês'
+      : pending[0] === 'prepaid'
+        ? 'Lançar apropriação'
+        : pending[0] === 'financing'
+          ? 'Lançar juros'
+          : pending[0] === 'investment'
+            ? 'Lançar rendimento'
+            : pending[0] === 'stock'
+              ? 'Lançar CMV'
+              : 'Lançar depreciação';
   const depreciationNotice = routines
     ? routines.problems.length
       ? {
           message: monthRoutines.error ?? routines.problems.join(' '),
-          actionLabel: routines.updates ? 'Atualizar lançamentos' : routineLabel(routines.pending),
+          actionLabel: routines.pending.length ? (routines.updates ? 'Atualizar lançamentos' : routineLabel(routines.pending)) : null,
           blocking: true,
+          links: routines.inputs,
           busy: monthRoutines.busy,
           onPost: () => {
             void monthRoutines.post().then((message) => message && setToast(message));
           },
         }
       : routines.warnings.length
-        ? { message: routines.warnings.join(' '), actionLabel: null, blocking: false, busy: false, onPost: () => undefined }
+        ? { message: routines.warnings.join(' '), actionLabel: null, blocking: false, busy: false, onPost: () => undefined, links: routines.inputs }
         : null
     : null;
   const [statementsKey, setStatementsKey] = useState(0);
@@ -155,6 +166,8 @@ export default function ConciliacaoPage() {
 
   // Parcelamentos pós-fixados (Selic): o pagamento acima da parcela-base é sugerido como parcela + juros.
   const [floatingContracts, setFloatingContracts] = useState<{ id: string; list: FinancingContract[] } | null>(null);
+  // Contas das aplicações financeiras: a entrada nelas é resgate (bruto × líquido com IR e IOF).
+  const [investmentAccounts, setInvestmentAccounts] = useState<{ id: string; list: string[] } | null>(null);
   useEffect(() => {
     if (!clientId) return;
     let active = true;
@@ -162,6 +175,10 @@ export default function ConciliacaoPage() {
       .getFinancingContracts(clientId)
       .then((r) => active && setFloatingContracts({ id: clientId, list: (r?.contracts ?? []).filter((c) => c.interestMode === 'FLOATING') }))
       .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar parcelamentos' }));
+    getRepository()
+      .getInvestments(clientId)
+      .then((r) => active && setInvestmentAccounts({ id: clientId, list: (r?.accounts ?? []).map((a) => a.ledgerAccountId) }))
+      .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar aplicações' }));
     return () => {
       active = false;
     };
@@ -536,6 +553,7 @@ export default function ConciliacaoPage() {
           suggestions={suggestions.forSelected}
           regime={currentClient?.regime}
           floatingContracts={floatingContracts?.id === clientId ? floatingContracts.list : undefined}
+          investmentAccountIds={investmentAccounts?.id === clientId ? investmentAccounts.list : undefined}
         />
       )}
 

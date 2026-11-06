@@ -124,6 +124,9 @@ interface NfseOptions {
   net?: string;
   cStat?: string;
   ibsCbs?: string;
+  /** Grupo `trib` da DPS (tribMun/tribFed). */
+  trib?: string;
+  totalRet?: string;
 }
 
 function nfseXml({
@@ -134,19 +137,21 @@ function nfseXml({
   net = '1000.00',
   cStat = '100',
   ibsCbs = '',
+  trib = '',
+  totalRet = '',
 }: NfseOptions = {}): string {
   const k = nfseKey(num, provider[0]);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <NFSe xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01"><infNFSe Id="NFS${k}">
 <xLocEmi>São Paulo</xLocEmi><nNFSe>${num}</nNFSe><cStat>${cStat}</cStat><dhProc>2027-01-12T09:00:00-03:00</dhProc>
 <emit><CNPJ>${provider[0]}</CNPJ><xNome>${provider[1]}</xNome></emit>
-<valores><vBC>${service}</vBC><vISSQN>20.00</vISSQN><vLiq>${net}</vLiq></valores>
+<valores><vBC>${service}</vBC><vISSQN>20.00</vISSQN>${totalRet ? `<vTotalRet>${totalRet}</vTotalRet>` : ''}<vLiq>${net}</vLiq></valores>
 ${ibsCbs}
 <DPS versao="1.01"><infDPS Id="DPS1"><dhEmi>2027-01-10T15:30:00-03:00</dhEmi><serie>900</serie><nDPS>1</nDPS>
 <prest><CNPJ>${provider[0]}</CNPJ><regTrib><opSimpNac>1</opSimpNac></regTrib></prest>
 ${taker ? `<toma><CNPJ>${taker[0]}</CNPJ><xNome>${taker[1]}</xNome></toma>` : ''}
 <serv><cServ><cTribNac>170201</cTribNac><xDescServ>Assessoria</xDescServ></cServ></serv>
-<valores><vServPrest><vServ>${service}</vServ></vServPrest></valores>
+<valores><vServPrest><vServ>${service}</vServ></vServPrest>${trib}</valores>
 </infDPS></DPS></infNFSe></NFSe>`;
 }
 
@@ -175,6 +180,26 @@ describe('leitura do XML da NFS-e', () => {
       installments: [],
     });
     expect(r.invoice.key).toHaveLength(50);
+  });
+
+  it('retenções da nota (caso da aula: serviço de 750,00, líquido de 703,88)', () => {
+    const fed = (pisCofins: string, irrf = '11.25', csll = '7.50') =>
+      `<trib><tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun><tribFed><piscofins><CST>01</CST><vPis>4.87</vPis><vCofins>22.50</vCofins>${pisCofins}</piscofins><vRetIRRF>${irrf}</vRetIRRF><vRetCSLL>${csll}</vRetCSLL></tribFed></trib>`;
+    const full = parseNFeXml(nfseXml({ service: '750.00', net: '703.88', trib: fed('<tpRetPisCofins>1</tpRetPisCofins>'), totalRet: '46.12' }));
+    expect(full.kind === 'invoice' && full.invoice).toMatchObject({ total: 703.88, altTotal: 750, retentions: { irrf: 11.25, pis: 4.87, cofins: 22.5, csll: 7.5 } });
+    // Sem a marcação de retenção, PIS/COFINS contam como retidos quando fecham o vTotalRet.
+    const unmarked = parseNFeXml(nfseXml({ service: '750.00', net: '703.88', trib: fed(''), totalRet: '46.12' }));
+    expect(unmarked.kind === 'invoice' && unmarked.invoice.retentions).toEqual({ irrf: 11.25, pis: 4.87, cofins: 22.5, csll: 7.5 });
+    // Só o IRRF retido (PIS/COFINS destacados, mas não retidos).
+    const irrfOnly = parseNFeXml(nfseXml({ service: '750.00', net: '738.75', trib: fed('<tpRetPisCofins>2</tpRetPisCofins>', '11.25', '0.00'), totalRet: '11.25' }));
+    expect(irrfOnly.kind === 'invoice' && irrfOnly.invoice.retentions).toEqual({ irrf: 11.25 });
+    // ISS retido pelo tomador (vISSQN da nota) e diferença sem discriminação.
+    const iss = parseNFeXml(nfseXml({ service: '1000.00', net: '970.00', trib: '<trib><tribMun><tpRetISSQN>2</tpRetISSQN></tribMun></trib>' }));
+    expect(iss.kind === 'invoice' && iss.invoice.retentions).toEqual({ iss: 20, other: 10 });
+    // Sem retenção, nada.
+    expect(parseNFeXml(nfseXml({ trib: fed('<tpRetPisCofins>2</tpRetPisCofins>', '0', '0') })).kind === 'invoice').toBe(true);
+    const none = parseNFeXml(nfseXml());
+    expect(none.kind === 'invoice' && none.invoice.retentions).toBeUndefined();
   });
 
   it('sem retenção não há valor alternativo; IBS/CBS dos totais da nota', () => {

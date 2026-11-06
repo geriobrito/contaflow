@@ -7,6 +7,8 @@ import type {
   ClientCompany,
   ClientRequest,
   FinancingRegister,
+  InvestmentRegister,
+  StockControl,
   FixedAssetRegister,
   ImportBatch,
   PrepaidRegister,
@@ -49,6 +51,10 @@ export interface ClientBackup {
   prepaidExpenses: PrepaidRegister | null;
   /** Contratos de empréstimo, financiamento e parcelamento (ausentes em backups anteriores a eles). */
   financingContracts: FinancingRegister | null;
+  /** Aplicações financeiras e os saldos informados (ausentes em backups anteriores a elas). */
+  investments: InvestmentRegister | null;
+  /** Controle do estoque e os estoques finais informados (ausente em backups anteriores a ele). */
+  stockControl: StockControl | null;
   /** Mais recentes primeiro. */
   audit: AuditEntry[];
   /** A trilha tem mais registros do que o teto do backup: os mais antigos ficaram de fora. */
@@ -62,7 +68,7 @@ export async function buildClientBackup(
   exportedAt: string = new Date().toISOString()
 ): Promise<ClientBackup> {
   const id = client.id;
-  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, prepaidExpenses, financingContracts, audit] =
+  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, prepaidExpenses, financingContracts, investments, stockControl, audit] =
     await Promise.all([
       repo.listAccounts(id),
       repo.listRules(id),
@@ -77,6 +83,8 @@ export async function buildClientBackup(
       repo.getFixedAssets(id),
       repo.getPrepaidExpenses(id),
       repo.getFinancingContracts(id),
+      repo.getInvestments(id),
+      repo.getStockControl(id),
       repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
     ]);
   return {
@@ -97,6 +105,8 @@ export async function buildClientBackup(
     fixedAssets,
     prepaidExpenses,
     financingContracts,
+    investments,
+    stockControl,
     audit,
     auditTruncated: audit.length >= BACKUP_AUDIT_LIMIT,
   };

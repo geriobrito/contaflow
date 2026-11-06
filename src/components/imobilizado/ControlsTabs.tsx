@@ -10,6 +10,8 @@ const TABS = [
   { href: '/imobilizado', label: 'Imobilizado' },
   { href: '/despesas-antecipadas', label: 'Seguros e despesas antecipadas' },
   { href: '/financiamentos', label: 'Empréstimos e financiamentos' },
+  { href: '/aplicacoes', label: 'Aplicações financeiras' },
+  { href: '/estoque', label: 'Estoque e CMV' },
 ] as const;
 
 export function ControlsTabs() {

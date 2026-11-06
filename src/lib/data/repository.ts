@@ -13,6 +13,8 @@ import type {
   FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
+  InvestmentRegister,
+  StockControl,
   PrepaidRegister,
   InvoiceLink,
   InvoiceSummary,
@@ -242,6 +244,16 @@ export interface DataRepository {
   getFinancingContracts(clientId: string): Promise<FinancingRegister | null>;
   /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento inicial (criar e/ou excluir) numa única operação. */
   saveFinancingContracts(register: FinancingRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+
+  /* Aplicações financeiras (um documento por cliente, id = clientId; src/lib/investments.ts) */
+  getInvestments(clientId: string): Promise<InvestmentRegister | null>;
+  /** Como `saveFixedAssets`: cadastro e auditoria numa única operação (o rendimento é a rotina do mês). */
+  saveInvestments(register: InvestmentRegister, audit: AuditEntry): Promise<JournalEntry | null>;
+
+  /* Estoque e CMV (um documento por cliente, id = clientId; src/lib/stock.ts) */
+  getStockControl(clientId: string): Promise<StockControl | null>;
+  /** Controle e auditoria numa única operação (o CMV é a rotina do mês). */
+  saveStockControl(control: StockControl, audit: AuditEntry): Promise<JournalEntry | null>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;

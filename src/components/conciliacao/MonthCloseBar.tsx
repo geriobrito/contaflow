@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Landmark, Lock, LockOpen } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { formatMonth, monthsBetween } from '@/lib/periods';
@@ -21,7 +22,15 @@ interface MonthCloseBarProps {
    * Depreciação do imobilizado que falta lançar (ou atualizar) na competência: enquanto houver,
    * o fechamento fica bloqueado e a barra oferece o lançamento.
    */
-  depreciation?: { message: string; actionLabel: string | null; blocking: boolean; busy: boolean; onPost: () => void } | null;
+  depreciation?: {
+    message: string;
+    actionLabel: string | null;
+    blocking: boolean;
+    busy: boolean;
+    onPost: () => void;
+    /** Dados a informar em outra tela antes de lançar (ex.: o saldo da aplicação). */
+    links?: readonly { href: string; label: string }[];
+  } | null;
 }
 
 /**
@@ -129,6 +138,15 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
               {depreciation.busy ? 'Lançando…' : depreciation.actionLabel}
             </button>
           )}
+          {depreciation.links?.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="rounded-lg border border-amber-600/50 px-2 py-0.5 text-[12px] font-medium text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+            >
+              {l.label}
+            </Link>
+          ))}
         </span>
       )}
       <button

@@ -95,6 +95,7 @@ export function FixedAssetsTable({
                       {a.disposal && (
                         <p className="text-[11px] text-amber-700 dark:text-amber-400">
                           Baixado em {formatDateBR(a.disposal.date)} por {DISPOSAL_REASON_LABEL[a.disposal.reason]}
+                          {a.disposal.sale ? ` (${formatCurrency(a.disposal.sale.amount)})` : ''}
                         </p>
                       )}
                     </td>

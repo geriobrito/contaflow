@@ -107,6 +107,7 @@ export function planInvoiceImport(files: readonly InvoiceFile[], client: Pick<Cl
       ...(inv.ibs > 0 ? { ibs: inv.ibs } : {}),
       ...(inv.cbs > 0 ? { cbs: inv.cbs } : {}),
       ...(inv.serviceCode ? { serviceCode: inv.serviceCode } : {}),
+      ...(inv.retentions ? { retentions: inv.retentions } : {}),
       cfops: inv.cfops,
       installments: inv.installments,
       status: inv.situation === 'CANCELLED' ? 'CANCELLED' : 'AUTHORIZED',

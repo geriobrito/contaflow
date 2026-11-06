@@ -452,6 +452,41 @@ service cloud.firestore {
         && request.resource.data.contracts is list && request.resource.data.contracts.size() <= 100;
     }
 
+    // ── Aplicações financeiras (um documento por cliente, id = clientId) ─
+    // A conta de cada aplicação e o saldo do extrato mês a mês; o rendimento é calculado pelo
+    // app (src/lib/investments.ts) e só o lançamento dele respeita as competências fechadas.
+    match /investment_accounts/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && request.resource.data.accounts is list && request.resource.data.accounts.size() <= 50;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && request.resource.data.accounts is list && request.resource.data.accounts.size() <= 50;
+    }
+
+    // ── Estoque e CMV (um documento por cliente, id = clientId) ───────────
+    // O estoque final informado por competência; o CMV é calculado pelo app (src/lib/stock.ts)
+    // e só o lançamento dele respeita as competências fechadas.
+    function validStock(data) {
+      return data.counts is map && data.counts.size() <= 600
+        && data.get('notes', {}) is map && data.get('notes', {}).size() <= 600
+        && data.frequency in ['MONTHLY', 'QUARTERLY'];
+    }
+    match /stock_controls/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && validStock(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && validStock(request.resource.data);
+    }
+
     // ── Checklist do fechamento (um documento por cliente e exercício) ───
     // id `${clientId}_${AAAA}`; itens marcados à mão (mapa) e o registro dos livros.
     function validChecklist(data) {
@@ -671,6 +706,7 @@ service cloud.firestore {
         && d.total is number && d.total > 0
         && d.get('altTotal', 0) is number && d.get('ibs', 0) is number && d.get('cbs', 0) is number
         && d.get('serviceCode', '') is string && d.get('serviceCode', '').size() <= 10
+        && d.get('retentions', {}) is map && d.get('retentions', {}).size() <= 8
         && d.counterpartyDoc is string && d.counterpartyDoc.size() <= 20
         && d.counterpartyName is string && d.counterpartyName.size() <= 200
         && d.cfops is list && d.cfops.size() <= 60
@@ -704,7 +740,8 @@ service cloud.firestore {
       return ['CLASSIFY', 'RECLASSIFY', 'SPLIT', 'UNRECONCILE', 'APPROVE', 'AUTO_CLASSIFY',
         'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
         'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
-        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE', 'PREPAID_SAVE', 'FINANCING_SAVE'];
+        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE', 'PREPAID_SAVE', 'FINANCING_SAVE',
+        'INVESTMENT_SAVE', 'STOCK_SAVE'];
     }
 
     // Fechamento da competência citada no registro (`${clientId}_${month}`).
