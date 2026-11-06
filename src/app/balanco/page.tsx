@@ -12,7 +12,7 @@ import { CAPITAL_GROUP_CODE, equityMovements, invertedBalances, missingShareCapi
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { porteOf } from '@/lib/accounting-standard';
 import { implantationDate, openingStatus } from '@/lib/opening';
-import { bankSetupIssues, formatDC as dc, hasClosingIn, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
+import { bankSetupIssues, comparativeLines, formatDC as dc, hasClosingIn, hasComparable, previousYearEnd, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
 import { buildDLPA, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
@@ -23,7 +23,10 @@ import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { activityCheck, balanceSheetChecks, dmplCheck, fixedAssetCheck, openingCheck, transitoryCheck } from '@/lib/statement-checks';
+import { activityCheck, balanceSheetChecks, dmplCheck, financingCheck, fixedAssetCheck, openingCheck, prepaidCheck, transitoryCheck } from '@/lib/statement-checks';
+import { expectedBalancesByAccount } from '@/lib/financing';
+import { prepaidBalancesByAccount } from '@/lib/prepaid-expenses';
+import { fromCents } from '@/lib/money';
 import { naturalAssetBalances, reconcileWithLedger } from '@/lib/fixed-assets';
 import { closedYearsOf, describeTransitory, transitoryBalanceAt, transitoryReminder } from '@/lib/opening-transitory';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
@@ -47,24 +50,29 @@ function Side({
   title,
   lines,
   total,
+  previous,
   onSelectAccount,
 }: {
   title: string;
   lines: BalanceSheetLine[];
   total: number;
+  /** Fim do exercício anterior: linhas e total da coluna de comparação. */
+  previous?: { lines: BalanceSheetLine[]; total: number } | null;
   onSelectAccount?: (accountId: string) => void;
 }) {
+  const rows = previous ? comparativeLines(lines, previous.lines) : lines.map((l) => ({ ...l, previous: 0 }));
   return (
     <div className="print-avoid-break">
-      <div className="flex items-baseline justify-between px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5">
-        <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300">{title}</h3>
+      <div className="flex items-baseline justify-between gap-3 px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5">
+        <h3 className="flex-1 text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300">{title}</h3>
         <AccountingAmount value={total} className="text-[13px] font-semibold" />
+        {previous && <AccountingAmount value={previous.total} className="w-32 text-right text-[13px] font-semibold text-stone-400" />}
       </div>
-      {lines.length === 0 ? (
+      {rows.length === 0 ? (
         <p className="px-5 py-3 text-[12px] text-stone-400">Sem saldo.</p>
       ) : (
         <ul>
-          {lines.map((l) => (
+          {rows.map((l) => (
             <li
               key={l.accountId}
               onClick={() => onSelectAccount?.(l.accountId)}
@@ -80,6 +88,7 @@ function Side({
                 {l.name}
               </span>
               <AccountingAmount value={l.value} />
+              {previous && <AccountingAmount value={l.previous} className="w-32 text-right text-stone-400" />}
             </li>
           ))}
         </ul>
@@ -105,6 +114,12 @@ export default function BalancoPage() {
     [txs, banks, accounts, range.end, static_?.openings, journalEntries]
   );
   const bs = useMemo(() => buildBalanceSheet(postings, accounts, range.end), [postings, accounts, range.end]);
+  // Comparabilidade: a posição no fim do exercício anterior, ao lado (sem saldo então, sem coluna).
+  const prevDate = previousYearEnd(range.end);
+  const bsPrev = useMemo(() => {
+    const prev = buildBalanceSheet(postings, accounts, prevDate);
+    return hasComparable(prev) ? prev : null;
+  }, [postings, accounts, prevDate]);
   const inverted = useMemo(() => invertedBalances(bs), [bs]);
   // Cadastro do imobilizado × balanço, no fim do período (só com bens cadastrados).
   const fixedAssetRows = useMemo(() => {
@@ -120,6 +135,31 @@ export default function BalancoPage() {
       ledgerBalance: (id) => balances.get(id) ?? 0,
     });
   }, [static_?.fixedAssets, static_?.openings, txs, banks, bs, accounts, range.end]);
+  // Despesas antecipadas × balanço: saldo a apropriar por conta do ativo.
+  const prepaidRows = useMemo(() => {
+    const items = static_?.prepaid?.items;
+    if (!items?.length || !txs) return null;
+    const implantation = implantationDate(static_?.openings, banks);
+    const register = prepaidBalancesByAccount(items, range.end.slice(0, 7), implantation ? implantation.slice(0, 7) : null);
+    const balances = naturalAssetBalances(bs.assets, accounts);
+    return [...register].map(([accountId, cents]) => {
+      const acc = accounts.find((a) => a.id === accountId);
+      const ledger = balances.get(accountId) ?? 0;
+      return { accountCode: acc?.code ?? '', accountName: acc?.name ?? '', register: fromCents(cents), ledger, difference: Math.round((ledger - fromCents(cents)) * 100) / 100 };
+    });
+  }, [static_?.prepaid, static_?.openings, txs, banks, bs, accounts, range.end]);
+  // Contratos de empréstimo e financiamento × balanço: obrigações e encargos a transcorrer por conta.
+  const financingRows = useMemo(() => {
+    const contracts = static_?.financing?.contracts;
+    if (!contracts?.length || !txs) return null;
+    const expected = expectedBalancesByAccount(contracts, range.end.slice(0, 7));
+    const balances = naturalAssetBalances(bs.liabilities, accounts);
+    return [...expected].map(([accountId, cents]) => {
+      const acc = accounts.find((a) => a.id === accountId);
+      const ledger = balances.get(accountId) ?? 0;
+      return { accountCode: acc?.code ?? '', accountName: acc?.name ?? '', register: fromCents(cents), ledger, difference: Math.round((ledger - fromCents(cents)) * 100) / 100 };
+    });
+  }, [static_?.financing, txs, bs, accounts, range.end]);
   const missingCapital = useMemo(() => missingShareCapital(bs), [bs]);
   // Conta transitória 2.3.3.04 com saldo: lembra de zerar; em 31/12, impede o balanço de encerramento.
   const transitory = useMemo(() => transitoryBalanceAt(postings, accounts, range.end), [postings, accounts, range.end]);
@@ -245,6 +285,7 @@ export default function BalancoPage() {
         client: currentClient,
         range,
         balanceSheet: bs,
+        previousBalanceSheet: view === 'bs' ? bsPrev : null,
         trialBalance: tb,
         documentType: view,
         showSynthetic,
@@ -405,6 +446,8 @@ export default function BalancoPage() {
           !loading && hasData && view !== 'tb' && activityCheck(currentClient),
           !loading && hasData && (view === 'bs' || view === 'dlpa') && dmplCheck(porte, equityMoves, year),
           !loading && hasData && view === 'bs' && fixedAssetCheck(fixedAssetRows, range.end),
+          !loading && hasData && view === 'bs' && prepaidCheck(prepaidRows, range.end),
+          !loading && hasData && view === 'bs' && financingCheck(financingRows, range.end),
           ...(!loading && hasData
             ? balanceSheetChecks({
                 trialBalance: view === 'tb',
@@ -448,14 +491,33 @@ export default function BalancoPage() {
       ) : view === 'bs' ? (
         <div className="grid grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Ativo" lines={sectionLines(bs.assets)} total={bs.totalAssets} onSelectAccount={setDrawerAccountId} />
+            {bsPrev && (
+              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-400">
+                <span>{formatDateBR(range.end)}</span>
+                <span className="w-32 text-right">{formatDateBR(prevDate)}</span>
+              </p>
+            )}
+            <Side title="Ativo" lines={sectionLines(bs.assets)} total={bs.totalAssets} previous={bsPrev && { lines: sectionLines(bsPrev.assets), total: bsPrev.totalAssets }} onSelectAccount={setDrawerAccountId} />
           </section>
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <Side title="Passivo" lines={sectionLines(bs.liabilities)} total={bs.totalLiabilities} onSelectAccount={setDrawerAccountId} />
-            <Side title="Patrimônio líquido" lines={sectionLines(bs.equity, EQUITY_GROUP_CODE)} total={bs.totalEquity} onSelectAccount={setDrawerAccountId} />
-            <div className="flex items-baseline justify-between px-5 py-3 border-t border-black/8 text-[13px] font-semibold">
-              <span>Total do passivo e do PL</span>
+            {bsPrev && (
+              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-400">
+                <span>{formatDateBR(range.end)}</span>
+                <span className="w-32 text-right">{formatDateBR(prevDate)}</span>
+              </p>
+            )}
+            <Side title="Passivo" lines={sectionLines(bs.liabilities)} total={bs.totalLiabilities} previous={bsPrev && { lines: sectionLines(bsPrev.liabilities), total: bsPrev.totalLiabilities }} onSelectAccount={setDrawerAccountId} />
+            <Side
+              title="Patrimônio líquido"
+              lines={sectionLines(bs.equity, EQUITY_GROUP_CODE)}
+              total={bs.totalEquity}
+              previous={bsPrev && { lines: sectionLines(bsPrev.equity, EQUITY_GROUP_CODE), total: bsPrev.totalEquity }}
+              onSelectAccount={setDrawerAccountId}
+            />
+            <div className="flex items-baseline justify-between gap-3 px-5 py-3 border-t border-black/8 text-[13px] font-semibold">
+              <span className="flex-1">Total do passivo e do PL</span>
               <AccountingAmount value={bs.totalLiabilities + bs.totalEquity} />
+              {bsPrev && <AccountingAmount value={bsPrev.totalLiabilities + bsPrev.totalEquity} className="w-32 text-right text-stone-400" />}
             </div>
           </section>
         </div>

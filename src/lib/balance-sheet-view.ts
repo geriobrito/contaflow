@@ -1,6 +1,7 @@
 import type { BankAccount, BankTransaction, ClientCompany, CompanyPorte, JournalEntry, OrgSettings } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { monthOf } from '@/lib/periods';
+import type { BalanceSheet, BalanceSheetLine } from '@/lib/ledger';
 
 /**
  * Tela do Balanço (balanço, balancete, DLPA e DFC): o que ela mostra além das demonstrações —
@@ -67,3 +68,33 @@ export function statementSignatories(
     accountant: org ? { name: org.accountantName, crc: org.accountantCrc } : undefined,
   };
 }
+
+/* =========================================================================
+   Comparativo com o exercício anterior
+   ========================================================================= */
+
+/** 31/12 do exercício anterior ao de `date`: a coluna de comparação do balanço. */
+export const previousYearEnd = (date: string): string => `${Number(date.slice(0, 4)) - 1}-12-31`;
+
+/** Linha do balanço com o saldo no fim do exercício anterior. */
+export interface ComparativeLine extends BalanceSheetLine {
+  previous: number;
+}
+
+/**
+ * Linhas da posição atual e do fim do exercício anterior juntas (contas que só têm saldo num dos
+ * dois aparecem com zero no outro), na ordem do plano; as sem código (virtuais) por último.
+ */
+export function comparativeLines(current: readonly BalanceSheetLine[], previous: readonly BalanceSheetLine[] | null): ComparativeLine[] {
+  const prev = new Map((previous ?? []).map((l) => [l.accountId, l] as const));
+  const out: ComparativeLine[] = current.map((l) => ({ ...l, previous: prev.get(l.accountId)?.value ?? 0 }));
+  const seen = new Set(current.map((l) => l.accountId));
+  for (const l of previous ?? []) if (!seen.has(l.accountId)) out.push({ ...l, value: 0, previous: l.value });
+  return out.sort((a, b) =>
+    a.code && b.code ? a.code.localeCompare(b.code, undefined, { numeric: true }) : a.code ? -1 : b.code ? 1 : a.name.localeCompare(b.name)
+  );
+}
+
+/** O exercício anterior tem saldo para comparar (empresa implantada depois dele não tem). */
+export const hasComparable = (bs: Pick<BalanceSheet, 'assets' | 'liabilities' | 'equity'>): boolean =>
+  bs.assets.length + bs.liabilities.length + bs.equity.length > 0;

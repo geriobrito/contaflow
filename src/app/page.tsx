@@ -3,11 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
-import type { BankAccount, ChartAccount, RuleMatchType } from '@/types/firestore';
+import type { BankAccount, ChartAccount, FinancingContract, RuleMatchType } from '@/types/firestore';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
-import { useMonthDepreciation } from '@/hooks/imobilizado/useMonthDepreciation';
-import { manualDepreciationWarning } from '@/lib/fixed-assets';
+import { useMonthRoutines } from '@/hooks/imobilizado/useMonthRoutines';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
 import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
@@ -121,22 +120,24 @@ export default function ConciliacaoPage() {
   const recon = useReconciliation({ clientId, accounts, range });
   const { transactions, rules, metrics, isLoading, isSaving, error, locks, lockedMonths, closeMonth, reopenMonth, loadAudit } = recon;
   const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
-  // Depreciação do imobilizado do mês: enquanto faltar, a competência não fecha.
-  const monthDep = useMonthDepreciation(clientId ?? undefined, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)));
-  const dep = monthDep.depreciation;
-  const depreciationNotice = dep
-    ? dep.closeProblem
+  // Rotinas do mês (depreciação e apropriação das despesas antecipadas): enquanto faltarem, a competência não fecha.
+  const monthRoutines = useMonthRoutines(clientId ?? undefined, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)));
+  const routines = monthRoutines.routines;
+  const routineLabel = (pending: readonly string[]) =>
+    pending.length > 1 ? 'Lançar rotinas do mês' : pending[0] === 'prepaid' ? 'Lançar apropriação' : pending[0] === 'financing' ? 'Lançar juros' : 'Lançar depreciação';
+  const depreciationNotice = routines
+    ? routines.problems.length
       ? {
-          message: monthDep.error ?? dep.closeProblem,
-          actionLabel: (dep.status.kind === 'PENDING' && dep.status.existing) || dep.status.kind === 'REMOVE' ? 'Atualizar lançamento' : 'Lançar depreciação',
+          message: monthRoutines.error ?? routines.problems.join(' '),
+          actionLabel: routines.updates ? 'Atualizar lançamentos' : routineLabel(routines.pending),
           blocking: true,
-          busy: monthDep.busy,
+          busy: monthRoutines.busy,
           onPost: () => {
-            void monthDep.post().then((message) => message && setToast(message));
+            void monthRoutines.post().then((message) => message && setToast(message));
           },
         }
-      : manualDepreciationWarning(dep.status, selectedMonth ?? '')
-        ? { message: manualDepreciationWarning(dep.status, selectedMonth ?? '')!, actionLabel: null, blocking: false, busy: false, onPost: () => undefined }
+      : routines.warnings.length
+        ? { message: routines.warnings.join(' '), actionLabel: null, blocking: false, busy: false, onPost: () => undefined }
         : null
     : null;
   const [statementsKey, setStatementsKey] = useState(0);
@@ -147,6 +148,20 @@ export default function ConciliacaoPage() {
     getAccounts(clientId)
       .then((list) => active && setAccounts(list))
       .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('o plano de contas', e) }));
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+
+  // Parcelamentos pós-fixados (Selic): o pagamento acima da parcela-base é sugerido como parcela + juros.
+  const [floatingContracts, setFloatingContracts] = useState<{ id: string; list: FinancingContract[] } | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    let active = true;
+    getRepository()
+      .getFinancingContracts(clientId)
+      .then((r) => active && setFloatingContracts({ id: clientId, list: (r?.contracts ?? []).filter((c) => c.interestMode === 'FLOATING') }))
+      .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar parcelamentos' }));
     return () => {
       active = false;
     };
@@ -520,6 +535,7 @@ export default function ConciliacaoPage() {
           linkedInvoice={invoices.linked.get(selected.id)}
           suggestions={suggestions.forSelected}
           regime={currentClient?.regime}
+          floatingContracts={floatingContracts?.id === clientId ? floatingContracts.list : undefined}
         />
       )}
 

@@ -326,5 +326,21 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByText('Ativo = Passivo + Patrimônio líquido')).toBeVisible();
   });
 
+  await test.step('Checklist do fechamento do exercício', async () => {
+    await page.goto('/fechamento');
+    await expect(page.getByRole('heading', { name: 'Fechamento do exercício' })).toBeVisible();
+    await page.getByLabel('Exercício', { exact: true }).selectOption('2025');
+    const auto = page.getByRole('region', { name: 'Conferências automáticas' });
+    // Prestadora com receita e só despesas: falta o custo dos serviços prestados.
+    await expect(auto.getByText(/Receita de R\$\s5\.000,00 sem custo dos serviços prestados na DRE/)).toBeVisible();
+    await expect(auto.getByText('Exercício de 2025 ainda não encerrado')).toBeVisible();
+    // Item conferido à mão fica gravado para a empresa e o exercício.
+    const manual = page.getByRole('region', { name: 'Conferências manuais' });
+    await manual.getByLabel(/Saldo de caixa confirmado com o cliente/).check();
+    await page.reload();
+    await page.getByLabel('Exercício', { exact: true }).selectOption('2025');
+    await expect(page.getByRole('region', { name: 'Conferências manuais' }).getByLabel(/Saldo de caixa confirmado com o cliente/)).toBeChecked();
+  });
+
   expect(pageErrors).toEqual([]);
 });

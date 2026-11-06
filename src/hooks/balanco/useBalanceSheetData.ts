@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankAccount, BankTransaction, ChartAccount, FixedAssetRegister, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, FinancingRegister, FixedAssetRegister, JournalEntry, OpeningBalances, OrgSettings, PeriodLock, PrepaidRegister } from '@/types/firestore';
 import type { Posting } from '@/lib/ledger';
 import { getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
@@ -16,6 +16,10 @@ export interface BalanceSheetStatic {
   locks: PeriodLock[];
   /** Cadastro do imobilizado, para a conferência com o balanço. */
   fixedAssets: FixedAssetRegister | null;
+  /** Despesas antecipadas, para a conferência com o balanço. */
+  prepaid: PrepaidRegister | null;
+  /** Contratos de empréstimo e financiamento, para a conferência com o balanço. */
+  financing: FinancingRegister | null;
 }
 
 /**
@@ -47,12 +51,14 @@ export function useBalanceSheetData(clientId: string | undefined, range: { start
       repo.listJournalEntries(clientId),
       repo.listPeriodLocks(clientId),
       repo.getFixedAssets(clientId),
+      repo.getPrepaidExpenses(clientId),
+      repo.getFinancingContracts(clientId),
     ])
-      .then(([accounts, banks, org, latest, openings, journalEntries, locks, fixedAssets]) => {
+      .then(([accounts, banks, org, latest, openings, journalEntries, locks, fixedAssets, prepaid, financing]) => {
         if (!active) return;
         // Recarga depois do encerramento: fica no período escolhido.
         if (latest && reloadCount === 0) jumpTo(latest);
-        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks, fixedAssets });
+        setStatic({ id: clientId, accounts, banks, org, openings, journalEntries, locks, fixedAssets, prepaid, financing });
         setError(null);
       })
       .catch((e: unknown) => active && setError(e instanceof Error ? e.message : 'Falha ao carregar.'));

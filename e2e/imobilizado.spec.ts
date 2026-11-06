@@ -126,12 +126,56 @@ test('imobilizado: cadastro do bem, depreciação no fechamento e balanço', asy
     await expect(row).toContainText('71.075,33');
   });
 
-  await test.step('fechamento exige a depreciação do mês', async () => {
+  await test.step('seguro do veículo (despesa antecipada)', async () => {
+    await page.getByRole('link', { name: 'Seguros e despesas antecipadas' }).click();
+    await page.getByRole('button', { name: 'Cadastrar a primeira apólice' }).click();
+    const sheet = page.getByRole('dialog');
+    // O bem segurado traz o uso e sugere a descrição.
+    await sheet.getByLabel('Bem segurado').selectOption({ label: 'Veículo de passeio' });
+    await expect(sheet.getByLabel('Descrição')).toHaveValue('Seguro - Veículo de passeio');
+    await sheet.getByLabel('Apólice nº').fill('0531.12345');
+    await sheet.getByLabel('Prêmio líquido total').fill('1.410,88');
+    await sheet.getByLabel(/Data da apólice/).fill('2025-03-01');
+    await expect(sheet.getByText(/apropriação de R\$\s117,57 por mês/)).toBeVisible();
+    await sheet.getByRole('button', { name: 'Cadastrar' }).click();
+    await expect(sheet).toBeHidden();
+    await page.getByLabel('Posição no fim de').fill('2025-03');
+    const row = page.getByRole('row', { name: /Seguro - Veículo de passeio/ });
+    await expect(row).toContainText('117,57');
+    await expect(row).toContainText('1.293,31');
+  });
+
+  await test.step('empréstimo com tabela Price', async () => {
+    await page.getByRole('link', { name: 'Empréstimos e financiamentos' }).click();
+    await page.getByRole('button', { name: 'Cadastrar o primeiro contrato' }).click();
+    const sheet = page.getByRole('dialog');
+    await sheet.getByRole('combobox', { name: /^Tipo/ }).selectOption({ label: 'Empréstimo' });
+    await sheet.getByLabel('Descrição', { exact: true }).fill('Capital de giro');
+    await sheet.getByLabel('Banco ou financiadora').fill('Financiadora Beta S.A.');
+    await sheet.getByLabel('Data do contrato', { exact: true }).fill('2025-03-01');
+    await sheet.getByLabel('Valor do crédito').fill('72.280,00');
+    await sheet.getByLabel(/Encargos da contratação financiados/).fill('3.899,94');
+    await sheet.getByLabel('Parcelas', { exact: true }).fill('36');
+    await sheet.getByLabel('Valor da parcela', { exact: true }).fill('2.574,15');
+    await sheet.getByLabel('1º vencimento').fill('2025-04-07');
+    await sheet.getByLabel('Taxa de juros ao mês (%)').fill('1,10');
+    // 21 parcelas vencem até 31/12/2026 (curto prazo) e 15 depois.
+    await expect(sheet.getByText(/21 parcela\(s\) no curto prazo \(até 31\/12\/2026\) e 15 no longo/)).toBeVisible();
+    await expect(sheet.getByText(/Juros da 1ª parcela: R\$\s837,98/)).toBeVisible();
+    await sheet.getByRole('button', { name: 'Cadastrar' }).click();
+    await expect(sheet).toBeHidden();
+    await page.getByRole('button', { name: 'Ver parcelas de Capital de giro' }).click();
+    const schedule = page.getByRole('table', { name: 'Parcelas de Capital de giro' });
+    await expect(schedule.getByRole('row', { name: /1\/36.*07\/04\/2025.*2\.574,15.*837,98.*1\.736,17.*74\.443,77/ })).toBeVisible();
+  });
+
+  await test.step('fechamento exige depreciação e apropriação do mês', async () => {
     await page.goto('/');
     await expect(page.getByText(/Lance a depreciação de 03\/2025 \(R\$\s1\.204,67\)/)).toBeVisible();
+    await expect(page.getByText(/Lance a apropriação de seguros e despesas antecipadas de 03\/2025 \(R\$\s117,57\)/)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Fechar competência' })).toBeDisabled();
-    await page.getByRole('button', { name: 'Lançar depreciação' }).click();
-    await expect(page.getByText('Depreciação do mês lançada')).toBeVisible();
+    await page.getByRole('button', { name: 'Lançar rotinas do mês' }).click();
+    await expect(page.getByText('Depreciação e apropriação do mês lançadas')).toBeVisible();
     await page.getByRole('button', { name: 'Fechar competência' }).click();
     await page.getByRole('button', { name: 'Clique para confirmar o fechamento' }).click();
     await expect(page.getByText('Competência fechada', { exact: true })).toBeVisible();
@@ -140,6 +184,8 @@ test('imobilizado: cadastro do bem, depreciação no fechamento e balanço', asy
   await test.step('Livro Diário e Balanço', async () => {
     await page.goto('/diario');
     await expect(page.getByText('Vlr. ref. cota de depreciação de veículos referente ao mês de março/2025').first()).toBeVisible();
+    await expect(page.getByText(/Apropriação 1 de 12 - Seguro - Veículo de passeio/).first()).toBeVisible();
+    await expect(page.getByText(/Empréstimo Financiadora Beta S\.A\. - Capital de giro: 36 parcela\(s\)/).first()).toBeVisible();
 
     await page.goto('/balanco');
     await expect(page.getByRole('heading', { name: 'Balanço patrimonial' })).toBeVisible();

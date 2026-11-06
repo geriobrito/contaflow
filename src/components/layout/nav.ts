@@ -11,6 +11,7 @@ import {
   Landmark,
   LayoutDashboard,
   LineChart,
+  ListChecks,
   MessageCircleQuestion,
   NotebookPen,
   ReceiptText,
@@ -26,6 +27,8 @@ export interface NavItem {
   icon: LucideIcon;
   /** Outros nomes pelos quais a tela é procurada na busca rápida (Ctrl+K). */
   keywords?: string;
+  /** Outras telas do mesmo item (abas), que também o deixam marcado no menu. */
+  also?: readonly string[];
 }
 
 /** Menu em três seções: a rotina do mês, as demonstrações e os cadastros. Usado também pela busca rápida. */
@@ -39,7 +42,13 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
       { href: '/contas', label: 'Contas e Extratos', icon: Wallet, keywords: 'bancos saldo inicial importacoes' },
       { href: '/nfe', label: 'Notas Fiscais', icon: ReceiptText, keywords: 'nfe nf-e xml compras vendas fornecedor cfop' },
       { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine, keywords: 'partidas dobradas provisao folha depreciacao' },
-      { href: '/imobilizado', label: 'Imobilizado', icon: Car, keywords: 'bens ativo depreciacao amortizacao intangivel baixa patrimonio' },
+      {
+        href: '/imobilizado',
+        label: 'Bens e Contratos',
+        icon: Car,
+        keywords: 'imobilizado bens ativo depreciacao amortizacao intangivel baixa patrimonio seguro apolice despesas antecipadas emprestimo financiamento parcelamento juros',
+        also: ['/despesas-antecipadas', '/financiamentos'],
+      },
     ],
   },
   {
@@ -51,6 +60,7 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
       { href: '/razao', label: 'Livro Razão', icon: BookMarked },
       { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },
       { href: '/abertura', label: 'Balanço de Abertura', icon: ClipboardList, keywords: 'saldos de abertura implantacao' },
+      { href: '/fechamento', label: 'Fechamento do Exercício', icon: ListChecks, keywords: 'checklist encerramento anual ecd junta registro livros saldo virado' },
     ],
   },
   {
@@ -69,4 +79,4 @@ export const NAV_ITEMS: readonly NavItem[] = NAV_SECTIONS.flatMap((s) => s.items
 
 /** Item do menu da página atual (a Conciliação é a raiz "/": só ela mesma). */
 export const activeNavHref = (pathname: string): string | null =>
-  NAV_ITEMS.find(({ href }) => (href === '/' ? pathname === '/' : pathname.startsWith(href)))?.href ?? null;
+  NAV_ITEMS.find(({ href, also }) => (href === '/' ? pathname === '/' : [href, ...(also ?? [])].some((h) => pathname.startsWith(h))))?.href ?? null;

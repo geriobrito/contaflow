@@ -28,7 +28,7 @@ export default function DREPage() {
   const { range, label: periodLabel, jumpTo } = period;
   const [view, setView] = useState<DREView>('simple');
   const [withAccounts, setWithAccounts] = useState(false);
-  const { dre, months, prevDre, prevRange, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
+  const { dre, months, prevDre, prevRange, loadPrevious, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
@@ -53,12 +53,15 @@ export default function DREPage() {
 
   /** Carrega o gerador sob demanda (jsPDF/ExcelJS ficam fora do bundle inicial). */
   const handleExport = async (format: 'pdf' | 'xlsx') => {
-    const ctx = exportContext();
-    if (!ctx || busy) return;
+    const base = exportContext();
+    if (!base || busy) return;
     const setBusy = format === 'pdf' ? setIsGeneratingPdf : setIsGeneratingExcel;
     setBusy(true);
     setExportError(null);
     try {
+      // Comparabilidade: o PDF traz o mesmo período do exercício anterior, quando houve movimento.
+      const previous = format === 'pdf' ? await loadPrevious() : null;
+      const ctx: DREExportContext = { ...base, previous: previous ? { range: prevRange, statement: previous } : null };
       const [{ downloadBlob }, file] = await Promise.all([
         import('@/lib/export/dre-rows'),
         format === 'pdf'

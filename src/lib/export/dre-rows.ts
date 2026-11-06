@@ -1,5 +1,5 @@
 import type { ClientCompany } from '@/types/firestore';
-import type { DateRange, DREAccountLine, DREStatement } from '@/lib/dre/build';
+import type { DateRange, DREStatement } from '@/lib/dre/build';
 import { formatCNPJ, formatDateBR } from '@/lib/utils/formatters';
 
 /**
@@ -16,12 +16,16 @@ export interface DREExportRow {
   /** Percentual sobre a receita bruta (null quando não há receita). */
   percent: number | null;
   code?: string;
+  /** Valor no mesmo período do exercício anterior (só com o comparativo). */
+  previous?: number;
 }
 
 export interface DREExportContext {
   client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   range: DateRange;
   statement: DREStatement;
+  /** Mesmo período do exercício anterior: sai em coluna própria (comparabilidade). */
+  previous?: { range: DateRange; statement: DREStatement } | null;
   /** Data de emissão; padrão: agora. */
   issuedAt?: Date;
   signatories?: {
@@ -33,44 +37,63 @@ export interface DREExportContext {
 export const DRE_TITLE = 'DEMONSTRAÇÃO DO RESULTADO DO EXERCÍCIO';
 export const DRE_CURRENCY = 'Em Reais - R$';
 
-export function buildDREExportRows(statement: DREStatement): DREExportRow[] {
+/**
+ * Linhas da DRE; com `previous` (o mesmo período do exercício anterior), cada linha traz também
+ * o valor dele em `previous`, e as contas que só tiveram movimento num dos dois aparecem com zero
+ * no outro.
+ */
+export function buildDREExportRows(statement: DREStatement, previous?: DREStatement | null): DREExportRow[] {
   const base = statement.grossRevenue;
   const pct = (value: number): number | null => (base > 0 ? (value / base) * 100 : null);
   const rows: DREExportRow[] = [];
+  const prev = previous ?? null;
 
-  const group = (label: string, value: number, parts: { lines: DREAccountLine[]; sign: 1 | -1 }[]) => {
-    rows.push({ kind: 'group', label, value, percent: pct(value) });
-    for (const { lines, sign } of parts) {
-      for (const l of lines) {
-        const v = sign * l.value;
-        rows.push({ kind: 'account', label: l.name, code: l.code, value: v, percent: pct(v) });
+  type Part = { key: keyof DREStatement['sections']; sign: 1 | -1 };
+  const group = (label: string, value: (st: DREStatement) => number, parts: Part[]) => {
+    rows.push({ kind: 'group', label, value: value(statement), percent: pct(value(statement)), ...(prev ? { previous: value(prev) } : {}) });
+    for (const { key, sign } of parts) {
+      const current = statement.sections[key].lines;
+      const before = prev?.sections[key].lines ?? [];
+      const codes = [...new Set([...current.map((l) => l.code), ...before.map((l) => l.code)])].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      for (const code of codes) {
+        const c = current.find((l) => l.code === code);
+        const b = before.find((l) => l.code === code);
+        const v = sign * (c?.value ?? 0);
+        rows.push({
+          kind: 'account',
+          label: (c ?? b)!.name,
+          code,
+          value: v,
+          percent: pct(v),
+          ...(prev ? { previous: sign * (b?.value ?? 0) } : {}),
+        });
       }
     }
   };
-  const subtotal = (label: string, value: number, kind: 'subtotal' | 'result' = 'subtotal') =>
-    rows.push({ kind, label, value, percent: pct(value) });
+  const subtotal = (label: string, value: (st: DREStatement) => number, kind: 'subtotal' | 'result' = 'subtotal') =>
+    rows.push({ kind, label, value: value(statement), percent: pct(value(statement)), ...(prev ? { previous: value(prev) } : {}) });
+  const has = (key: keyof DREStatement['sections']) => statement.sections[key].lines.length > 0 || (prev?.sections[key].lines.length ?? 0) > 0;
 
-  const s = statement.sections;
-  group('RECEITA BRUTA OPERACIONAL', statement.grossRevenue, [{ lines: s.GROSS_REVENUE.lines, sign: 1 }]);
-  group('(-) DEDUÇÕES DA RECEITA BRUTA', -statement.deductions, [{ lines: s.DEDUCTIONS.lines, sign: -1 }]);
-  subtotal('(=) RECEITA LÍQUIDA OPERACIONAL', statement.netRevenue);
-  group('(-) CUSTOS DAS VENDAS E SERVIÇOS', -statement.costs, [{ lines: s.COSTS.lines, sign: -1 }]);
-  subtotal('(=) RESULTADO BRUTO DO PERÍODO', statement.grossProfit);
-  group('(-) DESPESAS OPERACIONAIS', -statement.operatingExpenses, [{ lines: s.OPERATING_EXPENSES.lines, sign: -1 }]);
-  group('(+/-) RESULTADO FINANCEIRO LÍQUIDO', statement.financialResult, [
-    { lines: s.FINANCIAL_INCOME.lines, sign: 1 },
-    { lines: s.FINANCIAL_EXPENSES.lines, sign: -1 },
+  group('RECEITA BRUTA OPERACIONAL', (st) => st.grossRevenue, [{ key: 'GROSS_REVENUE', sign: 1 }]);
+  group('(-) DEDUÇÕES DA RECEITA BRUTA', (st) => -st.deductions, [{ key: 'DEDUCTIONS', sign: -1 }]);
+  subtotal('(=) RECEITA LÍQUIDA OPERACIONAL', (st) => st.netRevenue);
+  group('(-) CUSTOS DAS VENDAS E SERVIÇOS', (st) => -st.costs, [{ key: 'COSTS', sign: -1 }]);
+  subtotal('(=) RESULTADO BRUTO DO PERÍODO', (st) => st.grossProfit);
+  group('(-) DESPESAS OPERACIONAIS', (st) => -st.operatingExpenses, [{ key: 'OPERATING_EXPENSES', sign: -1 }]);
+  group('(+/-) RESULTADO FINANCEIRO LÍQUIDO', (st) => st.financialResult, [
+    { key: 'FINANCIAL_INCOME', sign: 1 },
+    { key: 'FINANCIAL_EXPENSES', sign: -1 },
   ]);
-  if (s.OTHER_INCOME.lines.length > 0 || s.OTHER_EXPENSES.lines.length > 0) {
-    group('(+/-) OUTRAS RECEITAS E DESPESAS OPERACIONAIS', statement.otherResult, [
-      { lines: s.OTHER_INCOME.lines, sign: 1 },
-      { lines: s.OTHER_EXPENSES.lines, sign: -1 },
+  if (has('OTHER_INCOME') || has('OTHER_EXPENSES')) {
+    group('(+/-) OUTRAS RECEITAS E DESPESAS OPERACIONAIS', (st) => st.otherResult, [
+      { key: 'OTHER_INCOME', sign: 1 },
+      { key: 'OTHER_EXPENSES', sign: -1 },
     ]);
   }
-  if (s.INCOME_TAXES.lines.length > 0) {
-    group('(-) IRPJ E CSLL', -statement.incomeTaxes, [{ lines: s.INCOME_TAXES.lines, sign: -1 }]);
+  if (has('INCOME_TAXES')) {
+    group('(-) IRPJ E CSLL', (st) => -st.incomeTaxes, [{ key: 'INCOME_TAXES', sign: -1 }]);
   }
-  subtotal('(=) LUCRO (PREJUÍZO) LÍQUIDO DO EXERCÍCIO', statement.netResult, 'result');
+  subtotal('(=) LUCRO (PREJUÍZO) LÍQUIDO DO EXERCÍCIO', (st) => st.netResult, 'result');
   return rows;
 }
 

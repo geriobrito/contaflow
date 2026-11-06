@@ -81,6 +81,16 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           {entry.fixedAssetId ? 'Baixa de bem · Imobilizado' : 'Gerado pelo Imobilizado'}
                         </span>
                       )}
+                      {(entry.financingMonth || entry.financingId) && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelos contratos; altere em Bens e Contratos">
+                          {entry.financingId ? 'Contrato · Financiamentos' : 'Juros · Financiamentos'}
+                        </span>
+                      )}
+                      {(entry.prepaidMonth || entry.prepaidId) && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelas despesas antecipadas; altere em Bens e Contratos">
+                          {entry.prepaidId ? 'Apólice · Despesas antecipadas' : 'Apropriação · Despesas antecipadas'}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 font-medium text-stone-900 dark:text-stone-100">

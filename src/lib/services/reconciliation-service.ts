@@ -6,7 +6,7 @@ import { isISODate, isMonthLocked, lockId, monthOf, newAuditKey, periodAuditId }
 import { pendingWonByRule } from '@/lib/reconciliation';
 import { autoClassifyTransition } from '@/lib/transitions';
 import { addDays, computeBalanceCheck, previousStatement } from '@/lib/statement';
-import { depreciationBlocksClose } from '@/lib/services/fixed-asset-service';
+import { routinesBlockClose } from '@/lib/services/month-routines';
 
 /**
  * Aplica uma regra a TODOS os lançamentos pendentes do cliente no banco (não só aos
@@ -74,12 +74,13 @@ export async function loadRuleSample(clientId: string, months = RULE_SAMPLE_MONT
    ========================================================================= */
 
 /**
- * Fecha a competência. Com bens no cadastro do imobilizado, a depreciação do mês precisa estar
- * lançada e conferida com ele (a norma pede o lançamento mensal, não um acumulado no ano).
+ * Fecha a competência. Com bens no imobilizado ou despesas antecipadas cadastradas, a depreciação e
+ * a apropriação do mês precisam estar lançadas e conferidas com os cadastros (a norma pede o
+ * lançamento mensal, não um acumulado no ano).
  */
 export async function closeMonth(clientId: string, month: string, note?: string): Promise<PeriodLock> {
-  const depreciation = await depreciationBlocksClose(clientId, month);
-  if (depreciation) throw new Error(depreciation);
+  const routines = await routinesBlockClose(clientId, month);
+  if (routines) throw new Error(routines);
   const actor = getActor();
   const now = new Date().toISOString();
   const lock: PeriodLock = {

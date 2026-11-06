@@ -151,9 +151,9 @@ export function repeatCandidates(
   const done = new Set(entries.filter((e) => e.date.startsWith(targetMonth) && e.repeatedFromId).map((e) => e.repeatedFromId));
   const analytic = new Set(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => a.id));
   return entries
-    // Encerramento do exercício, depreciação do cadastro do imobilizado e baixa de bem não se
-    // repetem: são gerados pelas rotinas próprias.
-    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing && !e.depreciationMonth && !e.fixedAssetId)
+    // Encerramento do exercício, depreciação, baixa de bem e lançamentos das despesas antecipadas
+    // não se repetem: são gerados pelas rotinas próprias.
+    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing && !e.depreciationMonth && !e.fixedAssetId && !e.prepaidMonth && !e.prepaidId && !e.financingMonth && !e.financingId)
     .sort((a, b) => a.date.localeCompare(b.date) || a.entryNumber - b.entryNumber)
     .map((entry) => {
       const missing = entry.lines.find((l) => !analytic.has(l.accountId));

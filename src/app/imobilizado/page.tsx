@@ -9,6 +9,7 @@ import { useFixedAssetReconciliation, useFixedAssets } from '@/hooks/imobilizado
 import { FixedAssetsTable } from '@/components/imobilizado/FixedAssetsTable';
 import { FixedAssetSheet } from '@/components/imobilizado/FixedAssetSheet';
 import { DisposeAssetSheet } from '@/components/imobilizado/DisposeAssetSheet';
+import { ControlsTabs } from '@/components/imobilizado/ControlsTabs';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { BUTTON, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
@@ -88,6 +89,7 @@ export default function ImobilizadoPage() {
           </>
         }
       />
+      <ControlsTabs />
       {data.error && !editing && !disposing && (
         <p role="alert" className="text-[13px] text-rose-600">
           {data.error}

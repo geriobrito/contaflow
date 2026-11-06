@@ -1,4 +1,4 @@
-import type { BankAccount, ChartAccount, FixedAssetRegister, LockState, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, LockState, PeriodLock, PrepaidRegister } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
@@ -56,6 +56,8 @@ export function withReadCache(
   const locks = listCache<PeriodLock>(now, ttlMs);
   const lockStates = listCache<LockState>(now, ttlMs);
   const fixedAssets = listCache<FixedAssetRegister>(now, ttlMs);
+  const prepaid = listCache<PrepaidRegister>(now, ttlMs);
+  const financing = listCache<FinancingRegister>(now, ttlMs);
   const key = (clientId: string) => `${scope()}|${clientId}`;
 
   /** Gravação que invalida os caches informados. */
@@ -93,6 +95,22 @@ export function withReadCache(
       return found ? (structuredClone(found) as FixedAssetRegister) : null;
     },
     saveFixedAssets: writing(repo.saveFixedAssets, fixedAssets),
+    async getPrepaidExpenses(clientId) {
+      const [found] = await prepaid.get(key(clientId), async () => {
+        const r = await repo.getPrepaidExpenses(clientId);
+        return r ? [r] : [];
+      });
+      return found ? (structuredClone(found) as PrepaidRegister) : null;
+    },
+    savePrepaidExpenses: writing(repo.savePrepaidExpenses, prepaid),
+    async getFinancingContracts(clientId) {
+      const [found] = await financing.get(key(clientId), async () => {
+        const r = await repo.getFinancingContracts(clientId);
+        return r ? [r] : [];
+      });
+      return found ? (structuredClone(found) as FinancingRegister) : null;
+    },
+    saveFinancingContracts: writing(repo.saveFinancingContracts, financing),
 
     // Contas globais valem para todos os clientes, e a exclusão não informa o cliente: limpa tudo.
     saveClient: writing(repo.saveClient, lockStates),
@@ -105,6 +123,6 @@ export function withReadCache(
     closePeriod: writing(repo.closePeriod, locks, lockStates),
     reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
     closeYear: writing(repo.closeYear, lockStates),
-    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets),
+    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets, prepaid, financing),
   };
 }

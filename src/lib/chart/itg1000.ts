@@ -81,8 +81,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '2.1.1.02', name: 'Pró-Labore a Pagar' },
   { code: '2.1.1.03', name: 'INSS a Recolher' },
   { code: '2.1.1.04', name: 'FGTS a Recolher' },
-  { code: '2.1.1.05', name: 'Provisão de Férias e Encargos' },
-  { code: '2.1.1.06', name: 'Provisão de 13º Salário e Encargos' },
+  // Férias e 13º são obrigações certas (valor e prazo conhecidos): "a pagar", não "provisão".
+  { code: '2.1.1.05', name: 'Férias e Encargos a Pagar' },
+  { code: '2.1.1.06', name: '13º Salário e Encargos a Pagar' },
   { code: '2.1.2', name: 'Fornecedores' },
   { code: '2.1.2.01', name: 'Fornecedores Nacionais' },
   { code: '2.1.3', name: 'Contas a Pagar' },
@@ -90,9 +91,13 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '2.1.3.02', name: 'Energia Elétrica a Pagar' },
   { code: '2.1.3.03', name: 'Telefone e Internet a Pagar' },
   { code: '2.1.3.04', name: 'Outras Contas a Pagar' },
+  // Prêmio de seguro contratado a prazo (src/lib/prepaid-expenses.ts): baixado pelos pagamentos do extrato.
+  { code: '2.1.3.05', name: 'Seguros a Pagar' },
   { code: '2.1.4', name: 'Empréstimos e Financiamentos' },
   { code: '2.1.4.01', name: 'Empréstimos Bancários' },
   { code: '2.1.4.02', name: 'Financiamentos' },
+  // Juros prefixados ainda não incorridos (src/lib/financing.ts): retificadora, devedora.
+  { code: '2.1.4.03', name: '(-) Encargos Financeiros a Transcorrer', contra: true },
   { code: '2.1.5', name: 'Obrigações Fiscais' },
   { code: '2.1.5.01', name: 'Simples Nacional a Recolher' },
   { code: '2.1.5.02', name: 'ICMS a Recolher' },
@@ -106,6 +111,7 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '2.2', name: 'PASSIVO NÃO CIRCULANTE' },
   { code: '2.2.1', name: 'Empréstimos e Financiamentos de Longo Prazo' },
   { code: '2.2.1.01', name: 'Empréstimos e Financiamentos' },
+  { code: '2.2.1.02', name: '(-) Encargos Financeiros a Transcorrer de Longo Prazo', contra: true },
   { code: '2.2.2', name: 'Obrigações de Longo Prazo' },
   { code: '2.2.2.01', name: 'Parcelamentos Tributários de Longo Prazo' },
   { code: '2.2.2.02', name: 'Empréstimos de Sócios' },
@@ -124,6 +130,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   // Contrapartida do balanço de abertura sem contabilidade anterior (src/lib/opening.ts): aceita
   // saldo credor ou devedor e é zerada contra Lucros ou Prejuízos Acumulados no encerramento.
   { code: '2.3.3.04', name: 'Balanço de Abertura' },
+  // Correção de erro de exercícios anteriores (ex.: multa e juros de imposto de ano anterior):
+  // aceita saldo credor ou devedor e é zerada contra Lucros ou Prejuízos Acumulados no encerramento.
+  { code: '2.3.3.05', name: 'Ajustes de Exercícios Anteriores' },
 
   /* ───────────────────────────── 3 RESULTADO ───────────────────────────── */
   { code: '3', name: 'CONTAS DE RESULTADO' },
@@ -146,6 +155,8 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.2.1.03', name: 'Custo dos Serviços Prestados' },
   // Depreciação dos bens usados na atividade-fim (src/lib/fixed-assets.ts): custo, não despesa.
   { code: '3.2.1.04', name: 'Depreciação e Amortização Aplicadas aos Custos' },
+  // Seguro de bem usado na atividade-fim: apropriado ao custo, não à despesa.
+  { code: '3.2.1.05', name: 'Seguros Aplicados aos Custos' },
 
   { code: '3.3', name: 'DESPESAS OPERACIONAIS' },
   { code: '3.3.1', name: 'Despesas com Vendas', dre: 'OPERATING_EXPENSES' },
@@ -170,6 +181,7 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.3.2.15', name: 'Depreciação e Amortização' },
   { code: '3.3.2.16', name: 'Taxas e Contribuições Diversas' },
   { code: '3.3.2.17', name: 'Outras Despesas Gerais' },
+  { code: '3.3.2.18', name: 'Seguros' },
   { code: '3.3.9', name: 'Outros Resultados Operacionais' },
   { code: '3.3.9.01', name: 'Outras Receitas Operacionais', dre: 'OTHER_INCOME', type: 'REVENUE' },
   { code: '3.3.9.02', name: 'Ganho na Venda de Imobilizado', dre: 'OTHER_INCOME', type: 'REVENUE' },
@@ -183,6 +195,9 @@ const ENTRIES: readonly TemplateEntry[] = [
   { code: '3.4.1.01.002', name: 'Despesas Bancárias' },
   { code: '3.4.1.01.003', name: 'IOF' },
   { code: '3.4.1.01.004', name: 'Multas e Encargos de Mora' },
+  { code: '3.4.1.01.005', name: 'Juros sobre Empréstimos e Financiamentos' },
+  { code: '3.4.1.01.006', name: 'Encargos na Contratação de Empréstimos e Financiamentos' },
+  { code: '3.4.1.01.007', name: 'Juros sobre Parcelamentos' },
   { code: '3.4.1.02', name: 'Receitas Financeiras', dre: 'FINANCIAL_INCOME', type: 'REVENUE' },
   { code: '3.4.1.02.001', name: 'Rendimentos de Aplicações Financeiras' },
   { code: '3.4.1.02.002', name: 'Juros Ativos' },

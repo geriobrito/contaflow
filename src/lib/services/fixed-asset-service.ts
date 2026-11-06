@@ -217,8 +217,3 @@ export async function postMonthDepreciation(clientId: string, month: string, aut
       return 'none';
   }
 }
-
-/** Para o fechamento da competência: o motivo de recusar, ou null (sem bens, não lê o mês). */
-export async function depreciationBlocksClose(clientId: string, month: string): Promise<string | null> {
-  return (await loadMonthDepreciation(clientId, month))?.closeProblem ?? null;
-}

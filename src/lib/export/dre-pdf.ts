@@ -16,6 +16,14 @@ import { accountingStandard } from '@/lib/accounting-standard';
 const SUBTOTAL_FILL: [number, number, number] = [242, 242, 242];
 const RESULT_FILL: [number, number, number] = [228, 228, 228];
 
+/** Cabeçalho da coluna: o ano, para o exercício inteiro; o intervalo, nos demais períodos. */
+function columnLabel(range: { start: string; end: string }): string {
+  const y = range.start.slice(0, 4);
+  if (range.start === `${y}-01-01` && range.end === `${y}-12-31`) return y;
+  const br = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}`;
+  return `${br(range.start)} a ${br(range.end)}`;
+}
+
 /**
  * Gera a DRE oficial em PDF vetorial (A4 retrato), no layout da NBC TG 1002,
  * com bloco de encerramento e assinaturas. Retorna o Blob e o nome sugerido.
@@ -35,17 +43,23 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
   const y = renderStatementHeader(doc, { client: ctx.client, title: DRE_TITLE, standard, period: periodLabel(ctx.range) });
 
   /* ── Tabela ────────────────────────────────────────────────────────── */
-  const rows = buildDREExportRows(ctx.statement);
+  const previous = ctx.previous ?? null;
+  const rows = buildDREExportRows(ctx.statement, previous?.statement);
 
   autoTable(doc, {
     startY: y + 2,
     margin: { left: MARGIN_X, right: MARGIN_X, bottom: 18 },
     theme: 'plain',
-    head: [['Descrição', '% s/ Receita Bruta', 'Valor (R$)']],
+    head: [
+      previous
+        ? ['Descrição', '% s/ Receita Bruta', `${columnLabel(ctx.range)} (R$)`, `${columnLabel(previous.range)} (R$)`]
+        : ['Descrição', '% s/ Receita Bruta', 'Valor (R$)'],
+    ],
     body: rows.map((r) => [
       r.kind === 'account' ? `${r.code ?? ''}  ${r.label}` : r.label,
       formatPercent(r.percent),
       formatAccounting(r.value),
+      ...(previous ? [formatAccounting(r.previous ?? 0)] : []),
     ]),
     styles: {
       font: 'helvetica',
@@ -64,8 +78,9 @@ export function generateDREPdf(ctx: DREExportContext): { blob: Blob; fileName: s
     },
     columnStyles: {
       0: { cellWidth: 'auto' },
-      1: { cellWidth: 30, halign: 'right' },
-      2: { cellWidth: 38, halign: 'right' },
+      1: { cellWidth: previous ? 24 : 30, halign: 'right' },
+      2: { cellWidth: previous ? 33 : 38, halign: 'right' },
+      ...(previous ? { 3: { cellWidth: 33, halign: 'right' as const, textColor: MUTED } } : {}),
     },
     didParseCell: (data) => {
       if (data.section === 'head') {

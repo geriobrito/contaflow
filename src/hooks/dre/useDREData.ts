@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
 import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
-import { buildDRE } from '@/lib/dre/build';
+import { buildDRE, type DREStatement } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
 import { monthsBetween } from '@/lib/periods';
@@ -140,6 +140,17 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
     [prevTxs, prevKey, accounts, prevRange, journalEntries]
   );
 
+  /**
+   * Mesmo período do exercício anterior, para o comparativo das exportações: usa o já carregado
+   * (visão "ano anterior") ou lê na hora. Null quando o exercício anterior não tem movimento.
+   */
+  const loadPrevious = useCallback(async (): Promise<DREStatement | null> => {
+    if (!clientId) return null;
+    const statement = prevDre ?? buildDRE(await getTransactions(clientId, prevRange), accounts, prevRange, journalEntries);
+    const empty = Object.values(statement.sections).every((sec) => sec.lines.length === 0);
+    return empty ? null : statement;
+  }, [clientId, prevDre, prevRange, accounts, journalEntries]);
+
   const consistency = useMemo(() => {
     if (!clientId || accounts.length === 0 || !ready) return null;
     return checkAccountingConsistency({ transactions, accounts, banks, date: range.end, openings, journalEntries });
@@ -158,5 +169,5 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
   const hasData = !failed && dre.reconciledCount > 0;
   const tone: DRETone = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
 
-  return { dre, months, prevDre, prevRange, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone };
+  return { dre, months, prevDre, prevRange, loadPrevious, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone };
 }

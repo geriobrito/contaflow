@@ -58,7 +58,7 @@ describe('DLPA em PDF e Excel', () => {
     closing: 1000,
     rows: [
       { kind: 'balance', label: 'Saldo em 01/01/2025', value: 500 },
-      { kind: 'movement', label: '(+/-) Ajustes e outras movimentações', value: 0 },
+      { kind: 'movement', label: '(+/-) Ajustes de exercícios anteriores e outras movimentações', value: 0 },
       { kind: 'movement', label: '(+/-) Lucro ou prejuízo líquido do exercício', value: 700 },
       { kind: 'movement', label: '(-) Lucros distribuídos', value: -200 },
       { kind: 'balance', label: 'Saldo em 31/12/2025', value: 1000 },

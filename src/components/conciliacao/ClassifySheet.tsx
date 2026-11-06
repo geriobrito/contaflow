@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Lock, MessageCircleQuestion, ReceiptText, X } from 'lucide-react';
-import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, InvoiceSummary, RuleMatchType, TaxRegime } from '@/types/firestore';
+import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, FinancingContract, InvoiceSummary, RuleMatchType, TaxRegime } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';
 import { creditSplitDrafts, ibsCbsCredit } from '@/lib/nfe/credits';
 import { describeInvoice, InvoiceMatchCard, LinkedInvoiceNote } from '@/components/conciliacao/InvoiceMatchCard';
@@ -16,8 +16,9 @@ import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { emptySplitDraft, SplitEditor } from '@/components/conciliacao/SplitEditor';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { AuditTimeline } from '@/components/conciliacao/AuditTimeline';
-import { splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
+import { newSplitId, splitsToDrafts, summarizeSplits, type SplitDraft } from '@/lib/splits';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { floatingPaymentSplit } from '@/lib/financing';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 
 /* =========================================================================
@@ -52,6 +53,8 @@ interface ClassifySheetProps {
   regime?: TaxRegime;
   /** Contas sugeridas no topo do seletor (nota, mesmo favorecido, recentes, mais usadas). */
   suggestions?: readonly AccountSuggestion[];
+  /** Contratos com juros pós-fixados (parcelamento pela Selic): o pagamento acima da parcela-base vira parcela + juros. */
+  floatingContracts?: readonly FinancingContract[];
 }
 
 type SheetMode = 'single' | 'split' | 'ask' | 'history';
@@ -78,6 +81,7 @@ export function ClassifySheet({
   linkedInvoice,
   regime,
   suggestions,
+  floatingContracts,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -160,6 +164,11 @@ export function ClassifySheet({
     };
   }, [onClose]);
 
+  // Pagamento de parcela pós-fixada: a parcela-base baixa o parcelamento e o resto é juros (Selic).
+  const floatSplit = useMemo(
+    () => (accountId && floatingContracts?.length ? floatingPaymentSplit(floatingContracts, accountId, Math.round(transaction.amount * 100)) : null),
+    [accountId, floatingContracts, transaction.amount]
+  );
   const negative = transaction.amount < 0;
   // Saída: despesas e custos primeiro; entrada: receitas primeiro.
   const pickerAccounts = useMemo(() => orderAccountsByDirection(accounts, directionOf(transaction.amount)), [accounts, transaction.amount]);
@@ -333,6 +342,28 @@ export function ClassifySheet({
             <section className="space-y-2">
               <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
               <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus />
+              {floatSplit && (
+                <div role="status" className="rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-3.5 py-3 text-[12px] text-amber-900 dark:text-amber-200 space-y-2">
+                  <p>
+                    Parcela de {floatSplit.contract.description}: {formatCurrency(floatSplit.principalCents / 100)} de parcela e {formatCurrency(floatSplit.interestCents / 100)} de juros
+                    (atualização pela Selic, direto para o resultado).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDrafts([
+                        { id: newSplitId(), accountId, memo: `Parcela - ${floatSplit.contract.description}`, cents: floatSplit.principalCents },
+                        { id: newSplitId(), accountId: floatSplit.contract.interestExpenseAccountId, memo: `Juros (Selic) - ${floatSplit.contract.description}`, cents: floatSplit.interestCents },
+                      ]);
+                      setGrossNetFirst(false);
+                      setMode('split');
+                    }}
+                    className="rounded-lg bg-amber-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-amber-700 active:scale-[0.97] transition-all duration-150"
+                  >
+                    Lançar parcela e juros
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {

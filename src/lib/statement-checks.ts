@@ -284,3 +284,44 @@ export function fixedAssetCheck(rows: readonly FixedAssetCheckRow[] | null, date
     linkLabel: 'Conferir no Imobilizado',
   };
 }
+
+/**
+ * Despesas antecipadas × balanço: saldo a apropriar do cadastro e da conta do ativo (ex.: 1.1.4.01
+ * Seguros a Apropriar). Diferença é apólice não cadastrada ou apropriação lançada fora da rotina.
+ * Null sem cadastro.
+ */
+export function prepaidCheck(rows: readonly FixedAssetCheckRow[] | null, date: string): StatementCheck | null {
+  if (!rows) return null;
+  const diverging = rows.filter((r) => Math.abs(r.difference) >= 0.005);
+  if (!diverging.length) return { id: 'prepaid', level: 'ok', title: 'Despesas antecipadas conferem com o cadastro' };
+  return {
+    id: 'prepaid',
+    level: 'warn',
+    title: `Despesas antecipadas diferem do cadastro em ${diverging.length} conta(s) em ${formatDateBR(date)}`,
+    items: diverging.map((r) => `${r.accountCode} ${r.accountName}: balanço ${formatCurrency(r.ledger)}, cadastro ${formatCurrency(r.register)} (diferença de ${formatCurrency(r.difference)})`),
+    href: '/despesas-antecipadas',
+    linkLabel: 'Conferir as despesas antecipadas',
+  };
+}
+
+/**
+ * Empréstimos, financiamentos e parcelamentos × balanço: obrigação de curto e longo prazo e
+ * encargos a transcorrer esperados pelos contratos (parcelas vencidas supostas pagas). Diferença é
+ * parcela vencida não paga ou pagamento classificado fora da conta do contrato. Null sem contratos.
+ */
+export function financingCheck(rows: readonly FixedAssetCheckRow[] | null, date: string): StatementCheck | null {
+  if (!rows) return null;
+  const diverging = rows.filter((r) => Math.abs(r.difference) >= 0.005);
+  if (!diverging.length) return { id: 'financing', level: 'ok', title: 'Empréstimos e financiamentos conferem com os contratos' };
+  return {
+    id: 'financing',
+    level: 'warn',
+    title: `Empréstimos e financiamentos diferem dos contratos em ${diverging.length} conta(s) em ${formatDateBR(date)}`,
+    items: [
+      ...diverging.map((r) => `${r.accountCode} ${r.accountName}: balanço ${formatCurrency(r.ledger)}, contratos ${formatCurrency(r.register)} (diferença de ${formatCurrency(r.difference)})`),
+      'Os contratos supõem pagas as parcelas vencidas até a data: confira se alguma não foi paga ou se o pagamento foi classificado em outra conta.',
+    ],
+    href: '/financiamentos',
+    linkLabel: 'Conferir os contratos',
+  };
+}

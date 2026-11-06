@@ -365,7 +365,9 @@ export type AuditAction =
   | 'JOURNAL_DELETE'
   | 'YEAR_CLOSE'
   | 'YEAR_REOPEN'
-  | 'ASSET_SAVE';
+  | 'ASSET_SAVE'
+  | 'PREPAID_SAVE'
+  | 'FINANCING_SAVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -728,6 +730,14 @@ export interface JournalEntry {
   depreciationMonth?: string;
   /** Bem baixado por este lançamento (baixa por venda, perda ou sucata). */
   fixedAssetId?: string;
+  /** Competência (YYYY-MM) da apropriação das despesas antecipadas (src/lib/prepaid-expenses.ts). */
+  prepaidMonth?: string;
+  /** Despesa antecipada reconhecida por este lançamento (D ativo / C obrigação, na data da apólice). */
+  prepaidId?: string;
+  /** Competência (YYYY-MM) dos juros e da reclassificação de empréstimos e financiamentos (src/lib/financing.ts). */
+  financingMonth?: string;
+  /** Contrato reconhecido por este lançamento (o inicial, na data do contrato). */
+  financingId?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;
@@ -806,6 +816,157 @@ export interface FixedAssetRegister {
   orgId?: string;
   clientId: string;
   assets: FixedAsset[];
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/* =========================================================================
+   Despesas antecipadas (seguros, assinaturas anuais…)
+   ========================================================================= */
+
+export type PrepaidKind = 'INSURANCE' | 'OTHER';
+
+/**
+ * Despesa paga ou contratada antes de ser consumida: o valor entra no ativo (despesa antecipada)
+ * e vai para o resultado mês a mês, pela vigência, não pelos pagamentos.
+ */
+export interface PrepaidExpense {
+  id: string;
+  kind: PrepaidKind;
+  description: string;
+  /** Número da apólice ou do contrato. */
+  documentRef?: string;
+  /** Bem segurado (cadastro do imobilizado), quando houver. */
+  insuredAssetId?: string;
+  use: FixedAssetUse;
+  /** Valor total (prêmio líquido da apólice). */
+  amount: number;
+  /** Data da apólice ou do contrato (YYYY-MM-DD): o lançamento inicial sai nela. */
+  startDate: string;
+  /** Vigência em meses: a apropriação começa no mês da apólice, uma cota por mês. */
+  months: number;
+  /** Despesa antecipada no ativo (ex.: 1.1.4.01 Seguros a Apropriar). */
+  assetAccountId: string;
+  assetAccountCode: string;
+  /** Obrigação do lançamento inicial (ex.: 2.1.3.05 Seguros a Pagar), baixada pelos pagamentos do extrato. */
+  payableAccountId: string;
+  payableAccountCode: string;
+  /** Conta de resultado da apropriação (despesa ou custo). */
+  expenseAccountId: string;
+  expenseAccountCode: string;
+  /** Lançamento inicial gerado (D ativo / C obrigação). Ausente quando já estava contabilizado. */
+  recognitionEntryId?: string;
+  /** Apropriação já contabilizada fora desta rotina até o fim de `through` (implantação ou meses fechados). */
+  priorAppropriation?: { through: string; amount: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Despesas antecipadas da empresa (coleção `prepaid_expenses`, um documento por cliente, id = clientId). */
+export interface PrepaidRegister {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  items: PrepaidExpense[];
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/* =========================================================================
+   Empréstimos, financiamentos e parcelamentos
+   ========================================================================= */
+
+/** Empréstimo (o dinheiro entra no banco), financiamento (quita o fornecedor do bem) ou parcelamento de impostos. */
+export type FinancingKind = 'LOAN' | 'FINANCING' | 'INSTALLMENT_PLAN';
+
+/** Juros prefixados (tabela Price, conhecidos na contratação) ou pós-fixados (Selic: só se sabem a cada parcela). */
+export type InterestMode = 'PREFIXED' | 'FLOATING';
+
+/** Contrato com parcelas (src/lib/financing.ts). */
+export interface FinancingContract {
+  id: string;
+  kind: FinancingKind;
+  description: string;
+  /** Banco, financiadora ou órgão (ex.: Receita Federal). */
+  lender?: string;
+  documentRef?: string;
+  /** Data do contrato ou da adesão (YYYY-MM-DD): o lançamento inicial sai nela. */
+  date: string;
+  /** Valor do crédito, do bem financiado ou do débito consolidado. */
+  principal: number;
+  /** Encargos da contratação financiados junto (IOF, cadastro, registro): despesa financeira na data. */
+  upfrontCharges?: number;
+  installments: number;
+  /** Parcela fixa (prefixado) ou parcela-base (pós-fixado). */
+  installmentAmount: number;
+  firstDueDate: string;
+  interestMode: InterestMode;
+  /** Taxa de juros ao mês (%), prefixado; sem ela, é calculada pela parcela. */
+  monthlyRate?: number;
+  counterpartAccountId: string;
+  counterpartAccountCode: string;
+  shortTermAccountId: string;
+  shortTermAccountCode: string;
+  longTermAccountId: string;
+  longTermAccountCode: string;
+  chargesShortAccountId?: string;
+  chargesShortAccountCode?: string;
+  chargesLongAccountId?: string;
+  chargesLongAccountCode?: string;
+  upfrontExpenseAccountId?: string;
+  upfrontExpenseAccountCode?: string;
+  interestExpenseAccountId: string;
+  interestExpenseAccountCode: string;
+  /** Lançamento inicial gerado. Ausente quando já estava contabilizado. */
+  initialEntryId?: string;
+  /** Juros e reclassificações já lançados fora desta rotina até o fim desta competência (YYYY-MM). */
+  priorThrough?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Contratos da empresa (coleção `financing_contracts`, um documento por cliente, id = clientId). */
+export interface FinancingRegister {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  contracts: FinancingContract[];
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/* =========================================================================
+   Checklist do fechamento do exercício
+   ========================================================================= */
+
+/** Item conferido à mão no fechamento (ver `manualItems` em src/lib/closing-checklist.ts). */
+export interface ClosingChecklistItem {
+  done: boolean;
+  /** ISO da marcação. */
+  at: string;
+  byUid?: string;
+  note?: string;
+}
+
+export type BookRegistrationMethod = 'ECD' | 'JUNTA' | 'CARTORIO';
+
+/** Comprovação da escrituração: ECD entregue ou livros registrados na Junta Comercial ou no cartório. */
+export interface BookRegistration {
+  method: BookRegistrationMethod;
+  /** YYYY-MM-DD. */
+  date?: string;
+  /** Recibo da ECD ou número do registro. */
+  protocol?: string;
+}
+
+/** Checklist do fechamento de um exercício (coleção `closing_checklists`, id `${clientId}_${year}`). */
+export interface ClosingChecklist {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  year: string;
+  items: Record<string, ClosingChecklistItem>;
+  books?: BookRegistration;
   updatedAt: string;
   updatedByUid?: string;
 }

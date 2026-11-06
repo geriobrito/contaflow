@@ -88,6 +88,14 @@ export default function LancamentosPage() {
       setNotice(`O lançamento #${entry.entryNumber} é a baixa de um bem: desfaça-a na tela Imobilizado.`);
       return;
     }
+    if (entry.financingId) {
+      setNotice(`O lançamento #${entry.entryNumber} é o lançamento inicial de um contrato: altere ou exclua o contrato em Bens e Contratos › Empréstimos e financiamentos.`);
+      return;
+    }
+    if (entry.prepaidId) {
+      setNotice(`O lançamento #${entry.entryNumber} é o lançamento inicial de uma despesa antecipada: exclua-a ou altere-a em Bens e Contratos › Seguros e despesas antecipadas.`);
+      return;
+    }
     const m = entry.date.slice(0, 7);
     if (isMonthLocked(m)) {
       setNotice(`A competência ${m} está bloqueada para alterações. Reabra-a para excluir o lançamento #${entry.entryNumber}.`);
@@ -123,6 +131,14 @@ export default function LancamentosPage() {
       );
       return;
     }
+    if (entry?.id && (entry.financingMonth || entry.financingId)) {
+      setNotice(`O lançamento #${entry.entryNumber} é gerado pelos contratos de empréstimo e financiamento: altere o contrato em Bens e Contratos › Empréstimos e financiamentos.`);
+      return;
+    }
+    if (entry?.id && (entry.prepaidMonth || entry.prepaidId)) {
+      setNotice(`O lançamento #${entry.entryNumber} é gerado pelas despesas antecipadas: altere a apólice em Bens e Contratos › Seguros e despesas antecipadas.`);
+      return;
+    }
     setEditingEntry(entry);
     setModalKey((k) => k + 1);
     setIsModalOpen(true);
@@ -135,6 +151,10 @@ export default function LancamentosPage() {
       yearClosing: undefined,
       depreciationMonth: undefined,
       fixedAssetId: undefined,
+      prepaidMonth: undefined,
+      prepaidId: undefined,
+      financingMonth: undefined,
+      financingId: undefined,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,

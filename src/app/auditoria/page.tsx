@@ -40,6 +40,8 @@ const GROUP: Record<AuditAction, Filter> = {
   YEAR_CLOSE: 'PERIOD',
   YEAR_REOPEN: 'PERIOD',
   ASSET_SAVE: 'PERIOD',
+  PREPAID_SAVE: 'PERIOD',
+  FINANCING_SAVE: 'PERIOD',
 };
 
 const LIMIT = 300;

@@ -8,9 +8,12 @@ import type {
   ClassificationRule,
   ClientCompany,
   ClientDaybookInfo,
+  ClosingChecklist,
   ExplanatoryNotes,
+  FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
+  PrepaidRegister,
   InvoiceLink,
   InvoiceSummary,
   JournalEntry,
@@ -60,7 +63,11 @@ export interface ChangeSet {
 /** Lançamento manual ainda sem número: o repositório atribui o próximo da sequência do cliente. */
 export type JournalEntryDraft = Omit<JournalEntry, 'entryNumber'>;
 
-/** Lançamento gravado junto com o cadastro do imobilizado: o da baixa (criar) ou o de uma baixa desfeita (excluir). */
+/**
+ * Lançamento gravado junto com um cadastro (imobilizado, despesas antecipadas): criar (ex.: a baixa
+ * de um bem, o lançamento inicial de uma apólice) e/ou excluir (ex.: a baixa desfeita, o lançamento
+ * inicial substituído).
+ */
 export interface FixedAssetJournalChange {
   create?: JournalEntryDraft;
   deleteId?: string;
@@ -221,6 +228,20 @@ export interface DataRepository {
    * Devolve o lançamento criado.
    */
   saveFixedAssets(register: FixedAssetRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+
+  /* Checklist do fechamento do exercício (id `${clientId}_${year}`) */
+  getClosingChecklist(clientId: string, year: string): Promise<ClosingChecklist | null>;
+  saveClosingChecklist(checklist: ClosingChecklist): Promise<void>;
+
+  /* Despesas antecipadas (um documento por cliente, id = clientId; src/lib/prepaid-expenses.ts) */
+  getPrepaidExpenses(clientId: string): Promise<PrepaidRegister | null>;
+  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento (criar e/ou excluir) numa única operação. */
+  savePrepaidExpenses(register: PrepaidRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+
+  /* Empréstimos, financiamentos e parcelamentos (um documento por cliente, id = clientId; src/lib/financing.ts) */
+  getFinancingContracts(clientId: string): Promise<FinancingRegister | null>;
+  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento inicial (criar e/ou excluir) numa única operação. */
+  saveFinancingContracts(register: FinancingRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;

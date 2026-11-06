@@ -89,6 +89,8 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   YEAR_CLOSE: 'Encerrou o exercício',
   YEAR_REOPEN: 'Reabriu o exercício',
   ASSET_SAVE: 'Atualizou o cadastro do imobilizado',
+  PREPAID_SAVE: 'Atualizou as despesas antecipadas',
+  FINANCING_SAVE: 'Atualizou os contratos de empréstimo e financiamento',
 };
 
 /** Descrição curta de um estado de classificação. */

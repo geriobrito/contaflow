@@ -296,7 +296,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                   }
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
-                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[4px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
+                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[3px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
                     collapsed ? 'justify-center' : ''
                   } ${
                     active

@@ -22,14 +22,17 @@ import type {
   AuditEntry,
   BankAccount,
   BankTransaction,
+  ClosingChecklist,
   ClientRequest,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
   ExplanatoryNotes,
+  FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
   InvoiceSummary,
+  PrepaidRegister,
   JournalEntry,
   LockState,
   OpeningBalances,
@@ -37,7 +40,7 @@ import type {
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange, FixedAssetJournalChange, JournalEntryDraft } from '@/lib/data/repository';
 // Leituras contadas para o medidor da cota diária (ver read-meter.ts).
 import { getCountFromServer, getDoc, getDocs } from '@/lib/data/counted-reads';
 import { addReads } from '@/lib/data/read-meter';
@@ -75,6 +78,9 @@ export const COL = {
   notes: 'explanatory_notes',
   invoices: 'invoice_summaries',
   fixedAssets: 'fixed_assets',
+  checklists: 'closing_checklists',
+  prepaid: 'prepaid_expenses',
+  financing: 'financing_contracts',
 } as const;
 
 /** Limites do Firestore. */
@@ -220,6 +226,29 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
   const txFrom = (d: { id: string; data: () => DocumentData }) => ({ ...(d.data() as BankTransaction), id: d.id });
 
   /**
+   * Cadastro de um documento por cliente (imobilizado, despesas antecipadas) gravado com a
+   * auditoria e, se houver, o lançamento a criar (com o próximo número) e/ou a excluir, tudo junto.
+   */
+  async function saveRegister(name: string, register: { clientId: string }, audit: AuditEntry, journal: FixedAssetJournalChange): Promise<JournalEntry | null> {
+    const ref = doc(db, name, register.clientId);
+    // Itens aninhados: campos `undefined` saem pelo JSON (o Firestore os recusa).
+    const data = stamp(JSON.parse(JSON.stringify({ ...register, id: register.clientId })) as object);
+    const removed = journal.deleteId ? doc(db, COL.journalEntries, journal.deleteId) : null;
+    if (journal.create) {
+      return createJournalWith(journal.create, audit, (t) => {
+        t.set(ref, data);
+        if (removed) t.delete(removed);
+      });
+    }
+    const b = writeBatch(db);
+    b.set(ref, data);
+    if (removed) b.delete(removed);
+    auditWrite(audit)(b);
+    await b.commit();
+    return null;
+  }
+
+  /**
    * Grava um lançamento manual novo com o próximo número da sequência do cliente e, na mesma
    * transação, o registro de auditoria e as escritas de `extra` (ex.: o cadastro do imobilizado
    * na baixa de um bem).
@@ -330,7 +359,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
         REOPENS_PER_BATCH
       );
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets, COL.checklists, COL.prepaid, COL.financing]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -801,18 +830,36 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       return snap.exists() ? ({ ...(snap.data() as FixedAssetRegister), id: snap.id }) : null;
     },
     async saveFixedAssets(register, audit, journal = {}) {
-      const ref = doc(db, COL.fixedAssets, register.clientId);
-      // Os bens são objetos aninhados: campos `undefined` saem pelo JSON (o Firestore os recusa).
-      const data = stamp(JSON.parse(JSON.stringify({ ...register, id: register.clientId })) as FixedAssetRegister);
-      if (journal.create) {
-        return createJournalWith(journal.create, audit, (t) => t.set(ref, data));
-      }
-      const b = writeBatch(db);
-      b.set(ref, data);
-      if (journal.deleteId) b.delete(doc(db, COL.journalEntries, journal.deleteId));
-      auditWrite(audit)(b);
-      await b.commit();
-      return null;
+      return saveRegister(COL.fixedAssets, register, audit, journal);
+    },
+
+    /* ── Despesas antecipadas ─────────────────────────────────────────── */
+    async getPrepaidExpenses(clientId) {
+      const snap = await getDoc(doc(db, COL.prepaid, clientId));
+      return snap.exists() ? ({ ...(snap.data() as PrepaidRegister), id: snap.id }) : null;
+    },
+    async savePrepaidExpenses(register, audit, journal = {}) {
+      return saveRegister(COL.prepaid, register, audit, journal);
+    },
+
+    /* ── Empréstimos, financiamentos e parcelamentos ─────────────────── */
+    async getFinancingContracts(clientId) {
+      const snap = await getDoc(doc(db, COL.financing, clientId));
+      return snap.exists() ? ({ ...(snap.data() as FinancingRegister), id: snap.id }) : null;
+    },
+    async saveFinancingContracts(register, audit, journal = {}) {
+      return saveRegister(COL.financing, register, audit, journal);
+    },
+
+    /* ── Checklist do fechamento ──────────────────────────────────────── */
+    async getClosingChecklist(clientId, year) {
+      const snap = await getDoc(doc(db, COL.checklists, `${clientId}_${year}`));
+      return snap.exists() ? ({ ...(snap.data() as ClosingChecklist), id: snap.id }) : null;
+    },
+    async saveClosingChecklist(checklist) {
+      const id = `${checklist.clientId}_${checklist.year}`;
+      // Itens aninhados: campos `undefined` saem pelo JSON (o Firestore os recusa).
+      await setDoc(doc(db, COL.checklists, id), stamp(JSON.parse(JSON.stringify({ ...checklist, id })) as ClosingChecklist));
     },
 
     /* ── Notas explicativas ───────────────────────────────────────────── */

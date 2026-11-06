@@ -6,6 +6,7 @@ import { EQUITY_GROUP_CODE, sectionLines, type BalanceSheet, type BalanceSheetLi
 import { cnpjLabel, formatAccounting, formatIssueDate, periodLabel } from '@/lib/export/dre-rows';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { accountingStandard, conformityStatement } from '@/lib/accounting-standard';
+import { comparativeLines } from '@/lib/balance-sheet-view';
 
 /* ── Paleta corporativa e sóbria (RGB) — legibilidade máxima em tela e impressão P&B ── */
 export const INK: [number, number, number] = [28, 25, 23];
@@ -22,6 +23,8 @@ export interface LedgerPdfExportContext {
   client: Pick<ClientCompany, 'name' | 'cnpj' | 'tradeName' | 'porte' | 'activity'>;
   range: DateRange;
   balanceSheet: BalanceSheet;
+  /** Balanço no fim do exercício anterior: coluna de comparação (sem ela, coluna única). */
+  previousBalanceSheet?: BalanceSheet | null;
   trialBalance: TrialBalance;
   documentType: 'bs' | 'tb'; // 'bs' = Balanço patrimonial, 'tb' = Balancete de verificação
   showSynthetic?: boolean;
@@ -227,11 +230,13 @@ interface BSExportRow {
   level: number;
   synthetic: boolean;
   value: number;
+  previous: number;
 }
 
 function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   const issuedAt = ctx.issuedAt ?? new Date();
   const bs = ctx.balanceSheet;
+  const prev = ctx.previousBalanceSheet ?? null;
   const standard = accountingStandard(ctx.client);
 
   doc.setProperties({
@@ -245,51 +250,39 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
   /* ── Montagem das linhas estruturadas ── */
   const rows: BSExportRow[] = [];
 
-  const addLines = (lines: readonly BalanceSheetLine[]) => {
-    for (const l of lines) {
-      rows.push({
-        kind: 'item',
-        code: l.code,
-        name: l.name,
-        level: l.level,
-        synthetic: l.synthetic,
-        value: l.value,
-      });
+  const addLines = (lines: readonly BalanceSheetLine[], previous: readonly BalanceSheetLine[] | null) => {
+    for (const l of comparativeLines(lines, previous)) {
+      rows.push({ kind: 'item', code: l.code, name: l.name, level: l.level, synthetic: l.synthetic, value: l.value, previous: l.previous });
     }
   };
+  const total = (kind: BSExportRow['kind'], code: string, name: string, value: number, previous: number) =>
+    rows.push({ kind, code, name, level: 1, synthetic: true, value, previous });
 
   // Seção 1: ATIVO (a raiz 1 é o próprio título)
-  rows.push({ kind: 'section', code: '1', name: 'ATIVO', level: 1, synthetic: true, value: bs.totalAssets });
-  addLines(sectionLines(bs.assets));
-  rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO ATIVO', level: 1, synthetic: true, value: bs.totalAssets });
+  total('section', '1', 'ATIVO', bs.totalAssets, prev?.totalAssets ?? 0);
+  addLines(sectionLines(bs.assets), prev && sectionLines(prev.assets));
+  total('subtotal', '', 'TOTAL DO ATIVO', bs.totalAssets, prev?.totalAssets ?? 0);
 
   // Seção 2: PASSIVO (sem código: a raiz 2 é "Passivo e patrimônio líquido", coberta pelo total geral)
-  rows.push({ kind: 'section', code: '', name: 'PASSIVO', level: 1, synthetic: true, value: bs.totalLiabilities });
-  addLines(sectionLines(bs.liabilities));
-  rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO PASSIVO', level: 1, synthetic: true, value: bs.totalLiabilities });
+  total('section', '', 'PASSIVO', bs.totalLiabilities, prev?.totalLiabilities ?? 0);
+  addLines(sectionLines(bs.liabilities), prev && sectionLines(prev.liabilities));
+  total('subtotal', '', 'TOTAL DO PASSIVO', bs.totalLiabilities, prev?.totalLiabilities ?? 0);
 
   // Seção 3: PATRIMÔNIO LÍQUIDO (o grupo 2.3 é o próprio título)
-  rows.push({ kind: 'section', code: EQUITY_GROUP_CODE, name: 'PATRIMÔNIO LÍQUIDO', level: 1, synthetic: true, value: bs.totalEquity });
-  addLines(sectionLines(bs.equity, EQUITY_GROUP_CODE));
-  rows.push({ kind: 'subtotal', code: '', name: 'TOTAL DO PATRIMÔNIO LÍQUIDO', level: 1, synthetic: true, value: bs.totalEquity });
+  total('section', EQUITY_GROUP_CODE, 'PATRIMÔNIO LÍQUIDO', bs.totalEquity, prev?.totalEquity ?? 0);
+  addLines(sectionLines(bs.equity, EQUITY_GROUP_CODE), prev && sectionLines(prev.equity, EQUITY_GROUP_CODE));
+  total('subtotal', '', 'TOTAL DO PATRIMÔNIO LÍQUIDO', bs.totalEquity, prev?.totalEquity ?? 0);
 
   // TOTAL GERAL
-  rows.push({
-    kind: 'grand_total',
-    code: '',
-    name: 'TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO',
-    level: 1,
-    synthetic: true,
-    value: bs.totalLiabilities + bs.totalEquity,
-  });
+  total('grand_total', '', 'TOTAL DO PASSIVO E DO PATRIMÔNIO LÍQUIDO', bs.totalLiabilities + bs.totalEquity, prev ? prev.totalLiabilities + prev.totalEquity : 0);
 
-  const tableBody = rows.map((r) => [r.code, r.name, formatBSMoney(r.value)]);
+  const tableBody = rows.map((r) => [r.code, r.name, formatBSMoney(r.value), ...(prev ? [formatBSMoney(r.previous)] : [])]);
 
   autoTable(doc, {
     startY: y + 2,
     margin: { left: MARGIN_X, right: MARGIN_X, bottom: 18 },
     theme: 'plain',
-    head: [['Código', 'Descrição da Conta', 'Saldo (R$)']],
+    head: [prev ? ['Código', 'Descrição da Conta', `${formatDateBR(bs.date)} (R$)`, `${formatDateBR(prev.date)} (R$)`] : ['Código', 'Descrição da Conta', 'Saldo (R$)']],
     body: tableBody,
     styles: {
       font: 'helvetica',
@@ -308,13 +301,14 @@ function renderBalanceSheetPdf(doc: jsPDF, ctx: LedgerPdfExportContext) {
       lineColor: INK,
     },
     columnStyles: {
-      0: { cellWidth: 26, halign: 'left', font: 'courier' },
+      0: { cellWidth: prev ? 22 : 26, halign: 'left', font: 'courier' },
       1: { cellWidth: 'auto', halign: 'left' },
-      2: { cellWidth: 38, halign: 'right' },
+      2: { cellWidth: prev ? 34 : 38, halign: 'right' },
+      ...(prev ? { 3: { cellWidth: 34, halign: 'right' as const } } : {}),
     },
     didParseCell: (data) => {
       if (data.section === 'head') {
-        if (data.column.index === 2) data.cell.styles.halign = 'right';
+        if (data.column.index >= 2) data.cell.styles.halign = 'right';
         return;
       }
       if (data.section !== 'body') return;

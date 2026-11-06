@@ -275,3 +275,38 @@ describe('balanço de abertura (2.3.3.04) no encerramento e na DLPA', () => {
     expect(next).toMatchObject({ opening: 2700, openingBalance: 0 });
   });
 });
+
+describe('ajustes de exercícios anteriores (2.3.3.05) no encerramento', () => {
+  // Lucro de 700 em 2025; multa de imposto de 2024 lançada em ajustes (devedora, 150).
+  const debit = [...p('3.1.1.01', '2025-03-10', -1000), ...p('3.3.2.06', '2025-04-10', 300), ...p('2.3.3.05', '2025-05-20', 150)];
+  // Receita de 2024 esquecida, reconhecida em ajustes (credora, 80).
+  const credit = [...p('3.1.1.01', '2025-03-10', -1000), ...p('3.3.2.06', '2025-04-10', 300), ...p('2.3.3.05', '2025-05-20', -80)];
+
+  it('devedora vai para Prejuízos Acumulados; credora, para Lucros Acumulados', () => {
+    const d = close(debit);
+    expect(d.map(linesOf)).toContainEqual([
+      ['2.3.3.02', 'DEBIT', 150],
+      ['2.3.3.05', 'CREDIT', 150],
+    ]);
+    const c = close(credit);
+    expect(c.map(linesOf)).toContainEqual([
+      ['2.3.3.05', 'DEBIT', 80],
+      ['2.3.3.01', 'CREDIT', 80],
+    ]);
+    for (const [postings, entries] of [[debit, d], [credit, c]] as const) {
+      const sheet = sheetAt('2025-12-31', postings, entries);
+      expect(equity(sheet, id('2.3.3.05'))).toBe(0);
+      expect(sheet.difference).toBe(0);
+      for (const e of entries) expect(journalEntryProblem(e)).toBeNull();
+    }
+  });
+
+  it('a situação mostra a transferência e a DLPA mantém os ajustes na linha própria', () => {
+    const s = yearClosingState({ year: '2025', postings: credit, accounts: chart, journalEntries: [], locks: [lock('2025-12')] });
+    expect(s.adjustmentsTransfer).toBe(80);
+    const entries = close(credit);
+    const d = buildDLPA(buildPostings([], [], chart, '2025-12-31', null, entries, credit), chart, entries, '2025-12-31');
+    expect(d.adjustments).toBe(80);
+    expect(d.closing).toBe(780);
+  });
+});

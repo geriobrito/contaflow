@@ -2,13 +2,16 @@ import type {
   AuditEntry,
   BankAccount,
   BankTransaction,
+  ClosingChecklist,
   ClientRequest,
   ChartAccount,
   ClassificationRule,
   ClientCompany,
   ExplanatoryNotes,
+  FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
+  PrepaidRegister,
   InvoiceSummary,
   JournalCounter,
   JournalEntry,
@@ -18,7 +21,7 @@ import type {
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange, JournalEntryDraft } from '@/lib/data/repository';
+import type { ChangeSet, DataRepository, DateRange, FixedAssetJournalChange, JournalEntryDraft } from '@/lib/data/repository';
 import { isAdminSession, peekActor } from '@/lib/data/scope';
 import { assertValidJournalEntry } from '@/lib/journal';
 import { invoiceId } from '@/lib/nfe/import';
@@ -58,6 +61,9 @@ export const LOCAL_KEYS = {
   notes: 'contaflow_explanatory_notes',
   invoices: 'contaflow_invoice_summaries',
   fixedAssets: 'contaflow_fixed_assets',
+  checklists: 'contaflow_closing_checklists',
+  prepaid: 'contaflow_prepaid_expenses',
+  financing: 'contaflow_financing_contracts',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -103,6 +109,17 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     write(key, items);
   }
   const stamp = <T extends object>(x: T): T => ({ ...x, orgId: LOCAL_ORG_ID });
+
+  /** Cadastro de um documento por cliente com auditoria e lançamento; valida antes de gravar: tudo ou nada. */
+  async function saveRegister<T extends { clientId: string }>(key: string, register: T, audit: AuditEntry, journal: FixedAssetJournalChange): Promise<JournalEntry | null> {
+    const id = register.clientId;
+    if (journal.create) assertValidJournalEntry(journal.create);
+    const created = journal.create ? await repo.createJournalEntry(journal.create) : null;
+    if (journal.deleteId) await repo.deleteJournalEntry(journal.deleteId);
+    write(key, [...read<T>(key).filter((r) => r.clientId !== id), stamp(JSON.parse(JSON.stringify({ ...register, id })) as T)]);
+    write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
+    return created;
+  }
 
   function lockedMonthsOf(clientId: string): string[] {
     return read<PeriodLock>(LOCAL_KEYS.locks)
@@ -210,6 +227,9 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.notes,
         LOCAL_KEYS.invoices,
         LOCAL_KEYS.fixedAssets,
+        LOCAL_KEYS.checklists,
+        LOCAL_KEYS.prepaid,
+        LOCAL_KEYS.financing,
       ]) {
         write(
           key,
@@ -627,18 +647,31 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async getFixedAssets(clientId) {
       return read<FixedAssetRegister>(LOCAL_KEYS.fixedAssets).find((r) => r.clientId === clientId) ?? null;
     },
-    // Valida o lançamento antes de gravar qualquer coisa: entra tudo ou nada, como no Firestore.
     async saveFixedAssets(register, audit, journal = {}) {
-      const id = register.clientId;
-      if (journal.create) assertValidJournalEntry(journal.create);
-      const created = journal.create ? await repo.createJournalEntry(journal.create) : null;
-      if (journal.deleteId) await repo.deleteJournalEntry(journal.deleteId);
-      write(LOCAL_KEYS.fixedAssets, [
-        ...read<FixedAssetRegister>(LOCAL_KEYS.fixedAssets).filter((r) => r.clientId !== id),
-        stamp(JSON.parse(JSON.stringify({ ...register, id })) as FixedAssetRegister),
+      return saveRegister(LOCAL_KEYS.fixedAssets, register, audit, journal);
+    },
+    async getPrepaidExpenses(clientId) {
+      return read<PrepaidRegister>(LOCAL_KEYS.prepaid).find((r) => r.clientId === clientId) ?? null;
+    },
+    async savePrepaidExpenses(register, audit, journal = {}) {
+      return saveRegister(LOCAL_KEYS.prepaid, register, audit, journal);
+    },
+    async getFinancingContracts(clientId) {
+      return read<FinancingRegister>(LOCAL_KEYS.financing).find((r) => r.clientId === clientId) ?? null;
+    },
+    async saveFinancingContracts(register, audit, journal = {}) {
+      return saveRegister(LOCAL_KEYS.financing, register, audit, journal);
+    },
+
+    async getClosingChecklist(clientId, year) {
+      return read<ClosingChecklist>(LOCAL_KEYS.checklists).find((c) => c.clientId === clientId && c.year === year) ?? null;
+    },
+    async saveClosingChecklist(checklist) {
+      const id = `${checklist.clientId}_${checklist.year}`;
+      write(LOCAL_KEYS.checklists, [
+        ...read<ClosingChecklist>(LOCAL_KEYS.checklists).filter((c) => c.id !== id),
+        stamp(JSON.parse(JSON.stringify({ ...checklist, id })) as ClosingChecklist),
       ]);
-      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
-      return created;
     },
 
     async getExplanatoryNotes(clientId, year) {

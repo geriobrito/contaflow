@@ -67,6 +67,7 @@ export function useYearClosing(args: {
       const extras = [
         state.openingTransfer ? `balanço de abertura de ${formatCurrency(state.openingTransfer)}` : '',
         state.distributionTransfer ? `lucros distribuídos de ${formatCurrency(state.distributionTransfer)}` : '',
+        state.adjustmentsTransfer ? `ajustes de exercícios anteriores de ${formatCurrency(Math.abs(state.adjustmentsTransfer))}` : '',
         state.deficitTransfer ? `${formatCurrency(state.deficitTransfer)} de Lucros para Prejuízos Acumulados` : '',
       ].filter(Boolean);
       await repo.closeYear(

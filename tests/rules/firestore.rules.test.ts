@@ -1730,3 +1730,147 @@ describe('imobilizado (cadastro de bens)', () => {
     });
   });
 });
+
+describe('checklist do fechamento do exercício', () => {
+  const checklist = (clientId = 'cA', year = '2025') => ({
+    id: `${clientId}_${year}`,
+    clientId,
+    year,
+    items: { cash: { done: true, at: 'T', byUid: 'alice' } },
+    books: { method: 'JUNTA', date: '2026-04-30', protocol: '123' },
+    updatedAt: 'T',
+  });
+
+  it('grava por cliente e exercício, lê o vazio do próprio escritório e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getClosingChecklist('cA', '2025')).toBeNull();
+    await repo.saveClosingChecklist(checklist() as never);
+    expect((await repo.getClosingChecklist('cA', '2025'))?.items.cash.done).toBe(true);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'closing_checklists/cA_2025')));
+    await assertFails(getDoc(doc(asUser('bob'), 'closing_checklists/cA_2024')));
+    await assertFails(setDoc(doc(asUser('bob'), 'closing_checklists/cA_2025'), { ...checklist(), orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'closing_checklists/cA_2024'), { ...checklist(), orgId: ORG_A })); // id ≠ cliente_exercício
+    await assertFails(updateDoc(doc(asUser('alice'), 'closing_checklists/cA_2025'), { year: '2026' }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'closing_checklists/cA_2025'), { items: 'x' }));
+  });
+
+  it('excluir a empresa remove o checklist', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveClosingChecklist(checklist() as never);
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'closing_checklists/cA_2025'))).exists()).toBe(false);
+    });
+  });
+});
+
+describe('despesas antecipadas (seguros)', () => {
+  const item = { id: 'pp1', kind: 'INSURANCE', description: 'Seguro auto', use: 'EXPENSE', amount: 1410.88, startDate: '2025-03-01', months: 12, assetAccountId: 'a', assetAccountCode: '1.1.4.01', payableAccountId: 'p', payableAccountCode: '2.1.3.05', expenseAccountId: 'e', expenseAccountCode: '3.3.2.18', createdAt: 'T', updatedAt: 'T' };
+  const register = (items: unknown[] = [item]) => ({ id: 'cA', clientId: 'cA', items, updatedAt: 'T' });
+  const audit = (id: string) => ({ id, clientId: 'cA', action: 'PREPAID_SAVE', actorUid: 'alice', at: 'T' }) as const;
+  const recognition = (id: string) => ({
+    id,
+    clientId: 'cA',
+    date: '2025-03-01',
+    memo: 'Apólice de seguro - Seguro auto',
+    category: 'PROVISION' as const,
+    lines: [
+      { id: 'p1', accountId: 'a', type: 'DEBIT' as const, amount: 1410.88 },
+      { id: 'p2', accountId: 'p', type: 'CREDIT' as const, amount: 1410.88 },
+    ],
+    totalAmount: 1410.88,
+    prepaidId: 'pp1',
+    createdAt: 'T',
+    updatedAt: 'T',
+    createdByUid: 'alice',
+  });
+
+  it('grava o cadastro com o lançamento inicial numerado, e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getPrepaidExpenses('cA')).toBeNull();
+    const entry = await repo.savePrepaidExpenses(register([{ ...item, recognitionEntryId: 'jr1' }]) as never, audit('au-pp1'), { create: recognition('jr1') });
+    expect(entry?.entryNumber).toBe(1);
+    expect((await repo.getPrepaidExpenses('cA'))?.items).toHaveLength(1);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['PREPAID_SAVE']);
+
+    // Refeito na mesma gravação: o antigo sai, o novo entra com o próximo número.
+    const again = await repo.savePrepaidExpenses(register([{ ...item, amount: 1500, recognitionEntryId: 'jr2' }]) as never, audit('au-pp2'), { create: recognition('jr2'), deleteId: 'jr1' });
+    expect(again?.entryNumber).toBe(2);
+    expect((await repo.listJournalEntries('cA')).map((e) => e.id)).toEqual(['jr2']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'prepaid_expenses/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'prepaid_expenses/cA'), { ...register(), orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'prepaid_expenses/outro'), { ...register(), orgId: ORG_A }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'prepaid_expenses/cA'), { items: 'x' }));
+  });
+
+  it('lançamento inicial em competência fechada é recusado inteiro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await closeMonth(asUser('alice'));
+    await expect(repo.savePrepaidExpenses(register() as never, audit('au-pp3'), { create: recognition('jr3') })).rejects.toThrow();
+    expect(await repo.getPrepaidExpenses('cA')).toBeNull();
+  });
+
+  it('excluir a empresa remove o cadastro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.savePrepaidExpenses(register() as never, audit('au-pp4'));
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'prepaid_expenses/cA'))).exists()).toBe(false);
+    });
+  });
+});
+
+describe('contratos de empréstimo, financiamento e parcelamento', () => {
+  const contract = { id: 'fc1', kind: 'LOAN', description: 'Capital de giro', date: '2025-03-01', principal: 10000, installments: 12, installmentAmount: 900, firstDueDate: '2025-04-10', interestMode: 'PREFIXED', counterpartAccountId: 't', counterpartAccountCode: '1.1.1.04', shortTermAccountId: 's', shortTermAccountCode: '2.1.4.01', longTermAccountId: 'l', longTermAccountCode: '2.2.1.01', interestExpenseAccountId: 'j', interestExpenseAccountCode: '3.4.1.01.005', createdAt: 'T', updatedAt: 'T' };
+  const register = (contracts: unknown[] = [contract]) => ({ id: 'cA', clientId: 'cA', contracts, updatedAt: 'T' });
+  const audit = (id: string) => ({ id, clientId: 'cA', action: 'FINANCING_SAVE', actorUid: 'alice', at: 'T' }) as const;
+  const initial = (id: string) => ({
+    id,
+    clientId: 'cA',
+    date: '2025-03-01',
+    memo: 'Empréstimo - Capital de giro',
+    category: 'ADJUSTMENT' as const,
+    lines: [
+      { id: 'f1', accountId: 't', type: 'DEBIT' as const, amount: 10000 },
+      { id: 'f2', accountId: 'e', type: 'DEBIT' as const, amount: 800 },
+      { id: 'f3', accountId: 's', type: 'CREDIT' as const, amount: 10800 },
+    ],
+    totalAmount: 10800,
+    financingId: 'fc1',
+    createdAt: 'T',
+    updatedAt: 'T',
+    createdByUid: 'alice',
+  });
+
+  it('grava o contrato com o lançamento inicial numerado, e isola entre escritórios', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    expect(await repo.getFinancingContracts('cA')).toBeNull();
+    const entry = await repo.saveFinancingContracts(register([{ ...contract, initialEntryId: 'jf1' }]) as never, audit('au-fc1'), { create: initial('jf1') });
+    expect(entry?.entryNumber).toBe(1);
+    expect((await repo.getFinancingContracts('cA'))?.contracts).toHaveLength(1);
+    expect((await repo.listAudit('cA')).map((a) => a.action)).toEqual(['FINANCING_SAVE']);
+
+    await assertFails(getDoc(doc(asUser('bob'), 'financing_contracts/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'financing_contracts/cA'), { ...register(), orgId: ORG_B }));
+    await assertFails(setDoc(doc(asUser('alice'), 'financing_contracts/outro'), { ...register(), orgId: ORG_A }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'financing_contracts/cA'), { contracts: 'x' }));
+  });
+
+  it('lançamento inicial em competência fechada é recusado inteiro', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await closeMonth(asUser('alice'));
+    await expect(repo.saveFinancingContracts(register() as never, audit('au-fc2'), { create: initial('jf2') })).rejects.toThrow();
+    expect(await repo.getFinancingContracts('cA')).toBeNull();
+  });
+
+  it('excluir a empresa remove os contratos', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.saveFinancingContracts(register() as never, audit('au-fc3'));
+    await repo.deleteClient('cA', { uid: 'alice' });
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      expect((await getDoc(doc(ctx.firestore() as unknown as Firestore, 'financing_contracts/cA'))).exists()).toBe(false);
+    });
+  });
+});

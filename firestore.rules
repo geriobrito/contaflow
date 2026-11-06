@@ -422,6 +422,58 @@ service cloud.firestore {
         && validFixedAssets(request.resource.data);
     }
 
+    // ── Despesas antecipadas (um documento por cliente, id = clientId) ───
+    // Seguros e outros gastos pagos antes de consumidos; as cotas são calculadas pelo app
+    // (src/lib/prepaid-expenses.ts) e só os lançamentos respeitam as competências fechadas.
+    match /prepaid_expenses/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && request.resource.data.items is list && request.resource.data.items.size() <= 300;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && request.resource.data.items is list && request.resource.data.items.size() <= 300;
+    }
+
+    // ── Empréstimos, financiamentos e parcelamentos (um documento por cliente) ─
+    // Os contratos; juros e reclassificações são calculados pelo app (src/lib/financing.ts) e
+    // só os lançamentos deles respeitam as competências fechadas.
+    match /financing_contracts/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && request.resource.data.contracts is list && request.resource.data.contracts.size() <= 100;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && request.resource.data.contracts is list && request.resource.data.contracts.size() <= 100;
+    }
+
+    // ── Checklist do fechamento (um documento por cliente e exercício) ───
+    // id `${clientId}_${AAAA}`; itens marcados à mão (mapa) e o registro dos livros.
+    function validChecklist(data) {
+      return data.year is string && data.year.matches('^[0-9]{4}$')
+        && data.items is map && data.items.size() <= 30
+        && (!('books' in data) || data.books is map);
+    }
+    match /closing_checklists/{docId} {
+      allow read: if hasProfile()
+        && (resource == null
+            ? docId.matches('^.+_[0-9]{4}$') && clientInMyOrg({'clientId': docId[0:docId.size() - 5]})
+            : isMine(resource.data));
+      allow delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId + '_' + request.resource.data.year
+        && validChecklist(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('year')
+        && validChecklist(request.resource.data);
+    }
+
     // ── Notas explicativas (um documento por cliente e exercício) ────────
     match /explanatory_notes/{docId} {
       // Exercício sem notas gravadas (documento inexistente): o próprio escritório lê o vazio.
@@ -652,7 +704,7 @@ service cloud.firestore {
       return ['CLASSIFY', 'RECLASSIFY', 'SPLIT', 'UNRECONCILE', 'APPROVE', 'AUTO_CLASSIFY',
         'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
         'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
-        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE'];
+        'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE', 'PREPAID_SAVE', 'FINANCING_SAVE'];
     }
 
     // Fechamento da competência citada no registro (`${clientId}_${month}`).

@@ -81,6 +81,41 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 - **Repetir do mês anterior** (Lançamentos Manuais): copia para a competência selecionada os lançamentos manuais do mês anterior ainda não repetidos, com as mesmas contas e valores, a data no mesmo dia do mês e a competência citada no histórico e no documento atualizada (`repeatCandidates`/`repeatDraft` em `src/lib/journal.ts`). Folha, depreciação, tributos e provisões vêm marcados; a cópia guarda a origem em `repeatedFromId`, para não ser oferecida duas vezes.
 - **Comprovante do lançamento manual**: é um link (http/https) para o documento na nuvem, validado ao salvar (`parseAttachmentUrl`); caminho do computador e nome de arquivo são recusados com explicação. O sistema não armazena arquivos.
 
+### Seguros e despesas antecipadas
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `prepaid_expenses` | Apólices e contratos pagos antes de consumidos (um documento por cliente): valor, data, vigência em meses, uso (custo/despesa), bem segurado, contas do ativo, da obrigação e do resultado. | Isolado por escritório; até 300 itens. Gravações auditadas (`PREPAID_SAVE`). |
+
+- **Tela** Bens e Contratos › Seguros e despesas antecipadas (`/despesas-antecipadas`, `src/lib/prepaid-expenses.ts`).
+- **Na data da apólice**: D 1.1.4.01 Seguros a Apropriar / C 2.1.3.05 Seguros a Pagar pelo prêmio total, gravado junto com o cadastro (`prepaidId`). Os pagamentos das parcelas vêm pelo extrato, classificados em Seguros a Pagar.
+- **Apropriação mensal** pela vigência (nunca pelas parcelas): valor ÷ meses, a partir do mês da apólice, no último dia (`prepaidMonth`), em 3.3.2.18 Seguros ou, com o bem usado na atividade-fim, em 3.2.1.05 Seguros Aplicados aos Custos.
+- **Rotinas do mês**: o fechamento da competência exige a depreciação e a apropriação lançadas (`src/lib/services/month-routines.ts`); a barra de fechamento lança as duas de uma vez.
+- O Balanço avisa quando o saldo a apropriar diverge do cadastro.
+
+### Empréstimos, financiamentos e parcelamentos
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `financing_contracts` | Contratos da empresa (um documento por cliente): tipo (empréstimo, financiamento, parcelamento de impostos), valor, encargos da contratação, parcelas, 1º vencimento, juros prefixados (taxa a.m.) ou pós-fixados (Selic) e as contas. | Isolado por escritório; até 100 contratos. Gravações auditadas (`FINANCING_SAVE`). |
+
+- **Tela** Bens e Contratos › Empréstimos e financiamentos (`/financiamentos`, `src/lib/financing.ts`), com a tabela de parcelas de cada contrato.
+- **Lançamento inicial** na data do contrato (`financingId`): D contrapartida (fornecedor do bem, imposto parcelado ou 1.1.1.04, que recebe o depósito do empréstimo), D 3.4.1.01.006 pelos encargos da contratação (IOF, cadastro, registro), D (−) Encargos Financeiros a Transcorrer (2.1.4.03 e 2.2.1.02) pelos juros prefixados, C obrigação — curto prazo para as parcelas que vencem até 31/12 do ano seguinte, longo prazo para as demais.
+- **Tabela Price**: juros = saldo × taxa (a do contrato ou a calculada pela parcela); a última parcela acerta o total para dar exatamente parcelas − valor financiado.
+- **Rotina mensal** (`financingMonth`): os juros da parcela que vence no mês saem dos encargos a transcorrer para 3.4.1.01.005; em dezembro, as parcelas do ano seguinte passam do longo para o curto prazo (obrigação e encargos). Entra nas rotinas do mês que travam o fechamento.
+- **Pós-fixado** (parcelamento pela Selic): sem encargos a transcorrer; ao classificar o pagamento na conta de curto prazo, a Conciliação sugere o rateio parcela-base + juros (3.4.1.01.007).
+- **Pagamentos** vêm pelo extrato, classificados na conta de curto prazo. O Balanço avisa quando obrigações e encargos divergem dos contratos (parcelas vencidas supostas pagas).
+
+### Fechamento do exercício (checklist)
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `closing_checklists` | Itens conferidos à mão no fechamento de um exercício (`${clientId}_${AAAA}`) e a comprovação da escrituração (ECD, Junta Comercial ou cartório, com data e recibo). | Isolado por escritório; até 30 itens. |
+
+- **Tela Fechamento do Exercício** (`/fechamento`, `src/lib/closing-checklist.ts`): conferências automáticas sobre o balancete do ano — competências fechadas, exercício encerrado, declaração de conformidade, porte informado, **receita sem custo na DRE** (prestadora sem custo dos serviços, comércio sem CMV), **saldo virado** em qualquer conta (caixa credor, obrigação devedora, despesa credora), **terminologia** ("provisão" em férias e 13º, com botão para renomear; lucro antecipado no ativo; multa, juros, tarifa e IOF fora do resultado financeiro; contas genéricas com saldo), depreciação ausente ou maior que o custo e contas do grupo 2.3.3 com saldo depois do encerramento. Mais os itens conferidos com os documentos do cliente (caixa, impostos, folha, capital, receita, estoque, norma).
+- **Ajustes de Exercícios Anteriores** (2.3.3.05): zerada no encerramento como a 2.3.3.04 (credora contra Lucros Acumulados, devedora contra Prejuízos Acumulados); a DLPA a mostra na linha de ajustes.
+- **Comparabilidade**: o balanço (tela e PDF) traz a coluna de 31/12 do exercício anterior, e o PDF da DRE, a do mesmo período do ano anterior, quando há movimento nele.
+
 ### Imobilizado e depreciação
 
 | Coleção | Conteúdo | Regras |
