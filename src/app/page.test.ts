@@ -2,6 +2,7 @@ import { createElement, type ComponentType } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { BankTransaction, ClassificationRule, PeriodLock } from '@/types/firestore';
+import Page from '@/app/page';
 
 /**
  * Renderização da tela de conciliação com dados simulados (sem navegador, sem Firestore):
@@ -70,6 +71,14 @@ const recon = {
   reload: action,
 };
 
+vi.mock('@/lib/firebase', () => ({
+  db: {},
+  auth: {},
+  isFirebaseConfigured: () => false,
+}));
+vi.mock('@/lib/monitoring', () => ({
+  reportError: vi.fn(),
+}));
 vi.mock('next/link', async () => {
   const react = await import('react');
   return {
@@ -84,16 +93,15 @@ vi.mock('@/contexts/ClientContext', () => ({
     loadError: null,
   }),
 }));
-vi.mock('@/hooks/useReconciliation', async (original) => ({
-  ...(await original<typeof import('@/hooks/useReconciliation')>()),
+vi.mock('@/hooks/useReconciliation', () => ({
   useReconciliation: () => recon,
 }));
 
-const render = (Page: ComponentType) => renderToString(createElement(Page));
+const render = (Component: ComponentType) => renderToString(createElement(Component));
 
 describe('tela de conciliação', () => {
-  it('monta com lançamentos de todos os tipos: resumo, erro, tabela paginada e ações', async () => {
-    const html = render((await import('@/app/page')).default);
+  it('monta com lançamentos de todos os tipos: resumo, erro, tabela paginada e ações', () => {
+    const html = render(Page);
     expect(html).toContain('Conciliação bancária');
     expect(html).toContain('Empresa Teste');
     // Resumo e erro da última operação.
@@ -115,22 +123,22 @@ describe('tela de conciliação', () => {
     expect(html).toContain('Importar extrato');
   });
 
-  it('sem auto-classificados, o botão de aprovar em lote some', async () => {
+  it('sem auto-classificados, o botão de aprovar em lote some', () => {
     const original = recon.transactions;
     recon.transactions = original.filter((t) => t.status !== 'AUTO_CLASSIFIED');
     try {
-      const html = render((await import('@/app/page')).default);
+      const html = render(Page);
       expect(html).not.toContain('Aprovar todos os auto-classificados');
     } finally {
       recon.transactions = original;
     }
   });
 
-  it('período sem lançamentos: a tabela convida a importar, com o extrato modelo', async () => {
+  it('período sem lançamentos: a tabela convida a importar, com o extrato modelo', () => {
     const original = recon.transactions;
     recon.transactions = [];
     try {
-      const html = render((await import('@/app/page')).default);
+      const html = render(Page);
       expect(html).toContain('Nenhum lançamento ainda');
       expect(html).toContain('Usar arquivo modelo');
     } finally {
