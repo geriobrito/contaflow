@@ -44,6 +44,8 @@ describe('balancete', () => {
 describe('avisos e assinaturas', () => {
   it('norma pelo porte, só na aba em que importa', () => {
     expect(standardNoteFor('dfc', 'MICROENTIDADE')).toMatch(/facultativa/);
+    expect(standardNoteFor('dmpl', 'MICROENTIDADE')).toMatch(/facultativa/);
+    expect(standardNoteFor('dmpl', 'PEQUENA_EMPRESA')).toMatch(/obrigatória/);
     expect(standardNoteFor('bs', 'MICROENTIDADE')).toBeNull();
     expect(standardNoteFor('bs', 'PEQUENA_EMPRESA')).toMatch(/NBC TG 1001/);
     expect(standardNoteFor('dlpa', 'PEQUENA_EMPRESA')).toMatch(/NBC TG 1001/);

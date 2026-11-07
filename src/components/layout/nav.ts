@@ -55,7 +55,7 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
     title: 'Demonstrações',
     items: [
       { href: '/dre', label: 'DRE', icon: LineChart, keywords: 'demonstracao do resultado lucro prejuizo' },
-      { href: '/balanco', label: 'Balanço e Balancete', icon: Scale, keywords: 'balanco patrimonial balancete dlpa encerramento exercicio' },
+      { href: '/balanco', label: 'Balanço e Balancete', icon: Scale, keywords: 'balanco patrimonial balancete dlpa dmpl mutacoes patrimonio liquido dfc encerramento exercicio' },
       { href: '/diario', label: 'Livro Diário', icon: BookText },
       { href: '/razao', label: 'Livro Razão', icon: BookMarked },
       { href: '/notas', label: 'Notas Explicativas', icon: NotebookPen },

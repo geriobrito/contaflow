@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateDREPdf } from '@/lib/export/dre-pdf';
 import { generateLedgerPdf } from '@/lib/export/ledger-pdf';
 import { generateDLPAPdf } from '@/lib/export/dlpa-export';
+import { generateDMPLPdf } from '@/lib/export/dmpl-export';
 import { formatAccounting, formatPercent } from '@/lib/export/dre-rows';
 import { buildDRE } from '@/lib/dre/build';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
@@ -118,11 +119,23 @@ describe('PDF do Balancete', () => {
   });
 });
 
-describe('PDF da DLPA', () => {
-  it('usa o mesmo cabeçalho das demais demonstrações', async () => {
+describe('PDF da DLPA e da DMPL', () => {
+  it('usam o mesmo cabeçalho das demais demonstrações', async () => {
     const dlpa = { year: '2025', start: '2025-01-01', end: '2025-12-31', opening: 0, openingBalance: 0, adjustments: 0, netResult: 100, distributions: 0, closing: 100, rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', value: 100 }] };
     const texts = drawn(await pdfText(generateDLPAPdf({ client, dlpa, signatories }).blob));
     expect(texts.slice(0, 4)).toEqual(['EMPRESA TESTE LTDA', 'CNPJ: 11.222.333/0001-81', 'DEMONSTRAÇÃO DE LUCROS OU PREJUÍZOS ACUMULADOS', 'NBC TG 1002 - Microentidades']);
+
+    const dmpl = {
+      year: '2025',
+      start: '2025-01-01',
+      end: '2025-12-31',
+      columns: [{ key: 'capital', code: '2.3.1', label: 'Capital social' }],
+      rows: [{ kind: 'balance' as const, label: 'Saldo em 31/12/2025', values: { capital: 100 }, total: 100 }],
+      initialEquity: 100,
+      finalEquity: 100,
+    };
+    const dmplTexts = drawn(await pdfText(generateDMPLPdf({ client, dmpl, signatories }).blob));
+    expect(dmplTexts.slice(0, 4)).toEqual(['EMPRESA TESTE LTDA', 'CNPJ: 11.222.333/0001-81', 'DEMONSTRAÇÃO DAS MUTAÇÕES DO PATRIMÔNIO LÍQUIDO', 'NBC TG 1002 - Microentidades']);
   });
 });
 

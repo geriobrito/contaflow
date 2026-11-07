@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { generateNotesPdf } from '@/lib/export/notes-pdf';
 import { generateDLPAExcel, generateDLPAPdf } from '@/lib/export/dlpa-export';
+import { generateDMPLExcel, generateDMPLPdf } from '@/lib/export/dmpl-export';
 import { defaultNotes } from '@/lib/notes';
 import type { DLPA } from '@/lib/year-closing';
+import type { DMPL } from '@/lib/dmpl';
 import type { BankAccount, BankTransaction } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import { buildCashFlow } from '@/lib/cash-flow';
@@ -72,5 +74,37 @@ describe('DLPA em PDF e Excel', () => {
     const xlsx = await generateDLPAExcel({ client, dlpa, signatories });
     expect(xlsx.blob.size).toBeGreaterThan(2000);
     expect(xlsx.fileName).toBe('DLPA_Empresa_Teste_2025-01-01_a_2025-12-31.xlsx');
+  });
+});
+
+describe('DMPL em PDF e Excel', () => {
+  const dmpl: DMPL = {
+    year: '2025',
+    start: '2025-01-01',
+    end: '2025-12-31',
+    columns: [
+      { key: 'capital', code: '2.3.1', label: 'Capital social' },
+      { key: 'profitReserves', code: '2.3.2.02', label: 'Reservas de lucros' },
+      { key: 'retained', code: '2.3.3', label: 'Lucros ou prejuízos acumulados' },
+    ],
+    rows: [
+      { kind: 'balance', label: 'Saldo em 01/01/2025', values: { capital: 100000, profitReserves: 5000, retained: 0 }, total: 105000 },
+      { kind: 'movement', label: '(+) Aumento de capital', values: { capital: 10000, profitReserves: 0, retained: 0 }, total: 10000 },
+      { kind: 'movement', label: '(+/-) Lucro ou prejuízo líquido do exercício', values: { capital: 0, profitReserves: 0, retained: 20000 }, total: 20000 },
+      { kind: 'movement', label: 'Constituição de reservas', values: { capital: 0, profitReserves: 2000, retained: -2000 }, total: 0 },
+      { kind: 'movement', label: '(-) Lucros distribuídos', values: { capital: 0, profitReserves: 0, retained: -5000 }, total: -5000 },
+      { kind: 'balance', label: 'Saldo em 31/12/2025', values: { capital: 110000, profitReserves: 7000, retained: 13000 }, total: 130000 },
+    ],
+    initialEquity: 105000,
+    finalEquity: 130000,
+  };
+
+  it('gera PDF em paisagem e planilha Excel', async () => {
+    const pdf = generateDMPLPdf({ client, dmpl, signatories });
+    expect(pdf.blob.size).toBeGreaterThan(2000);
+    expect(pdf.fileName).toBe('DMPL_Empresa_Teste_2025-01-01_a_2025-12-31.pdf');
+    const xlsx = await generateDMPLExcel({ client, dmpl, signatories });
+    expect(xlsx.blob.size).toBeGreaterThan(2000);
+    expect(xlsx.fileName).toBe('DMPL_Empresa_Teste_2025-01-01_a_2025-12-31.xlsx');
   });
 });

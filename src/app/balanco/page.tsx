@@ -14,12 +14,14 @@ import { porteOf } from '@/lib/accounting-standard';
 import { implantationDate, openingStatus } from '@/lib/opening';
 import { bankSetupIssues, comparativeLines, formatDC as dc, hasClosingIn, hasComparable, previousYearEnd, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
 import { buildDLPA, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
+import { buildDMPL } from '@/lib/dmpl';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { useBalanceSheetData } from '@/hooks/balanco/useBalanceSheetData';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, Sheet, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
+import { DMPLStatement } from '@/components/balanco/DMPLStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
 import { StatementChecks } from '@/components/ui/StatementChecks';
@@ -40,6 +42,7 @@ const TITLE: Record<View, string> = {
   bs: 'Balanço patrimonial',
   tb: 'Balancete de verificação',
   dlpa: 'Lucros ou prejuízos acumulados',
+  dmpl: 'Mutações do patrimônio líquido',
   dfc: 'Fluxos de caixa',
 };
 
@@ -211,16 +214,17 @@ export default function BalancoPage() {
     [ready, static_?.openings, accounts, banks]
   );
 
-  // Encerramento e DLPA do exercício da data final.
+  // Encerramento, DLPA e DMPL do exercício da data final.
   const year = range.end.slice(0, 4);
+  const openLines = useMemo(() => openingPostings(static_?.openings, banks, accounts), [static_?.openings, banks, accounts]);
   // Pequena empresa: movimento em Capital ou Reservas no exercício exige a DMPL (NBC TG 1001).
   const porte = porteOf(currentClient);
   const equityMoves = useMemo(
     () =>
       porte === 'PEQUENA_EMPRESA'
-        ? equityMovements(postings, openingPostings(static_?.openings, banks, accounts), accounts, { start: yearStartOf(year), end: range.end })
+        ? equityMovements(postings, openLines, accounts, { start: yearStartOf(year), end: range.end })
         : [],
-    [porte, postings, static_?.openings, banks, accounts, year, range.end]
+    [porte, postings, openLines, accounts, year, range.end]
   );
   const postingsBeforeClosing = useMemo(
     () =>
@@ -240,13 +244,17 @@ export default function BalancoPage() {
     onChanged: reload,
   });
   useEffect(() => {
-    if (!scrollToClosing.current || view !== 'dlpa' || !yearClosing.state) return;
+    if (!scrollToClosing.current || (view !== 'dlpa' && view !== 'dmpl') || !yearClosing.state) return;
     const panel = document.getElementById('encerramento');
     if (!panel) return;
     scrollToClosing.current = false;
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [view, yearClosing.state]);
   const dlpa = useMemo(() => buildDLPA(postings, accounts, journalEntries, range.end), [postings, accounts, journalEntries, range.end]);
+  const dmpl = useMemo(
+    () => buildDMPL(postings, accounts, journalEntries, range.end, openLines),
+    [postings, accounts, journalEntries, range.end, openLines]
+  );
   // DFC do período escolhido: os lançamentos do exercício já vêm um a um; o consolidado só compõe o caixa inicial.
   const [cashFlowDetail, setCashFlowDetail] = useState(false);
   const cashFlow = useMemo(
@@ -276,6 +284,13 @@ export default function BalancoPage() {
       if (view === 'dlpa') {
         const { generateDLPAPdf } = await import('@/lib/export/dlpa-export');
         const file = generateDLPAPdf({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        signature.remind();
+        return;
+      }
+      if (view === 'dmpl') {
+        const { generateDMPLPdf } = await import('@/lib/export/dmpl-export');
+        const file = generateDMPLPdf({ client: currentClient, dmpl, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
         signature.remind();
         return;
@@ -323,6 +338,13 @@ export default function BalancoPage() {
         signature.remind();
         return;
       }
+      if (view === 'dmpl') {
+        const { generateDMPLExcel } = await import('@/lib/export/dmpl-export');
+        const file = await generateDMPLExcel({ client: currentClient, dmpl, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        signature.remind();
+        return;
+      }
       const { generateLedgerExcel } = await import('@/lib/export/ledger-excel');
       const file = await generateLedgerExcel({
         client: currentClient,
@@ -360,6 +382,11 @@ export default function BalancoPage() {
               Exercício de {year} até <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>: saldo inicial, resultado, distribuições e
               encerramento do exercício.
             </>
+          ) : view === 'dmpl' ? (
+            <>
+              Exercício de {year} até <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>: mutações em todas as contas do Patrimônio
+              Líquido (capital social, reservas e lucros ou prejuízos acumulados).
+            </>
           ) : (
             <>De <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.start)}</span> a <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>. Contas de resultado acumulam desde 1º de janeiro.</>
           )
@@ -384,9 +411,11 @@ export default function BalancoPage() {
               title={
                 view === 'dlpa'
                   ? 'Exportar a DLPA em planilha Excel (.xlsx)'
-                  : view === 'dfc'
-                    ? 'Exportar a DFC em planilha Excel (.xlsx)'
-                    : 'Exportar planilha Excel (.xlsx) com Balanço e Balancete'
+                  : view === 'dmpl'
+                    ? 'Exportar a DMPL em planilha Excel (.xlsx)'
+                    : view === 'dfc'
+                      ? 'Exportar a DFC em planilha Excel (.xlsx)'
+                      : 'Exportar planilha Excel (.xlsx) com Balanço e Balancete'
               }
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" strokeWidth={1.75} />}
@@ -415,6 +444,7 @@ export default function BalancoPage() {
               { value: 'bs', label: 'Balanço patrimonial' },
               { value: 'tb', label: 'Balancete' },
               { value: 'dlpa', label: 'DLPA' },
+              { value: 'dmpl', label: 'DMPL' },
               { value: 'dfc', label: 'DFC' },
             ]}
           />
@@ -438,6 +468,10 @@ export default function BalancoPage() {
           transitory: {
             label: 'Ir para o encerramento',
             onClick: goToClosing,
+          },
+          dmpl: {
+            label: 'Abrir DMPL',
+            onClick: () => setView('dmpl'),
           },
         }}
         checks={[
@@ -481,9 +515,9 @@ export default function BalancoPage() {
         </section>
       ) : view === 'dfc' ? (
         cashFlow && <CashFlowStatement statement={cashFlow} detail={cashFlowDetail} onDetailChange={setCashFlowDetail} />
-      ) : view === 'dlpa' ? (
+      ) : view === 'dlpa' || view === 'dmpl' ? (
         <div className="space-y-6">
-          <DLPAStatement dlpa={dlpa} />
+          {view === 'dlpa' ? <DLPAStatement dlpa={dlpa} /> : <DMPLStatement dmpl={dmpl} />}
           {yearClosing.state && (
             <YearClosingPanel state={yearClosing.state} busy={yearClosing.busy} onClose={yearClosing.close} onReopen={yearClosing.reopen} />
           )}

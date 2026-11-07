@@ -4,12 +4,12 @@ import { monthOf } from '@/lib/periods';
 import type { BalanceSheet, BalanceSheetLine } from '@/lib/ledger';
 
 /**
- * Tela do Balanço (balanço, balancete, DLPA e DFC): o que ela mostra além das demonstrações —
+ * Tela do Balanço (balanço, balancete, DLPA, DMPL e DFC): o que ela mostra além das demonstrações —
  * saldo com natureza, o encerramento do exercício no período, a nota da norma pelo porte, os
  * cadastros de banco incompletos e quem assina.
  */
 
-export type StatementView = 'bs' | 'tb' | 'dlpa' | 'dfc';
+export type StatementView = 'bs' | 'tb' | 'dlpa' | 'dmpl' | 'dfc';
 
 interface Range {
   start: string;
@@ -43,6 +43,12 @@ export function monthsWithData(transactions: readonly Pick<BankTransaction, 'dat
 export function standardNoteFor(view: StatementView, porte: CompanyPorte): string | null {
   if (view === 'dfc' && porte === 'MICROENTIDADE') {
     return 'Microentidade (NBC TG 1002): a DFC é facultativa. Apresente-a se ajudar a leitura das demonstrações.';
+  }
+  if (view === 'dmpl' && porte === 'MICROENTIDADE') {
+    return 'Microentidade (NBC TG 1002): a DMPL é facultativa e pode substituir a DLPA no conjunto das demonstrações.';
+  }
+  if (view === 'dmpl' && porte === 'PEQUENA_EMPRESA') {
+    return 'Pequena empresa (NBC TG 1001): a DMPL substitui a DLPA e é obrigatória quando há movimento em Capital Social ou Reservas.';
   }
   if ((view === 'bs' || view === 'dlpa') && porte === 'PEQUENA_EMPRESA') {
     return 'Pequena empresa (NBC TG 1001): o conjunto completo inclui a Demonstração dos Fluxos de Caixa, na aba DFC.';

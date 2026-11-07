@@ -88,8 +88,8 @@ export function activityCheck(client: { activity?: string } | null | undefined):
 
 /**
  * Pequena empresa com movimento em Capital ou Reservas no exercício: a NBC TG 1001 exige a DMPL
- * (a DLPA sozinha só basta quando o PL se mexe apenas em Lucros ou Prejuízos Acumulados), e o
- * sistema não a gera. Microentidade nunca recebe o aviso (DMPL facultativa).
+ * (a DLPA sozinha só basta quando o PL se mexe apenas em Lucros ou Prejuízos Acumulados).
+ * Microentidade nunca recebe o aviso (DMPL facultativa).
  */
 export function dmplCheck(porte: CompanyPorte, movements: readonly EquityMovement[], year: string): StatementCheck | null {
   if (porte !== 'PEQUENA_EMPRESA' || movements.length === 0) return null;
@@ -99,7 +99,7 @@ export function dmplCheck(porte: CompanyPorte, movements: readonly EquityMovemen
     title: `Movimento em Capital ou Reservas em ${year}: a NBC TG 1001 exige a DMPL`,
     items: [
       ...movements.map((m) => `${m.code} ${m.name}: ${m.value === 0 ? `${m.count} lançamento(s) que se anulam` : `${m.value > 0 ? 'aumento' : 'redução'} de ${formatCurrency(Math.abs(m.value))}`}`),
-      'O sistema gera a DLPA, mas não a Demonstração das Mutações do Patrimônio Líquido: elabore-a à parte e cite-a nas notas explicativas.',
+      'Apresente a Demonstração das Mutações do Patrimônio Líquido (aba DMPL) no conjunto completo das demonstrações e cite-a nas notas explicativas.',
     ],
   };
 }
