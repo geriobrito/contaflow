@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
 import { getAccounts, getRepository, getRules } from '@/lib/services/data-service';
 import { applyRuleToPending, loadRuleSample } from '@/lib/services/reconciliation-service';
-import { countAffected, detectRuleConflicts, normalizePattern, pendingWonByRule, ruleKey } from '@/lib/reconciliation';
-import { assessRuleTerm, type TermAssessment } from '@/lib/payee';
+import { normalizePattern, ruleKey } from '@/lib/reconciliation';
+import type { TermAssessment } from '@/lib/payee';
 import { isMonthLocked } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { useRulesEvaluationWorker } from '@/hooks/useRulesWorker';
+
+const DEFAULT_ASSESSMENT: TermAssessment = { level: 'ok', reasons: [], matchCount: 0, payeeCount: 0 };
 
 /** Uma linha da tabela de regras, com o que a regra afeta hoje. */
 export interface RuleListRow {
@@ -73,22 +76,25 @@ export function useRulesData(clientId: string | undefined, search: string) {
   const analytic = useMemo(() => accounts.filter((a) => a.nature === 'ANALYTIC'), [accounts]);
   const rulesById = useMemo(() => new Map(rules.map((r) => [r.id, r] as const)), [rules]);
   const memos = useMemo(() => transactions.map((t) => t.memo), [transactions]);
-  const conflicts = useMemo(() => detectRuleConflicts(memos, rules), [memos, rules]);
   const openPending = useMemo(
     () => transactions.filter((t) => t.status === 'PENDING' && !isMonthLocked(t.date, lockedMonths)),
     [transactions, lockedMonths]
   );
+  const { conflicts, metricsByRuleId } = useRulesEvaluationWorker(rules, transactions, openPending);
 
   const rows = useMemo((): RuleListRow[] => {
     const term = search.trim().toLowerCase();
     return rules
-      .map((rule) => ({
-        rule,
-        assessment: assessRuleTerm(rule, memos),
-        account: accountsById.get(rule.accountId),
-        affected: countAffected(rule, transactions),
-        pending: pendingWonByRule(openPending, rules, rule).length,
-      }))
+      .map((rule) => {
+        const metrics = metricsByRuleId[rule.id];
+        return {
+          rule,
+          assessment: metrics?.assessment ?? DEFAULT_ASSESSMENT,
+          account: accountsById.get(rule.accountId),
+          affected: metrics?.affected ?? 0,
+          pending: metrics?.pending ?? 0,
+        };
+      })
       .filter(
         ({ rule, account }) =>
           !term ||
@@ -97,7 +103,7 @@ export function useRulesData(clientId: string | undefined, search: string) {
           (account?.code ?? rule.accountCode ?? '').includes(term)
       )
       .sort((a, b) => b.affected - a.affected || a.rule.pattern.localeCompare(b.rule.pattern));
-  }, [rules, accountsById, transactions, openPending, search, memos]);
+  }, [rules, accountsById, metricsByRuleId, search]);
 
   const isDuplicate = useCallback(
     (key: string, exceptId: string) =>

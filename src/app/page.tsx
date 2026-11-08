@@ -35,7 +35,7 @@ import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
 import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
 import { KeyboardHelpModal } from '@/components/conciliacao/KeyboardHelpModal';
 import { InvoiceDetailDrawer } from '@/components/conciliacao/InvoiceDetailDrawer';
-import { groupByPayee } from '@/lib/payee';
+import { usePayeeGroupsWorker } from '@/hooks/useRulesWorker';
 import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
@@ -251,9 +251,10 @@ export default function ConciliacaoPage() {
   const byBank = useMemo(() => filterByBank(transactions, bankFilter), [transactions, bankFilter]);
   const visible = useMemo(() => visibleTransactions(byBank, filter, searchQuery), [byBank, filter, searchQuery]);
 
-  // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu.
+  // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu (em Web Worker para volumes altos).
   const [view, setView] = useState<'list' | 'payee'>('list');
-  const payeeGroups = useMemo(() => groupByPayee(payeeCandidates(byBank, lockedMonths)), [byBank, lockedMonths]);
+  const payeePool = useMemo(() => payeeCandidates(byBank, lockedMonths), [byBank, lockedMonths]);
+  const payeeGroups = usePayeeGroupsWorker(payeePool);
   const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
 
   // Volta à 1ª página ao trocar filtro, conta, busca, período ou cliente.

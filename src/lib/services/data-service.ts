@@ -3,6 +3,7 @@ import type { BankTransaction, ChartAccount, ClassificationRule, ClientCompany, 
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
+import { createIndexedDbStore } from '@/lib/data/indexed-db';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
 import { withReadCache } from '@/lib/data/cached-repository';
 import { getActor, getOrgId, peekOrgId } from '@/lib/data/scope';
@@ -11,8 +12,9 @@ import { getActor, getOrgId, peekOrgId } from '@/lib/data/scope';
  * Ponto único de acesso a dados.
  *
  * O modo é decidido UMA vez por execução: Firestore quando o Firebase está
- * configurado, localStorage caso contrário. Não existe escrita dupla nem fallback
- * silencioso — se o Firestore recusar uma operação, o erro chega à interface.
+ * configurado, IndexedDB (com espelho/migração do localStorage) caso contrário.
+ * Não existe escrita dupla com o Firestore nem fallback silencioso — se o Firestore
+ * recusar uma operação, o erro chega à interface.
  */
 
 /** Armazenamento em memória para ambientes sem `window` (SSR/build). */
@@ -27,7 +29,7 @@ export function getRepository(): DataRepository {
   if (!repository) {
     const base = isFirebaseConfigured()
       ? createFirestoreRepository(db, getOrgId)
-      : createLocalRepository(typeof window === 'undefined' ? memoryStore() : window.localStorage);
+      : createLocalRepository(typeof window === 'undefined' ? memoryStore() : createIndexedDbStore());
     // Plano de contas, bancos e fechamentos ficam em memória por cliente (ver cached-repository.ts).
     repository = withReadCache(base, () => peekOrgId() ?? '');
   }

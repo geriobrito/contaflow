@@ -6,8 +6,9 @@ import type { DateRange } from '@/lib/data/repository';
 import type { AccountLedger } from '@/lib/ledger';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SURFACE } from '@/components/ui/primitives';
+import { useVirtualTable } from '@/hooks/useVirtualTable';
 
-/** Partidas da ficha do Razão, com saldo progressivo e busca por histórico, documento ou contrapartida. */
+/** Partidas da ficha do Razão, com saldo progressivo, busca por histórico/documento/contrapartida e virtualização de linhas. */
 export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; range: DateRange }) {
   const [tableSearch, setTableSearch] = useState('');
   const visibleEntries = useMemo(() => {
@@ -21,6 +22,11 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         (e.contraAccountName && e.contraAccountName.toLowerCase().includes(term))
     );
   }, [ledger, tableSearch]);
+
+  const { containerRef, onScroll, visibleItems, offsetTop, offsetBottom, isVirtualized } = useVirtualTable(
+    visibleEntries,
+    { rowHeight: 40, defaultViewportHeight: 600, minItemsForVirtualization: 60 }
+  );
 
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
@@ -40,7 +46,13 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         </span>
       </div>
 
-      <div className="overflow-x-auto print:overflow-visible">
+      <div
+        ref={containerRef}
+        onScroll={onScroll}
+        className={`overflow-x-auto print:overflow-visible ${
+          isVirtualized ? 'max-h-[640px] overflow-y-auto print:max-h-none' : ''
+        }`}
+      >
         {ledger.entries.length === 0 ? (
           <div className="py-20 text-center text-stone-400 space-y-2">
             <BookOpen className="w-8 h-8 mx-auto opacity-30" />
@@ -54,7 +66,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         ) : (
           <table className="w-full text-left border-collapse text-[12px] print-fit-table">
             <thead>
-              <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
+              <tr className="sticky top-0 z-10 bg-stone-100/95 dark:bg-stone-800/95 backdrop-blur text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
                 <th className="pl-5 pr-3 py-2.5 w-24">Data</th>
                 <th className="px-3 py-2.5 w-28">Doc / FITID</th>
                 <th className="px-3 py-2.5">Histórico</th>
@@ -86,8 +98,14 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                 </td>
               </tr>
 
+              {offsetTop > 0 && (
+                <tr aria-hidden="true" className="print:hidden">
+                  <td colSpan={7} style={{ height: offsetTop, padding: 0, border: 0 }} />
+                </tr>
+              )}
+
               {/* Linhas de movimentação cronológica */}
-              {visibleEntries.map((e) => (
+              {visibleItems.map((e) => (
                 <tr key={e.id} className="hover:bg-black/2 dark:hover:bg-white/2 transition-colors">
                   <td className="pl-5 pr-3 py-2 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">
                     {formatDateBR(e.date)}
@@ -130,8 +148,17 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                   </td>
                 </tr>
               ))}
+              {offsetBottom > 0 && (
+                <tr aria-hidden="true" className="print:hidden">
+                  <td colSpan={7} style={{ height: offsetBottom, padding: 0, border: 0 }} />
+                </tr>
+              )}
             </tbody>
-            <tfoot className="border-t-2 border-black/8 dark:border-white/8 font-semibold text-stone-900 dark:text-stone-100 bg-stone-50 dark:bg-stone-800/95">
+            <tfoot
+              className={`${
+                isVirtualized ? 'sticky bottom-0 z-10 backdrop-blur' : ''
+              } border-t-2 border-black/8 dark:border-white/8 font-semibold text-stone-900 dark:text-stone-100 bg-stone-50 dark:bg-stone-800/95`}
+            >
               <tr>
                 <td className="pl-5 pr-3 py-2.5" colSpan={4}>
                   Totais do período ({visibleEntries.length} partidas)

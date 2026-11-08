@@ -19,6 +19,7 @@ import { BUTTON } from '@/components/ui/primitives';
 import { generateAccountLedgerExcel } from '@/lib/export/ledger-excel';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { reportError } from '@/lib/monitoring';
+import { useVirtualTable } from '@/hooks/useVirtualTable';
 
 interface AccountLedgerDrawerProps {
   isOpen: boolean;
@@ -90,6 +91,12 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         (e.contraAccountName && e.contraAccountName.toLowerCase().includes(term))
     );
   }, [ledger, search]);
+
+  const { containerRef, onScroll, visibleItems, offsetTop, offsetBottom } = useVirtualTable(filteredEntries, {
+    rowHeight: 40,
+    defaultViewportHeight: 600,
+    minItemsForVirtualization: 60,
+  });
 
   const handleExportExcel = async () => {
     if (!ledger || !client) return;
@@ -291,7 +298,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </div>
 
         {/* Tabela de Lançamentos do Razão */}
-        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
+        <div ref={containerRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
           {ledger.entries.length === 0 ? (
             <div className="py-20 text-center text-stone-400 space-y-2">
               <BookOpen className="w-8 h-8 mx-auto opacity-30" />
@@ -337,8 +344,14 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                   </td>
                 </tr>
 
+                {offsetTop > 0 && (
+                  <tr aria-hidden="true" className="print:hidden">
+                    <td colSpan={7} style={{ height: offsetTop, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+
                 {/* Linhas de movimentação */}
-                {filteredEntries.map((e) => (
+                {visibleItems.map((e) => (
                   <tr
                     key={e.id}
                     className="hover:bg-black/2 dark:hover:bg-white/2 transition-colors"
@@ -384,6 +397,12 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                     </td>
                   </tr>
                 ))}
+
+                {offsetBottom > 0 && (
+                  <tr aria-hidden="true" className="print:hidden">
+                    <td colSpan={7} style={{ height: offsetBottom, padding: 0, border: 0 }} />
+                  </tr>
+                )}
               </tbody>
               <tfoot className="sticky bottom-0 bg-stone-50 dark:bg-stone-800/95 border-t-2 border-black/8 dark:border-white/8 font-semibold text-stone-900 dark:text-stone-100 backdrop-blur z-10">
                 <tr>

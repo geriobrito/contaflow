@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useLedgerData } from '@/hooks/useLedgerData';
-import { usePagination } from '@/hooks/usePagination';
+import { useVirtualTable } from '@/hooks/useVirtualTable';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
 import { buildDaybook, DAYBOOK_TEXT_MAX, normalizeDaybookInfo, type DaybookBookInfo, type DaybookOrigin } from '@/lib/daybook';
@@ -66,7 +66,6 @@ export default function DiarioPage() {
   const [book, setBook] = useState<DaybookBookInfo>(EMPTY_BOOK);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);
-  const key = `${clientId}|${from}`;
 
   const bookFor = useRef<string | null>(null);
   const pendingSave = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,7 +137,20 @@ export default function DiarioPage() {
         e.lines.some((l) => l.code.toLowerCase().includes(term) || l.name.toLowerCase().includes(term) || (l.memo ?? '').toLowerCase().includes(term))
     );
   }, [daybook, search]);
-  const { currentPage, pageCount, rows, setPage } = usePagination(visible, PAGE_SIZE, `${key}|${range.start}|${range.end}|${search}`);
+  const {
+    containerRef,
+    onScroll,
+    visibleItems: rows,
+    startIndex,
+    endIndex,
+    offsetTop,
+    offsetBottom,
+    isVirtualized,
+  } = useVirtualTable(visible, {
+    rowHeight: 84,
+    defaultViewportHeight: 640,
+    minItemsForVirtualization: PAGE_SIZE,
+  });
 
   /** Atualiza na tela e grava no cadastro da empresa logo após a última tecla. */
   const updateBook = (patch: Partial<DaybookBookInfo>) => {
@@ -281,10 +293,16 @@ export default function DiarioPage() {
             {visible.length === 0 ? (
               <EmptyState title="Nenhum lançamento encontrado" description={`Nada corresponde a “${search}”.`} />
             ) : (
-              <div className="overflow-x-auto">
+              <div
+                ref={containerRef}
+                onScroll={onScroll}
+                className={`overflow-x-auto print:overflow-visible ${
+                  isVirtualized ? 'max-h-[640px] overflow-y-auto print:max-h-none' : ''
+                }`}
+              >
                 <table className="w-full text-left border-collapse text-[12px]">
                   <thead>
-                    <tr className="bg-stone-100/70 dark:bg-stone-800/80 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
+                    <tr className="sticky top-0 z-10 bg-stone-100/95 dark:bg-stone-800/95 backdrop-blur text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
                       <th className="pl-5 pr-3 py-2.5 w-16 text-right">Nº</th>
                       <th className="px-3 py-2.5 w-24">Data</th>
                       <th className="px-3 py-2.5">Conta</th>
@@ -293,6 +311,13 @@ export default function DiarioPage() {
                       <th className="pl-3 pr-5 py-2.5 text-right w-32">Crédito</th>
                     </tr>
                   </thead>
+                  {offsetTop > 0 && (
+                    <tbody aria-hidden="true" className="print:hidden">
+                      <tr>
+                        <td colSpan={6} style={{ height: offsetTop, padding: 0, border: 0 }} />
+                      </tr>
+                    </tbody>
+                  )}
                   {rows.map((e) => (
                     <tbody key={e.id} className="border-b border-black/5 dark:border-white/6 last:border-0">
                       <tr className="bg-stone-50/60 dark:bg-stone-800/30">
@@ -321,22 +346,22 @@ export default function DiarioPage() {
                       ))}
                     </tbody>
                   ))}
+                  {offsetBottom > 0 && (
+                    <tbody aria-hidden="true" className="print:hidden">
+                      <tr>
+                        <td colSpan={6} style={{ height: offsetBottom, padding: 0, border: 0 }} />
+                      </tr>
+                    </tbody>
+                  )}
                 </table>
               </div>
             )}
-            {pageCount > 1 && (
-              <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-black/5 dark:border-white/6 text-[12px] text-stone-500">
+            {isVirtualized && (
+              <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-t border-black/5 dark:border-white/6 text-[12px] text-stone-500 print:hidden">
                 <span>
-                  Página {currentPage + 1} de {pageCount} · {visible.length} lançamento(s)
+                  Exibindo {startIndex + 1}–{endIndex} de {visible.length} lançamento(s)
                 </span>
-                <div className="flex gap-2">
-                  <button type="button" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className={`${BUTTON.secondary} h-8`}>
-                    Anterior
-                  </button>
-                  <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)} className={`${BUTTON.secondary} h-8`}>
-                    Próxima
-                  </button>
-                </div>
+                <span className="text-[11px] text-stone-400 font-mono">Rolagem virtualizada ativa</span>
               </div>
             )}
           </section>
