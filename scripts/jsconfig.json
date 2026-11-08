@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "checkJs": false,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.mjs", "**/*.js"]
+}
+

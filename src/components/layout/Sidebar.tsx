@@ -262,10 +262,10 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
         />
       </div>
 
-      <div className="mx-4 my-2 border-t border-black/5 dark:border-white/6" />
+      <div className="mx-4 my-1.5 border-t border-black/5 dark:border-white/6" />
 
       {/* Navegação: o destaque da página atual desliza até a próxima, entre as seções também */}
-      <nav ref={navRef} className="relative flex-1 px-2 pb-2 overflow-y-auto">
+      <nav ref={navRef} className="relative flex-1 px-2 pb-1.5 overflow-y-auto">
         <span
           ref={navPillRef}
           aria-hidden
@@ -274,9 +274,9 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
         {NAV_SECTIONS.map((section, s) => (
           <div key={section.title} role="group" aria-label={section.title} className="space-y-px">
             {collapsed ? (
-              s > 0 && <div aria-hidden className="mx-3 my-2 border-t border-black/6 dark:border-white/8" />
+              s > 0 && <div aria-hidden className="mx-3 my-1.5 border-t border-black/6 dark:border-white/8" />
             ) : (
-              <p className={`px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-2.5' : 'pt-0.5'}`}>
+              <p className={`px-2.5 pb-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-2' : 'pt-0.5'}`}>
                 {section.title}
               </p>
             )}
@@ -296,7 +296,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                   }
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
-                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[3px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
+                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[2px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
                     collapsed ? 'justify-center' : ''
                   } ${
                     active

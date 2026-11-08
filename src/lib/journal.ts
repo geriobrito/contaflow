@@ -153,7 +153,7 @@ export function repeatCandidates(
   return entries
     // Encerramento do exercício, depreciação, baixa de bem e lançamentos das despesas antecipadas
     // não se repetem: são gerados pelas rotinas próprias.
-    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing && !e.depreciationMonth && !e.fixedAssetId && !e.prepaidMonth && !e.prepaidId && !e.financingMonth && !e.financingId && !e.investmentMonth && !e.stockMonth)
+    .filter((e) => e.date.startsWith(source) && !done.has(e.id) && !e.yearClosing && !e.depreciationMonth && !e.fixedAssetId && !e.prepaidMonth && !e.prepaidId && !e.financingMonth && !e.financingId && !e.investmentMonth && !e.stockMonth && !e.payrollMonth)
     .sort((a, b) => a.date.localeCompare(b.date) || a.entryNumber - b.entryNumber)
     .map((entry) => {
       const missing = entry.lines.find((l) => !analytic.has(l.accountId));

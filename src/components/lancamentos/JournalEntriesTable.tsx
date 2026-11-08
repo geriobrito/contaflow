@@ -101,6 +101,11 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           {entry.prepaidId ? 'Apólice · Despesas antecipadas' : 'Apropriação · Despesas antecipadas'}
                         </span>
                       )}
+                      {entry.payrollMonth && (
+                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pela folha de pagamento; altere na tela Folha de Pagamento">
+                          Provisão · Folha de pagamento
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 font-medium text-stone-900 dark:text-stone-100">

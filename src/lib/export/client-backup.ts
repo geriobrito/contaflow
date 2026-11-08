@@ -9,6 +9,7 @@ import type {
   FinancingRegister,
   InvestmentRegister,
   StockControl,
+  PayrollRegister,
   FixedAssetRegister,
   ImportBatch,
   PrepaidRegister,
@@ -55,6 +56,8 @@ export interface ClientBackup {
   investments: InvestmentRegister | null;
   /** Controle do estoque e os estoques finais informados (ausente em backups anteriores a ele). */
   stockControl: StockControl | null;
+  /** Controle da folha de pagamento (ausente em backups anteriores a ele). */
+  payrollRegister?: PayrollRegister | null;
   /** Mais recentes primeiro. */
   audit: AuditEntry[];
   /** A trilha tem mais registros do que o teto do backup: os mais antigos ficaram de fora. */
@@ -68,7 +71,7 @@ export async function buildClientBackup(
   exportedAt: string = new Date().toISOString()
 ): Promise<ClientBackup> {
   const id = client.id;
-  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, prepaidExpenses, financingContracts, investments, stockControl, audit] =
+  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, prepaidExpenses, financingContracts, investments, stockControl, payrollRegister, audit] =
     await Promise.all([
       repo.listAccounts(id),
       repo.listRules(id),
@@ -85,6 +88,7 @@ export async function buildClientBackup(
       repo.getFinancingContracts(id),
       repo.getInvestments(id),
       repo.getStockControl(id),
+      repo.getPayrollRegister(id),
       repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
     ]);
   return {
@@ -107,6 +111,7 @@ export async function buildClientBackup(
     financingContracts,
     investments,
     stockControl,
+    payrollRegister,
     audit,
     auditTruncated: audit.length >= BACKUP_AUDIT_LIMIT,
   };

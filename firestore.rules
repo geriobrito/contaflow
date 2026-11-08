@@ -487,6 +487,22 @@ service cloud.firestore {
         && validStock(request.resource.data);
     }
 
+    // ── Folha de pagamento e pró-labore (um documento por cliente, id = clientId) ─
+    function validPayroll(data) {
+      return data.summaries is list && data.summaries.size() <= 600;
+    }
+    match /payroll_registers/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && validPayroll(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && validPayroll(request.resource.data);
+    }
+
     // ── Checklist do fechamento (um documento por cliente e exercício) ───
     // id `${clientId}_${AAAA}`; itens marcados à mão (mapa) e o registro dos livros.
     function validChecklist(data) {
@@ -741,7 +757,7 @@ service cloud.firestore {
         'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
         'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
         'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE', 'PREPAID_SAVE', 'FINANCING_SAVE',
-        'INVESTMENT_SAVE', 'STOCK_SAVE'];
+        'INVESTMENT_SAVE', 'STOCK_SAVE', 'PAYROLL_SAVE'];
     }
 
     // Fechamento da competência citada no registro (`${clientId}_${month}`).

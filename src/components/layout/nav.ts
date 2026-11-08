@@ -17,6 +17,7 @@ import {
   ReceiptText,
   Scale,
   Sparkles,
+  Users,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -41,6 +42,12 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
       { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion, keywords: 'perguntas link respostas' },
       { href: '/contas', label: 'Contas e Extratos', icon: Wallet, keywords: 'bancos saldo inicial importacoes' },
       { href: '/nfe', label: 'Notas Fiscais', icon: ReceiptText, keywords: 'nfe nf-e xml compras vendas fornecedor cfop' },
+      {
+        href: '/folha',
+        label: 'Folha de Pagamento',
+        icon: Users,
+        keywords: 'folha de pagamento pro labore salarios inss fgts irrf ferias decimo terceiro holerite esocial dctfweb gps',
+      },
       { href: '/lancamentos', label: 'Lançamentos Manuais', icon: FilePenLine, keywords: 'partidas dobradas provisao folha depreciacao' },
       {
         href: '/imobilizado',

@@ -13,6 +13,7 @@ import type {
   ImportBatch,
   InvestmentRegister,
   StockControl,
+  PayrollRegister,
   PrepaidRegister,
   InvoiceSummary,
   JournalCounter,
@@ -68,6 +69,7 @@ export const LOCAL_KEYS = {
   financing: 'contaflow_financing_contracts',
   investments: 'contaflow_investment_accounts',
   stock: 'contaflow_stock_controls',
+  payroll: 'contaflow_payroll_registers',
 } as const;
 
 /** orgId gravado nos documentos do modo local (um único usuário por navegador). */
@@ -236,6 +238,7 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         LOCAL_KEYS.financing,
         LOCAL_KEYS.investments,
         LOCAL_KEYS.stock,
+        LOCAL_KEYS.payroll,
       ]) {
         write(
           key,
@@ -679,6 +682,12 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     },
     async saveStockControl(control, audit) {
       return saveRegister(LOCAL_KEYS.stock, control, audit, {});
+    },
+    async getPayrollRegister(clientId) {
+      return read<PayrollRegister>(LOCAL_KEYS.payroll).find((r) => r.clientId === clientId) ?? null;
+    },
+    async savePayrollRegister(register, audit, journal = {}) {
+      return saveRegister(LOCAL_KEYS.payroll, register, audit, journal);
     },
 
     async getClosingChecklist(clientId, year) {

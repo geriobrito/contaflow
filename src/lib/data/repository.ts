@@ -15,6 +15,7 @@ import type {
   ImportBatch,
   InvestmentRegister,
   StockControl,
+  PayrollRegister,
   PrepaidRegister,
   InvoiceLink,
   InvoiceSummary,
@@ -254,6 +255,11 @@ export interface DataRepository {
   getStockControl(clientId: string): Promise<StockControl | null>;
   /** Controle e auditoria numa única operação (o CMV é a rotina do mês). */
   saveStockControl(control: StockControl, audit: AuditEntry): Promise<JournalEntry | null>;
+
+  /* Folha de pagamento e pró-labore (um documento por cliente, id = clientId; src/lib/payroll.ts) */
+  getPayrollRegister(clientId: string): Promise<PayrollRegister | null>;
+  /** Como `saveFixedAssets`: cadastro da folha, auditoria e lançamento contábil numa única operação. */
+  savePayrollRegister(register: PayrollRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;

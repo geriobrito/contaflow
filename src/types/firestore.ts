@@ -388,7 +388,8 @@ export type AuditAction =
   | 'PREPAID_SAVE'
   | 'FINANCING_SAVE'
   | 'INVESTMENT_SAVE'
-  | 'STOCK_SAVE';
+  | 'STOCK_SAVE'
+  | 'PAYROLL_SAVE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {
@@ -763,6 +764,8 @@ export interface JournalEntry {
   investmentMonth?: string;
   /** Competência (YYYY-MM) do CMV pelo estoque final informado (src/lib/stock.ts). */
   stockMonth?: string;
+  /** Competência (YYYY-MM) da provisão da folha de pagamento (src/lib/payroll.ts). */
+  payrollMonth?: string;
   createdAt: string;
   updatedAt: string;
   createdByUid: string;
@@ -1112,4 +1115,76 @@ export interface JournalCounter {
   orgId?: string;
   clientId: string;
   last: number;
+}
+
+/* =========================================================================
+   Folha de Pagamento e Pró-Labore
+   ========================================================================= */
+
+/** Mapeamento de contas contábeis da folha (padrão modelo CFC NBC TG 1002 / ITG 1000). */
+export interface PayrollAccountMapping {
+  salaryExpenseCode: string;
+  proLaboreExpenseCode: string;
+  socialChargesExpenseCode: string;
+  provisionsExpenseCode: string;
+  salariesPayableCode: string;
+  proLaborePayableCode: string;
+  inssPayableCode: string;
+  fgtsPayableCode: string;
+  vacationPayableCode: string;
+  thirteenthPayableCode: string;
+  irrfPayableCode: string;
+}
+
+/** Resumo mensal da folha de pagamento e pró-labore de uma competência (YYYY-MM). */
+export interface PayrollSummary {
+  id: string;
+  clientId: string;
+  /** Competência (YYYY-MM). */
+  month: string;
+  /** Data de apropriação contábil (último dia do mês, YYYY-MM-DD). */
+  date: string;
+  /** Salários brutos (CLT). */
+  grossSalaries: number;
+  /** Pró-labore bruto dos sócios/titular. */
+  grossProLabore: number;
+  /** INSS descontado dos empregados. */
+  inssEmployees: number;
+  /** INSS descontado dos sócios (11%). */
+  inssProLabore: number;
+  /** IRRF retido sobre salários. */
+  irrfEmployees: number;
+  /** IRRF retido sobre pró-labore. */
+  irrfProLabore: number;
+  /** Outros descontos em folha que reduzem a despesa/líquido (faltas, vale-transporte descontado, etc.). */
+  otherDeductions?: number;
+  /** Salários líquidos a pagar (bruto − INSS empregados − IRRF empregados − outros descontos). */
+  netSalaries: number;
+  /** Pró-labore líquido a pagar (bruto − INSS sócios − IRRF sócios). */
+  netProLabore: number;
+  /** FGTS da competência (8%). */
+  fgts: number;
+  /** INSS patronal / RAT / Terceiros (quando aplicável). */
+  inssEmployer?: number;
+  /** Cota mensal de provisão de férias + 1/3 + encargos. */
+  vacationProvision?: number;
+  /** Cota mensal de provisão de 13º salário + encargos. */
+  thirteenthProvision?: number;
+  /** IDs dos lançamentos gerados no Livro Diário. */
+  journalEntryIds: string[];
+  mappedAccounts?: Partial<PayrollAccountMapping>;
+  notes?: string;
+  updatedAt: string;
+  updatedByUid?: string;
+}
+
+/** Controle da folha de pagamento da empresa (coleção `payroll_registers`, id = clientId). */
+export interface PayrollRegister {
+  id: string;
+  orgId?: string;
+  clientId: string;
+  summaries: PayrollSummary[];
+  defaultMapping?: Partial<PayrollAccountMapping>;
+  updatedAt: string;
+  updatedByUid?: string;
 }

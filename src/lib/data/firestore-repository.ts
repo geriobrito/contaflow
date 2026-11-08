@@ -33,6 +33,7 @@ import type {
   ImportBatch,
   InvestmentRegister,
   StockControl,
+  PayrollRegister,
   InvoiceSummary,
   PrepaidRegister,
   JournalEntry,
@@ -85,6 +86,7 @@ export const COL = {
   financing: 'financing_contracts',
   investments: 'investment_accounts',
   stock: 'stock_controls',
+  payroll: 'payroll_registers',
 } as const;
 
 /** Limites do Firestore. */
@@ -363,7 +365,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         // Cada reabertura consulta o fechamento e o registro dela: 2 documentos por competência.
         REOPENS_PER_BATCH
       );
-      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets, COL.checklists, COL.prepaid, COL.financing, COL.investments, COL.stock]) {
+      for (const name of [COL.transactions, COL.journalEntries, COL.snapshots, COL.rules, COL.accounts, COL.batches, COL.bankAccounts, COL.openings, COL.notes, COL.invoices, COL.requests, COL.fixedAssets, COL.checklists, COL.prepaid, COL.financing, COL.investments, COL.stock, COL.payroll]) {
         await deleteByClient(name, clientId);
       }
       await deleteDoc(clientRef);
@@ -871,6 +873,15 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
     async saveStockControl(control, audit) {
       return saveRegister(COL.stock, control, audit, {});
+    },
+
+    /* ── Folha de pagamento e pró-labore ─────────────────────────────── */
+    async getPayrollRegister(clientId) {
+      const snap = await getDoc(doc(db, COL.payroll, clientId));
+      return snap.exists() ? ({ ...(snap.data() as PayrollRegister), id: snap.id }) : null;
+    },
+    async savePayrollRegister(register, audit, journal = {}) {
+      return saveRegister(COL.payroll, register, audit, journal);
     },
 
     /* ── Checklist do fechamento ──────────────────────────────────────── */

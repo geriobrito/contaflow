@@ -4,14 +4,15 @@ import { loadMonthAppropriation, postMonthAppropriation } from '@/lib/services/p
 import { loadMonthFinancing, postMonthFinancing } from '@/lib/services/financing-service';
 import { loadMonthInvestment, postMonthInvestment } from '@/lib/services/investment-service';
 import { loadMonthStock, postMonthStock } from '@/lib/services/stock-service';
+import { loadMonthPayroll, postMonthPayroll } from '@/lib/services/payroll-service';
 
 /**
  * Rotinas mensais geradas pelos cadastros (depreciação do imobilizado, apropriação das despesas
- * antecipadas, juros/reclassificação de empréstimos e financiamentos, rendimento das aplicações
- * e CMV pelo estoque final): o que falta lançar para fechar a competência, e o lançamento de
- * tudo de uma vez.
+ * antecipadas, juros/reclassificação de empréstimos e financiamentos, rendimento das aplicações,
+ * CMV pelo estoque final e provisão da folha de pagamento): o que falta lançar para fechar a
+ * competência, e o lançamento de tudo de uma vez.
  */
-export type RoutineKey = 'depreciation' | 'prepaid' | 'financing' | 'investment' | 'stock';
+export type RoutineKey = 'depreciation' | 'prepaid' | 'financing' | 'investment' | 'stock' | 'payroll';
 
 /** Dado que só o contador informa (ex.: o saldo do extrato da aplicação): a tela onde informar. */
 export interface RoutineInput {
@@ -40,20 +41,22 @@ const postable = (s: Status | undefined) => Boolean(s && (s.kind === 'PENDING' |
 
 /** Situação das rotinas da competência, ou null quando a empresa não tem nada cadastrado. */
 export async function loadMonthRoutines(clientId: string, month: string): Promise<MonthRoutines | null> {
-  const [dep, pre, fin, inv, stk] = await Promise.all([
+  const [dep, pre, fin, inv, stk, pay] = await Promise.all([
     loadMonthDepreciation(clientId, month),
     loadMonthAppropriation(clientId, month),
     loadMonthFinancing(clientId, month),
     loadMonthInvestment(clientId, month),
     loadMonthStock(clientId, month),
+    loadMonthPayroll(clientId, month),
   ]);
-  if (!dep && !pre && !fin && !inv && !stk) return null;
+  if (!dep && !pre && !fin && !inv && !stk && !pay) return null;
   const byKey: [RoutineKey, { closeProblem: string | null; status: Status } | null][] = [
     ['depreciation', dep],
     ['prepaid', pre],
     ['financing', fin],
     ['investment', inv],
     ['stock', stk],
+    ['payroll', pay],
   ];
   const problems = byKey.map(([, r]) => r?.closeProblem).filter((p): p is string => Boolean(p));
   const warnings = [...(dep ? [manualDepreciationWarning(dep.status, month)].filter((w): w is string => Boolean(w)) : []), ...(stk?.warnings ?? [])];
@@ -65,6 +68,7 @@ export async function loadMonthRoutines(clientId: string, month: string): Promis
     inputs: [
       ...(inv?.status.kind === 'MISSING' ? [{ key: 'investment' as const, label: 'Informar o saldo da aplicação', href: `/aplicacoes?mes=${month}` }] : []),
       ...(stk?.status.kind === 'MISSING' ? [{ key: 'stock' as const, label: 'Informar o estoque final', href: `/estoque?mes=${month}` }] : []),
+      ...(pay?.status.kind === 'MISSING' ? [{ key: 'payroll' as const, label: 'Informar a folha de pagamento', href: `/folha?mes=${month}` }] : []),
     ],
   };
 }
@@ -75,6 +79,7 @@ const LABEL: Record<RoutineKey, string> = {
   financing: 'Juros de empréstimos e financiamentos',
   investment: 'Rendimento das aplicações',
   stock: 'CMV',
+  payroll: 'Folha de pagamento',
 };
 
 /** Lança (ou atualiza) as rotinas da competência; devolve o aviso do que foi feito, ou null. */
@@ -85,6 +90,7 @@ export async function postMonthRoutines(clientId: string, month: string, authorU
     ['financing', await postMonthFinancing(clientId, month, authorUid)],
     ['investment', await postMonthInvestment(clientId, month, authorUid)],
     ['stock', await postMonthStock(clientId, month, authorUid)],
+    ['payroll', await postMonthPayroll(clientId, month, authorUid)],
   ];
   const done = results.filter(([, r]) => r !== 'none').map(([k]) => k);
   if (!done.length) return null;

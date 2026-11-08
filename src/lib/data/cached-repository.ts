@@ -1,4 +1,4 @@
-import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, InvestmentRegister, LockState, PeriodLock, PrepaidRegister, StockControl } from '@/types/firestore';
+import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, InvestmentRegister, LockState, PayrollRegister, PeriodLock, PrepaidRegister, StockControl } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
@@ -60,6 +60,7 @@ export function withReadCache(
   const financing = listCache<FinancingRegister>(now, ttlMs);
   const investments = listCache<InvestmentRegister>(now, ttlMs);
   const stock = listCache<StockControl>(now, ttlMs);
+  const payroll = listCache<PayrollRegister>(now, ttlMs);
   const key = (clientId: string) => `${scope()}|${clientId}`;
 
   /** Gravação que invalida os caches informados. */
@@ -129,6 +130,14 @@ export function withReadCache(
       return found ? (structuredClone(found) as StockControl) : null;
     },
     saveStockControl: writing(repo.saveStockControl, stock),
+    async getPayrollRegister(clientId) {
+      const [found] = await payroll.get(key(clientId), async () => {
+        const r = await repo.getPayrollRegister(clientId);
+        return r ? [r] : [];
+      });
+      return found ? (structuredClone(found) as PayrollRegister) : null;
+    },
+    savePayrollRegister: writing(repo.savePayrollRegister, payroll),
 
     // Contas globais valem para todos os clientes, e a exclusão não informa o cliente: limpa tudo.
     saveClient: writing(repo.saveClient, lockStates),
@@ -141,6 +150,6 @@ export function withReadCache(
     closePeriod: writing(repo.closePeriod, locks, lockStates),
     reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
     closeYear: writing(repo.closeYear, lockStates),
-    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets, prepaid, financing, investments, stock),
+    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets, prepaid, financing, investments, stock, payroll),
   };
 }

@@ -147,6 +147,10 @@ export default function LancamentosPage() {
       setNotice(`O lançamento #${entry.entryNumber} é gerado pelas despesas antecipadas: altere a apólice em Bens e Contratos › Seguros e despesas antecipadas.`);
       return;
     }
+    if (entry?.id && entry.payrollMonth) {
+      setNotice(`O lançamento #${entry.entryNumber} é a provisão da folha de pagamento: altere o resumo na tela Folha de Pagamento.`);
+      return;
+    }
     setEditingEntry(entry);
     setModalKey((k) => k + 1);
     setIsModalOpen(true);
@@ -165,6 +169,7 @@ export default function LancamentosPage() {
       financingId: undefined,
       investmentMonth: undefined,
       stockMonth: undefined,
+      payrollMonth: undefined,
       // Sem id: é gravado como lançamento novo e recebe o próximo número da sequência.
       id: '',
       date: range.end,
