@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
-import type { BankAccount, ChartAccount, FinancingContract, RuleMatchType } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, FinancingContract, InvoiceSummary, RuleMatchType } from '@/types/firestore';
+import type { InvoiceMatch } from '@/lib/nfe/match';
 import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useMonthRoutines } from '@/hooks/imobilizado/useMonthRoutines';
@@ -33,6 +34,7 @@ import { BulkActionBar } from '@/components/conciliacao/BulkActionBar';
 import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
 import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
 import { KeyboardHelpModal } from '@/components/conciliacao/KeyboardHelpModal';
+import { InvoiceDetailDrawer } from '@/components/conciliacao/InvoiceDetailDrawer';
 import { groupByPayee } from '@/lib/payee';
 import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
@@ -307,18 +309,46 @@ export default function ConciliacaoPage() {
   const statementFiles = useStatementFiles({ onParsedBatch: importFlow.handleOFXParsedBatch, isSaving });
   const statements = useStatementBatches(clientId, statementsKey);
   const [statementsOpen, setStatementsOpen] = useState(false);
+  const [inspectingInvoice, setInspectingInvoice] = useState<{
+    invoice: InvoiceSummary;
+    match?: InvoiceMatch | null;
+    transaction?: BankTransaction | null;
+  } | null>(null);
+
+  const openInvoiceForTransaction = (t: BankTransaction) => {
+    const match = t.status === 'RECONCILED' ? null : invoices.matches.get(t.id);
+    const linked = invoices.linked.get(t.id);
+    const inv = match?.invoice ?? linked ?? null;
+    if (inv) setInspectingInvoice({ invoice: inv, match, transaction: t });
+  };
 
   // Atalhos de teclado para conciliação rápida (suspensos enquanto houver um diálogo aberto).
   const isAnyModalOpen = Boolean(
-    selected || flow.groupSheet || duplicate || bulk.showBulkClassify || bulk.showBulkAsk || showKeyboardHelp || statementFiles.csvQueue.length > 0
+    selected ||
+      inspectingInvoice ||
+      flow.groupSheet ||
+      duplicate ||
+      bulk.showBulkClassify ||
+      bulk.showBulkAsk ||
+      showKeyboardHelp ||
+      statementFiles.csvQueue.length > 0
   );
   const { focusedIndex } = useTableKeyboard({
     items: pageRows,
     getId: (t) => t.id,
     disabled: isAnyModalOpen,
-    onOpenClassify: (t) => flow.openTransaction(t),
+    onOpenClassify: (t) => flow.openTransaction(t, 'single'),
+    onOpenSplit: (t) => flow.openTransaction(t, 'split'),
+    onOpenInvoice: openInvoiceForTransaction,
     onToggleSelect: (id) => bulk.toggleSelect(id),
+    onToggleSelectAll: () => bulk.toggleSelectAllPage(),
     onApprove: flow.approveOne,
+    onPrevPage: () => {
+      if (currentPage > 0) goToPage(currentPage - 1);
+    },
+    onNextPage: () => {
+      if (currentPage < pageCount - 1) goToPage(currentPage + 1);
+    },
     onClearSelection: () => {
       if (bulk.selectedIds.size > 0) bulk.clearSelection();
       else if (searchQuery) setSearchQuery('');
@@ -529,13 +559,14 @@ export default function ConciliacaoPage() {
             onGoToPage={goToPage}
             bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNames : undefined}
             invoiceHints={invoiceHints}
+            onOpenInvoice={openInvoiceForTransaction}
           />
         )}
       </section>
 
       {selected && (
         <ClassifySheet
-          key={selected.id}
+          key={`${selected.id}-${flow.sheetInitialMode ?? 'default'}`}
           transaction={selected}
           accounts={accounts}
           isSaving={isSaving}
@@ -554,6 +585,40 @@ export default function ConciliacaoPage() {
           regime={currentClient?.regime}
           floatingContracts={floatingContracts?.id === clientId ? floatingContracts.list : undefined}
           investmentAccountIds={investmentAccounts?.id === clientId ? investmentAccounts.list : undefined}
+          initialMode={flow.sheetInitialMode}
+          onViewInvoice={(inv) =>
+            setInspectingInvoice({
+              invoice: inv,
+              match: selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id),
+              transaction: selected,
+            })
+          }
+        />
+      )}
+
+      {inspectingInvoice && (
+        <InvoiceDetailDrawer
+          invoice={inspectingInvoice.invoice}
+          match={inspectingInvoice.match}
+          transaction={inspectingInvoice.transaction}
+          accounts={accounts}
+          onClose={() => setInspectingInvoice(null)}
+          onClassifyWithSuggestion={(tx, accId, invId) => {
+            setInspectingInvoice(null);
+            void (async () => {
+              try {
+                const { undo: plan } = await recon.classifyTransaction(tx.id, accId);
+                await invoices.link(tx.id, invId, accId);
+                flow.offerUndo('Lançamento classificado pela nota fiscal', plan);
+              } catch {
+                /* erro exposto pelo hook */
+              }
+            })();
+          }}
+          onOpenSplit={(tx) => {
+            setInspectingInvoice(null);
+            flow.openTransaction(tx, 'split');
+          }}
         />
       )}
 

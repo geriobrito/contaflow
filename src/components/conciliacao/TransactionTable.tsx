@@ -28,6 +28,8 @@ interface TransactionTableProps {
   bankNamesByKey?: ReadonlyMap<string, string>;
   /** Nota fiscal casada (`match`, conta sugerida) ou já vinculada (`linked`) a cada lançamento. */
   invoiceHints?: ReadonlyMap<string, 'match' | 'linked'>;
+  /** Abre a pré-visualização lado a lado (Split View) da nota fiscal associada ao lançamento. */
+  onOpenInvoice?: (transaction: BankTransaction) => void;
 }
 
 /** Tabela de lançamentos da conciliação: seleção, status, detalhe do rateio e paginação. */
@@ -48,6 +50,7 @@ export function TransactionTable({
   onGoToPage,
   bankNamesByKey,
   invoiceHints,
+  onOpenInvoice,
 }: TransactionTableProps) {
   const allSelected = rows.length > 0 && rows.every((t) => selectedIds.has(t.id));
   const someSelected = rows.some((t) => selectedIds.has(t.id));
@@ -103,6 +106,7 @@ export function TransactionTable({
             return (
               <React.Fragment key={t.id}>
                 <tr
+                  id={`row-tx-${t.id}`}
                   onClick={() => onOpen(t)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -151,9 +155,39 @@ export function TransactionTable({
                     <span className="inline-flex items-center gap-1.5">
                       <StatusBadge status={t.status} />
                       {invoiceHints?.get(t.id) === 'match' && (
-                        <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                        onOpenInvoice ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenInvoice(t);
+                            }}
+                            title="Ver detalhes da nota fiscal correspondente (V)"
+                            className="p-0.5 rounded hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40 transition-colors"
+                          >
+                            <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                          </button>
+                        ) : (
+                          <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                        )
                       )}
-                      {invoiceHints?.get(t.id) === 'linked' && <ReceiptText role="img" aria-label="Nota fiscal vinculada" className="w-3.5 h-3.5 text-stone-400" />}
+                      {invoiceHints?.get(t.id) === 'linked' && (
+                        onOpenInvoice ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenInvoice(t);
+                            }}
+                            title="Ver detalhes da nota fiscal vinculada (V)"
+                            className="p-0.5 rounded hover:bg-stone-200/80 dark:hover:bg-stone-800 transition-colors"
+                          >
+                            <ReceiptText role="img" aria-label="Nota fiscal vinculada" className="w-3.5 h-3.5 text-stone-400" />
+                          </button>
+                        ) : (
+                          <ReceiptText role="img" aria-label="Nota fiscal vinculada" className="w-3.5 h-3.5 text-stone-400" />
+                        )
+                      )}
                       {t.transferPairId && <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600" />}
                       {t.clientQuery?.status === 'OPEN' && (
                         <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600" />

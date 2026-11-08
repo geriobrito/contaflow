@@ -17,22 +17,29 @@ import { EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/compo
 import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
 import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
+import { ExecutiveDashboard } from '@/components/painel/ExecutiveDashboard';
+import { buildExecutiveSummary, type ExecutiveSummary } from '@/lib/executive-metrics';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
-/** Aba do Painel: a carteira inteira (ponto de partida do dia) ou a empresa ativa em detalhe. */
-type PanelView = 'carteira' | 'empresa';
+/** Aba do Painel: a carteira inteira (ponto de partida do dia), operacional da empresa ou visão executiva para o cliente. */
+type PanelView = 'carteira' | 'empresa' | 'gerencial';
 const VIEW_KEY = 'contaflow_painel_view';
 const VIEWS: readonly { value: PanelView; label: string }[] = [
   { value: 'carteira', label: 'Carteira' },
   { value: 'empresa', label: 'Empresa atual' },
+  { value: 'gerencial', label: 'Visão Executiva' },
+];
+const SINGLE_VIEWS: readonly { value: PanelView; label: string }[] = [
+  { value: 'empresa', label: 'Operacional' },
+  { value: 'gerencial', label: 'Visão Executiva' },
 ];
 
 function readView(): PanelView | null {
   try {
     const v = localStorage.getItem(VIEW_KEY);
-    return v === 'carteira' || v === 'empresa' ? v : null;
+    return v === 'carteira' || v === 'empresa' || v === 'gerencial' ? v : null;
   } catch {
     return null;
   }
@@ -122,12 +129,13 @@ export default function PainelPage() {
   const { clients, currentClient, selectClient, isLoading: clientsLoading } = useClient();
   const clientId = currentClient?.id;
   const [data, setData] = useState<Loaded | null>(null);
+  const [execData, setExecData] = useState<{ id: string; summary: ExecutiveSummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Com uma empresa só, a carteira é ela mesma: vai direto ao detalhe.
+  // Com uma empresa só, a carteira é ela mesma: vai direto ao detalhe operacional ou executivo.
   const [chosenView, setChosenView] = useState<PanelView | null>(readView);
   const multiple = clients.filter((c) => !c.deletingAt).length > 1;
-  const view: PanelView = multiple ? (chosenView ?? 'carteira') : 'empresa';
+  const view: PanelView = multiple ? (chosenView ?? 'carteira') : chosenView === 'gerencial' ? 'gerencial' : 'empresa';
   const chooseView = (v: PanelView) => {
     setChosenView(v);
     try {
@@ -185,7 +193,25 @@ export default function PainelPage() {
     };
   }, [clientId, view]);
 
+  useEffect(() => {
+    if (!clientId || view !== 'gerencial') return;
+    let active = true;
+    const repo = getRepository();
+    Promise.all([repo.listAccounts(clientId), repo.listTransactions(clientId), repo.listJournalEntries(clientId)])
+      .then(([accounts, transactions, journalEntries]) => {
+        if (!active) return;
+        const summary = buildExecutiveSummary({ transactions, accounts, journalEntries });
+        setExecData({ id: clientId, summary });
+        setError(null);
+      })
+      .catch((e: unknown) => active && setError(describe(e)));
+    return () => {
+      active = false;
+    };
+  }, [clientId, view]);
+
   const ready = data?.id === clientId ? data : null;
+  const readyExec = execData && execData.id === clientId ? execData.summary : null;
   const dash = useMemo(
     () => (ready && currentClient ? buildDashboard({ client: currentClient, ...ready }) : null),
     [ready, currentClient]
@@ -208,7 +234,14 @@ export default function PainelPage() {
     );
   }
 
-  const viewSwitch = multiple ? <SegmentedControl ariaLabel="Visão do painel" value={view} onChange={chooseView} options={VIEWS} /> : undefined;
+  const viewSwitch = (
+    <SegmentedControl
+      ariaLabel="Visão do painel"
+      value={view}
+      onChange={chooseView}
+      options={multiple ? VIEWS : SINGLE_VIEWS}
+    />
+  );
   // Só o Firestore tem cota diária; no modo local não há o que medir.
   const readMeter = isFirebaseConfigured() ? <ReadQuotaMeter /> : null;
 
@@ -232,6 +265,33 @@ export default function PainelPage() {
           }}
           onRefresh={portfolio.refresh}
         />
+      </main>
+    );
+  }
+
+  if (view === 'gerencial') {
+    return (
+      <main className={PAGE}>
+        <PageHeader
+          eyebrow={currentClient?.tradeName || currentClient?.name}
+          title="Painel Gerencial Executivo"
+          description="Análise gráfica de faturamento, rentabilidade, EBITDA e composição de gastos dos últimos 12 meses."
+          actions={viewSwitch}
+        />
+        {readMeter}
+        {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel executivo: {error}</p>}
+        {!readyExec || !currentClient ? (
+          !error && (
+            <>
+              <CardsSkeleton count={4} className="grid grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando visão executiva…" />
+              <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+                <TableSkeleton rows={5} />
+              </section>
+            </>
+          )
+        ) : (
+          <ExecutiveDashboard client={currentClient} summary={readyExec} />
+        )}
       </main>
     );
   }

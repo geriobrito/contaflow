@@ -55,14 +55,26 @@ export function useClassificationFlow({
   notify,
 }: ClassificationFlowParams) {
   const [selected, setSelected] = useState<BankTransaction | null>(null);
+  const [sheetInitialMode, setSheetInitialMode] = useState<'single' | 'split' | 'ask' | 'history' | undefined>(undefined);
   const [groupSheet, setGroupSheet] = useState<PayeeGroup | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+
+  const openTransaction = (t: BankTransaction, mode?: 'single' | 'split' | 'ask' | 'history') => {
+    setSheetInitialMode(mode);
+    setSelected(t);
+  };
+
+  const closeTransaction = () => {
+    setSelected(null);
+    setSheetInitialMode(undefined);
+  };
 
   // O lançamento aberto é do cliente anterior: fecha ao trocar.
   const [lastClientId, setLastClientId] = useState(clientId);
   if (lastClientId !== clientId) {
     setLastClientId(clientId);
     setSelected(null);
+    setSheetInitialMode(undefined);
   }
 
   /** Desfaz a última ação e avisa quantos lançamentos voltaram. */
@@ -203,8 +215,9 @@ export function useClassificationFlow({
 
   return {
     selected,
-    openTransaction: setSelected,
-    closeTransaction: () => setSelected(null),
+    sheetInitialMode,
+    openTransaction,
+    closeTransaction,
     groupSheet,
     openGroup: setGroupSheet,
     closeGroup: () => setGroupSheet(null),

@@ -34,10 +34,22 @@ interface InvoiceMatchCardProps {
   credit?: IbsCbsCredit | null;
   /** Abre o rateio com o crédito de IBS/CBS separado da despesa. */
   onUseCredit?: () => void;
+  /** Abre a gaveta lateral com os detalhes completos da nota fiscal. */
+  onViewDetails?: () => void;
 }
 
 /** Nota fiscal casada com o lançamento: dados, por que casou, a conta sugerida e o IBS/CBS. */
-export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSuggestion, onRejectedChange, credit, onUseCredit }: InvoiceMatchCardProps) {
+export function InvoiceMatchCard({
+  match,
+  accounts,
+  accountId,
+  rejected,
+  onUseSuggestion,
+  onRejectedChange,
+  credit,
+  onUseCredit,
+  onViewDetails,
+}: InvoiceMatchCardProps) {
   const inv = match.invoice;
   const suggested = match.suggestedAccountId ? accounts.find((a) => a.id === match.suggestedAccountId) : undefined;
   const parcel = match.installment
@@ -53,8 +65,19 @@ export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSu
     >
       <p className="flex items-start gap-2 text-stone-800 dark:text-stone-100">
         <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700" />
-        <span className="min-w-0">
-          <span className="font-medium">{describeInvoice(inv)}</span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="font-medium">{describeInvoice(inv)}</span>
+            {onViewDetails && (
+              <button
+                type="button"
+                onClick={onViewDetails}
+                className="shrink-0 font-medium text-accent-ink hover:underline"
+              >
+                Ver detalhes da nota
+              </button>
+            )}
+          </span>
           <span className="block text-stone-500">
             Emitida em {formatDateBR(inv.issueDate)} · {formatCurrency(match.amount)}
             {parcel ? ` (${parcel})` : ''}
@@ -110,13 +133,20 @@ export function InvoiceMatchCard({ match, accounts, accountId, rejected, onUseSu
 }
 
 /** Aviso da nota já vinculada a um lançamento conciliado. */
-export function LinkedInvoiceNote({ invoice }: { invoice: InvoiceSummary }) {
+export function LinkedInvoiceNote({ invoice, onViewDetails }: { invoice: InvoiceSummary; onViewDetails?: () => void }) {
   return (
-    <p className="flex items-start gap-2 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
-      <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-stone-400" />
-      <span>
-        Nota vinculada: {describeInvoice(invoice)}, emitida em {formatDateBR(invoice.issueDate)} ({formatCurrency(invoice.total)}).
+    <p className="flex items-start justify-between gap-2 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
+      <span className="flex items-start gap-2">
+        <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-stone-400" />
+        <span>
+          Nota vinculada: {describeInvoice(invoice)}, emitida em {formatDateBR(invoice.issueDate)} ({formatCurrency(invoice.total)}).
+        </span>
       </span>
+      {onViewDetails && (
+        <button type="button" onClick={onViewDetails} className="shrink-0 font-medium text-accent-ink hover:underline">
+          Ver detalhes
+        </button>
+      )}
     </p>
   );
 }

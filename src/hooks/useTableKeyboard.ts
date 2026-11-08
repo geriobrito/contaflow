@@ -4,8 +4,13 @@ export interface UseTableKeyboardOptions<T> {
   items: readonly T[];
   getId: (item: T) => string;
   onOpenClassify?: (item: T) => void;
+  onOpenSplit?: (item: T) => void;
+  onOpenInvoice?: (item: T) => void;
   onToggleSelect?: (id: string) => void;
+  onToggleSelectAll?: () => void;
   onApprove?: (item: T) => void;
+  onPrevPage?: () => void;
+  onNextPage?: () => void;
   onClearSelection?: () => void;
   onFocusSearch?: () => void;
   onToggleHelp?: () => void;
@@ -23,8 +28,13 @@ export function useTableKeyboard<T>({
   items,
   getId,
   onOpenClassify,
+  onOpenSplit,
+  onOpenInvoice,
   onToggleSelect,
+  onToggleSelectAll,
   onApprove,
+  onPrevPage,
+  onNextPage,
   onClearSelection,
   onFocusSearch,
   onToggleHelp,
@@ -32,6 +42,15 @@ export function useTableKeyboard<T>({
 }: UseTableKeyboardOptions<T>) {
   const [rawIndex, setFocusedIndex] = useState<number>(-1);
   const focusedIndex = items.length === 0 ? -1 : Math.min(Math.max(-1, rawIndex), items.length - 1);
+
+  const focusedItem = focusedIndex >= 0 && focusedIndex < items.length ? items[focusedIndex] : null;
+  const focusedId = focusedItem ? getId(focusedItem) : null;
+
+  useEffect(() => {
+    if (!focusedId || typeof document === 'undefined') return;
+    const row = document.getElementById(`row-tx-${focusedId}`);
+    row?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }, [focusedId]);
 
   useEffect(() => {
     if (disabled) return;
@@ -63,7 +82,27 @@ export function useTableKeyboard<T>({
         return;
       }
 
+      // Paginação rápida
+      if (e.key === '[') {
+        e.preventDefault();
+        onPrevPage?.();
+        return;
+      }
+
+      if (e.key === ']') {
+        e.preventDefault();
+        onNextPage?.();
+        return;
+      }
+
       if (items.length === 0) return;
+
+      // Selecionar todos da página
+      if ((e.shiftKey && (e.key === 'x' || e.key === 'X')) || e.key === '*') {
+        e.preventDefault();
+        onToggleSelectAll?.();
+        return;
+      }
 
       if (e.key === 'ArrowDown' || e.key === 'j' || e.key === 'J') {
         e.preventDefault();
@@ -94,6 +133,18 @@ export function useTableKeyboard<T>({
           return;
         }
 
+        if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          onOpenSplit?.(item);
+          return;
+        }
+
+        if (e.key === 'v' || e.key === 'V' || e.key === 'n' || e.key === 'N') {
+          e.preventDefault();
+          onOpenInvoice?.(item);
+          return;
+        }
+
         if (e.key === ' ' || e.key === 'x' || e.key === 'X') {
           e.preventDefault();
           onToggleSelect?.(id);
@@ -115,10 +166,23 @@ export function useTableKeyboard<T>({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, focusedIndex, getId, onOpenClassify, onToggleSelect, onApprove, onClearSelection, onFocusSearch, onToggleHelp, disabled]);
-
-  const focusedItem = focusedIndex >= 0 && focusedIndex < items.length ? items[focusedIndex] : null;
-  const focusedId = focusedItem ? getId(focusedItem) : null;
+  }, [
+    items,
+    focusedIndex,
+    getId,
+    onOpenClassify,
+    onOpenSplit,
+    onOpenInvoice,
+    onToggleSelect,
+    onToggleSelectAll,
+    onApprove,
+    onPrevPage,
+    onNextPage,
+    onClearSelection,
+    onFocusSearch,
+    onToggleHelp,
+    disabled,
+  ]);
 
   return {
     focusedIndex,

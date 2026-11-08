@@ -10,12 +10,16 @@ interface KeyboardHelpModalProps {
   onClose: () => void;
 }
 
-const SHORTCUTS = [
+export const SHORTCUTS = [
   { keys: ['↓', 'J'], description: 'Navegar para a próxima linha' },
   { keys: ['↑', 'K'], description: 'Navegar para a linha anterior' },
   { keys: ['Enter', 'C'], description: 'Abrir classificação do lançamento' },
-  { keys: ['Espaço', 'X'], description: 'Selecionar / desselecionar lançamento' },
+  { keys: ['S'], description: 'Abrir rateio (múltiplas contas) do lançamento' },
   { keys: ['A'], description: 'Aprovar lançamento auto-classificado focado' },
+  { keys: ['V', 'N'], description: 'Ver detalhes da nota fiscal vinculada / casada' },
+  { keys: ['Espaço', 'X'], description: 'Selecionar / desselecionar lançamento' },
+  { keys: ['Shift', 'X'], description: 'Selecionar ou desmarcar todos da página' },
+  { keys: ['[', ']'], description: 'Página anterior / próxima página' },
   { keys: ['/'], description: 'Focar no campo de busca' },
   { keys: ['Esc'], description: 'Limpar busca / seleção em lote ou fechar' },
   { keys: ['?'], description: 'Abrir este painel de atalhos' },

@@ -59,9 +59,13 @@ interface ClassifySheetProps {
   floatingContracts?: readonly FinancingContract[];
   /** Contas das aplicações financeiras cadastradas: a entrada nelas é resgate (bruto × líquido com IR e IOF). */
   investmentAccountIds?: readonly string[];
+  /** Aba inicial quando aberto por atalho (ex.: 'split' pela tecla S). */
+  initialMode?: SheetMode;
+  /** Abre a gaveta de detalhes completos da nota fiscal casada ou vinculada. */
+  onViewInvoice?: (invoice: InvoiceSummary) => void;
 }
 
-type SheetMode = 'single' | 'split' | 'ask' | 'history';
+export type SheetMode = 'single' | 'split' | 'ask' | 'history';
 
 /** Pergunta sugerida: data, valor e histórico, para o cliente reconhecer o lançamento. */
 const defaultQuestion = (t: BankTransaction) =>
@@ -132,6 +136,8 @@ export function ClassifySheet({
   suggestions,
   floatingContracts,
   investmentAccountIds,
+  initialMode,
+  onViewInvoice,
 }: ClassifySheetProps) {
   const locked = Boolean(lockedMonthLabel);
   const isEditing = transaction.status !== 'PENDING';
@@ -145,7 +151,9 @@ export function ClassifySheet({
     return () => clearTimeout(t);
   }, [confirmUndo]);
 
-  const [mode, setMode] = useState<SheetMode>(locked ? 'history' : transaction.isSplit ? 'split' : 'single');
+  const [mode, setMode] = useState<SheetMode>(
+    locked ? 'history' : initialMode ?? (transaction.isSplit ? 'split' : 'single')
+  );
   /** Atalho "bruto × líquido" da conta única: o rateio abre já no painel de retenções. */
   const [grossNetFirst, setGrossNetFirst] = useState(false);
   /** O bruto × líquido é de resgate de aplicação (IR e IOF), não de nota. */
@@ -408,6 +416,7 @@ export function ClassifySheet({
                       }
                     : undefined
                 }
+                onViewDetails={onViewInvoice ? () => onViewInvoice(invoiceMatch.invoice) : undefined}
               />
             )}
             {withheld && retentionSplit && (
@@ -424,7 +433,12 @@ export function ClassifySheet({
                 }}
               />
             )}
-            {!invoiceMatch && linkedInvoice && <LinkedInvoiceNote invoice={linkedInvoice} />}
+            {!invoiceMatch && linkedInvoice && (
+              <LinkedInvoiceNote
+                invoice={linkedInvoice}
+                onViewDetails={onViewInvoice ? () => onViewInvoice(linkedInvoice) : undefined}
+              />
+            )}
             {/* Plano de contas */}
             <section className="space-y-2">
               <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
