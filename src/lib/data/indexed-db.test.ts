@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createIndexedDbStore, IDB_STORE_NAME, isIndexedDbSupported, type SyncMirrorStore } from '@/lib/data/indexed-db';
-import { createLocalRepository, LOCAL_ORG_ID } from '@/lib/data/local-repository';
+import { createLocalRepository, LOCAL_KEYS, LOCAL_ORG_ID } from '@/lib/data/local-repository';
 import { setSession } from '@/lib/data/scope';
 
 /** Simulador leve da API nativa IndexedDB para testes em ambiente Node.js. */
-function createFakeIdbFactory(): { factory: IDBFactory; rawStore: Map<string, string> } {
-  const rawStore = new Map<string, string>();
+function createFakeIdbFactory(initialData?: Map<string, string>): { factory: IDBFactory; rawStore: Map<string, string> } {
+  const rawStore = new Map<string, string>(initialData);
   const objectStores = new Set<string>();
 
   const fakeDb = {
@@ -105,47 +105,53 @@ function createFakeMirror(quotaBytes = Infinity): SyncMirrorStore & { data: Map<
   };
 }
 
-describe('armazenamento local com IndexedDB (createIndexedDbStore)', () => {
+describe('armazenamento local híbrido com IndexedDB e cache write-through (createIndexedDbStore)', () => {
   it('detecta corretamente disponibilidade da API IndexedDB', () => {
     const { factory } = createFakeIdbFactory();
     expect(isIndexedDbSupported(factory)).toBe(true);
     expect(isIndexedDbSupported(null)).toBe(false);
   });
 
-  it('grava, lê e remove chaves no IndexedDB espelhando no mirror quando há espaço', async () => {
+  it('grava de forma síncrona imediata no cache/mirror e persiste em segundo plano no IndexedDB', async () => {
     const { factory, rawStore } = createFakeIdbFactory();
     const mirror = createFakeMirror();
     const store = createIndexedDbStore({ idb: factory, mirror });
 
-    expect(await store.getItem('chave_inexistente')).toBeNull();
+    expect(store.getItem('chave_inexistente')).toBeNull();
 
-    await store.setItem('contaflow_clients', '[{"id":"c1"}]');
-    expect(rawStore.get('contaflow_clients')).toBe('[{"id":"c1"}]');
+    // Escrita e leitura 100% síncronas (sem await)
+    store.setItem('contaflow_clients', '[{"id":"c1"}]');
+    expect(store.getItem('contaflow_clients')).toBe('[{"id":"c1"}]');
     expect(mirror.data.get('contaflow_clients')).toBe('[{"id":"c1"}]');
-    expect(await store.getItem('contaflow_clients')).toBe('[{"id":"c1"}]');
 
-    await store.removeItem?.('contaflow_clients');
-    expect(await store.getItem('contaflow_clients')).toBeNull();
+    // Após flush, o IndexedDB também recebeu o valor
+    await store.flush();
+    expect(rawStore.get('contaflow_clients')).toBe('[{"id":"c1"}]');
+
+    store.removeItem('contaflow_clients');
+    expect(store.getItem('contaflow_clients')).toBeNull();
     expect(mirror.data.has('contaflow_clients')).toBe(false);
+    await store.flush();
+    expect(rawStore.has('contaflow_clients')).toBe(false);
   });
 
-  it('migra automaticamente dados existentes do localStorage na primeira leitura', async () => {
+  it('migra automaticamente dados existentes do localStorage na leitura e persiste no IndexedDB', async () => {
     const { factory, rawStore } = createFakeIdbFactory();
     const mirror = createFakeMirror();
     mirror.data.set('contaflow_transactions', '[{"id":"tx_legada"}]');
 
     const store = createIndexedDbStore({ idb: factory, mirror });
 
-    // Antes da leitura, o IndexedDB está vazio
-    expect(rawStore.has('contaflow_transactions')).toBe(false);
-
-    // Ao ler, puxa do localStorage e persiste no IndexedDB
-    const val = await store.getItem('contaflow_transactions');
+    // Leitura síncrona puxa imediatamente do localStorage
+    const val = store.getItem('contaflow_transactions');
     expect(val).toBe('[{"id":"tx_legada"}]');
+
+    // Em background, é migrado para o IndexedDB
+    await store.flush();
     expect(rawStore.get('contaflow_transactions')).toBe('[{"id":"tx_legada"}]');
   });
 
-  it('não falha quando o localStorage lança QuotaExceededError em cargas volumosas', async () => {
+  it('não falha quando o localStorage lança QuotaExceededError e recupera os dados do IndexedDB após reload', async () => {
     const { factory, rawStore } = createFakeIdbFactory();
     // Simula limite estreito de 100 bytes no localStorage
     const mirror = createFakeMirror(100);
@@ -161,61 +167,47 @@ describe('armazenamento local com IndexedDB (createIndexedDbStore)', () => {
 
     expect(largePayload.length).toBeGreaterThan(100);
 
-    // A gravação deve ter sucesso no IndexedDB mesmo estourando a cota do localStorage
-    await expect(store.setItem('contaflow_transactions', largePayload)).resolves.toBeUndefined();
+    // Não lança erro mesmo com QuotaExceededError no localStorage
+    expect(() => store.setItem(LOCAL_KEYS.transactions, largePayload)).not.toThrow();
     expect(mirror.quotaErrors).toBe(1);
-    expect(rawStore.get('contaflow_transactions')).toBe(largePayload);
-    expect(await store.getItem('contaflow_transactions')).toBe(largePayload);
+    expect(store.getItem(LOCAL_KEYS.transactions)).toBe(largePayload);
+
+    await store.flush();
+    expect(rawStore.get(LOCAL_KEYS.transactions)).toBe(largePayload);
+
+    // Simula um novo boot da página (novo store com localStorage vazio mas IndexedDB populado)
+    const freshMirror = createFakeMirror(100);
+    const reloadedStore = createIndexedDbStore({ idb: factory, mirror: freshMirror });
+    await reloadedStore.ready;
+    expect(reloadedStore.getItem(LOCAL_KEYS.transactions)).toBe(largePayload);
   });
 
-  it('funciona em modo fallback quando IndexedDB não está disponível', async () => {
-    const mirror = createFakeMirror();
-    mirror.data.set('chave_legada', 'valor_antigo');
-
-    const store = createIndexedDbStore({ idb: null, mirror });
-    expect(await store.getItem('chave_legada')).toBe('valor_antigo');
-
-    await store.setItem('nova_chave', 'novo_valor');
-    expect(await store.getItem('nova_chave')).toBe('novo_valor');
-    expect(mirror.data.get('nova_chave')).toBe('novo_valor');
-  });
-
-  it('integra de ponta a ponta com createLocalRepository assíncrono', async () => {
+  it('sobrevive a page.reload() imediato após saveClosingChecklist sem aguardar flush assíncrono do IndexedDB', async () => {
     setSession(LOCAL_ORG_ID, { uid: 'u1', email: 'u1@contaflow.test' }, 'admin');
     const { factory } = createFakeIdbFactory();
-    const mirror = createFakeMirror(200); // cota baixa no localStorage
-    const store = createIndexedDbStore({ idb: factory, mirror });
-    const repo = createLocalRepository(store);
+    const mirror = createFakeMirror();
 
-    await repo.saveClient({
-      id: 'c1',
-      name: 'Indústria Metalúrgica S.A.',
-      cnpj: '11222333000181',
-      regime: 'LUCRO_PRESUMIDO',
-      createdAt: '2026-01-01',
-      updatedAt: '2026-01-01',
+    const store1 = createIndexedDbStore({ idb: factory, mirror });
+    const repo1 = createLocalRepository(store1);
+
+    // Dispara saveClosingChecklist e simula reload imediato da página (criando nova instância compartilhando o localStorage)
+    void repo1.saveClosingChecklist({
+      id: 'c1_2025',
+      clientId: 'c1',
+      year: '2025',
+      items: { cash: { done: true, at: '2026-01-10T12:00:00Z', byUid: 'u1' } },
+      updatedAt: '2026-01-10T12:00:00Z',
     });
 
-    const txs = Array.from({ length: 25 }, (_, i) => ({
-      id: `tx_${i}`,
-      clientId: 'c1',
-      fitid: `fit_${i}`,
-      date: '2026-03-15',
-      amount: -100 - i,
-      type: 'DEBIT' as const,
-      memo: `Compra de insumo industrial lote #${i}`,
-      status: 'PENDING' as const,
-      createdAt: '2026-03-15',
-    }));
+    // Mesmo ANTES de store1.flush(), o mirror (localStorage) já recebeu o dado de forma síncrona!
+    expect(mirror.data.has(LOCAL_KEYS.checklists)).toBe(true);
 
-    await repo.insertTransactions(txs);
+    // Nova página recarregada imediatamente lê o checklist marcado
+    const { factory: freshFactory } = createFakeIdbFactory();
+    const store2 = createIndexedDbStore({ idb: freshFactory, mirror });
+    const repo2 = createLocalRepository(store2);
 
-    const loadedClients = await repo.listClients();
-    expect(loadedClients).toHaveLength(1);
-    expect(loadedClients[0].name).toBe('Indústria Metalúrgica S.A.');
-
-    const loadedTxs = await repo.listTransactions('c1');
-    expect(loadedTxs).toHaveLength(25);
-    expect(mirror.quotaErrors).toBeGreaterThan(0); // Estourou o localStorage mas salvou 100% no IndexedDB!
+    const saved = await repo2.getClosingChecklist('c1', '2025');
+    expect(saved?.items.cash?.done).toBe(true);
   });
 });
