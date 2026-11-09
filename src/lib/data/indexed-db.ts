@@ -3,6 +3,8 @@ import { LOCAL_KEYS, type KeyValueStore } from '@/lib/data/local-repository';
 export const IDB_NAME = 'contaflow_db';
 export const IDB_VERSION = 1;
 export const IDB_STORE_NAME = 'keyval';
+/** Sinalizador gravado no `localStorage` quando alguma chave excede a cota de ~5MB e passa a residir apenas no IndexedDB. */
+export const IDB_OVERFLOW_KEY = 'contaflow_idb_overflow';
 
 /** Armazenamento síncrono de espelhamento/migração (ex.: `window.localStorage`). */
 export interface SyncMirrorStore {
@@ -14,7 +16,9 @@ export interface SyncMirrorStore {
 /** Extensão de `KeyValueStore` com controle de fila de persistência assíncrona no IndexedDB. */
 export interface IndexedDbKeyValueStore extends KeyValueStore {
   removeItem(key: string): void;
-  /** Promessa resolvida assim que a hidratação inicial do IndexedDB no boot termina. */
+  /** Indica se o cache síncrono em memória já está integralmente hidratado. */
+  readonly isHydrated: boolean;
+  /** Promessa resolvida assim que a hidratação/sincronização inicial do IndexedDB no boot termina. */
   readonly ready: Promise<void>;
   /** Aguarda a conclusão da hidratação inicial e de todas as gravações pendentes no IndexedDB. */
   flush(): Promise<void>;
@@ -105,15 +109,18 @@ export interface IndexedDbStoreOptions {
  * assíncrona em segundo plano no IndexedDB, superando o teto de ~5MB do `localStorage`.
  *
  * Arquitetura híbrida:
- * 1. **Leitura Síncrona (`getItem`)**: Retorna imediatamente do cache em memória. Caso a chave ainda
- *    não esteja no cache mas exista no `mirror` (`localStorage`), carrega para o cache, agenda a
- *    migração para o IndexedDB em background e retorna o valor sem latência.
- * 2. **Escrita Write-Through (`setItem`)**: Atualiza o cache em memória e o `mirror` (`localStorage`)
+ * 1. **Hidratação Síncrona no Construtor**: Ao inicializar, carrega imediatamente todas as chaves
+ *    presentes no `mirror` (`localStorage`) para o `cache` em memória. Enquanto nenhuma chave tiver
+ *    estourado a cota do `localStorage` (`IDB_OVERFLOW_KEY`), `isHydrated` já nasce `true` sem
+ *    qualquer latência assíncrona.
+ * 2. **Escrita Write-Through (`setItem`)**: Atualiza o `cache` em memória e o `mirror` (`localStorage`)
  *    de forma 100% síncrona no mesmo tick de evento (garantindo sobrevivência imediata a `page.reload()`),
  *    e enfileira a gravação no IndexedDB em segundo plano. Se o `localStorage` lançar `QuotaExceededError`,
- *    a exceção do espelho é absorvida e o dado permanece íntegro no cache e no IndexedDB.
- * 3. **Hidratação no Boot**: Ao inicializar, hidrata o cache a partir do IndexedDB para todas as
- *    coleções conhecidas (`LOCAL_KEYS`), preservando chaves já modificadas na sessão atual.
+ *    remove a chave do `mirror` (para nunca manter cópia defasada), ativa `IDB_OVERFLOW_KEY` e preserva
+ *    o dado íntegro no `cache` e no IndexedDB.
+ * 3. **Sincronização em Segundo Plano com IndexedDB**: Chaves já presentes no `mirror` atualizam o
+ *    IndexedDB em background (sem jamais serem sobrescritas por dados antigos do IndexedDB); chaves
+ *    ausentes no `mirror` (por overflow de cota) são recuperadas do IndexedDB.
  */
 export function createIndexedDbStore(options: IndexedDbStoreOptions = {}): IndexedDbKeyValueStore {
   const factory = options.idb !== undefined ? options.idb : typeof indexedDB !== 'undefined' ? indexedDB : null;
@@ -162,16 +169,6 @@ export function createIndexedDbStore(options: IndexedDbStoreOptions = {}): Index
     }
   }
 
-  function writeMirrorBestEffort(key: string, value: string): void {
-    if (!mirror) return;
-    try {
-      mirror.setItem(key, value);
-    } catch {
-      // QuotaExceededError ou SecurityError no localStorage:
-      // ignorado pois o dado está salvo com segurança no cache e no IndexedDB.
-    }
-  }
-
   function removeMirrorBestEffort(key: string): void {
     if (!mirror || typeof mirror.removeItem !== 'function') return;
     try {
@@ -181,37 +178,76 @@ export function createIndexedDbStore(options: IndexedDbStoreOptions = {}): Index
     }
   }
 
-  // Hidratação inicial a partir do IndexedDB para chaves volumosas que excederam o localStorage
+  let mirrorOverflowed = readMirror(IDB_OVERFLOW_KEY) === '1';
+
+  function writeMirrorBestEffort(key: string, value: string): void {
+    if (!mirror) return;
+    try {
+      mirror.setItem(key, value);
+    } catch {
+      // QuotaExceededError ou SecurityError no localStorage:
+      // remove a chave do mirror para nunca deixar cópia defasada e sinaliza overflow para o IndexedDB.
+      mirrorOverflowed = true;
+      removeMirrorBestEffort(key);
+      try {
+        mirror.setItem(IDB_OVERFLOW_KEY, '1');
+      } catch {
+        // Ignorado.
+      }
+    }
+  }
+
+  // Passo 1: Hidratação síncrona imediata a partir do localStorage (mirror)
+  const keysToHydrate = Object.values(LOCAL_KEYS);
+  for (const key of keysToHydrate) {
+    const legacy = readMirror(key);
+    if (legacy !== null) {
+      cache.set(key, legacy);
+    }
+  }
+
+  // Só precisa bloquear leituras iniciais aguardando IndexedDB quando houve overflow do localStorage
+  let hydrated = !(factory && typeof factory.open === 'function' && mirrorOverflowed);
+
+  // Passo 2: Sincronização e recuperação em background com o IndexedDB
   if (factory && typeof factory.open === 'function') {
     enqueue(async (db) => {
-      const keysToHydrate = Object.values(LOCAL_KEYS);
       for (const key of keysToHydrate) {
         if (modifiedKeys.has(key)) continue;
-        const stored = await idbGet(db, key);
-        if (modifiedKeys.has(key)) continue;
-        if (stored !== null) {
-          cache.set(key, stored);
+        if (cache.has(key)) {
+          // O mirror (localStorage) já entregou o valor síncrono mais recente:
+          // espelha no IndexedDB se necessário, sem jamais sobrescrever o cache com valor defasado.
+          const currentVal = cache.get(key)!;
+          const stored = await idbGet(db, key);
+          if (!modifiedKeys.has(key) && stored !== currentVal) {
+            await idbSet(db, key, currentVal);
+          }
         } else {
-          const legacy = readMirror(key);
-          if (legacy !== null) {
-            cache.set(key, legacy);
-            await idbSet(db, key, legacy);
+          // Chave não está no mirror (ex.: excedeu cota do localStorage): recupera do IndexedDB.
+          const stored = await idbGet(db, key);
+          if (modifiedKeys.has(key)) continue;
+          if (stored !== null) {
+            cache.set(key, stored);
           }
         }
       }
+      hydrated = true;
     });
   }
 
   const hydrationPromise = pendingQueue;
 
   return {
+    get isHydrated() {
+      return hydrated;
+    },
     ready: hydrationPromise,
 
     getItem(key: string): string | null {
       if (cache.has(key)) {
         return cache.get(key) ?? null;
       }
-      // Fallback e migração imediata a partir do localStorage
+      // Fallback e migração imediata a partir do localStorage para chaves avulsas
       const legacy = readMirror(key);
       if (legacy !== null) {
         cache.set(key, legacy);

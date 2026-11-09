@@ -182,15 +182,27 @@ describe('armazenamento local híbrido com IndexedDB e cache write-through (crea
     expect(reloadedStore.getItem(LOCAL_KEYS.transactions)).toBe(largePayload);
   });
 
-  it('sobrevive a page.reload() imediato após saveClosingChecklist sem aguardar flush assíncrono do IndexedDB', async () => {
+  it('sobrevive a page.reload() imediato após saveClosingChecklist mesmo quando o IndexedDB ainda tem versão anterior defasada', async () => {
     setSession(LOCAL_ORG_ID, { uid: 'u1', email: 'u1@contaflow.test' }, 'admin');
-    const { factory } = createFakeIdbFactory();
+    // Simula um IndexedDB que já possuía uma versão anterior (done: false) gravada em passo prévio
+    const staleChecklist = JSON.stringify([
+      {
+        id: 'c1_2025',
+        orgId: LOCAL_ORG_ID,
+        clientId: 'c1',
+        year: '2025',
+        items: { cash: { done: false, at: '2026-01-10T11:00:00Z', byUid: 'u1' } },
+        updatedAt: '2026-01-10T11:00:00Z',
+      },
+    ]);
+    const { factory, rawStore } = createFakeIdbFactory(new Map([[LOCAL_KEYS.checklists, staleChecklist]]));
     const mirror = createFakeMirror();
+    mirror.data.set(LOCAL_KEYS.checklists, staleChecklist);
 
     const store1 = createIndexedDbStore({ idb: factory, mirror });
     const repo1 = createLocalRepository(store1);
 
-    // Dispara saveClosingChecklist e simula reload imediato da página (criando nova instância compartilhando o localStorage)
+    // Usuário marca o item e recarrega a página imediatamente (antes de store1.flush() atualizar o IndexedDB)
     void repo1.saveClosingChecklist({
       id: 'c1_2025',
       clientId: 'c1',
@@ -199,15 +211,19 @@ describe('armazenamento local híbrido com IndexedDB e cache write-through (crea
       updatedAt: '2026-01-10T12:00:00Z',
     });
 
-    // Mesmo ANTES de store1.flush(), o mirror (localStorage) já recebeu o dado de forma síncrona!
-    expect(mirror.data.has(LOCAL_KEYS.checklists)).toBe(true);
+    // O mirror (localStorage) já recebeu o dado de forma síncrona!
+    expect(mirror.data.get(LOCAL_KEYS.checklists)).toContain('"done":true');
 
-    // Nova página recarregada imediatamente lê o checklist marcado
-    const { factory: freshFactory } = createFakeIdbFactory();
-    const store2 = createIndexedDbStore({ idb: freshFactory, mirror });
+    // Simula reload imediato da página compartilhando o MESMO IndexedDB (ainda defasado) e o MESMO localStorage (atualizado)
+    const store2 = createIndexedDbStore({ idb: factory, mirror });
+    expect(store2.isHydrated).toBe(true);
     const repo2 = createLocalRepository(store2);
 
     const saved = await repo2.getClosingChecklist('c1', '2025');
     expect(saved?.items.cash?.done).toBe(true);
+
+    // E após o flush em background da nova página, o IndexedDB passa a refletir a versão mais recente
+    await store2.flush();
+    expect(rawStore.get(LOCAL_KEYS.checklists)).toContain('"done":true');
   });
 });

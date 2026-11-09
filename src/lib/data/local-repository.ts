@@ -44,6 +44,8 @@ export interface KeyValueStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem?(key: string): void;
+  /** Indica se o cache síncrono já está integralmente hidratado no momento da chamada. */
+  readonly isHydrated?: boolean;
   /** Promessa opcional resolvida quando a hidratação inicial do IndexedDB no boot termina. */
   readonly ready?: Promise<void>;
 }
@@ -87,8 +89,8 @@ const byDateDesc = (a: BankTransaction, b: BankTransaction) => b.date.localeComp
  * Falhas de leitura ou escrita (JSON corrompido, cota excedida) são propagadas.
  */
 export function createLocalRepository(store: KeyValueStore): DataRepository {
-  let hydrated = !store.ready;
-  if (store.ready) {
+  let hydrated = store.isHydrated ?? !store.ready;
+  if (!hydrated && store.ready) {
     void store.ready.finally(() => {
       hydrated = true;
     });

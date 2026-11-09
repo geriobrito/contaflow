@@ -79,18 +79,30 @@ export function useInvoices(client: ClientCompany | null, range: DateRange | nul
   const reload = useCallback(() => setReloadCount((c) => c + 1), []);
 
   const importFiles = async (files: readonly File[]): Promise<InvoiceImportOutcome | null> => {
-    if (!client) return null;
+    let targetClient = client;
+    if (!targetClient) {
+      const list = await getRepository().listClients();
+      let storedId: string | null = null;
+      try {
+        storedId = typeof window !== 'undefined' ? window.localStorage.getItem('contaflow_active_client') : null;
+      } catch {
+        storedId = null;
+      }
+      const open = list.filter((c) => !c.deletingAt);
+      targetClient = open.find((c) => c.id === storedId) ?? open[0] ?? null;
+    }
+    if (!targetClient) return null;
     setBusy(true);
     setError(null);
     try {
       const { read, rejected } = await readFiles(files);
-      const plan = planInvoiceImport(read, client, new Date().toISOString());
+      const plan = planInvoiceImport(read, targetClient, new Date().toISOString());
       const repo = getRepository();
       if (plan.invoices.length) await repo.saveInvoices(plan.invoices);
       // Cancelamentos de notas que não vieram neste lote: valem para as já gravadas.
       const inBatch = new Set(plan.invoices.map((i) => i.key));
       const pending = plan.cancellations.filter((k) => !inBatch.has(k));
-      const cancelledStored = pending.length ? await repo.cancelInvoices(client.id, pending) : 0;
+      const cancelledStored = pending.length ? await repo.cancelInvoices(targetClient.id, pending) : 0;
       reload();
       return {
         imported: plan.invoices.length,
