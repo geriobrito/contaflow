@@ -49,17 +49,19 @@ async function readFiles(files: readonly File[]): Promise<{ read: InvoiceFile[];
  */
 export function useInvoices(client: ClientCompany | null, range: DateRange | null) {
   const clientId = client?.id;
-  const key = clientId && range ? `${clientId}|${range.start}|${range.end}` : null;
+  const start = range?.start;
+  const end = range?.end;
+  const key = clientId && start && end ? `${clientId}|${start}|${end}` : null;
   const [data, setData] = useState<{ key: string; invoices: InvoiceSummary[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadCount, setReloadCount] = useState(0);
 
   useEffect(() => {
-    if (!key || !clientId || !range) return;
+    if (!key || !clientId || !start || !end) return;
     let active = true;
     getRepository()
-      .listInvoices(clientId, range)
+      .listInvoices(clientId, { start, end })
       .then((invoices) => {
         if (!active) return;
         setData({ key, invoices });
@@ -72,9 +74,7 @@ export function useInvoices(client: ClientCompany | null, range: DateRange | nul
     return () => {
       active = false;
     };
-    // `range` muda junto com `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, clientId, reloadCount]);
+  }, [key, clientId, start, end, reloadCount]);
 
   const reload = useCallback(() => setReloadCount((c) => c + 1), []);
 

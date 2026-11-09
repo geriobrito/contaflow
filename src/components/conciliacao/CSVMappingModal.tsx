@@ -5,17 +5,11 @@ import { ModalPortal } from '@/components/ui/ModalPortal';
 import {
   AlertCircle,
   ArrowRightLeft,
-  Calendar,
   CheckCircle2,
-  CreditCard,
-  DollarSign,
   FileSpreadsheet,
-  FileText,
-  HelpCircle,
   Landmark,
   Plus,
   Sparkles,
-  Table,
   X,
 } from 'lucide-react';
 import type { BankAccount, BankAccountKind, ChartAccount } from '@/types/firestore';
@@ -36,6 +30,9 @@ import { getRepository } from '@/lib/services/data-service';
 import { describeError } from '@/lib/utils/errors';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 import { reportError } from '@/lib/monitoring';
+import { CSVQuickBankForm } from '@/components/conciliacao/CSVQuickBankForm';
+import { CSVPreviewTable } from '@/components/conciliacao/CSVPreviewTable';
+import { CSVColumnFields } from '@/components/conciliacao/CSVColumnFields';
 
 export type { CSVQueueFile, ParsedCSVBatchItem };
 
@@ -89,12 +86,9 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
   const currentFile = queue[queueIndex] ?? { fileName: fileName ?? 'extrato.csv', content: fileContent ?? '' };
   const initialBank = allBanks[0] ?? null;
 
-  const initialResolved = useMemo(
-    () => resolveInitialCSVConfig(currentFile.content, initialBank),
-    // Computed once for initial state setup; manual/queue transitions update state explicitly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+  // Configuração inicial calculada uma vez na montagem; trocas de banco, modelo ou arquivo da fila
+  // atualizam o estado explicitamente. Um lote novo remonta o modal (`key` em StatementImport).
+  const [initialResolved] = useState(() => resolveInitialCSVConfig(currentFile.content, initialBank));
 
   const [selectedBankKey, setSelectedBankKey] = useState<string>(() => initialBank?.accountKey || 'csv-extrato');
   const [delimiter, setDelimiter] = useState<CSVDelimiter>(initialResolved.delimiter);
@@ -131,6 +125,12 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
   );
 
   if (!isOpen || queue.length === 0) return null;
+
+  /** Edição manual do mapeamento de colunas. */
+  const editMapping = (update: (m: CSVColumnMapping) => CSVColumnMapping) => {
+    setMapping(update);
+    setConfigSource('manual');
+  };
 
   const applyForFileAndBank = (content: string, bank: BankAccount | undefined) => {
     const resolved = resolveInitialCSVConfig(content, bank);
@@ -439,330 +439,28 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
 
           {/* Formulário rápido para cadastrar conta ou cartão sem OFX prévio */}
           {showNewBankForm && (
-            <div className="p-4 rounded-xl border border-accent/25 bg-accent/4 dark:bg-accent/8 space-y-3 animate-fade-in">
-              <div className="flex items-center justify-between">
-                <span className="text-[13px] font-semibold text-stone-900 dark:text-stone-100">
-                  Cadastrar nova conta bancária ou cartão de crédito
-                </span>
-                <div className="inline-flex rounded-lg p-0.5 bg-black/5 dark:bg-white/8 text-[12px]">
-                  <button
-                    type="button"
-                    onClick={() => setNewBankKind('CARD')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${newBankKind === 'CARD'
-                        ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm'
-                        : 'text-stone-500'
-                      }`}
-                  >
-                    Cartão de crédito
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewBankKind('BANK')}
-                    className={`px-2.5 py-1 rounded-md font-medium transition-colors ${newBankKind === 'BANK'
-                        ? 'bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 shadow-sm'
-                        : 'text-stone-500'
-                      }`}
-                  >
-                    Conta bancária
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                <div className="md:col-span-5">
-                  <label className="block text-[11px] font-medium text-stone-500 mb-1">
-                    {newBankKind === 'CARD' ? 'Nome do cartão *' : 'Nome da conta *'}
-                  </label>
-                  <input
-                    value={newBankNickname}
-                    onChange={(e) => setNewBankNickname(e.target.value)}
-                    placeholder={newBankKind === 'CARD' ? 'ex.: Cartão Nubank Corporativo' : 'ex.: Banco Inter PJ'}
-                    className={INPUT}
-                  />
-                </div>
-                <div className="md:col-span-5">
-                  <label className="block text-[11px] font-medium text-stone-500 mb-1">
-                    Conta contábil vinculada (opcional)
-                  </label>
-                  <select
-                    value={newBankLedgerId}
-                    onChange={(e) => setNewBankLedgerId(e.target.value)}
-                    className={INPUT}
-                  >
-                    <option value="">Definir depois em Contas e Extratos</option>
-                    {ledgerCandidates.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.code} · {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <button
-                    type="button"
-                    disabled={creatingBank || !newBankNickname.trim()}
-                    onClick={() => void handleCreateQuickBank()}
-                    className={`${BUTTON.primary} w-full h-10`}
-                  >
-                    {creatingBank ? 'Salvando…' : 'Criar'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <CSVQuickBankForm
+              kind={newBankKind}
+              onKindChange={setNewBankKind}
+              nickname={newBankNickname}
+              onNicknameChange={setNewBankNickname}
+              ledgerId={newBankLedgerId}
+              onLedgerIdChange={setNewBankLedgerId}
+              ledgerCandidates={ledgerCandidates}
+              creating={creatingBank}
+              onCreate={() => void handleCreateQuickBank()}
+            />
           )}
 
           {/* Pré-visualização das 5 primeiras linhas */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] font-medium text-stone-500 flex items-center gap-1">
-                <Table className="w-3.5 h-3.5" /> Prévia das linhas do arquivo ({activePreview.totalRows} linhas no total)
-              </span>
-              <label className="inline-flex items-center gap-2 text-[12px] text-stone-600 dark:text-stone-300 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mapping.hasHeader}
-                  onChange={(e) => {
-                    setMapping((m) => ({ ...m, hasHeader: e.target.checked }));
-                    setConfigSource('manual');
-                  }}
-                  className="rounded border-stone-300 text-accent-ink focus:ring-accent"
-                />
-                Primeira linha contém cabeçalhos
-              </label>
-            </div>
-
-            <div className="border border-black/8 dark:border-white/10 rounded-xl overflow-hidden bg-stone-50/40 dark:bg-stone-900/40">
-              <div className="overflow-x-auto max-h-44">
-                <table className="w-full text-left text-[12px] border-collapse font-mono">
-                  <thead>
-                    <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/6 text-stone-600">
-                      {activePreview.headers.map((h, i) => (
-                        <th key={i} className="py-2 px-3 whitespace-nowrap">
-                          <span className="text-[10px] text-stone-400 block font-normal">Col {i + 1}</span>
-                          {h || '—'}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-black/4 dark:divide-white/6">
-                    {activePreview.previewRows.slice(mapping.hasHeader ? 1 : 0, 5).map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-white dark:hover:bg-stone-800/40">
-                        {row.map((cell, cIdx) => (
-                          <td key={cIdx} className="py-1.5 px-3 whitespace-nowrap text-stone-700 dark:text-stone-300">
-                            {cell || '—'}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <CSVPreviewTable
+            preview={activePreview}
+            hasHeader={mapping.hasHeader}
+            onHasHeaderChange={(hasHeader) => editMapping((m) => ({ ...m, hasHeader }))}
+          />
 
           {/* Mapeamento de Colunas */}
-          <div className="p-4 rounded-xl border border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/30 space-y-4">
-            <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">
-              Mapeamento de Campos
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                  <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-accent-ink" />
-                    Coluna da Data *
-                  </label>
-                  <select
-                    value={mapping.dateCol}
-                    onChange={(e) => {
-                      setMapping((m) => ({ ...m, dateCol: parseInt(e.target.value, 10) }));
-                      setConfigSource('manual');
-                    }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                  >
-                    {columns.map((c) => (
-                      <option key={c.index} value={c.index}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-              </div>
-
-              <div>
-                  <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                    <FileText className="w-3.5 h-3.5 text-purple-600" />
-                    Coluna da Descrição / Histórico *
-                  </label>
-                  <select
-                    value={mapping.memoCol}
-                    onChange={(e) => {
-                      setMapping((m) => ({ ...m, memoCol: parseInt(e.target.value, 10) }));
-                      setConfigSource('manual');
-                    }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                  >
-                    {columns.map((c) => (
-                      <option key={c.index} value={c.index}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-              </div>
-
-              <div>
-                  <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-stone-400" />
-                    Coluna de Documento / FITID (Opcional)
-                  </label>
-                  <select
-                    value={mapping.docCol ?? -1}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setMapping((m) => ({ ...m, docCol: val === -1 ? undefined : val }));
-                      setConfigSource('manual');
-                    }}
-                    className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                  >
-                    <option value="-1">Gerar identificador automático (Recomendado)</option>
-                    {columns.map((c) => (
-                      <option key={c.index} value={c.index}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-              </div>
-            </div>
-
-            {/* Configuração de Valores (Único vs Separado) */}
-            <div className="space-y-3 pt-2 border-t border-black/4 dark:border-white/6">
-              <div className="flex flex-wrap items-center gap-6">
-                <span className="text-[12px] font-medium text-stone-600 dark:text-stone-300">
-                  Formato do Valor:
-                </span>
-                <label className="inline-flex items-center gap-2 text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="valueMode"
-                    checked={mapping.valueMode === 'single'}
-                    onChange={() => {
-                      setMapping((m) => ({ ...m, valueMode: 'single', amountCol: m.amountCol ?? 0 }));
-                      setConfigSource('manual');
-                    }}
-                    className="text-accent-ink"
-                  />
-                  Coluna Única com sinal (+ / -)
-                </label>
-                <label className="inline-flex items-center gap-2 text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="valueMode"
-                    checked={mapping.valueMode === 'split'}
-                    onChange={() => {
-                      setMapping((m) => ({
-                        ...m,
-                        valueMode: 'split',
-                        debitCol: m.debitCol ?? 0,
-                        creditCol: m.creditCol ?? Math.min(1, Math.max(0, columns.length - 1)),
-                      }));
-                      setConfigSource('manual');
-                    }}
-                    className="text-accent-ink"
-                  />
-                  Colunas Separadas (Débito e Crédito)
-                </label>
-              </div>
-
-              {mapping.valueMode === 'single' ? (
-                <div className="w-full md:w-1/2">
-                    <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                      <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                      Coluna do Valor *
-                    </label>
-                    <select
-                      value={mapping.amountCol ?? 0}
-                      onChange={(e) => {
-                        setMapping((m) => ({ ...m, amountCol: parseInt(e.target.value, 10) }));
-                        setConfigSource('manual');
-                      }}
-                      className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                    >
-                      {columns.map((c) => (
-                        <option key={c.index} value={c.index}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                      <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5 text-rose-600" />
-                        Coluna de Saída (Débito) *
-                      </label>
-                      <select
-                        value={mapping.debitCol ?? 0}
-                        onChange={(e) => {
-                          setMapping((m) => ({ ...m, debitCol: parseInt(e.target.value, 10) }));
-                          setConfigSource('manual');
-                        }}
-                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                      >
-                        {columns.map((c) => (
-                          <option key={c.index} value={c.index}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                  </div>
-
-                  <div>
-                      <label className="text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
-                        Coluna de Entrada (Crédito) *
-                      </label>
-                      <select
-                        value={mapping.creditCol ?? 0}
-                        onChange={(e) => {
-                          setMapping((m) => ({ ...m, creditCol: parseInt(e.target.value, 10) }));
-                          setConfigSource('manual');
-                        }}
-                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none"
-                      >
-                        {columns.map((c) => (
-                          <option key={c.index} value={c.index}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </select>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Inversão de Sinal (Fatura de Cartão) */}
-            <div className="pt-2 border-t border-black/4 dark:border-white/6">
-              <label className="flex items-start gap-3 p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mapping.invertSigns ?? false}
-                  onChange={(e) => {
-                    setMapping((m) => ({ ...m, invertSigns: e.target.checked }));
-                    setConfigSource('manual');
-                  }}
-                  className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
-                />
-                <div className="text-[12px]">
-                  <span className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5" /> Inverter sinais (+/-) — Recomendado para Faturas de Cartão de Crédito
-                  </span>
-                  <p className="text-amber-700 dark:text-amber-300/80 mt-0.5 leading-relaxed">
-                    Na maioria das faturas de cartão, compras vêm com valores positivos e pagamentos como negativos. Ao marcar esta opção, o sistema inverte os sinais para que as compras sejam registradas como saídas (débitos) no extrato.
-                  </p>
-                </div>
-              </label>
-            </div>
-          </div>
+          <CSVColumnFields mapping={mapping} columns={columns} onEdit={editMapping} />
 
           {/* Resumo da Validação e opção de lote para fila */}
           <div className="space-y-2.5">

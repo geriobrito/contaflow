@@ -1,6 +1,7 @@
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, type JournalTemplate } from '@/lib/journal';
 import { parseMoneyInput } from '@/lib/opening';
+import { round2 } from '@/lib/money';
 
 /**
  * Formulário do lançamento manual: partidas iniciais, nova partida, valores dos modelos e a
@@ -23,7 +24,7 @@ export function nextJournalLine(lines: readonly JournalEntryLine[], id: string):
   if (lines.length >= MAX_JOURNAL_LINES) return null;
   const type = lines[lines.length - 1]?.type === 'DEBIT' ? 'CREDIT' : 'DEBIT';
   const { debit, credit } = journalTotals(lines);
-  const missing = Math.max(0, Math.round((debit - credit) * 100) / 100);
+  const missing = Math.max(0, round2(debit - credit));
   return { id, accountId: '', type, amount: type === 'CREDIT' ? missing : 0, memo: '' };
 }
 

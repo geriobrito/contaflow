@@ -36,23 +36,23 @@ export function useInvoiceMatches(params: {
   accounts: readonly ChartAccount[];
 }): InvoiceMatchesState {
   const { clientId, range, transactions, accounts } = params;
-  const window = range ? { start: addDays(range.start, -LOOKBACK_DAYS), end: addDays(range.end, LOOKAHEAD_DAYS) } : null;
-  const key = clientId && window ? `${clientId}|${window.start}|${window.end}` : null;
+  // Janela de leitura em strings: o objeto `range` pode mudar de identidade sem mudar de datas.
+  const windowStart = range ? addDays(range.start, -LOOKBACK_DAYS) : null;
+  const windowEnd = range ? addDays(range.end, LOOKAHEAD_DAYS) : null;
+  const key = clientId && windowStart && windowEnd ? `${clientId}|${windowStart}|${windowEnd}` : null;
   const [data, setData] = useState<{ key: string; invoices: InvoiceSummary[] } | null>(null);
 
   useEffect(() => {
-    if (!key || !clientId || !window) return;
+    if (!key || !clientId || !windowStart || !windowEnd) return;
     let active = true;
     getRepository()
-      .listInvoices(clientId, window)
+      .listInvoices(clientId, { start: windowStart, end: windowEnd })
       .then((invoices) => active && setData({ key, invoices }))
       .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar notas fiscais', level: 'warning' }));
     return () => {
       active = false;
     };
-    // `window` muda junto com `key`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, clientId]);
+  }, [key, clientId, windowStart, windowEnd]);
 
   const invoices = useMemo(() => (data && data.key === key ? data.invoices : []), [data, key]);
   const matches = useMemo(() => matchInvoices(transactions, invoices, accounts), [transactions, invoices, accounts]);

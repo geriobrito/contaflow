@@ -7,30 +7,23 @@ import type { PeriodLock } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { EQUITY_GROUP_CODE, OPENING_ACCOUNT_CODE, buildBalanceSheet, buildPostings, buildTrialBalance, sectionLines, type BalanceSheetLine } from '@/lib/ledger';
-import { checkAccountingConsistency } from '@/lib/dre/consistency';
-import { CAPITAL_GROUP_CODE, equityMovements, invertedBalances, missingShareCapital, openingPostings } from '@/lib/balance-sheet-checks';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { porteOf } from '@/lib/accounting-standard';
-import { implantationDate, openingStatus } from '@/lib/opening';
-import { bankSetupIssues, comparativeLines, formatDC as dc, hasClosingIn, hasComparable, previousYearEnd, monthsWithData, standardNoteFor, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
-import { buildDLPA, withoutClosingOf, yearEndOf, yearStartOf } from '@/lib/year-closing';
+import { formatDateBR } from '@/lib/utils/formatters';
+import { comparativeLines, hasClosingIn, hasComparable, previousYearEnd, monthsWithData, statementSignatories, trialBalanceStage, withoutClosingIn, type StatementView } from '@/lib/balance-sheet-view';
+import { buildDLPA, withoutClosingOf, yearEndOf } from '@/lib/year-closing';
 import { buildDMPL } from '@/lib/dmpl';
 import { buildCashFlow } from '@/lib/cash-flow';
 import { useYearClosing } from '@/hooks/balanco/useYearClosing';
 import { useBalanceSheetData } from '@/hooks/balanco/useBalanceSheetData';
+import { useBalanceSheetChecks } from '@/hooks/balanco/useBalanceSheetChecks';
 import { BUTTON, EmptyState, PAGE, PageHeader, SegmentedControl, Sheet, SURFACE } from '@/components/ui/primitives';
 import { AccountLedgerDrawer } from '@/components/balanco/AccountLedgerDrawer';
 import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { DMPLStatement } from '@/components/balanco/DMPLStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
+import { TrialBalanceTable } from '@/components/balanco/TrialBalanceTable';
 import { StatementChecks } from '@/components/ui/StatementChecks';
-import { activityCheck, balanceSheetChecks, dmplCheck, financingCheck, fixedAssetCheck, openingCheck, prepaidCheck, transitoryCheck } from '@/lib/statement-checks';
-import { expectedBalancesByAccount } from '@/lib/financing';
-import { prepaidBalancesByAccount } from '@/lib/prepaid-expenses';
-import { fromCents } from '@/lib/money';
-import { naturalAssetBalances, reconcileWithLedger } from '@/lib/fixed-assets';
-import { closedYearsOf, describeTransitory, transitoryBalanceAt, transitoryReminder } from '@/lib/opening-transitory';
+import { describeTransitory } from '@/lib/opening-transitory';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { LedgerPrintSignatures } from '@/components/razao/LedgerPrintSignatures';
 import { StatementSkeleton } from '@/components/ui/Skeleton';
@@ -123,64 +116,6 @@ export default function BalancoPage() {
     const prev = buildBalanceSheet(postings, accounts, prevDate);
     return hasComparable(prev) ? prev : null;
   }, [postings, accounts, prevDate]);
-  const inverted = useMemo(() => invertedBalances(bs), [bs]);
-  // Cadastro do imobilizado × balanço, no fim do período (só com bens cadastrados).
-  const fixedAssetRows = useMemo(() => {
-    const assets = static_?.fixedAssets?.assets;
-    if (!assets?.length || !txs) return null;
-    const implantation = implantationDate(static_?.openings, banks);
-    const balances = naturalAssetBalances(bs.assets, accounts);
-    return reconcileWithLedger({
-      assets,
-      month: range.end.slice(0, 7),
-      implantationMonth: implantation ? implantation.slice(0, 7) : null,
-      accounts,
-      ledgerBalance: (id) => balances.get(id) ?? 0,
-    });
-  }, [static_?.fixedAssets, static_?.openings, txs, banks, bs, accounts, range.end]);
-  // Despesas antecipadas × balanço: saldo a apropriar por conta do ativo.
-  const prepaidRows = useMemo(() => {
-    const items = static_?.prepaid?.items;
-    if (!items?.length || !txs) return null;
-    const implantation = implantationDate(static_?.openings, banks);
-    const register = prepaidBalancesByAccount(items, range.end.slice(0, 7), implantation ? implantation.slice(0, 7) : null);
-    const balances = naturalAssetBalances(bs.assets, accounts);
-    return [...register].map(([accountId, cents]) => {
-      const acc = accounts.find((a) => a.id === accountId);
-      const ledger = balances.get(accountId) ?? 0;
-      return { accountCode: acc?.code ?? '', accountName: acc?.name ?? '', register: fromCents(cents), ledger, difference: Math.round((ledger - fromCents(cents)) * 100) / 100 };
-    });
-  }, [static_?.prepaid, static_?.openings, txs, banks, bs, accounts, range.end]);
-  // Contratos de empréstimo e financiamento × balanço: obrigações e encargos a transcorrer por conta.
-  const financingRows = useMemo(() => {
-    const contracts = static_?.financing?.contracts;
-    if (!contracts?.length || !txs) return null;
-    const expected = expectedBalancesByAccount(contracts, range.end.slice(0, 7));
-    const balances = naturalAssetBalances(bs.liabilities, accounts);
-    return [...expected].map(([accountId, cents]) => {
-      const acc = accounts.find((a) => a.id === accountId);
-      const ledger = balances.get(accountId) ?? 0;
-      return { accountCode: acc?.code ?? '', accountName: acc?.name ?? '', register: fromCents(cents), ledger, difference: Math.round((ledger - fromCents(cents)) * 100) / 100 };
-    });
-  }, [static_?.financing, txs, bs, accounts, range.end]);
-  const missingCapital = useMemo(() => missingShareCapital(bs), [bs]);
-  // Conta transitória 2.3.3.04 com saldo: lembra de zerar; em 31/12, impede o balanço de encerramento.
-  const transitory = useMemo(() => transitoryBalanceAt(postings, accounts, range.end), [postings, accounts, range.end]);
-  const transitoryDue = useMemo(
-    () => transitoryReminder({ balance: transitory, implantation: static_?.openings?.date ?? null, closedYears: closedYearsOf(journalEntries), today: range.end }),
-    [transitory, static_?.openings?.date, journalEntries, range.end]
-  );
-  const transitoryIssue = transitoryDue ? transitoryCheck(transitory, range.end, transitoryDue.year) : null;
-  /** Balanço de 31/12 com a conta transitória: o PDF oficial é recusado (só rascunho). */
-  const [pdfBlocked, setPdfBlocked] = useState(false);
-  /** "Ir para o encerramento": rola até o painel quando ele aparecer (o período pode ter de recarregar). */
-  const scrollToClosing = useRef(false);
-  const goToClosing = () => {
-    // Encerramento do exercício que deve zerar a conta: dezembro dele, na aba DLPA.
-    if (transitoryDue) jumpTo(`${transitoryDue.year}-12-31`);
-    setView('dlpa');
-    scrollToClosing.current = true;
-  };
   // Balancete antes (padrão) ou depois do encerramento do exercício que cai no período: antes, as
   // contas de resultado aparecem com os saldos do ano; depois, zeradas contra a ARE.
   const [ignoreClosing, setIgnoreClosing] = useState(true);
@@ -194,38 +129,36 @@ export default function BalancoPage() {
   );
   const tb = useMemo(() => buildTrialBalance(tbPostings, accounts, range), [tbPostings, accounts, range]);
   const tbStage = trialBalanceStage(closingInRange, ignoreClosing);
-  const tbRows = showSynthetic ? tb.rows : tb.rows.filter((r) => !r.synthetic);
 
-  const consistency = useMemo(() => {
-    if (!txs) return null;
-    return checkAccountingConsistency({
-      transactions: txs.list,
-      accounts,
-      banks,
-      date: range.end,
-      openings: static_?.openings,
-      journalEntries,
-      carry: txs.carry,
-    });
-  }, [txs, accounts, banks, range.end, static_?.openings, journalEntries]);
+  const { opening, openLines, transitory, transitoryDue, transitoryIssue, checks } = useBalanceSheetChecks({
+    client: currentClient,
+    range,
+    view,
+    ready,
+    loading,
+    accounts,
+    banks,
+    postings,
+    bs,
+    tb,
+    txs,
+    static_,
+    journalEntries,
+  });
 
-  const opening = useMemo(
-    () => (ready && accounts.length > 0 ? openingStatus(static_?.openings, accounts, banks) : null),
-    [ready, static_?.openings, accounts, banks]
-  );
+  /** Balanço de 31/12 com a conta transitória: o PDF oficial é recusado (só rascunho). */
+  const [pdfBlocked, setPdfBlocked] = useState(false);
+  /** "Ir para o encerramento": rola até o painel quando ele aparecer (o período pode ter de recarregar). */
+  const scrollToClosing = useRef(false);
+  const goToClosing = () => {
+    // Encerramento do exercício que deve zerar a conta: dezembro dele, na aba DLPA.
+    if (transitoryDue) jumpTo(`${transitoryDue.year}-12-31`);
+    setView('dlpa');
+    scrollToClosing.current = true;
+  };
 
   // Encerramento, DLPA e DMPL do exercício da data final.
   const year = range.end.slice(0, 4);
-  const openLines = useMemo(() => openingPostings(static_?.openings, banks, accounts), [static_?.openings, banks, accounts]);
-  // Pequena empresa: movimento em Capital ou Reservas no exercício exige a DMPL (NBC TG 1001).
-  const porte = porteOf(currentClient);
-  const equityMoves = useMemo(
-    () =>
-      porte === 'PEQUENA_EMPRESA'
-        ? equityMovements(postings, openLines, accounts, { start: yearStartOf(year), end: range.end })
-        : [],
-    [porte, postings, openLines, accounts, year, range.end]
-  );
   const postingsBeforeClosing = useMemo(
     () =>
       !txs ? null : buildPostings(txs.list, banks, accounts, yearEndOf(year), static_?.openings, withoutClosingOf(journalEntries, year), txs.carry),
@@ -262,8 +195,6 @@ export default function BalancoPage() {
     [txs, banks, accounts, range, static_?.openings, journalEntries]
   );
 
-  const standardNote = standardNoteFor(view, porteOf(currentClient));
-  const { missingOpening, unlinked } = bankSetupIssues(banks);
   const hasData = postings.length > 0;
   const signatories = () => statementSignatories(currentClient, static_?.org);
   const signature = useSignatureReminder(static_?.org);
@@ -474,32 +405,7 @@ export default function BalancoPage() {
             onClick: () => setView('dmpl'),
           },
         }}
-        checks={[
-          openingCheck(opening),
-          !loading && hasData && view !== 'dfc' && transitoryIssue,
-          !loading && hasData && view !== 'tb' && activityCheck(currentClient),
-          !loading && hasData && (view === 'bs' || view === 'dlpa') && dmplCheck(porte, equityMoves, year),
-          !loading && hasData && view === 'bs' && fixedAssetCheck(fixedAssetRows, range.end),
-          !loading && hasData && view === 'bs' && prepaidCheck(prepaidRows, range.end),
-          !loading && hasData && view === 'bs' && financingCheck(financingRows, range.end),
-          ...(!loading && hasData
-            ? balanceSheetChecks({
-                trialBalance: view === 'tb',
-                date: range.end,
-                suspense: bs.suspense,
-                unlinkedBanks: unlinked.map((b) => b.nickname),
-                missingOpeningBanks: missingOpening.map((b) => b.nickname),
-                inverted: view === 'bs' ? inverted.map(({ line, side }) => ({ code: line.code, name: line.name, value: line.value, side })) : [],
-                missingCapitalCode: view === 'bs' && missingCapital ? CAPITAL_GROUP_CODE : null,
-                difference: bs.difference,
-                trialBalanced: tb.balanced,
-                consistency,
-                standardNote,
-              })
-            : standardNote
-              ? [{ id: 'standard', level: 'info' as const, title: standardNote }]
-              : []),
-        ]}
+        checks={checks}
       />
 
       {loading ? (
@@ -556,88 +462,16 @@ export default function BalancoPage() {
           </section>
         </div>
       ) : (
-        <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/4 print:hidden">
-            <span className="text-[12px] text-stone-400 flex items-center gap-1.5">
-              <BookOpen className="w-3.5 h-3.5 text-stone-400" />
-              Clique em qualquer conta para abrir a ficha do Livro Razão
-            </span>
-            <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-              <label className="flex items-center gap-2 text-[12px] text-stone-500">
-                <input type="checkbox" checked={showSynthetic} onChange={(e) => setShowSynthetic(e.target.checked)} /> Mostrar contas sintéticas
-              </label>
-              <label className="flex items-center gap-2 text-[12px] text-stone-500" title="Desmarcado, o balancete sai depois do encerramento: contas de resultado zeradas contra a ARE">
-                <input type="checkbox" checked={ignoreClosing} onChange={(e) => setIgnoreClosing(e.target.checked)} /> Ignorar lançamentos de encerramento (ARE)
-                {!closingInRange && <span className="text-stone-400">(nenhum no período)</span>}
-              </label>
-            </div>
-          </div>
-          {tbStage && (
-            <p className="px-5 py-2 border-b border-black/4 text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
-              Balancete {tbStage.toLowerCase()}.
-            </p>
-          )}
-          <div className="overflow-x-auto print:overflow-visible">
-            <table className="w-full text-left print-fit-table">
-              <thead>
-                <tr className="text-[11px] print:text-[9.5px] uppercase tracking-wider text-stone-400 print:text-stone-700 border-b border-black/4 print:border-b-2 print:border-black/40">
-                  <th className="font-medium pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
-                  <th className="font-medium px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
-                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
-                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Débitos</th>
-                  <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Créditos</th>
-                  <th className="font-medium pl-3 pr-5 py-2.5 text-right print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tbRows.map((r) => (
-                  <tr
-                    key={r.accountId}
-                    onClick={() => setDrawerAccountId(r.accountId)}
-                    className={`border-b border-black/3 print:border-black/6 last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/3 dark:hover:bg-white/4 transition-colors group ${
-                      r.synthetic ? 'font-medium text-stone-900 dark:text-stone-100 print:font-semibold print:text-black' : 'text-stone-600 dark:text-stone-400 print:text-stone-800'
-                    }`}
-                    title="Clique para abrir o Livro Razão desta conta"
-                  >
-                    <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 print:text-stone-600 whitespace-nowrap">
-                      {r.code}
-                    </td>
-                    <td className="px-3 py-1.5 print:px-1.5 print:py-1 leading-snug">
-                      <span
-                        className="inline-block"
-                        style={{ paddingLeft: `${Math.max(0, r.level - 1) * 7}px` }}
-                      >
-                        {r.name}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
-                      {dc(r.previous)}
-                    </td>
-                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
-                      {r.debits ? formatCurrency(r.debits) : '—'}
-                    </td>
-                    <td className="px-3 py-1.5 print:px-1 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
-                      {r.credits ? formatCurrency(r.credits) : '—'}
-                    </td>
-                    <td className="pl-3 pr-5 py-1.5 print:pl-1 print:pr-1.5 print:py-1 text-right font-mono tabular-nums text-[13px] print:text-[9.5px] whitespace-nowrap">
-                      {dc(r.final)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-black/8 print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
-                  <td className="pl-5 pr-3 py-2.5 print:pl-1.5 print:pr-1 print:py-1.5" />
-                  <td className="px-3 py-2.5 print:px-1.5 print:py-1.5">Totais (contas analíticas)</td>
-                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.previous)}</td>
-                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.debits)}</td>
-                  <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{formatCurrency(tb.totals.credits)}</td>
-                  <td className="pl-3 pr-5 py-2.5 print:pl-1 print:pr-1.5 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.final)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </section>
+        <TrialBalanceTable
+          tb={tb}
+          tbStage={tbStage}
+          showSynthetic={showSynthetic}
+          onShowSyntheticChange={setShowSynthetic}
+          ignoreClosing={ignoreClosing}
+          onIgnoreClosingChange={setIgnoreClosing}
+          closingInRange={closingInRange}
+          onSelectAccount={setDrawerAccountId}
+        />
       )}
 
       {/* Assinaturas contábeis oficiais para impressão (Balanço e Balancete) */}

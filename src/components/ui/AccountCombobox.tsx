@@ -70,21 +70,20 @@ function OptionList({ accounts, value, onPick, suggestions, autoFocus, placehold
   const optionId = (index: number) => `${id}-opcao-${index}`;
 
   // Traz a conta atual para o centro da lista; rola só a lista (não o sheet nem a página).
+  // Só uma vez por montagem: trocar a seleção não deve mover a lista sob o cursor.
+  const revealedRef = useRef(false);
   useEffect(() => {
-    if (!revealSelected) return;
+    if (!revealSelected || revealedRef.current) return;
+    revealedRef.current = true;
     const list = listRef.current;
     const item = list?.querySelector<HTMLElement>('[aria-selected="true"]')?.closest('li');
     if (list && item) list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2;
-    // Só na montagem: trocar a seleção não deve mover a lista sob o cursor.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [revealSelected]);
 
   useEffect(() => {
     if (active < 0) return;
-    document.getElementById(optionId(active))?.scrollIntoView({ block: 'nearest' });
-    // optionId depende só do id estável.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
+    document.getElementById(`${id}-opcao-${active}`)?.scrollIntoView({ block: 'nearest' });
+  }, [active, id]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {

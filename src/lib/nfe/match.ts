@@ -2,7 +2,7 @@ import type { BankTransaction, ChartAccount, InvoiceInstallment, InvoiceSummary 
 import { textKey } from '@/lib/payee';
 import { companyTokens, nameOverlap } from '@/lib/company-name';
 import { addDays } from '@/lib/statement';
-import { toCents } from '@/lib/money';
+import { round2, toCents } from '@/lib/money';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
 
 /**
@@ -236,7 +236,7 @@ export function matchInvoices(
       amount: c.slot.cents / 100,
       ...(c.slot.installment ? { installment: c.slot.installment } : {}),
       party: c.party,
-      score: Math.round(c.score * 100) / 100,
+      score: round2(c.score),
       ...(suggestion ? { suggestedAccountId: suggestion.accountId, suggestionSource: suggestion.source } : {}),
     });
   }
