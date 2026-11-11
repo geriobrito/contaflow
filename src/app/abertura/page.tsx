@@ -183,7 +183,7 @@ export default function AberturaPage() {
             <TableSkeleton rows={8} label="Carregando saldos de abertura…" />
           </section>
           {o.error && (
-            <p role="alert" className="rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 text-[13px] text-rose-700">
+            <p role="alert" className="rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200/60 dark:border-rose-500/25 text-[13px] text-rose-700 dark:text-rose-300">
               {o.error}
             </p>
           )}
@@ -249,7 +249,7 @@ export default function AberturaPage() {
                   key={a.id}
                   type="button"
                   onClick={() => addAccount(a.id)}
-                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full border border-black/8 dark:border-white/10 bg-white/70 dark:bg-stone-800/60 text-[12px] text-stone-700 dark:text-stone-200 hover:bg-white dark:hover:bg-stone-800 transition-colors"
+                  className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full border border-line-strong bg-white/70 dark:bg-stone-800/60 text-[12px] text-stone-700 dark:text-stone-200 hover:bg-white dark:hover:bg-stone-800 transition-colors"
                 >
                   <Plus aria-hidden className="w-3 h-3 text-stone-400" />
                   {a.name}

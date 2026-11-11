@@ -34,7 +34,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
       {loadFailure ? (
-        <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600">
+        <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600 dark:text-rose-300">
           Não foi possível carregar as regras ({loadFailure}). Recarregue a página para tentar de novo.
         </p>
       ) : isLoading ? (
@@ -52,7 +52,7 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4 dark:border-white/6">
+              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
                 <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
                 <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
                 <th scope="col" className="font-medium px-3 py-2.5 w-32">Criada em</th>

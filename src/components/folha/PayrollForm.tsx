@@ -233,7 +233,7 @@ export function PayrollForm({
         </div>
 
         {showImport && !locked && (
-          <div className="rounded-2xl border border-amber-200/80 bg-amber-50/50 p-4 space-y-3">
+          <div className="rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-amber-50/50 dark:bg-amber-500/10 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-[13px] font-medium text-stone-800">
@@ -284,7 +284,7 @@ export function PayrollForm({
         {/* 1. Proventos Brutos */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">
+            <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               1. Proventos Brutos (Despesas de Pessoal)
             </h3>
             <span className="text-[12px] font-mono tabular-nums text-stone-600">
@@ -320,7 +320,7 @@ export function PayrollForm({
         {/* 2. Retenções e Descontos */}
         <div className="space-y-3 pt-2 border-t border-stone-200/60">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">
+            <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               2. Retenções sobre a Folha (Descontados dos Empregados e Sócios)
             </h3>
             <span className="text-[12px] font-mono tabular-nums text-stone-600">
@@ -389,7 +389,7 @@ export function PayrollForm({
         {/* 3. Encargos Sociais Patronais */}
         <div className="space-y-3 pt-2 border-t border-stone-200/60">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">
+            <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               3. Encargos Sociais Patronais (FGTS e INSS Empresa)
             </h3>
             <span className="text-[12px] font-mono tabular-nums text-stone-600">
@@ -440,7 +440,7 @@ export function PayrollForm({
         {/* 4. Provisões Mensais (Férias e 13º) e Observações */}
         <div className="space-y-3 pt-2 border-t border-stone-200/60">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">
+            <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               4. Provisões Mensais de Férias e 13º Salário (Regime de Competência)
             </h3>
             <span className="text-[12px] font-mono tabular-nums text-stone-600">
@@ -514,7 +514,7 @@ export function PayrollForm({
           <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
                 <span className="text-[13px] font-semibold text-stone-800">
                   Espelho do Lançamento de Provisão ({formatDateBR(previewDraft.date)})
                 </span>
@@ -526,7 +526,7 @@ export function PayrollForm({
             <div className="overflow-x-auto">
               <table className="w-full text-[12.5px]">
                 <thead>
-                  <tr className="border-b border-stone-200 text-left text-[11px] uppercase tracking-wider text-stone-400">
+                  <tr className="border-b border-stone-200 text-left text-[11px] uppercase tracking-[0.08em] text-stone-400">
                     <th className="py-1.5 pr-3">Natureza</th>
                     <th className="py-1.5 pr-3">Conta Contábil</th>
                     <th className="py-1.5 pr-3">Histórico</th>
@@ -540,8 +540,8 @@ export function PayrollForm({
                         <span
                           className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10.5px] font-semibold ${
                             line.type === 'DEBIT'
-                              ? 'bg-amber-100/80 text-amber-900'
-                              : 'bg-sky-100/80 text-sky-900'
+                              ? 'bg-amber-100/80 dark:bg-amber-500/10 text-amber-900 dark:text-amber-300'
+                              : 'bg-sky-100/80 dark:bg-sky-500/10 text-sky-900 dark:text-sky-300'
                           }`}
                         >
                           {line.type === 'DEBIT' ? 'D · Débito' : 'C · Crédito'}
@@ -567,13 +567,13 @@ export function PayrollForm({
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-200/70">
           <div className="text-[12.5px] text-stone-500">
             {locked ? (
-              <span className="text-amber-700 font-medium">
+              <span className="text-amber-700 dark:text-amber-300 font-medium">
                 Competência fechada: reabra o mês para alterar ou excluir a provisão da folha.
               </span>
             ) : validationError ? (
               <span className="text-stone-500">{validationError}</span>
             ) : existingSummary ? (
-              <span className="text-emerald-700 font-medium">
+              <span className="text-emerald-700 dark:text-emerald-300 font-medium">
                 Folha contabilizada no Livro Diário em {formatDateBR(existingSummary.date)}.
               </span>
             ) : (
@@ -588,15 +588,15 @@ export function PayrollForm({
                   type="button"
                   onClick={() => setConfirmDelete(true)}
                   disabled={saving}
-                  className={`${BUTTON.secondary} text-rose-700 hover:text-rose-800`}
+                  className={`${BUTTON.secondary} text-rose-700 dark:text-rose-300 hover:text-rose-800`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Excluir folha do mês
                 </button>
               )}
               {existingSummary && confirmDelete && (
-                <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5">
-                  <span className="text-[12px] text-rose-800 font-medium">Excluir provisão de {formatMonth(month)}?</span>
+                <div className="flex items-center gap-2 rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/10 px-3 py-1.5">
+                  <span className="text-[12px] text-rose-800 dark:text-rose-300 font-medium">Excluir provisão de {formatMonth(month)}?</span>
                   <button
                     type="button"
                     onClick={async () => {
@@ -604,7 +604,7 @@ export function PayrollForm({
                       await onDelete();
                     }}
                     disabled={saving}
-                    className="text-[12px] font-semibold text-rose-700 hover:underline"
+                    className="text-[12px] font-semibold text-rose-700 dark:text-rose-300 hover:underline"
                   >
                     Confirmar
                   </button>

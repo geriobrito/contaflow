@@ -29,7 +29,7 @@ export function CSVPreviewTable({ preview, hasHeader, onHasHeaderChange }: CSVPr
         </label>
       </div>
 
-      <div className="border border-black/8 dark:border-white/10 rounded-xl overflow-hidden bg-stone-50/40 dark:bg-stone-900/40">
+      <div className="border border-line-strong rounded-xl overflow-hidden bg-stone-50/40 dark:bg-stone-900/40">
         <div className="overflow-x-auto max-h-44">
           <table className="w-full text-left text-[12px] border-collapse font-mono">
             <thead>

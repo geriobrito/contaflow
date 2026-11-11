@@ -203,7 +203,7 @@ export function FinancingSheet({
       footer={
         <>
           {(localError || error) && (
-            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">
+            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">
               {localError || error}
             </p>
           )}

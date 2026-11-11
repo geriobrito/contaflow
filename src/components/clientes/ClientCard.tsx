@@ -54,8 +54,8 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
     <article
       className={`relative flex flex-col rounded-[22px] p-5 backdrop-blur-xl border transition-all duration-200 ${
         active
-          ? 'bg-white dark:bg-stone-900 border-accent/30 shadow-[0_0_0_4px_rgba(181,85,47,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
-          : 'bg-white/70 dark:bg-stone-900/60 border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
+          ? 'bg-surface border-accent/30 shadow-[0_0_0_4px_rgba(181,85,47,0.08),0_8px_24px_rgba(0,0,0,0.06)]'
+          : 'bg-white/70 dark:bg-stone-900/60 border-line shadow-card hover:shadow-[0_8px_24px_rgba(0,0,0,0.06)]'
       }`}
     >
       <div className="flex items-start gap-3">
@@ -101,9 +101,9 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
         )}
       </dl>
 
-      <div className="mt-5 pt-4 border-t border-black/5 dark:border-white/6 flex items-center justify-between gap-3">
+      <div className="mt-5 pt-4 border-t border-line flex items-center justify-between gap-3">
         {active ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 text-emerald-700 border-emerald-200/60">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-500/25">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             Ativo
           </span>

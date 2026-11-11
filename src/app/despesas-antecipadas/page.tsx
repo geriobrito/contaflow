@@ -65,7 +65,7 @@ export default function DespesasAntecipadasPage() {
       />
       <ControlsTabs />
       {data.error && !editing && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {data.error}
         </p>
       )}
@@ -115,12 +115,12 @@ export default function DespesasAntecipadasPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                  <th className="font-medium pl-5 pr-3 py-2.5">Descrição</th>
-                  <th className="font-medium px-3 py-2.5">Vigência</th>
-                  <th className="font-medium px-3 py-2.5 text-right">Valor</th>
-                  <th className="font-medium px-3 py-2.5 text-right">Cota do mês</th>
-                  <th className="font-medium px-3 py-2.5 text-right">A apropriar</th>
+                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                  <th className="font-semibold pl-5 pr-3 py-2.5">Descrição</th>
+                  <th className="font-semibold px-3 py-2.5">Vigência</th>
+                  <th className="font-semibold px-3 py-2.5 text-right">Valor</th>
+                  <th className="font-semibold px-3 py-2.5 text-right">Cota do mês</th>
+                  <th className="font-semibold px-3 py-2.5 text-right">A apropriar</th>
                   <th className="pl-3 pr-5 py-2.5 w-20"><span className="sr-only">Ações</span></th>
                 </tr>
               </thead>

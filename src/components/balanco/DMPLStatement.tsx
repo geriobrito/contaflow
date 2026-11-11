@@ -17,7 +17,7 @@ export function DMPLStatement({ dmpl }: { dmpl: DMPL }) {
       <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-[13px] print-fit-table">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider text-stone-500 dark:text-stone-400 border-b border-black/6 dark:border-white/8 bg-black/2 dark:bg-white/2">
+            <tr className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 border-b border-line bg-black/2 dark:bg-white/2">
               <th className="py-2.5 pl-5 pr-4 text-left font-medium min-w-[220px]">Descrição</th>
               {dmpl.columns.map((col) => (
                 <th key={col.key} className="py-2.5 px-4 text-right font-medium min-w-[130px]">
@@ -38,7 +38,7 @@ export function DMPLStatement({ dmpl }: { dmpl: DMPL }) {
                   key={r.label}
                   className={
                     isBalance
-                      ? 'bg-stone-50/70 dark:bg-stone-800/30 font-semibold border-t border-black/6 dark:border-white/8'
+                      ? 'bg-stone-50/70 dark:bg-stone-800/30 font-semibold border-t border-line'
                       : 'border-t border-black/4 dark:border-white/5'
                   }
                 >

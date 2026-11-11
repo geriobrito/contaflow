@@ -6,8 +6,8 @@ import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, Info } from 'luc
 import { summarizeChecks, type CheckLevel, type StatementCheck } from '@/lib/statement-checks';
 
 const ICON: Record<Exclude<CheckLevel, 'ok'>, React.ReactNode> = {
-  block: <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />,
-  warn: <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />,
+  block: <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-300 shrink-0 mt-0.5" />,
+  warn: <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />,
   info: <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />,
 };
 
@@ -68,7 +68,7 @@ export function StatementChecks({
     ? 'border-rose-200/70 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20'
     : pending > 0
       ? 'border-amber-200/70 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20'
-      : 'border-black/6 dark:border-white/8 bg-white/60 dark:bg-stone-900/40';
+      : 'border-line bg-white/60 dark:bg-stone-900/40';
   const title = pending > 0 ? `Pendências desta demonstração (${pending})` : `Observações (${infos.length})`;
 
   return (
@@ -90,7 +90,7 @@ export function StatementChecks({
             <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
           </button>
           {open && (
-            <ul className="border-t border-black/5 dark:border-white/6 divide-y divide-black/4 dark:divide-white/5 bg-white/50 dark:bg-stone-900/30 animate-fade-in">
+            <ul className="border-t border-line divide-y divide-black/4 dark:divide-white/5 bg-white/50 dark:bg-stone-900/30 animate-fade-in">
               {listed.map((c) => (
                 <CheckItem key={c.id} check={c} action={actions?.[c.id]} />
               ))}

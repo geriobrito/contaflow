@@ -185,7 +185,7 @@ const NO_SUGGESTIONS: readonly AccountSuggestion[] = [];
 export function AccountPicker({ accounts, value, onChange, autoFocus = false, suggestions = NO_SUGGESTIONS }: AccountPickerProps) {
   const options = useMemo(() => analyticOf(accounts, true), [accounts]);
   return (
-    <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 overflow-hidden">
+    <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line overflow-hidden">
       <OptionList
         accounts={options}
         value={value}
@@ -307,7 +307,7 @@ export function AccountSelectField({
         className={`w-full ${triggerClassName} px-3 flex items-center gap-2 rounded-xl border text-left transition-all duration-150 active:scale-[0.99] disabled:opacity-60 disabled:pointer-events-none ${
           open
             ? 'border-accent/60 shadow-[0_0_0_4px_rgba(181,85,47,0.12)] bg-white dark:bg-stone-800'
-            : 'border-black/8 dark:border-white/10 bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
+            : 'border-line-strong bg-white dark:bg-stone-800/70 hover:border-black/[0.14]'
         }`}
       >
         {selected ? (
@@ -327,7 +327,7 @@ export function AccountSelectField({
         <div
           ref={panelRef}
           style={position}
-          className="fixed z-[60] rounded-2xl bg-white/95 dark:bg-stone-900/95 backdrop-blur-xl border border-black/8 dark:border-white/10 shadow-[0_12px_32px_rgba(0,0,0,0.14)] overflow-hidden animate-pop-in"
+          className="fixed z-[60] rounded-2xl bg-surface border border-line-strong shadow-raised overflow-hidden animate-pop-in"
         >
           <OptionList
             accounts={options}

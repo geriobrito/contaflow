@@ -60,7 +60,7 @@ function Side({
   return (
     <div className="print-avoid-break">
       <div className="flex items-baseline justify-between gap-3 px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5">
-        <h3 className="flex-1 text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300">{title}</h3>
+        <h3 className="flex-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-600 dark:text-stone-300">{title}</h3>
         <AccountingAmount value={total} className="text-[13px] font-semibold" />
         {previous && <AccountingAmount value={previous.total} className="w-32 text-right text-[13px] font-semibold text-stone-400" />}
       </div>
@@ -383,7 +383,7 @@ export default function BalancoPage() {
         </div>
         <Link
           href="/razao"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 rounded-lg transition-colors border border-black/6 dark:border-white/8"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 hover:bg-black/8 dark:hover:bg-white/10 rounded-lg transition-colors border border-line"
           title="Abrir página dedicada do Livro Razão Analítico"
         >
           <BookOpen className="w-3.5 h-3.5 text-stone-500" />
@@ -391,7 +391,7 @@ export default function BalancoPage() {
         </Link>
       </div>
 
-      {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
       {/* Abertura, pendências e conferências do balanço, num bloco só. */}
       <StatementChecks

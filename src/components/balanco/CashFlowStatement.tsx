@@ -6,11 +6,11 @@ import { SURFACE } from '@/components/ui/primitives';
 import { AccountingAmount } from '@/components/ui/Amount';
 
 const ROW_STYLE: Record<CashFlowRow['kind'], { row: string; label: string }> = {
-  section: { row: 'border-t border-black/6 dark:border-white/8', label: 'px-5 pt-4 pb-1.5 text-[12px] font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300' },
+  section: { row: 'border-t border-line', label: 'px-5 pt-4 pb-1.5 text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-600 dark:text-stone-300' },
   line: { row: '', label: 'pl-8 pr-5 py-1.5 text-stone-700 dark:text-stone-300' },
   detail: { row: 'text-[12px]', label: 'pl-12 pr-5 py-1 text-stone-500' },
   subtotal: { row: 'border-t border-black/4 dark:border-white/5 font-semibold', label: 'px-5 py-2.5' },
-  total: { row: 'border-t border-black/8 dark:border-white/10 bg-stone-50/70 dark:bg-stone-800/30 font-semibold', label: 'px-5 py-3' },
+  total: { row: 'border-t border-line-strong bg-stone-50/70 dark:bg-stone-800/30 font-semibold', label: 'px-5 py-3' },
   balance: { row: 'border-t border-black/4 dark:border-white/5 bg-stone-50/70 dark:bg-stone-800/30 font-semibold', label: 'px-5 py-2.5' },
 };
 
@@ -59,14 +59,14 @@ export function CashFlowStatement({ statement, detail, onDetailChange }: CashFlo
         </tbody>
       </table>
       <div className="px-5 py-3 border-t border-black/4 dark:border-white/6 space-y-1.5 text-[12px] text-stone-500 print:hidden">
-        <p className={`flex items-start gap-2 ${statement.difference === 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+        <p className={`flex items-start gap-2 ${statement.difference === 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
           {statement.difference === 0 ? <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
           {statement.difference === 0
             ? 'O caixa no fim do período confere com o saldo das contas de caixa no balanço.'
             : `O caixa no fim do período difere em ${formatCurrency(statement.difference)} do saldo das contas de caixa no balanço (${formatCurrency(statement.ledgerClosingCash)}).`}
         </p>
         {statement.unclassified !== 0 && (
-          <p className="flex items-start gap-2 text-amber-700">
+          <p className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             {formatCurrency(Math.abs(statement.unclassified))} de movimento bancário ainda sem classificação ficam fora das atividades. Concilie-os para a DFC definitiva.
           </p>

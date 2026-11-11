@@ -4,8 +4,9 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { secondFactorMessage } from '@/lib/auth/two-factor';
 import { APP_VERSION, versionLabel } from '@/lib/app-version';
-import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, Eye, EyeOff, Loader2, Lock, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, Check, CheckCircle2, Clock, Eye, EyeOff, FileSpreadsheet, Loader2, Lock, Scale, Wand2 } from 'lucide-react';
 import { reportError } from '@/lib/monitoring';
+import { BrandMark } from '@/components/ui/BrandMark';
 
 function friendlyError(code?: string): string {
   switch (code) {
@@ -37,84 +38,119 @@ function errorCode(err: unknown): string | undefined {
 }
 
 const FIELD =
-  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-white dark:bg-white/4 border border-black/9 dark:border-white/10 text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none transition-all duration-150 hover:border-black/16 dark:hover:border-white/18 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
+  'peer w-full h-14 px-4 pt-5 pb-1.5 rounded-2xl bg-surface border border-line-strong text-[15px] tracking-tight text-stone-900 dark:text-stone-100 placeholder-transparent outline-none shadow-[0_1px_2px_rgba(28,25,23,0.04)] transition-all duration-150 hover:border-stone-900/25 dark:hover:border-white/22 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(217,119,87,0.16)]';
 
 const FLOAT_LABEL =
   'pointer-events-none absolute left-4 top-1.5 text-[11px] font-medium text-stone-500 transition-all duration-150 peer-placeholder-shown:top-[17px] peer-placeholder-shown:text-[15px] peer-placeholder-shown:font-normal peer-placeholder-shown:text-stone-400 peer-focus:top-1.5 peer-focus:text-[11px] peer-focus:font-medium peer-focus:text-accent-ink';
 
 const PRIMARY =
-  'group w-full h-12 rounded-2xl bg-stone-900 dark:bg-[#F5F4EF] text-white dark:text-stone-900 text-[15px] font-medium tracking-tight flex items-center justify-center gap-2 shadow-[0_6px_20px_rgba(28,25,23,0.16)] hover:bg-stone-800 dark:hover:bg-white active:scale-[0.98] disabled:opacity-60 transition-all duration-150';
+  'group w-full h-12 rounded-2xl bg-linear-to-b from-stone-800 to-stone-950 dark:from-white dark:to-[#EDEBE3] text-white dark:text-stone-900 text-[15px] font-medium tracking-tight flex items-center justify-center gap-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(28,25,23,0.3),0_10px_24px_-8px_rgba(28,25,23,0.35)] hover:from-stone-700 hover:to-stone-900 dark:hover:from-white dark:hover:to-white active:scale-[0.98] disabled:opacity-60 transition-all duration-150';
 
 const LINK = 'text-[13px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 disabled:opacity-60 transition-colors';
 
-function Brand() {
-  return (
-    <span className="flex items-center gap-2">
-      <span className="w-7 h-7 rounded-[9px] bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center shadow-[0_2px_8px_rgba(193,95,60,0.35)]">
-        <Sparkles className="w-4 h-4 text-white" />
-      </span>
-      <span className="text-[16px] font-semibold tracking-tight">ContaFlow</span>
-    </span>
-  );
-}
+const STATEMENT: Array<{ day: string; memo: string; amount: string; credit: boolean; status: string; tone: string }> = [
+  { day: '14/10', memo: 'PIX recebido · Padaria Aurora', amount: '+ 1.250,00', credit: true, status: 'Regra', tone: 'bg-[#D97757]/12 text-[#A84E30]' },
+  { day: '15/10', memo: 'Tarifa de manutenção de conta', amount: '− 32,90', credit: false, status: 'Regra', tone: 'bg-[#D97757]/12 text-[#A84E30]' },
+  { day: '16/10', memo: 'DARF Simples Nacional', amount: '− 486,12', credit: false, status: 'Sugestão', tone: 'bg-stone-900/6 text-stone-600' },
+];
 
-/** Painel de apresentação (telas largas): folha de livro-razão com um exemplo de conciliação. */
+const PILLARS = [
+  { icon: FileSpreadsheet, title: 'Extrato OFX', text: 'Importe e concilie em minutos.' },
+  { icon: Wand2, title: 'Regras que aprendem', text: 'Cada escolha vira automação.' },
+  { icon: Scale, title: 'Demonstrações', text: 'DRE, Balanço e DLPA prontos.' },
+];
+
+/** Painel de apresentação: capa escura de livro-razão com uma folha de conciliação por cima. */
 function Showcase() {
   return (
-    <aside className="relative flex flex-col justify-between overflow-hidden p-12 xl:p-16 bg-[#EFEDE5] dark:bg-[#181715] border-r border-black/6 dark:border-white/6">
-      {/* Pautas de livro contábil, esmaecendo para baixo, e a margem em terracota */}
+    <aside className="relative flex flex-col justify-between gap-10 overflow-hidden p-12 xl:p-16 bg-[#1B1917] text-stone-100 dark:border-r dark:border-white/6">
+      {/* Brilho em terracota, pautas de livro contábil e a margem */}
+      <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 w-[640px] h-[640px] rounded-full bg-[radial-gradient(closest-side,rgba(217,119,87,0.22),transparent)]" />
+      <div aria-hidden className="pointer-events-none absolute -bottom-56 right-[-180px] w-[620px] h-[620px] rounded-full bg-[radial-gradient(closest-side,rgba(217,119,87,0.10),transparent)]" />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(28,25,23,0.06)_35px,rgba(28,25,23,0.06)_36px)] dark:bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(255,255,255,0.05)_35px,rgba(255,255,255,0.05)_36px)] mask-[linear-gradient(to_bottom,black,transparent_85%)]"
+        className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(to_bottom,transparent_0,transparent_35px,rgba(255,255,255,0.045)_35px,rgba(255,255,255,0.045)_36px)] mask-[linear-gradient(to_bottom,black,transparent_90%)]"
       />
-      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-8 xl:left-10 w-px bg-[#D97757]/30" />
+      <div aria-hidden className="pointer-events-none absolute inset-y-0 left-8 xl:left-10 w-px bg-[#D97757]/35" />
 
-      <div className="relative">
-        <Brand />
+      <div className="relative flex items-center gap-2.5">
+        <BrandMark size="md" />
+        <span className="text-[17px] font-semibold tracking-tight">
+          Conta<span className="text-[#E89A7E]">Flow</span>
+        </span>
       </div>
 
-      <div className="relative max-w-[520px] space-y-10">
+      <div className="relative max-w-[540px] space-y-9">
         <div className="space-y-5">
-          <p className="font-serif text-[52px] xl:text-[60px] leading-[1.02] tracking-tight text-stone-900 dark:text-stone-50">
-            Contabilidade que <span className="italic text-accent-ink">aprende</span> com você.
+          <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#E89A7E]">
+            <span aria-hidden className="w-1.5 h-1.5 rotate-45 bg-[#D97757]" />
+            Conciliação contábil
           </p>
-          <p className="text-[15px] leading-relaxed text-stone-600 dark:text-stone-400 max-w-[440px]">
+          <p className="font-serif text-[52px] xl:text-[60px] leading-[1.02] tracking-tight text-[#F6F4EE]">
+            Contabilidade que <span className="italic text-[#E89A7E]">aprende</span> com você.
+          </p>
+          <p className="text-[15px] leading-relaxed text-stone-400 max-w-[440px]">
             Extratos OFX conciliados em partidas dobradas, regras que lembram das suas escolhas e demonstrações prontas para assinar.
           </p>
         </div>
 
-        {/* Exemplo: a linha do extrato vira lançamento contábil */}
-        <figure className="rounded-[22px] bg-white/80 dark:bg-white/4 border border-black/6 dark:border-white/8 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_18px_40px_-16px_rgba(28,25,23,0.18)] p-5 space-y-4">
-          <div className="flex items-baseline justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400">Extrato · 14/10</p>
-              <p className="mt-1 text-[14px] font-medium tracking-tight truncate">PIX recebido — Padaria Aurora</p>
+        {/* Exemplo: as linhas do extrato viram lançamentos contábeis */}
+        <div className="relative">
+          <div aria-hidden className="absolute inset-x-5 -bottom-3 h-10 rounded-[22px] bg-[#F6F4EE]/25" />
+          <div aria-hidden className="absolute inset-x-2.5 -bottom-1.5 h-10 rounded-[22px] bg-[#F6F4EE]/50" />
+          <figure className="relative rounded-[22px] bg-[#FBFAF6] text-stone-900 shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_30px_60px_-20px_rgba(0,0,0,0.6)] overflow-hidden">
+            <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-stone-900/8">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500">Extrato · Outubro</p>
+              <p className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />3 de 3 classificados
+              </p>
             </div>
-            <p className="font-mono tabular-nums text-[14px] text-emerald-700 dark:text-emerald-400">+ 1.250,00</p>
-          </div>
-          <div className="border-t border-dashed border-black/10 dark:border-white/10" />
-          <dl className="space-y-1.5 font-mono tabular-nums text-[12.5px]">
-            {[
-              ['D', '1.1.1.02', 'Bancos Conta Movimento'],
-              ['C', '3.1.1.01', 'Receita de Prestação de Serviços'],
-            ].map(([side, code, name]) => (
-              <div key={code} className="flex items-center gap-3">
-                <dt className="w-4 text-stone-400">{side}</dt>
-                <dd className="flex-1 min-w-0 truncate text-stone-700 dark:text-stone-300">
-                  <span className="text-stone-400">{code}</span> {name}
-                </dd>
-                <dd className="text-stone-700 dark:text-stone-300">1.250,00</dd>
-              </div>
-            ))}
-          </dl>
-          <figcaption className="inline-flex items-center gap-1.5 rounded-full bg-[#D97757]/10 dark:bg-[#D97757]/16 px-2.5 py-1 text-[11.5px] font-medium text-[#A84E30] dark:text-[#E89A7E]">
-            <Check className="w-3.5 h-3.5" strokeWidth={2.25} />
-            Conciliado pela regra “Padaria Aurora”
-          </figcaption>
-        </figure>
+            <ul className="divide-y divide-stone-900/6">
+              {STATEMENT.map((row) => (
+                <li key={row.day} className="flex items-center gap-3 px-5 py-2.5 text-[13px]">
+                  <span className="font-mono tabular-nums text-[12px] text-stone-400">{row.day}</span>
+                  <span className="flex-1 min-w-0 truncate font-medium tracking-tight">{row.memo}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${row.tone}`}>{row.status}</span>
+                  <span className={`w-[84px] text-right font-mono tabular-nums ${row.credit ? 'text-emerald-700' : 'text-stone-700'}`}>{row.amount}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="px-5 py-3.5 bg-[#F3F1EA] border-t border-stone-900/8 space-y-2.5">
+              <dl className="space-y-1.5 font-mono tabular-nums text-[12.5px]">
+                {[
+                  ['D', '1.1.1.02', 'Bancos Conta Movimento'],
+                  ['C', '3.1.1.01', 'Receita de Prestação de Serviços'],
+                ].map(([side, code, name]) => (
+                  <div key={code} className="flex items-center gap-3">
+                    <dt className="w-4 font-semibold text-[#A84E30]">{side}</dt>
+                    <dd className="flex-1 min-w-0 truncate text-stone-700">
+                      <span className="text-stone-400">{code}</span> {name}
+                    </dd>
+                    <dd className="text-stone-700">1.250,00</dd>
+                  </div>
+                ))}
+              </dl>
+              <figcaption className="flex items-center justify-between gap-3 pt-2.5 border-t-[3px] border-double border-stone-900/12">
+                <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-[#A84E30]">
+                  <Check className="w-3.5 h-3.5" strokeWidth={2.25} />
+                  Conciliado pela regra “Padaria Aurora”
+                </span>
+                <span className="font-mono text-[11px] text-stone-500">débito = crédito</span>
+              </figcaption>
+            </div>
+          </figure>
+        </div>
       </div>
 
-      <p className="relative text-[12px] text-stone-500 dark:text-stone-500">Conciliação OFX · Partidas dobradas · DRE, Balanço e DLPA</p>
+      <ul className="relative grid grid-cols-3 gap-6 pt-6 border-t border-white/8">
+        {PILLARS.map(({ icon: Icon, title, text }) => (
+          <li key={title} className="space-y-1.5">
+            <Icon className="w-4 h-4 text-[#E89A7E]" strokeWidth={1.75} />
+            <p className="text-[13px] font-medium tracking-tight text-stone-100">{title}</p>
+            <p className="text-[12px] leading-snug text-stone-500">{text}</p>
+          </li>
+        ))}
+      </ul>
     </aside>
   );
 }
@@ -199,15 +235,19 @@ export default function LoginPage() {
   const error = errorMessage ?? authError;
 
   return (
-    <div className="min-h-screen w-full min-w-[1080px] grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-[#F5F4EF] dark:bg-[#1F1E1C] text-stone-900 dark:text-stone-100">
+    <div className="min-h-screen w-full min-w-[1080px] grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-canvas text-stone-900 dark:text-stone-100">
       <Showcase />
 
       <div className="relative flex flex-col min-h-screen">
         <main className="flex-1 flex items-center justify-center px-8 py-10">
           <div className="w-full max-w-[380px] animate-sheet-in">
             <div className="mb-8">
-              <h1 className="font-serif text-[30px] leading-tight tracking-tight">{secondFactorPending ? 'Verificação em duas etapas' : 'Bem-vindo de volta'}</h1>
-              <p className="mt-2 text-[14px] text-stone-500 dark:text-stone-400">
+              <p className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-accent-ink">
+                <span aria-hidden className="w-1.5 h-1.5 rotate-45 bg-accent" />
+                Acesso do escritório
+              </p>
+              <h1 className="font-serif text-[38px] leading-[1.05] tracking-tight">{secondFactorPending ? 'Verificação em duas etapas' : 'Bem-vindo de volta'}</h1>
+              <p className="mt-2.5 text-[14.5px] text-stone-500 dark:text-stone-400">
                 {secondFactorPending ? 'Falta só o código do aplicativo autenticador.' : 'Entre com o e-mail e a senha do escritório.'}
               </p>
             </div>
@@ -327,20 +367,20 @@ export default function LoginPage() {
                   setPassword('contaflow123');
                   setErrorMessage(null);
                 }}
-                className={`mt-4 w-full text-center ${LINK}`}
+                className="mt-3 w-full h-11 rounded-2xl border border-dashed border-line-strong text-[13px] text-stone-600 dark:text-stone-300 hover:border-accent/50 hover:text-accent-ink hover:bg-accent/5 active:scale-[0.98] transition-all duration-150"
               >
                 Usar credenciais de teste local
               </button>
             )}
 
-            <p className="mt-8 pt-5 border-t border-black/6 dark:border-white/8 flex items-start gap-2 text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
+            <p className="mt-8 pt-5 border-t-[3px] border-double border-line-strong flex items-start gap-2 text-[12px] leading-relaxed text-stone-500 dark:text-stone-400">
               <Lock className="w-3.5 h-3.5 mt-[3px] shrink-0" />
               <span>Acesso restrito à equipe contábil. Por segurança, a sessão termina após 30 minutos sem uso.</span>
             </p>
           </div>
         </main>
 
-        <footer className="flex items-center justify-between gap-4 px-8 h-14 text-[11px] text-stone-400">
+        <footer className="flex items-center justify-between gap-4 px-8 h-14 border-t border-line text-[11px] text-stone-400">
           <span>© {new Date().getFullYear()} ContaFlow</span>
           <span className="font-mono tabular-nums">{versionLabel(APP_VERSION)}</span>
         </footer>

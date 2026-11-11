@@ -47,7 +47,7 @@ export default function ContasPage() {
         title="Contas e extratos"
         description="Cada conta bancária ou cartão do cliente ligado à sua conta contábil, com saldo inicial para o balanço, e o histórico dos extratos importados."
       />
-      {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
       <BankAccountsTable
         current={current}

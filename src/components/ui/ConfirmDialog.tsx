@@ -72,24 +72,26 @@ export function ConfirmDialog({
   // Portal no <body>: fica acima de qualquer contexto de empilhamento da página.
   return createPortal(
     <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-stone-900/30 backdrop-blur-sm animate-fade-in" onClick={() => !busy && onCancel()} />
+      <div className="absolute inset-0 bg-stone-950/35 dark:bg-black/55 backdrop-blur-[3px] animate-fade-in" onClick={() => !busy && onCancel()} />
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
         aria-busy={busy}
-        className="relative w-full max-w-md rounded-3xl p-6 backdrop-blur-xl bg-white/90 dark:bg-stone-900/90 border border-black/10 dark:border-white/10 shadow-2xl animate-pop-in"
+        className="relative w-full max-w-md rounded-[26px] p-6 pt-7 bg-surface border border-line-strong shadow-overlay animate-pop-in"
       >
         <div className="flex flex-col items-center text-center">
           <span
-            className={`w-12 h-12 rounded-full flex items-center justify-center ${
-              destructive ? 'bg-rose-100/80 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400' : 'bg-amber-100/80 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400'
+            className={`w-12 h-12 rounded-2xl -rotate-3 flex items-center justify-center ring-1 ring-inset ${
+              destructive
+                ? 'bg-rose-100/80 dark:bg-rose-500/15 text-rose-600 dark:text-rose-400 ring-rose-500/15'
+                : 'bg-amber-100/80 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-amber-500/20'
             }`}
           >
-            <AlertTriangle className="w-6 h-6" strokeWidth={1.75} />
+            <AlertTriangle className="w-6 h-6 rotate-3" strokeWidth={1.75} />
           </span>
-          <h2 id={titleId} className="mt-4 text-[19px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+          <h2 id={titleId} className="mt-4 font-serif text-[23px] leading-tight tracking-tight text-stone-900 dark:text-stone-50">
             {title}
           </h2>
           <div id={descId} className="mt-2 text-[14px] leading-relaxed text-stone-600 dark:text-stone-300">
@@ -101,7 +103,7 @@ export function ConfirmDialog({
             </p>
           )}
         </div>
-        <div className="mt-6 flex items-center justify-center gap-3">
+        <div className="mt-6 pt-5 border-t border-line flex items-center justify-center gap-3">
           <button ref={cancelRef} type="button" onClick={onCancel} disabled={busy} className={BUTTON.ghost}>
             {cancelLabel}
           </button>
@@ -110,9 +112,7 @@ export function ConfirmDialog({
             onClick={() => void confirm()}
             disabled={busy}
             className={
-              destructive
-                ? 'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-medium tracking-tight disabled:opacity-50 active:scale-[0.98] transition-all duration-150'
-                : BUTTON.primary
+destructive ? BUTTON.danger : BUTTON.primary
             }
           >
             {busy ? 'Aguarde…' : confirmLabel}

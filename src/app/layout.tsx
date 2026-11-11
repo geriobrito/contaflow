@@ -49,7 +49,7 @@ export default async function RootLayout({
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body className="min-h-full bg-[#F9F9F8] dark:bg-stone-950 text-stone-900 dark:text-stone-100">
+      <body className="min-h-full bg-canvas text-stone-900 dark:text-stone-100">
         <AuthProvider>
           <SessionTimeout />
           <ProtectedRoute>

@@ -63,7 +63,7 @@ export function DisposeAssetSheet({
       footer={
         <>
           {(lock || error) && (
-            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">
+            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">
               {lock || error}
             </p>
           )}
@@ -127,7 +127,7 @@ export function DisposeAssetSheet({
             <Row label="D 3.3.9.04 Custo do bem baixado (valor contábil)" value={bookValue} />
             <Row label={`C ${asset.accountCode} ${asset.accountName ?? ''} (custo)`} value={cost} />
             {isSale && saleAmount ? (
-              <p className={`pt-1 font-medium ${result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600'}`}>
+              <p className={`pt-1 font-medium ${result >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-300'}`}>
                 {result >= 0 ? 'Ganho' : 'Perda'} na venda: {formatCurrency(Math.abs(result))}. Aparece na DRE em outras receitas e despesas, pela diferença entre receita e custo.
               </p>
             ) : null}

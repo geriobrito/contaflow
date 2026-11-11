@@ -253,7 +253,7 @@ export function ClassifySheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-black/6 dark:border-white/8 shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
+        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-line shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
         {/* Cabeçalho (fixo) */}
         <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">
@@ -289,7 +289,7 @@ export function ClassifySheet({
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
           <div className="px-6 pb-4 flex items-baseline justify-between">
             <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
-            <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
+            <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
               {formatCurrency(transaction.amount)}
             </span>
           </div>
@@ -305,13 +305,13 @@ export function ClassifySheet({
           )}
 
           {transaction.transferPairId && (
-            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 text-[12px] text-sky-800 dark:text-sky-300">
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200/60 dark:border-sky-500/25 text-[12px] text-sky-800 dark:text-sky-300">
               <ArrowLeftRight className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>Transferência entre contas próprias. Reclassificar, ratear ou desfazer este lançamento volta a outra perna para pendente.</span>
             </div>
           )}
           {openQuery && mode !== 'ask' && (
-            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 text-[12px] text-amber-800 dark:text-amber-300">
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/60 dark:border-amber-500/25 text-[12px] text-amber-800 dark:text-amber-300">
               <MessageCircleQuestion className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>Aguardando o cliente: “{openQuery.question}”</span>
             </div>
@@ -338,7 +338,7 @@ export function ClassifySheet({
           {mode === 'history' ? (
             <div className="px-6">
               {auditError ? (
-                <p role="alert" className="text-[13px] text-rose-600">{auditError}</p>
+                <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{auditError}</p>
               ) : audit === null ? (
                 <TableSkeleton rows={3} dense label="Carregando histórico…" />
               ) : (
@@ -358,7 +358,7 @@ export function ClassifySheet({
                   onChange={(e) => setQuestion(e.target.value)}
                   rows={4}
                   maxLength={500}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-line-strong text-[14px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
                 />
               </label>
               {openQuery && (
@@ -370,8 +370,8 @@ export function ClassifySheet({
           ) : mode === 'split' ? (
             <div className="px-6 space-y-3">
               {invoiceMatch && acceptedInvoiceId && (
-                <p className="flex items-start gap-2 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
-                  <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700" />
+                <p className="flex items-start gap-2 rounded-2xl border border-line px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
+                  <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700 dark:text-emerald-300" />
                   <span>
                     O rateio fica vinculado à {describeInvoice(invoiceMatch.invoice)}. Se não for esta nota, marque “Não é esta nota” em
                     Conta única.
@@ -511,7 +511,7 @@ export function ClassifySheet({
               memoSuggestion={suggestedTerm}
               note={
                 matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
-                  <p className="mt-1.5 text-[11px] text-amber-700">
+                  <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
                     Com “É exatamente”, a regra só casa históricos idênticos ao termo — este lançamento não casaria.
                   </p>
                 ) : null
@@ -522,7 +522,7 @@ export function ClassifySheet({
         </div>
 
         {/* Rodapé (fixo) com a ação principal */}
-        <div className="shrink-0 px-6 pt-4 pb-5 border-t border-black/5 dark:border-white/6">
+        <div className="shrink-0 px-6 pt-4 pb-5 border-t border-line">
           {mode === 'history' ? (
             <button
               type="button"
@@ -587,7 +587,7 @@ export function ClassifySheet({
                 className={`rounded-xl px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
                   confirmUndo
                     ? 'bg-rose-600 text-white shadow-[0_2px_10px_rgba(225,29,72,0.3)] animate-pop-in'
-                    : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                    : 'text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
                 }`}
               >
                 {confirmUndo ? 'Clique para confirmar: voltar para Pendente' : 'Desfazer conciliação'}

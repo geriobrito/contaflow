@@ -59,7 +59,7 @@ function ShareLink({ request, email }: { request: ClientRequest; email?: string 
         }}
         className={`${BUTTON.secondary} h-9`}
       >
-        {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />} {copied ? 'Copiado' : 'Copiar'}
+        {copied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-300" /> : <Copy className="w-4 h-4" />} {copied ? 'Copiado' : 'Copiar'}
       </button>
       <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" className={`${BUTTON.secondary} h-9`}>
         <MessageCircle className="w-4 h-4" /> WhatsApp
@@ -249,7 +249,7 @@ export default function PendenciasPage() {
           link para as restantes.
         </p>
       )}
-      {(error || recon.error) && <p role="alert" className="text-[13px] text-rose-600">{error ?? recon.error}</p>}
+      {(error || recon.error) && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error ?? recon.error}</p>}
 
       {openRequests.length > 0 && (
         <section className={`${SURFACE} rounded-[22px] p-5 space-y-4`}>
@@ -279,7 +279,7 @@ export default function PendenciasPage() {
                         {renewingId === r.id ? 'Renovando…' : 'Renovar +30 dias'}
                       </button>
                     )}
-                    <button type="button" onClick={() => void close(r)} className="text-rose-600 hover:underline">
+                    <button type="button" onClick={() => void close(r)} className="text-rose-600 dark:text-rose-300 hover:underline">
                       Encerrar link
                     </button>
                   </span>
@@ -315,18 +315,18 @@ export default function PendenciasPage() {
                     <span className="font-mono tabular-nums text-[14px]">{formatCurrency(q.amount)}</span>
                   </div>
                   <p className="flex items-start gap-2 text-[13px] text-stone-600 dark:text-stone-300">
-                    <MessageCircleQuestion className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" /> {q.clientQuery?.question}
+                    <MessageCircleQuestion className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" /> {q.clientQuery?.question}
                   </p>
                   {answer ? (
                     <div
                       className={`ml-6 rounded-2xl px-4 py-3 space-y-2 border ${
                         isNewAnswer
                           ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700/60'
-                          : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/60'
+                          : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-500/25'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-400">
                           Resposta do cliente{answer.answeredAt && ` · ${formatDateTime(answer.answeredAt)}`}
                         </p>
                         {isNewAnswer && (
@@ -391,7 +391,7 @@ export default function PendenciasPage() {
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
                           isExpiredOnly
-                            ? 'bg-amber-50 text-amber-800 border border-amber-200/70 dark:bg-amber-950/30 dark:text-amber-300'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200/70 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-300'
                             : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
                         }`}
                       >

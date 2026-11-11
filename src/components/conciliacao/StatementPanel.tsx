@@ -36,14 +36,14 @@ export function BalanceCheckBadge({ check }: { check?: BalanceCheck }) {
   }
   if (check.status === 'OK') {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
         <CheckCircle2 className="w-3 h-3" /> Saldo confere
       </span>
     );
   }
   return (
     <span
-      className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700"
+      className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 dark:text-rose-300"
       title={`Esperado ${formatCurrency(check.expected ?? 0)} (saldo anterior + movimentação); banco informou ${formatCurrency(check.reported ?? 0)}.`}
     >
       <AlertTriangle className="w-3 h-3" /> Diferença de {formatCurrency(check.difference ?? 0)}
@@ -89,7 +89,7 @@ export type StatementSummary = ReturnType<typeof useStatementBatches>;
 /** Atalho compacto ("2 extratos · sem alertas") que abre os detalhes. */
 export function StatementChip({ summary, open, onToggle }: { summary: StatementSummary; open: boolean; onToggle: () => void }) {
   const { withAccount, gaps, mismatches, alerts, error } = summary;
-  if (error) return <p role="alert" className="text-[12px] text-rose-600">Extratos: {error}</p>;
+  if (error) return <p role="alert" className="text-[12px] text-rose-600 dark:text-rose-300">Extratos: {error}</p>;
   if (withAccount.length === 0) return null;
   return (
     <button
@@ -103,13 +103,13 @@ export function StatementChip({ summary, open, onToggle }: { summary: StatementS
       <span>
         {withAccount.length} extrato(s) ·{' '}
         {alerts > 0 ? (
-          <span className="text-rose-600">
+          <span className="text-rose-600 dark:text-rose-300">
             {mismatches > 0 && `${mismatches} diferença(s) de saldo`}
             {mismatches > 0 && gaps.length > 0 && ' · '}
             {gaps.length > 0 && `${gaps.length} lacuna(s) de datas`}
           </span>
         ) : (
-          <span className="text-emerald-700">sem alertas</span>
+          <span className="text-emerald-700 dark:text-emerald-300">sem alertas</span>
         )}
       </span>
       <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
@@ -125,9 +125,9 @@ export function StatementDetails({ summary }: { summary: StatementSummary }) {
     <section aria-label="Extratos e saldos" className={`${SURFACE} rounded-[22px] overflow-hidden animate-fade-in`}>
         <div>
           {gaps.length > 0 && (
-            <ul className="px-5 py-3 space-y-1 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-200/40">
+            <ul className="px-5 py-3 space-y-1 bg-rose-50/60 dark:bg-rose-950/20 border-b border-rose-200/40 dark:border-rose-500/25">
               {gaps.map((g) => (
-                <li key={`${g.accountKey}-${g.from}`} className="text-[12px] text-rose-700 flex items-center gap-1.5">
+                <li key={`${g.accountKey}-${g.from}`} className="text-[12px] text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
                   <AlertTriangle className="w-3 h-3 shrink-0" />
                   Conta <span className="font-mono">{g.accountKey}</span>: sem extrato de{' '}
                   <span className="font-mono tabular-nums">{formatDateBR(g.from)}</span> a{' '}
@@ -139,12 +139,12 @@ export function StatementDetails({ summary }: { summary: StatementSummary }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                  <th className="font-medium pl-5 pr-3 py-2">Conta</th>
-                  <th className="font-medium px-3 py-2">Período</th>
-                  <th className="font-medium px-3 py-2 text-right">Saldo informado</th>
-                  <th className="font-medium px-3 py-2 text-right">Esperado</th>
-                  <th className="font-medium pl-3 pr-5 py-2">Conferência</th>
+                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                  <th className="font-semibold pl-5 pr-3 py-2">Conta</th>
+                  <th className="font-semibold px-3 py-2">Período</th>
+                  <th className="font-semibold px-3 py-2 text-right">Saldo informado</th>
+                  <th className="font-semibold px-3 py-2 text-right">Esperado</th>
+                  <th className="font-semibold pl-3 pr-5 py-2">Conferência</th>
                 </tr>
               </thead>
               <tbody>

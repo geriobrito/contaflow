@@ -69,13 +69,13 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
       </div>
 
       {state.closed && !state.stale && (
-        <p className="flex items-start gap-2 text-[13px] text-emerald-700">
+        <p className="flex items-start gap-2 text-[13px] text-emerald-700 dark:text-emerald-300">
           <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
           Exercício encerrado nos lançamentos {numbers} do Diário, em 31/12/{year}.
         </p>
       )}
       {state.stale && (
-        <p className="flex items-start gap-2 text-[13px] text-rose-700">
+        <p className="flex items-start gap-2 text-[13px] text-rose-700 dark:text-rose-300">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
           Encerramento desatualizado: {state.residual !== 0 ? `sobram ${formatCurrency(Math.abs(state.residual))} nas contas de resultado de ${year}` : 'a 2.3.3.04 Balanço de Abertura ainda tem saldo'} (lançamentos alterados depois do
           encerramento). Reabra o exercício e encerre de novo.
@@ -83,7 +83,7 @@ export function YearClosingPanel({ state, busy, onClose, onReopen }: YearClosing
       )}
       {!state.closed &&
         state.blockers.map((b) => (
-          <p key={b} className="flex items-start gap-2 text-[13px] text-amber-700">
+          <p key={b} className="flex items-start gap-2 text-[13px] text-amber-700 dark:text-amber-300">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             {b}
           </p>

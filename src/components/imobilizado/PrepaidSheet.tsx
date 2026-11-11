@@ -167,7 +167,7 @@ export function PrepaidSheet({
       footer={
         <>
           {(localError || error) && (
-            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">
+            <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">
               {localError || error}
             </p>
           )}
@@ -275,7 +275,7 @@ export function PrepaidSheet({
         )}
 
         {(priorThrough || suggestion) && (
-          <div className="space-y-3 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-3">
+          <div className="space-y-3 rounded-2xl border border-line px-3.5 py-3">
             <p className="text-[12px] text-stone-600 dark:text-stone-300">
               <span className="font-medium">Apropriação já contabilizada</span> fora desta rotina (antes da implantação ou em competências fechadas). As cotas geradas começam no mês seguinte.
             </p>

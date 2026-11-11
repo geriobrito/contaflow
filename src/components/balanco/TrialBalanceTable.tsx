@@ -59,13 +59,13 @@ export function TrialBalanceTable({
       <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-left print-fit-table">
           <thead>
-            <tr className="text-[11px] print:text-[9.5px] uppercase tracking-wider text-stone-400 print:text-stone-700 border-b border-black/4 print:border-b-2 print:border-black/40">
-              <th className="font-medium pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
-              <th className="font-medium px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
-              <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
-              <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Débitos</th>
-              <th className="font-medium px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Créditos</th>
-              <th className="font-medium pl-3 pr-5 py-2.5 text-right print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</th>
+            <tr className="text-[10.5px] print:text-[9.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 print:text-stone-700 bg-surface-2 print:bg-transparent border-b border-line print:border-b-2 print:border-black/40">
+              <th className="font-semibold pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
+              <th className="font-semibold px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
+              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
+              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Débitos</th>
+              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Créditos</th>
+              <th className="font-semibold pl-3 pr-5 py-2.5 text-right print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</th>
             </tr>
           </thead>
           <tbody>

@@ -60,11 +60,11 @@ export function InvoiceMatchCard({
     <section
       aria-label="Nota fiscal correspondente"
       className={`rounded-2xl border px-3.5 py-3 text-[12px] space-y-1.5 ${
-        rejected ? 'border-black/6 dark:border-white/8 opacity-70' : match.party === 'none' ? 'border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20' : 'border-emerald-200/70 bg-emerald-50/60 dark:bg-emerald-950/20'
+        rejected ? 'border-line opacity-70' : match.party === 'none' ? 'border-amber-200/70 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-950/20' : 'border-emerald-200/70 dark:border-emerald-500/25 bg-emerald-50/60 dark:bg-emerald-950/20'
       }`}
     >
       <p className="flex items-start gap-2 text-stone-800 dark:text-stone-100">
-        <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700" />
+        <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-emerald-700 dark:text-emerald-300" />
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline justify-between gap-2">
             <span className="font-medium">{describeInvoice(inv)}</span>
@@ -84,7 +84,7 @@ export function InvoiceMatchCard({
             {inv.cfops[0] ? ` · CFOP ${inv.cfops[0].cfop}` : ''}
             {inv.serviceCode ? ` · serviço ${inv.serviceCode}` : ''}
           </span>
-          <span className={`block ${match.party === 'none' ? 'text-amber-700' : 'text-stone-500'}`}>Mesmo valor; {PARTY_HINT[match.party]}.</span>
+          <span className={`block ${match.party === 'none' ? 'text-amber-700 dark:text-amber-300' : 'text-stone-500'}`}>Mesmo valor; {PARTY_HINT[match.party]}.</span>
         </span>
       </p>
       {!rejected && suggested && (
@@ -135,7 +135,7 @@ export function InvoiceMatchCard({
 /** Aviso da nota já vinculada a um lançamento conciliado. */
 export function LinkedInvoiceNote({ invoice, onViewDetails }: { invoice: InvoiceSummary; onViewDetails?: () => void }) {
   return (
-    <p className="flex items-start justify-between gap-2 rounded-2xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
+    <p className="flex items-start justify-between gap-2 rounded-2xl border border-line px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
       <span className="flex items-start gap-2">
         <ReceiptText className="w-3.5 h-3.5 mt-0.5 shrink-0 text-stone-400" />
         <span>

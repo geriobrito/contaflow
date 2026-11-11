@@ -59,12 +59,12 @@ export function BankAccountsTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                <th className="font-medium pl-5 pr-3 py-2.5">Conta</th>
-                <th className="font-medium px-3 py-2.5">Conta contábil</th>
-                <th className="font-medium px-3 py-2.5 text-right">Saldo inicial</th>
-                <th className="font-medium px-3 py-2.5 text-right">Saldo contábil</th>
-                <th className="font-medium px-3 py-2.5 text-right">Último saldo do banco</th>
+              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
+                <th className="font-semibold px-3 py-2.5">Conta contábil</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Saldo inicial</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Saldo contábil</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Último saldo do banco</th>
                 <th className="pl-3 pr-5 py-2.5 w-20"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
@@ -96,11 +96,11 @@ export function BankAccountsTable({
                     <td className="px-3 py-3">
                       {b.ledgerAccountId ? (
                         <span className="inline-flex items-center gap-1.5 text-stone-700 dark:text-stone-300">
-                          <Link2 className="w-3.5 h-3.5 text-emerald-600" />
+                          <Link2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
                           <span className="font-mono text-[12px] text-stone-400">{b.ledgerAccountCode}</span> {b.ledgerAccountName}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 text-amber-700"><AlertTriangle className="w-3.5 h-3.5" /> Sem vínculo contábil</span>
+                        <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300"><AlertTriangle className="w-3.5 h-3.5" /> Sem vínculo contábil</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
@@ -110,7 +110,7 @@ export function BankAccountsTable({
                           <span className="block text-[11px] text-stone-400">{formatDateBR(b.openingDate)}</span>
                         </>
                       ) : (
-                        <span className="text-amber-700 font-sans text-[12px]">não informado</span>
+                        <span className="text-amber-700 dark:text-amber-300 font-sans text-[12px]">não informado</span>
                       )}
                     </td>
                     <td className="px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap">
@@ -121,7 +121,7 @@ export function BankAccountsTable({
                         <>
                           {formatCurrency(last.ledgerBalance ?? 0)}
                           {comparable ? (
-                            <span className={`flex items-center justify-end gap-1 text-[11px] font-sans ${matches ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            <span className={`flex items-center justify-end gap-1 text-[11px] font-sans ${matches ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'}`}>
                               {matches ? <CheckCircle2 className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
                               {formatDateBR(last.ledgerDate)} ·{' '}
                               {matches ? 'confere' : `contábil ${formatCurrency(bookAtLast ?? 0)}`}
@@ -166,7 +166,7 @@ export function BankAccountsTable({
         </div>
       )}
       {current && unlinkedTx > 0 && (
-        <p className="px-5 py-3 border-t border-black/4 text-[12px] text-amber-700">
+        <p className="px-5 py-3 border-t border-black/4 text-[12px] text-amber-700 dark:text-amber-300">
           {unlinkedTx} lançamento(s) vieram de extratos sem identificação de conta e aparecem no balanço como “Bancos sem vínculo contábil”.
         </p>
       )}

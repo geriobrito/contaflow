@@ -38,7 +38,7 @@ export function KeyboardHelpModal({ isOpen, onClose }: KeyboardHelpModalProps) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
+        className="w-full max-w-md max-h-[calc(100vh-2rem)] my-auto overflow-y-auto rounded-[24px] bg-surface border border-line-strong shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-6 space-y-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

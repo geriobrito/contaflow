@@ -158,18 +158,18 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
 
       {/* Drawer Panel */}
       <div
-        className="relative z-10 w-full max-w-4xl bg-white dark:bg-stone-900 border-l border-black/8 dark:border-white/8 shadow-2xl flex flex-col h-full overflow-hidden print:w-full print:max-w-none print:border-none print:shadow-none print:h-auto"
+        className="relative z-10 w-full max-w-4xl bg-surface border-l border-black/8 dark:border-white/8 shadow-overlay flex flex-col h-full overflow-hidden print:w-full print:max-w-none print:border-none print:shadow-none print:h-auto"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <header className="shrink-0 p-6 border-b border-black/6 dark:border-white/8 flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
+        <header className="shrink-0 p-6 border-b border-line flex items-start justify-between gap-4 bg-stone-50/50 dark:bg-stone-900/50">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-[13px] font-semibold text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
                 {ledger.code || 'Conta'}
               </span>
-              <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
                 {kindLabel}
               </span>
               {ledger.synthetic ? (
@@ -198,7 +198,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
               className={`${BUTTON.secondary} px-3 py-1.5 text-[12px] flex items-center gap-1.5`}
               title="Baixar planilha Excel do Razão"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
               <span>{exportingExcel ? 'Gerando…' : 'Excel'}</span>
             </button>
             <button
@@ -220,9 +220,9 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </header>
 
         {/* Resumo dos Saldos e Movimentação */}
-        <section className="shrink-0 grid grid-cols-4 gap-px bg-black/6 dark:bg-white/8 border-b border-black/6 dark:border-white/8">
-          <div className="bg-white dark:bg-stone-900 p-4">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
+        <section className="shrink-0 grid grid-cols-4 gap-px bg-black/6 dark:bg-white/8 border-b border-line">
+          <div className="bg-surface p-4">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Anterior</span>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="font-mono tabular-nums text-[16px] font-semibold text-stone-900 dark:text-stone-100">
                 {formatCurrency(ledger.openingBalance)}
@@ -237,26 +237,26 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
             </div>
           </div>
 
-          <div className="bg-white dark:bg-stone-900 p-4">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium flex items-center gap-1">
-              <ArrowDownLeft className="w-3 h-3 text-emerald-600" /> Total Débitos
+          <div className="bg-surface p-4">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+              <ArrowDownLeft className="w-3 h-3 text-emerald-600 dark:text-emerald-300" /> Total Débitos
             </span>
             <div className="mt-1 font-mono tabular-nums text-[16px] font-semibold text-emerald-700 dark:text-emerald-400">
               {formatCurrency(ledger.totals.debits)}
             </div>
           </div>
 
-          <div className="bg-white dark:bg-stone-900 p-4">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium flex items-center gap-1">
-              <ArrowUpRight className="w-3 h-3 text-rose-600" /> Total Créditos
+          <div className="bg-surface p-4">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+              <ArrowUpRight className="w-3 h-3 text-rose-600 dark:text-rose-300" /> Total Créditos
             </span>
             <div className="mt-1 font-mono tabular-nums text-[16px] font-semibold text-rose-700 dark:text-rose-400">
               {formatCurrency(ledger.totals.credits)}
             </div>
           </div>
 
-          <div className="bg-white dark:bg-stone-900 p-4">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Atual</span>
+          <div className="bg-surface p-4">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Atual</span>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="font-mono tabular-nums text-[16px] font-semibold text-stone-900 dark:text-stone-100">
                 {formatCurrency(ledger.totals.closingBalance)}
@@ -273,7 +273,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         </section>
 
         {/* Barra de Filtro de Texto */}
-        <div className="shrink-0 p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-black/5 dark:border-white/6 flex items-center gap-2 print:hidden">
+        <div className="shrink-0 p-3 bg-stone-50/50 dark:bg-stone-900/50 border-b border-line flex items-center gap-2 print:hidden">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -281,7 +281,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
               placeholder="Buscar por histórico, documento ou contrapartida..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
+              className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-line-strong rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
             />
           </div>
           {search && (
@@ -312,7 +312,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           ) : (
             <table className="w-full text-left border-collapse text-[12px]">
               <thead>
-                <tr className="sticky top-0 bg-stone-100 dark:bg-stone-800/90 text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/6 dark:border-white/8 backdrop-blur z-10">
+                <tr className="sticky top-0 bg-stone-100 dark:bg-stone-800/90 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line backdrop-blur z-10">
                   <th className="pl-6 pr-3 py-2.5 w-24">Data</th>
                   <th className="px-3 py-2.5 w-28">Doc / FITID</th>
                   <th className="px-3 py-2.5">Histórico</th>
@@ -336,7 +336,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                     {formatCurrency(ledger.openingBalance)}{' '}
                     <span
                       className={`text-[10px] font-bold ${
-                        ledger.openingNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                        ledger.openingNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                       }`}
                     >
                       {ledger.openingNature}
@@ -389,7 +389,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                       </span>{' '}
                       <span
                         className={`text-[10px] font-bold ${
-                          e.balanceNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                          e.balanceNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                         }`}
                       >
                         {e.balanceNature}
@@ -419,7 +419,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                     {formatCurrency(ledger.totals.closingBalance)}{' '}
                     <span
                       className={`text-[10px] font-bold ${
-                        ledger.totals.closingNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                        ledger.totals.closingNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                       }`}
                     >
                       {ledger.totals.closingNature}

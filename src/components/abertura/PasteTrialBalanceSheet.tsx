@@ -102,7 +102,7 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
             placeholder={EXAMPLE}
             spellCheck={false}
             autoFocus
-            className="w-full h-72 p-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 font-mono text-[12px] leading-relaxed text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none focus:border-accent/60"
+            className="w-full h-72 p-3.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-line-strong font-mono text-[12px] leading-relaxed text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none focus:border-accent/60"
           />
           <ul className="space-y-1 text-[12px] text-stone-500 list-disc pl-5">
             <li>Uma conta por linha: código (se houver), nome e saldo. Com várias colunas de valor, vale a do saldo atual (ou a última).</li>
@@ -129,7 +129,7 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
             </p>
           )}
 
-          <ul className="divide-y divide-black/5 dark:divide-white/6 rounded-2xl border border-black/6 dark:border-white/8 bg-white/60 dark:bg-stone-900/40">
+          <ul className="divide-y divide-black/5 dark:divide-white/6 rounded-2xl border border-line bg-white/60 dark:bg-stone-900/40">
             {included.map((r) => (
               <li key={r.line} className="flex items-center gap-3 px-3.5 py-2">
                 <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS[r.status as Exclude<ImportStatus, 'ignored'>].dot}`} title={STATUS[r.status as Exclude<ImportStatus, 'ignored'>].label} />
@@ -177,7 +177,7 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
                 {ignored.length} linha(s) fora: grupos, totais, resultado, zeradas
               </button>
               {showIgnored && (
-                <ul className="mt-2 divide-y divide-black/5 dark:divide-white/6 rounded-2xl border border-black/6 dark:border-white/8">
+                <ul className="mt-2 divide-y divide-black/5 dark:divide-white/6 rounded-2xl border border-line">
                   {ignored.map((r) => (
                     <li key={r.line} className="flex items-center gap-3 px-3.5 py-1.5">
                       <div className="flex-1 min-w-0">

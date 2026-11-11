@@ -65,7 +65,7 @@ export function TwoFactorSection() {
       <div className="flex items-start gap-3">
         <span
           className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${
-            enrolled ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700' : 'bg-black/5 dark:bg-white/8 text-stone-500'
+            enrolled ? 'bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-black/5 dark:bg-white/8 text-stone-500'
           }`}
         >
           {enrolled ? <ShieldCheck className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
@@ -89,7 +89,7 @@ export function TwoFactorSection() {
       </div>
 
       {!enrolled && !user.emailVerified && (
-        <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 px-4 py-3 space-y-2 text-[13px] text-amber-800 dark:text-amber-300">
+        <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-500/25 px-4 py-3 space-y-2 text-[13px] text-amber-800 dark:text-amber-300">
           <p>O Firebase exige o e-mail confirmado antes de ativar. Envie o e-mail de verificação, abra o link recebido e volte aqui.</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" disabled={busy} onClick={() => void run(() => sendVerificationEmail(user), `E-mail de verificação enviado para ${user.email ?? 'sua conta'}.`)} className={`${BUTTON.secondary} h-8`}>
@@ -170,7 +170,7 @@ export function TwoFactorSection() {
       )}
 
       {message && (
-        <p role={message.ok ? 'status' : 'alert'} className={`text-[13px] ${message.ok ? 'text-emerald-700' : 'text-rose-600'}`}>
+        <p role={message.ok ? 'status' : 'alert'} className={`text-[13px] ${message.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
           {message.text}
         </p>
       )}

@@ -226,7 +226,7 @@ export default function LancamentosPage() {
       {error && (
         <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200 text-[13px] space-y-1">
           <div className="font-semibold flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0" />
             <span>Atenção: Configuração de Regras no Firebase</span>
           </div>
           <p className="text-[12px] text-amber-800 dark:text-amber-300 leading-relaxed">
@@ -250,12 +250,12 @@ export default function LancamentosPage() {
         <PeriodPicker period={period} />
         {monthLocked ? (
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-200 text-[13px]">
-            <Lock className="w-3.5 h-3.5 text-amber-600" />
+            <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" />
             <span>Competência {currentMonth} bloqueada</span>
           </div>
         ) : (
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-200 text-[13px]">
-            <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+            <Unlock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
             <span>Competência {currentMonth} aberta</span>
           </div>
         )}
@@ -282,7 +282,7 @@ export default function LancamentosPage() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="h-10 px-3 rounded-xl bg-white/80 dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] text-stone-700 dark:text-stone-300 outline-none"
+            className="h-10 px-3 rounded-xl bg-white/80 dark:bg-stone-800 border border-line-strong text-[13px] text-stone-700 dark:text-stone-300 outline-none"
           >
             <option value="ALL">Todas as categorias</option>
             {Object.entries(CATEGORY_CONFIG).map(([k, cfg]) => (

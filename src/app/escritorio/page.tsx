@@ -97,7 +97,7 @@ export default function EscritorioPage() {
         description="Dados do escritório e do profissional da contabilidade responsável. Preenchem automaticamente as assinaturas do Balanço, Balancete, DRE, DLPA, Livro Diário e Notas explicativas (PDF e Excel)."
       />
 
-      {loadError && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar: {loadError}</p>}
+      {loadError && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar: {loadError}</p>}
 
       <form
         className={`${SURFACE} rounded-[22px] p-7 max-w-3xl space-y-6 ${loaded ? '' : 'opacity-60 pointer-events-none'}`}
@@ -168,7 +168,7 @@ export default function EscritorioPage() {
             {saving ? 'Salvando…' : 'Salvar'}
           </button>
           {message && (
-            <p role={message.ok ? 'status' : 'alert'} className={`text-[13px] ${message.ok ? 'text-emerald-700' : 'text-rose-600'}`}>
+            <p role={message.ok ? 'status' : 'alert'} className={`text-[13px] ${message.ok ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
               {message.text}
             </p>
           )}

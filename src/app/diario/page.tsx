@@ -207,7 +207,7 @@ export default function DiarioPage() {
         description="Todos os lançamentos em ordem cronológica — extrato, lançamentos manuais e saldos de abertura — com as partidas a débito e a crédito. Para o livro do exercício, selecione o período “Ano” e gere o PDF, que sai com os termos de abertura e de encerramento."
         actions={
           <button type="button" disabled={!daybook || exporting} onClick={() => void exportPdf()} className={BUTTON.secondary} title="Gerar o Livro Diário do período em PDF, com termos de abertura e de encerramento">
-            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-rose-600" strokeWidth={1.75} />}
+            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-rose-600 dark:text-rose-300" strokeWidth={1.75} />}
             <span>{exporting ? 'Gerando…' : 'Gerar PDF'}</span>
           </button>
         }
@@ -215,7 +215,7 @@ export default function DiarioPage() {
 
       <PeriodPicker period={period} />
 
-      {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
 
       {/* Dados que só os termos usam */}
@@ -267,22 +267,22 @@ export default function DiarioPage() {
         </section>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8">
-            <div className="bg-white dark:bg-stone-900 p-4">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Lançamentos</span>
+          <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/5 dark:bg-white/6 border border-line">
+            <div className="bg-surface p-4">
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Lançamentos</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{daybook.entries.length}</p>
             </div>
-            <div className="bg-white dark:bg-stone-900 p-4">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Total a débito</span>
+            <div className="bg-surface p-4">
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Total a débito</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{formatCurrency(daybook.totals.debits)}</p>
             </div>
-            <div className="bg-white dark:bg-stone-900 p-4">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Total a crédito</span>
-              <p className={`mt-1 font-mono tabular-nums text-[17px] font-semibold ${daybook.balanced ? '' : 'text-rose-600'}`}>{formatCurrency(daybook.totals.credits)}</p>
+            <div className="bg-surface p-4">
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Total a crédito</span>
+              <p className={`mt-1 font-mono tabular-nums text-[17px] font-semibold ${daybook.balanced ? '' : 'text-rose-600 dark:text-rose-300'}`}>{formatCurrency(daybook.totals.credits)}</p>
             </div>
           </div>
           {!daybook.balanced && (
-            <p role="alert" className="text-[13px] text-rose-600">
+            <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
               Débitos e créditos do período não fecham: há lançamento rateado cuja soma difere do valor do extrato. Confira os rateios na Conciliação.
             </p>
           )}
@@ -302,7 +302,7 @@ export default function DiarioPage() {
               >
                 <table className="w-full text-left border-collapse text-[12px]">
                   <thead>
-                    <tr className="sticky top-0 z-10 bg-stone-100/95 dark:bg-stone-800/95 backdrop-blur text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
+                    <tr className="sticky top-0 z-10 bg-surface-2 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line">
                       <th className="pl-5 pr-3 py-2.5 w-16 text-right">Nº</th>
                       <th className="px-3 py-2.5 w-24">Data</th>
                       <th className="px-3 py-2.5">Conta</th>
@@ -319,7 +319,7 @@ export default function DiarioPage() {
                     </tbody>
                   )}
                   {rows.map((e) => (
-                    <tbody key={e.id} className="border-b border-black/5 dark:border-white/6 last:border-0">
+                    <tbody key={e.id} className="border-b border-line last:border-0">
                       <tr className="bg-stone-50/60 dark:bg-stone-800/30">
                         <td className="pl-5 pr-3 pt-2.5 pb-1 text-right font-mono tabular-nums font-semibold text-stone-700 dark:text-stone-300">{e.number}</td>
                         <td className="px-3 pt-2.5 pb-1 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">{formatDateBR(e.date)}</td>
@@ -357,7 +357,7 @@ export default function DiarioPage() {
               </div>
             )}
             {isVirtualized && (
-              <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-t border-black/5 dark:border-white/6 text-[12px] text-stone-500 print:hidden">
+              <div className="flex items-center justify-between gap-3 px-5 py-2.5 border-t border-line text-[12px] text-stone-500 print:hidden">
                 <span>
                   Exibindo {startIndex + 1}–{endIndex} de {visible.length} lançamento(s)
                 </span>

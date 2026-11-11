@@ -16,7 +16,7 @@ export function ImportSummary({ lastImport, error, onDismiss }: { lastImport: Im
   if (!attention && !error) return null;
   return (
     <div className="space-y-2 animate-fade-in">
-      {error && <p className="px-4 py-3 rounded-2xl bg-rose-50 border border-rose-200/60 text-[13px] text-rose-700">{error}</p>}
+      {error && <p className="px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200/60 dark:border-rose-500/25 text-[13px] text-rose-700 dark:text-rose-300">{error}</p>}
       {attention && (
         <div role="status" className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 text-[13px] text-stone-600 dark:text-stone-300">
           <span>
@@ -26,13 +26,13 @@ export function ImportSummary({ lastImport, error, onDismiss }: { lastImport: Im
             <span className="block mt-1 space-x-3">
               <BalanceCheckBadge check={attention.balanceCheck} />
               {attention.gaps.map((g) => (
-                <span key={g.from} className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700">
+                <span key={g.from} className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 dark:text-rose-300">
                   <AlertTriangle className="w-3 h-3" />
                   Falta extrato de {formatDateBR(g.from)} a {formatDateBR(g.to)}
                 </span>
               ))}
               {attention.outOfRange > 0 && (
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
                   <AlertTriangle className="w-3 h-3" />
                   {attention.outOfRange} lançamento(s) fora do período declarado no arquivo
                 </span>

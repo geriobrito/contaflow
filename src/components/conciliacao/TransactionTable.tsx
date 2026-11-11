@@ -59,7 +59,7 @@ export function TransactionTable({
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4 dark:border-white/6">
+          <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
             <th scope="col" className="pl-5 pr-2 py-2.5 w-10">
               <input
                 type="checkbox"
@@ -165,10 +165,10 @@ export function TransactionTable({
                             title="Ver detalhes da nota fiscal correspondente (V)"
                             className="p-0.5 rounded hover:bg-emerald-100/80 dark:hover:bg-emerald-900/40 transition-colors"
                           >
-                            <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                            <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
                           </button>
                         ) : (
-                          <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600" />
+                          <ReceiptText role="img" aria-label="Nota fiscal encontrada: conta sugerida" className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
                         )
                       )}
                       {invoiceHints?.get(t.id) === 'linked' && (
@@ -188,9 +188,9 @@ export function TransactionTable({
                           <ReceiptText role="img" aria-label="Nota fiscal vinculada" className="w-3.5 h-3.5 text-stone-400" />
                         )
                       )}
-                      {t.transferPairId && <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600" />}
+                      {t.transferPairId && <ArrowLeftRight aria-label="Transferência entre contas próprias" className="w-3.5 h-3.5 text-sky-600 dark:text-sky-300" />}
                       {t.clientQuery?.status === 'OPEN' && (
-                        <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600" />
+                        <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" />
                       )}
                       {isMonthLocked(t.date, lockedMonths) && <Lock aria-label="Competência fechada" className="w-3 h-3 text-stone-400" />}
                       {t.status !== 'PENDING' && (
@@ -213,7 +213,7 @@ export function TransactionTable({
                   <tr id={`split-${t.id}`} className="border-b border-black/4 dark:border-white/5 bg-stone-900/1.5 dark:bg-white/2">
                     <td colSpan={2} />
                     <td colSpan={4} className="px-3 pb-3 pt-1 pr-5">
-                      <ul className="rounded-2xl border border-black/5 dark:border-white/6 bg-white/70 dark:bg-stone-900/40 divide-y divide-black/4 dark:divide-white/5 animate-fade-in">
+                      <ul className="rounded-2xl border border-line bg-white/70 dark:bg-stone-900/40 divide-y divide-black/4 dark:divide-white/5 animate-fade-in">
                         {t.splits?.map((sp) => (
                           <li key={sp.id} className="flex items-baseline gap-3 px-4 py-2 text-[13px]">
                             <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{sp.accountCode}</span>

@@ -92,7 +92,7 @@ export default function RazaoPage() {
               className={BUTTON.secondary}
               title="Exportar esta ficha do Razão em planilha Excel (.xlsx)"
             >
-              {exportingExcel ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600" strokeWidth={1.75} />}
+              {exportingExcel ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-300" strokeWidth={1.75} />}
               <span>{exportingExcel ? 'Gerando…' : 'Exportar Excel'}</span>
             </button>
             <button
@@ -127,7 +127,7 @@ export default function RazaoPage() {
         />
       </div>
 
-      {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
       {/* Conteúdo Principal do Livro Razão */}
       {loading ? (

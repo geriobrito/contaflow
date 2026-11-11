@@ -108,11 +108,11 @@ export function InvoiceDetailDrawer({
       onClick={onClose}
     >
       <aside
-        className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-stone-900 border-l border-black/8 dark:border-white/10 shadow-2xl h-full flex flex-col overflow-hidden"
+        className="relative w-full max-w-xl bg-[#FAF8F5] dark:bg-stone-900 border-l border-line-strong shadow-overlay h-full flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabeçalho */}
-        <header className="px-6 py-5 bg-white dark:bg-stone-900 border-b border-black/6 dark:border-white/8 flex items-start justify-between gap-4 shrink-0">
+        <header className="px-6 py-5 bg-surface border-b border-line flex items-start justify-between gap-4 shrink-0">
           <div className="space-y-1.5 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -125,7 +125,7 @@ export function InvoiceDetailDrawer({
                 {invoice.direction === 'PURCHASE' ? 'Entrada / Compra' : 'Saída / Venda'}
               </span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300">
-                <ReceiptText className="w-3 h-3 text-emerald-600" />
+                <ReceiptText className="w-3 h-3 text-emerald-600 dark:text-emerald-300" />
                 {invoiceKindLabel(invoice)} nº {invoice.number}
                 {invoice.series && invoice.series !== '0' ? ` (Série ${invoice.series})` : ''}
               </span>
@@ -162,10 +162,10 @@ export function InvoiceDetailDrawer({
           {/* Resumo Financeiro da Nota */}
           <section
             aria-label="Valores da nota fiscal"
-            className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 grid grid-cols-2 sm:grid-cols-3 gap-4"
+            className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 grid grid-cols-2 sm:grid-cols-3 gap-4"
           >
             <div>
-              <p className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
                 {isNfse && invoice.altTotal ? 'Valor Líquido (NF)' : 'Valor Total da Nota'}
               </p>
               <p className="mt-1 text-[20px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
@@ -175,7 +175,7 @@ export function InvoiceDetailDrawer({
 
             {invoice.altTotal !== undefined && invoice.altTotal !== invoice.total && (
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
                   {isNfse ? 'Valor Bruto do Serviço' : 'Total c/ IBS e CBS'}
                 </p>
                 <p className="mt-1 text-[17px] font-semibold font-mono tabular-nums text-stone-700 dark:text-stone-300">
@@ -186,7 +186,7 @@ export function InvoiceDetailDrawer({
 
             {totalRetainedCents > 0 && (
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-medium">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-amber-600 dark:text-amber-400 font-medium">
                   Tributos Retidos
                 </p>
                 <p className="mt-1 text-[17px] font-semibold font-mono tabular-nums text-amber-700 dark:text-amber-300">
@@ -204,7 +204,7 @@ export function InvoiceDetailDrawer({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-semibold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
                   Lançamento bancário em conferência
                 </span>
                 <span className="font-mono tabular-nums font-semibold text-emerald-800 dark:text-emerald-300">
@@ -227,9 +227,9 @@ export function InvoiceDetailDrawer({
           )}
 
           {/* Chave de Acesso */}
-          <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 space-y-2">
+          <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
                 Chave de Acesso ({invoice.key.length} dígitos)
               </span>
               <button
@@ -239,8 +239,8 @@ export function InvoiceDetailDrawer({
               >
                 {copied ? (
                   <>
-                    <Check className="w-3 h-3 text-emerald-600" />
-                    <span className="text-emerald-600">Chave copiada</span>
+                    <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-300" />
+                    <span className="text-emerald-600 dark:text-emerald-300">Chave copiada</span>
                   </>
                 ) : (
                   <>
@@ -257,8 +257,8 @@ export function InvoiceDetailDrawer({
 
           {/* CFOPs e Código de Serviço */}
           {(invoice.cfops.length > 0 || invoice.serviceCode) && (
-            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 space-y-3">
-              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3">
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-stone-400" />
                 Classificação Fiscal (CFOP / Serviço)
               </h3>
@@ -283,9 +283,9 @@ export function InvoiceDetailDrawer({
 
           {/* Retenções de Tributos (NFS-e) */}
           {retentions.length > 0 && (
-            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 space-y-3">
-              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
-                <Split className="w-3.5 h-3.5 text-amber-600" />
+            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3">
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
+                <Split className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" />
                 Retenções na Fonte Destacadas
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -306,8 +306,8 @@ export function InvoiceDetailDrawer({
 
           {/* Reforma Tributária: IBS e CBS */}
           {Boolean(invoice.ibs || invoice.cbs) && (
-            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 space-y-2">
-              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500">
+            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-2">
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
                 Destaque Reforma Tributária (LC 214/2025)
               </h3>
               <div className="grid grid-cols-2 gap-3 text-[13px]">
@@ -329,8 +329,8 @@ export function InvoiceDetailDrawer({
 
           {/* Duplicatas / Parcelas */}
           {invoice.installments.length > 0 && (
-            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/8 p-4 space-y-3">
-              <h3 className="text-[12px] font-semibold uppercase tracking-wider text-stone-500 flex items-center gap-1.5">
+            <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3">
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-stone-400" />
                 Parcelas / Duplicatas ({invoice.installments.length})
               </h3>
@@ -365,7 +365,7 @@ export function InvoiceDetailDrawer({
         </div>
 
         {/* Rodapé com Ações Rápidas */}
-        <footer className="px-6 py-4 bg-white dark:bg-stone-900 border-t border-black/6 dark:border-white/8 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <footer className="px-6 py-4 bg-surface border-t border-line flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             {transaction && suggestedAccount && onClassifyWithSuggestion && transaction.status !== 'RECONCILED' && (
               <button

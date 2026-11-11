@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowRight, CheckCircle2, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarCheck, CalendarRange, CheckCircle2, Landmark, ListChecks, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
 import type { BankAccount, BankTransaction, ChartAccount, ClientRequest, ImportBatch, JournalEntry, MonthCounts, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { isFirebaseConfigured } from '@/lib/firebase-config';
@@ -13,7 +13,7 @@ import { buildDashboard, type Alert, type MonthState, type MonthStatus } from '@
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
-import { EmptyState, PAGE, PageHeader, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { CardHeader, EmptyState, PAGE, PageHeader, SegmentedControl, StatCard, SURFACE } from '@/components/ui/primitives';
 import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
 import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
@@ -73,27 +73,10 @@ const SEVERITY_STYLE: Record<Alert['severity'], { dot: string; label: string }> 
 
 const STATE_STYLE: Record<MonthState, { box: string; text: string; label: string }> = {
   LOCKED: { box: 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-transparent', text: 'text-white/70 dark:text-stone-600', label: 'Fechado' },
-  READY: { box: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/70', text: 'text-emerald-700 dark:text-emerald-400', label: 'Pronto p/ fechar' },
-  OPEN: { box: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200/70', text: 'text-amber-700 dark:text-amber-400', label: 'Em aberto' },
+  READY: { box: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/70 dark:border-emerald-500/25', text: 'text-emerald-700 dark:text-emerald-400', label: 'Pronto p/ fechar' },
+  OPEN: { box: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200/70 dark:border-amber-500/25', text: 'text-amber-700 dark:text-amber-400', label: 'Em aberto' },
   EMPTY: { box: 'bg-black/3 dark:bg-white/4 border-dashed border-black/10', text: 'text-stone-400', label: 'Sem movimento' },
 };
-
-function Tile({ label, value, caption, href, tone = 'neutral' }: { label: string; value: string; caption?: string; href?: string; tone?: 'neutral' | 'alert' | 'good' }) {
-  const body = (
-    <div className="px-5 py-4 min-w-0 h-full backdrop-blur-xl bg-white/80 dark:bg-stone-900/80 hover:bg-white transition-colors">
-      <p className="text-[12px] font-medium text-stone-500">{label}</p>
-      <p
-        className={`mt-1.5 text-[26px] leading-none font-semibold tracking-tight font-mono tabular-nums ${
-          tone === 'alert' ? 'text-rose-600' : tone === 'good' ? 'text-emerald-600' : 'text-stone-900 dark:text-stone-100'
-        }`}
-      >
-        {value}
-      </p>
-      {caption && <p className="mt-2 text-[11px] text-stone-400 truncate">{caption}</p>}
-    </div>
-  );
-  return href ? <Link href={href} className="block">{body}</Link> : body;
-}
 
 function MonthCard({ m }: { m: MonthStatus }) {
   const s = STATE_STYLE[m.state];
@@ -103,7 +86,7 @@ function MonthCard({ m }: { m: MonthStatus }) {
       <div className="flex items-center justify-between">
         <span className="text-[14px] font-semibold tracking-tight capitalize">{MONTH_SHORT[Number(mm) - 1]}</span>
         {m.state === 'LOCKED' && <Lock className="w-3.5 h-3.5" />}
-        {m.state === 'READY' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+        {m.state === 'READY' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />}
       </div>
       <p className={`mt-1 text-[11px] ${s.text}`}>{s.label}</p>
       {m.state !== 'EMPTY' && (
@@ -279,7 +262,7 @@ export default function PainelPage() {
           actions={viewSwitch}
         />
         {readMeter}
-        {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel executivo: {error}</p>}
+        {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar o painel executivo: {error}</p>}
         {!readyExec || !currentClient ? (
           !error && (
             <>
@@ -305,7 +288,7 @@ export default function PainelPage() {
         actions={viewSwitch}
       />
       {readMeter}
-      {error &&<p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar o painel: {error}</p>}
+      {error &&<p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar o painel: {error}</p>}
       {!dash ? (
         !error && (
           <>
@@ -317,23 +300,26 @@ export default function PainelPage() {
         )
       ) : (
         <>
-          <section aria-label="Resumo" className="rounded-[22px] overflow-hidden grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
-            <Tile
+          <section aria-label="Resumo" className="grid grid-cols-4 gap-3">
+            <StatCard
+              icon={ListChecks}
               label="Pendentes de classificação"
               value={String(dash.totals.pending)}
               tone={dash.totals.pending > 0 ? 'alert' : 'good'}
               caption={dash.totals.auto > 0 ? `+ ${dash.totals.auto} aguardando aprovação` : `${dash.totals.reconciled} conciliados`}
               href={dash.alerts.find((a) => a.id === 'pending')?.href ?? '/'}
             />
-            <Tile label="Meses fechados" value={`${dash.totals.monthsLocked}/${dash.totals.monthsWithData}`} caption={dash.totals.monthsReady > 0 ? `${dash.totals.monthsReady} pronto(s) para fechar` : `${dash.totals.monthsOpen} em aberto`} />
-            <Tile
+            <StatCard icon={CalendarCheck} label="Meses fechados" value={`${dash.totals.monthsLocked}/${dash.totals.monthsWithData}`} caption={dash.totals.monthsReady > 0 ? `${dash.totals.monthsReady} pronto(s) para fechar` : `${dash.totals.monthsOpen} em aberto`} />
+            <StatCard
+              icon={MessageCircleQuestion}
               label="Perguntas ao cliente"
               value={String(dash.queries.notSent + dash.queries.waiting + dash.queries.answered)}
               tone={dash.queries.answered > 0 ? 'alert' : 'neutral'}
               caption={`${dash.queries.answered} respondida(s) · ${dash.queries.waiting} aguardando · ${dash.queries.notSent} sem link`}
               href="/pendencias"
             />
-            <Tile
+            <StatCard
+              icon={Landmark}
               label="Extratos"
               value={String(dash.accounts.length)}
               tone={dash.accounts.some((a) => a.gaps.length || a.mismatches.length) ? 'alert' : 'neutral'}
@@ -344,11 +330,12 @@ export default function PainelPage() {
 
           {/* Atenção */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="flex items-center gap-2 px-5 py-3.5 border-b border-black/4 dark:border-white/6">
-              {dash.allClear ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 text-amber-600" />}
-              <h2 className="text-[15px] font-semibold tracking-tight">{dash.allClear ? 'Tudo em dia' : 'Precisa de atenção'}</h2>
-              <span className="text-[12px] text-stone-500">{dash.alerts.length > 0 && `${dash.alerts.length} item(ns)`}</span>
-            </div>
+            <CardHeader
+              icon={dash.allClear ? ShieldCheck : AlertTriangle}
+              iconClassName={dash.allClear ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}
+              title={dash.allClear ? 'Tudo em dia' : 'Precisa de atenção'}
+              meta={dash.alerts.length > 0 ? `${dash.alerts.length} item(ns)` : undefined}
+            />
             {dash.alerts.length === 0 ? (
               <p className="px-5 py-8 text-center text-[13px] text-stone-500">Nada pendente: os lançamentos estão classificados, os extratos conferem e os cadastros estão completos.</p>
             ) : (
@@ -361,7 +348,7 @@ export default function PainelPage() {
                         <span className="block text-[14px] font-medium tracking-tight text-stone-900 dark:text-stone-100">{a.title}</span>
                         {a.detail && <span className="block text-[12px] text-stone-500">{a.detail}</span>}
                       </span>
-                      <ArrowRight className="w-4 h-4 shrink-0 text-stone-300" />
+                      <ArrowRight className="w-4 h-4 shrink-0 text-stone-300 dark:text-stone-600" />
                     </Link>
                   </li>
                 ))}
@@ -370,21 +357,25 @@ export default function PainelPage() {
           </section>
 
           {/* Meses */}
-          <section className={`${SURFACE} rounded-[22px] p-5 space-y-4`}>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <h2 className="text-[15px] font-semibold tracking-tight">Meses</h2>
-              <p className="text-[12px] text-stone-500 flex flex-wrap gap-x-3">
-                {(['OPEN', 'READY', 'LOCKED', 'EMPTY'] as MonthState[]).map((s) => (
-                  <span key={s}>{STATE_STYLE[s].label}</span>
-                ))}
-              </p>
-            </div>
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <CardHeader
+              icon={CalendarRange}
+              title="Meses"
+              meta={
+                <span className="flex flex-wrap gap-x-3">
+                  {(['OPEN', 'READY', 'LOCKED', 'EMPTY'] as MonthState[]).map((s) => (
+                    <span key={s}>{STATE_STYLE[s].label}</span>
+                  ))}
+                </span>
+              }
+            />
+            <div className="p-5 space-y-4">
             {years.length === 0 ? (
               <p className="text-[13px] text-stone-500">Nenhum lançamento importado ainda.</p>
             ) : (
               years.map(([year, list]) => (
                 <div key={year} className="space-y-2">
-                  <p className="text-[12px] font-medium text-stone-500">{year}</p>
+                  <p className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-stone-500">{year}<span aria-hidden className="flex-1 border-t border-line" /></p>
                   <div className="grid grid-cols-6 xl:grid-cols-12 gap-2">
                     {list.map((m) => (
                       <MonthCard key={m.month} m={m} />
@@ -393,25 +384,27 @@ export default function PainelPage() {
                 </div>
               ))
             )}
+            </div>
           </section>
 
           {/* Extratos */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-            <div className="flex items-center px-5 py-3.5 border-b border-black/4 dark:border-white/6">
-              <h2 className="flex-1 text-[15px] font-semibold tracking-tight">Extratos por conta</h2>
-              <Link href="/contas" className="text-[12px] text-accent-ink hover:underline">Contas e extratos</Link>
-            </div>
+            <CardHeader
+              icon={Landmark}
+              title="Extratos por conta"
+              actions={<Link href="/contas" className="text-[12px] font-medium text-accent-ink hover:underline">Contas e extratos</Link>}
+            />
             {dash.accounts.length === 0 ? (
               <p className="px-5 py-8 text-center text-[13px] text-stone-500">Nenhum extrato importado.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                      <th className="font-medium pl-5 pr-3 py-2.5">Conta</th>
-                      <th className="font-medium px-3 py-2.5">Último extrato até</th>
-                      <th className="font-medium px-3 py-2.5 text-right">Último saldo</th>
-                      <th className="font-medium pl-3 pr-5 py-2.5">Situação</th>
+                    <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                      <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
+                      <th className="font-semibold px-3 py-2.5">Último extrato até</th>
+                      <th className="font-semibold px-3 py-2.5 text-right">Último saldo</th>
+                      <th className="font-semibold pl-3 pr-5 py-2.5">Situação</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -427,11 +420,11 @@ export default function PainelPage() {
                           <td className="px-3 py-3 text-right font-mono tabular-nums">{a.lastLedgerBalance !== undefined ? formatCurrency(a.lastLedgerBalance) : '—'}</td>
                           <td className="pl-3 pr-5 py-3 space-y-1">
                             <BalanceCheckBadge check={lastBatch?.balanceCheck} />
-                            {a.mismatches.length > 0 && <p className="text-[11px] text-rose-700">{a.mismatches.length} divergência(s) de saldo</p>}
+                            {a.mismatches.length > 0 && <p className="text-[11px] text-rose-700 dark:text-rose-300">{a.mismatches.length} divergência(s) de saldo</p>}
                             {a.gaps.map((g) => (
-                              <p key={g.from} className="text-[11px] text-rose-700">Faltam extratos de {formatDateBR(g.from)} a {formatDateBR(g.to)}</p>
+                              <p key={g.from} className="text-[11px] text-rose-700 dark:text-rose-300">Faltam extratos de {formatDateBR(g.from)} a {formatDateBR(g.to)}</p>
                             ))}
-                            {a.missingSince && a.gaps.length === 0 && <p className="text-[11px] text-amber-700">Desatualizado desde {formatDateBR(a.missingSince)}</p>}
+                            {a.missingSince && a.gaps.length === 0 && <p className="text-[11px] text-amber-700 dark:text-amber-300">Desatualizado desde {formatDateBR(a.missingSince)}</p>}
                           </td>
                         </tr>
                       );

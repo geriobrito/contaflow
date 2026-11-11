@@ -144,7 +144,7 @@ export default function DREPage() {
         />
       </div>
       {blockingError && (
-        <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden">
+        <p role="alert" className="-mt-4 text-[13px] text-rose-600 dark:text-rose-300 print:hidden">
           Não foi possível carregar a DRE: {blockingError}
         </p>
       )}
@@ -155,7 +155,7 @@ export default function DREPage() {
         </p>
       )}
       {exportError && (
-        <p role="alert" className="-mt-4 text-[13px] text-rose-600 print:hidden animate-fade-in">
+        <p role="alert" className="-mt-4 text-[13px] text-rose-600 dark:text-rose-300 print:hidden animate-fade-in">
           {exportError}
         </p>
       )}
@@ -179,7 +179,7 @@ export default function DREPage() {
 
       {view !== 'simple' && (
         <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-          <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-black/5 dark:border-white/6">
+          <div className="flex flex-wrap items-center gap-3 px-5 py-3 border-b border-line">
             <h2 className="flex-1 text-[14px] font-semibold tracking-tight">
               {view === 'monthly' ? `Mês a mês · ${periodLabel}` : `${periodLabel} vs. mesmo período de ${prevRange.start.slice(0, 4)}`}
             </h2>

@@ -3,13 +3,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Check, ChevronsUpDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sparkles, Sun, type LucideIcon } from 'lucide-react';
+import { Check, ChevronsUpDown, LogOut, Monitor, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { isFirebaseConfigured } from '@/lib/firebase';
 import { APP_VERSION, versionDetail, versionShort } from '@/lib/app-version';
 import { SLIDING_INDICATOR, useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
 import { useTheme } from '@/components/ui/useTheme';
+import { BrandMark } from '@/components/ui/BrandMark';
 import { NAV_SECTIONS, activeNavHref } from '@/components/layout/nav';
 import { openCommandPalette, SHORTCUT_LABEL } from '@/components/layout/CommandPalette';
 import { THEME_OPTIONS, nextPreference, type ThemePreference } from '@/lib/theme';
@@ -37,10 +38,8 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
     );
   }
   return (
-    <div className="flex items-center justify-between gap-2 px-2.5">
-      <span className="text-[11px] text-stone-500">Tema</span>
-      <div ref={containerRef} role="radiogroup" aria-label="Tema" className="relative inline-flex p-0.5 rounded-lg bg-black/5 dark:bg-white/6">
-        <span ref={indicatorRef} aria-hidden className={`${SLIDING_INDICATOR} rounded-md bg-white dark:bg-stone-700 shadow-[0_1px_2px_rgba(0,0,0,0.08)]`} />
+    <div ref={containerRef} role="radiogroup" aria-label="Tema" className="relative inline-flex shrink-0 p-0.5 rounded-lg bg-stone-900/6 dark:bg-white/7 shadow-[inset_0_1px_2px_rgba(28,25,23,0.05)]">
+        <span ref={indicatorRef} aria-hidden className={`${SLIDING_INDICATOR} rounded-md bg-surface dark:bg-stone-700 shadow-[0_1px_2px_rgba(28,25,23,0.12)]`} />
         {THEME_OPTIONS.map((o) => {
           const Icon = THEME_ICON[o.value];
           const active = o.value === pref;
@@ -54,7 +53,7 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
               title={o.label}
               data-active={active}
               onClick={() => setPref(o.value)}
-              className={`relative z-10 w-7 h-6 flex items-center justify-center rounded-md transition-colors duration-150 ${
+              className={`relative z-10 w-[26px] h-[22px] flex items-center justify-center rounded-md transition-colors duration-150 ${
                 active ? 'text-stone-900 dark:text-white' : 'text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
               }`}
             >
@@ -62,7 +61,6 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
             </button>
           );
         })}
-      </div>
     </div>
   );
 }
@@ -125,11 +123,13 @@ function ClientSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
         title={collapsed ? `${label}${otherUnreadHint}` : otherUnreadHint ? otherUnreadHint.slice(3) : undefined}
-        className={`w-full flex items-center gap-3 rounded-2xl p-2 text-left transition-all duration-150 hover:bg-black/4 dark:hover:bg-white/6 active:scale-[0.98] ${
-          collapsed ? 'justify-center' : ''
+        className={`w-full flex items-center gap-2.5 rounded-[14px] text-left transition-all duration-150 active:scale-[0.98] ${
+          collapsed
+            ? 'justify-center p-1.5 hover:bg-stone-900/5 dark:hover:bg-white/6'
+            : 'p-2 bg-surface-2 border border-line hover:border-line-strong hover:shadow-[0_2px_8px_-2px_rgba(28,25,23,0.1)]'
         }`}
       >
-        <span className="relative w-8 h-8 shrink-0 rounded-xl bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 flex items-center justify-center text-[11px] font-semibold tracking-tight">
+        <span className="relative w-8 h-8 shrink-0 rounded-[10px] bg-linear-to-b from-stone-700 to-stone-900 dark:from-stone-100 dark:to-stone-300 text-white dark:text-stone-900 flex items-center justify-center text-[11px] font-semibold tracking-tight shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_1px_2px_rgba(28,25,23,0.25)]">
           {currentClient ? initials(label) : '—'}
           {totalOtherClientsUnread > 0 && (
             <span
@@ -141,10 +141,10 @@ function ClientSwitcher({
         {!collapsed && (
           <>
             <span className="flex-1 min-w-0">
-              <span className="block text-[11px] text-stone-400">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.09em] text-stone-400">
                 Cliente ativo
                 {totalOtherClientsUnread > 0 && (
-                  <span className="ml-1.5 text-emerald-600 dark:text-emerald-400 font-medium">
+                  <span className="ml-1.5 normal-case tracking-normal text-emerald-600 dark:text-emerald-400 font-medium">
                     · +{totalOtherClientsUnread} resp.
                   </span>
                 )}
@@ -161,7 +161,7 @@ function ClientSwitcher({
       {open && (
         <ul
           role="listbox"
-          className="absolute z-50 left-0 top-full mt-1.5 w-64 max-h-72 overflow-y-auto overscroll-contain rounded-2xl p-1.5 backdrop-blur-xl bg-white/90 dark:bg-stone-900/90 border border-black/6 dark:border-white/8 shadow-[0_8px_32px_rgba(0,0,0,0.10)] animate-pop-in"
+          className="absolute z-50 left-0 top-full mt-1.5 w-64 max-h-72 overflow-y-auto overscroll-contain rounded-2xl p-1.5 bg-surface border border-line-strong shadow-raised animate-pop-in"
         >
           {clients.length === 0 && (
             <li className="px-3 py-2 text-xs text-stone-400">Nenhum cliente cadastrado</li>
@@ -179,7 +179,7 @@ function ClientSwitcher({
                     selectClient(c);
                     setOpen(false);
                   }}
-                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-black/4 dark:hover:bg-white/6 transition-colors"
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-colors ${active ? 'bg-accent/8' : 'hover:bg-stone-900/5 dark:hover:bg-white/6'}`}
                 >
                   <span className="flex-1 min-w-0">
                     <span className="block text-[13px] tracking-tight text-stone-900 dark:text-stone-100 truncate">
@@ -225,59 +225,71 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
   const activeHref = activeNavHref(pathname);
   const { containerRef: navRef, indicatorRef: navPillRef } = useSlidingIndicator<HTMLElement>(activeHref);
 
+  const iconButton =
+    'p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-900/6 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]';
+
   return (
     <div className="flex flex-col h-full">
       {/* Marca */}
       <div className={`flex items-center h-14 px-3 ${collapsed ? 'justify-center' : 'justify-between'}`}>
         {!collapsed && (
-          <Link href="/" className="flex items-center gap-2 px-1">
-            <span className="w-6 h-6 rounded-lg bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
-              <Sparkles className="w-3.5 h-3.5 text-white" />
-            </span>
-            <span className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-              ContaFlow
+          <Link href="/" className="flex items-center gap-2.5 px-1 rounded-lg">
+            <BrandMark size="sm" />
+            <span className="text-[15.5px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+              Conta<span className="text-accent-ink">Flow</span>
             </span>
           </Link>
         )}
-        <div className="flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={openCommandPalette}
-            title={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
-            aria-label={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
-            aria-keyshortcuts="Control+K Meta+K"
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
-          >
-            <Search className="w-4 h-4" strokeWidth={1.75} />
-          </button>
-          {headerAction}
-        </div>
+        {headerAction}
       </div>
 
-      <div className="px-2">
+      <div className="px-2.5 space-y-2">
         <ClientSwitcher
           collapsed={collapsed}
           unreadByClient={unreadByClient}
           totalOtherClientsUnread={totalOtherClientsUnread}
         />
+
+        {/* Busca rápida: parece um campo, abre a paleta de comandos */}
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          title={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
+          aria-label={`Buscar telas e empresas (${SHORTCUT_LABEL})`}
+          aria-keyshortcuts="Control+K Meta+K"
+          className={
+            collapsed
+              ? `mx-auto flex ${iconButton}`
+              : 'w-full flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-[10px] bg-stone-900/[0.045] dark:bg-white/6 text-[12.5px] text-stone-400 hover:bg-stone-900/[0.07] dark:hover:bg-white/9 hover:text-stone-600 dark:hover:text-stone-200 transition-colors duration-150'
+          }
+        >
+          <Search className={collapsed ? 'w-4 h-4' : 'w-3.5 h-3.5 shrink-0'} strokeWidth={1.9} />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Buscar…</span>
+              <kbd className="inline-flex h-5 px-1.5 items-center rounded-[6px] bg-surface border border-line font-mono text-[10px] text-stone-500 shadow-[0_1px_0_rgba(28,25,23,0.06)]">
+                {SHORTCUT_LABEL}
+              </kbd>
+            </>
+          )}
+        </button>
       </div>
 
-      <div className="mx-4 my-1.5 border-t border-black/5 dark:border-white/6" />
-
       {/* Navegação: o destaque da página atual desliza até a próxima, entre as seções também */}
-      <nav ref={navRef} className="relative flex-1 px-2 pb-1.5 overflow-y-auto">
+      <nav ref={navRef} className="relative flex-1 mt-2 px-2.5 pb-2 overflow-y-auto">
         <span
           ref={navPillRef}
           aria-hidden
-          className={`${SLIDING_INDICATOR} rounded-xl bg-white dark:bg-white/8 shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ring-black/4 dark:ring-white/6`}
+          className={`${SLIDING_INDICATOR} rounded-[10px] bg-accent/[0.09] dark:bg-accent/[0.16] ring-1 ring-inset ring-accent/15 before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-3.5 before:w-[3px] before:rounded-r-full before:bg-accent`}
         />
         {NAV_SECTIONS.map((section, s) => (
           <div key={section.title} role="group" aria-label={section.title} className="space-y-px">
             {collapsed ? (
-              s > 0 && <div aria-hidden className="mx-3 my-1.5 border-t border-black/6 dark:border-white/8" />
+              s > 0 && <div aria-hidden className="mx-3 my-1.5 border-t border-line" />
             ) : (
-              <p className={`px-2.5 pb-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-2' : 'pt-0.5'}`}>
+              <p className={`flex items-center gap-2 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-2.5' : 'pt-1'}`}>
                 {section.title}
+                <span aria-hidden className="flex-1 border-t border-line" />
               </p>
             )}
             {section.items.map(({ href, label, icon: Icon }) => {
@@ -296,15 +308,18 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                   }
                   aria-current={active ? 'page' : undefined}
                   data-active={active}
-                  className={`relative z-10 flex items-center gap-3 rounded-xl px-2.5 py-[2px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
+                  className={`group relative z-10 flex items-center gap-2.5 rounded-[10px] px-2.5 py-[2.5px] text-[13px] tracking-tight transition-[color,background-color,transform] duration-150 active:scale-[0.98] ${
                     collapsed ? 'justify-center' : ''
                   } ${
                     active
                       ? 'text-stone-900 dark:text-white font-medium'
-                      : 'text-stone-600 dark:text-stone-400 hover:bg-black/4 dark:hover:bg-white/5 hover:text-stone-900 dark:hover:text-stone-100'
+                      : 'text-stone-600 dark:text-stone-400 hover:bg-stone-900/[0.045] dark:hover:bg-white/5 hover:text-stone-900 dark:hover:text-stone-100'
                   }`}
                 >
-                  <Icon className={`w-[17px] h-[17px] shrink-0 ${active ? 'text-accent-ink' : ''}`} strokeWidth={1.75} />
+                  <Icon
+                    className={`w-[16px] h-[16px] shrink-0 transition-colors duration-150 ${active ? 'text-accent-ink' : 'text-stone-400 group-hover:text-stone-600 dark:group-hover:text-stone-200'}`}
+                    strokeWidth={active ? 2 : 1.75}
+                  />
                   {!collapsed && <span className="truncate flex-1">{label}</span>}
                   {!collapsed && unreadBadge > 0 && (
                     <span
@@ -327,34 +342,10 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
         ))}
       </nav>
 
-      {/* Rodapé: tema, conexão e versão, usuário */}
-      <div className="p-2 space-y-1 border-t border-black/5 dark:border-white/6">
-        <div className="pt-1">
-          <ThemeSwitcher collapsed={collapsed} />
-        </div>
-        <div className={`flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-stone-500 ${collapsed ? 'justify-center' : ''}`}>
-          <span className="relative flex w-2 h-2 shrink-0" title={connected ? 'Conectado ao Firestore' : 'Modo local (sem Firebase)'}>
-            <span className={`absolute inset-0 rounded-full ${connected ? 'bg-emerald-500 animate-ping opacity-40' : ''}`} />
-            <span className={`relative w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-400'}`} />
-          </span>
-          {!collapsed && (
-            <>
-              <span className="shrink-0">{connected ? 'Firestore conectado' : 'Modo local'}</span>
-              <span className="ml-auto min-w-0 text-[10.5px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
-                {APP_VERSION.commitUrl ? (
-                  <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
-                    {versionShort(APP_VERSION)}
-                  </a>
-                ) : (
-                  versionShort(APP_VERSION)
-                )}
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${collapsed ? 'flex-col' : ''}`}>
-          <span className="w-7 h-7 shrink-0 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-200 flex items-center justify-center text-[11px] font-semibold">
+      {/* Rodapé: usuário; conexão, versão e tema */}
+      <div className="p-2.5 space-y-2 border-t border-line bg-surface-2/70 rounded-b-[21px]">
+        <div className={`flex items-center gap-2.5 ${collapsed ? 'flex-col' : 'pl-0.5'}`}>
+          <span className="w-8 h-8 shrink-0 rounded-full bg-accent/12 text-accent-ink ring-1 ring-inset ring-accent/20 flex items-center justify-center text-[11px] font-semibold">
             {initials(displayName)}
           </span>
           {!collapsed && (
@@ -365,15 +356,31 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
               <span className="block text-[11px] text-stone-400 truncate">{user?.email}</span>
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            title="Sair"
-            aria-label="Sair"
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
-          >
+          <button type="button" onClick={() => void signOut()} title="Sair" aria-label="Sair" className={iconButton}>
             <LogOut className="w-4 h-4" strokeWidth={1.75} />
           </button>
+        </div>
+
+        <div className={`flex items-center gap-2.5 text-[11px] text-stone-500 ${collapsed ? 'flex-col' : 'pl-3.5'}`}>
+          <span className="relative flex w-2 h-2 shrink-0" title={connected ? 'Conectado ao Firestore' : 'Modo local (sem Firebase)'}>
+            <span className={`absolute inset-0 rounded-full ${connected ? 'bg-emerald-500 animate-ping opacity-40' : ''}`} />
+            <span className={`relative w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-amber-400'}`} />
+          </span>
+          {!collapsed && (
+            <span className="flex-1 min-w-0 leading-tight">
+              <span className="block text-stone-600 dark:text-stone-300">{connected ? 'Firestore' : 'Modo local'}</span>
+              <span className="block text-[10px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
+                {APP_VERSION.commitUrl ? (
+                  <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
+                    {versionShort(APP_VERSION)}
+                  </a>
+                ) : (
+                  versionShort(APP_VERSION)
+                )}
+              </span>
+            </span>
+          )}
+          <ThemeSwitcher collapsed={collapsed} />
         </div>
       </div>
     </div>
@@ -411,11 +418,11 @@ export function Sidebar() {
 
   return (
     <aside
-      className={`block print:hidden sticky top-0 h-screen shrink-0 p-3 transition-[width] duration-200 ease-out ${
-        collapsed ? 'w-[84px]' : 'w-[272px]'
+      className={`block print:hidden sticky top-0 h-screen shrink-0 py-3 pl-3 transition-[width] duration-200 ease-out ${
+        collapsed ? 'w-[76px]' : 'w-[268px]'
       }`}
     >
-      <div className="h-full rounded-[22px] backdrop-blur-xl bg-white/60 dark:bg-stone-900/60 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+      <div className="h-full rounded-[22px] bg-surface border border-line shadow-card">
         <SidebarBody
           collapsed={collapsed}
           headerAction={
@@ -423,7 +430,7 @@ export function Sidebar() {
               type="button"
               onClick={toggleCollapsed}
               aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
-              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
+              className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-900/6 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
             >
               {collapsed ? (
                 <PanelLeftOpen className="w-4 h-4" strokeWidth={1.75} />

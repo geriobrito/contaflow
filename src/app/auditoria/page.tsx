@@ -101,7 +101,7 @@ export default function AuditoriaPage() {
         <SegmentedControl ariaLabel="Filtrar ações" value={filter} onChange={setFilter} options={FILTERS} />
         <SearchField value={search} onChange={setSearch} placeholder="Buscar por histórico, usuário, conta ou motivo" className="flex-1" />
       </div>
-      {error && <p role="alert" className="text-[13px] text-rose-600">Não foi possível carregar a auditoria: {error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar a auditoria: {error}</p>}
       <section className={`${SURFACE} rounded-[22px] p-6`}>
         {loading ? (
           <TableSkeleton rows={6} dense label="Carregando auditoria…" />

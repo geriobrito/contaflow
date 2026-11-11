@@ -36,7 +36,7 @@ export function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConf
       }
     >
       <div className="space-y-4 pb-2 text-[13px] text-stone-600 dark:text-stone-300">
-        <p className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 border border-rose-200/60">
+        <p className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-500/25">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
           <span>
             A exclusão não tem volta: apaga lançamentos, extratos, regras, plano de contas, contas bancárias, saldos de abertura, lançamentos
@@ -50,7 +50,7 @@ export function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConf
           onClick={() => void onBackup().then((ok) => ok && setSaved(true))}
           className={`${BUTTON.secondary} w-full`}
         >
-          {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Download className="w-4 h-4" />}
+          {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" /> : <Download className="w-4 h-4" />}
           {backingUp ? 'Gerando backup…' : saved ? 'Backup baixado · baixar de novo' : 'Baixar backup (JSON)'}
         </button>
         {!saved && <p className="text-[12px] text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}

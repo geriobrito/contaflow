@@ -34,7 +34,7 @@ function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cent
           const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
           onChange(digits ? Number(digits) : 0);
         }}
-        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-line-strong text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
       />
     </div>
   );
@@ -98,7 +98,7 @@ function GrossNetPanel({
               aria-checked={o.key === origin.key}
               onClick={() => setOriginKey(o.key)}
               className={`h-8 px-3 rounded-xl border text-[12px] font-medium ${
-                o.key === origin.key ? 'bg-accent border-accent text-white' : 'bg-white dark:bg-stone-800/70 border-black/8 dark:border-white/10 text-stone-600 dark:text-stone-300'
+                o.key === origin.key ? 'bg-accent border-accent text-white' : 'bg-white dark:bg-stone-800/70 border-line-strong text-stone-600 dark:text-stone-300'
               }`}
             >
               {o.label}
@@ -113,7 +113,7 @@ function GrossNetPanel({
               {byCode.get(origin.code)!.name}
             </span>
           ) : (
-            <span className="block text-[11px] text-amber-700">Conta {origin.code} fora do plano: complete o plano com o modelo.</span>
+            <span className="block text-[11px] text-amber-700 dark:text-amber-300">Conta {origin.code} fora do plano: complete o plano com o modelo.</span>
           )
         ) : (
           <AccountSelectField accounts={accounts} value={pickedId} onChange={setPickedId} label="Conta do valor bruto" />
@@ -133,7 +133,7 @@ function GrossNetPanel({
                       aria-label={`Conta do ${p.label}`}
                       value={code}
                       onChange={(e) => setChoice((c) => ({ ...c, [p.key]: e.target.value }))}
-                      className="w-full h-8 px-2 rounded-lg bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[11px] text-stone-600 dark:text-stone-300"
+                      className="w-full h-8 px-2 rounded-lg bg-white dark:bg-stone-800/70 border border-line-strong text-[11px] text-stone-600 dark:text-stone-300"
                     >
                       {options.map((o) => (
                         <option key={o.code} value={o.code}>
@@ -148,7 +148,7 @@ function GrossNetPanel({
                   )}
                 </>
               ) : (
-                <span className="block text-[11px] text-amber-700">Conta {p.options[0].code} fora do plano: complete o plano com o modelo.</span>
+                <span className="block text-[11px] text-amber-700 dark:text-amber-300">Conta {p.options[0].code} fora do plano: complete o plano com o modelo.</span>
               )}
             </div>
           );
@@ -209,7 +209,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
   return (
     <div className="space-y-4">
       {/* Indicadores em tempo real */}
-      <div className="grid grid-cols-3 rounded-2xl overflow-hidden border border-black/6 dark:border-white/8 divide-x divide-black/5 dark:divide-white/6 bg-white/80 dark:bg-stone-800/50">
+      <div className="grid grid-cols-3 rounded-2xl overflow-hidden border border-line divide-x divide-black/5 dark:divide-white/6 bg-white/80 dark:bg-stone-800/50">
         <div className="px-3.5 py-3 min-w-0">
           <p className="text-[11px] text-stone-500">Valor total</p>
           <p className="mt-0.5 font-mono tabular-nums text-[15px] font-semibold text-stone-900 dark:text-stone-100 truncate">
@@ -267,7 +267,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
         {drafts.map((d, i) => (
           <li
             key={d.id}
-            className="rounded-2xl bg-white/70 dark:bg-stone-800/40 border border-black/5 dark:border-white/6 p-3 space-y-2 animate-fade-in"
+            className="rounded-2xl bg-white/70 dark:bg-stone-800/40 border border-line p-3 space-y-2 animate-fade-in"
           >
             <div className="flex items-center gap-2">
               <span className="w-5 shrink-0 text-center font-mono tabular-nums text-[11px] text-stone-400">{i + 1}</span>
@@ -295,7 +295,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 onChange={(e) => update(d.id, { memo: e.target.value })}
                 placeholder="Descrição (ex.: Assinatura Canva)"
                 aria-label={`Descrição da linha ${i + 1}`}
-                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                className="flex-1 min-w-0 h-10 px-3 rounded-xl bg-white dark:bg-stone-800/70 border border-line-strong text-[13px] placeholder:text-stone-400 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
               />
               <button
                 type="button"
@@ -305,8 +305,8 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 title={d.reduces ? 'Redutora: retenção ou tarifa subtraída do valor bruto' : 'Soma ao lançamento'}
                 className={`w-9 h-10 shrink-0 rounded-xl border font-mono text-[15px] font-semibold transition-colors ${
                   d.reduces
-                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-600'
-                    : 'bg-white dark:bg-stone-800/70 border-black/8 dark:border-white/10 text-stone-500'
+                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-300'
+                    : 'bg-white dark:bg-stone-800/70 border-line-strong text-stone-500'
                 }`}
               >
                 {d.reduces ? '−' : '+'}

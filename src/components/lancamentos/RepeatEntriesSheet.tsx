@@ -59,7 +59,7 @@ export function RepeatEntriesSheet({ targetMonth, candidates, onConfirm, onClose
       onClose={onClose}
       footer={
         <>
-          {error && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{error}</p>}
+          {error && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">{error}</p>}
           <button type="button" disabled={busy || count === 0} onClick={() => void confirm()} className={`${BUTTON.accent} w-full h-12 rounded-2xl text-[15px]`}>
             {busy ? 'Gravando…' : `Repetir ${count} lançamento(s)`}
           </button>
@@ -76,7 +76,7 @@ export function RepeatEntriesSheet({ targetMonth, candidates, onConfirm, onClose
             <li key={entry.id}>
               <label
                 className={`flex items-start gap-3 rounded-2xl border px-3.5 py-3 ${
-                  problem ? 'border-amber-200/70 bg-amber-50/60 dark:bg-amber-950/20' : 'border-black/6 dark:border-white/8 bg-white/70 dark:bg-stone-800/50 cursor-pointer'
+                  problem ? 'border-amber-200/70 dark:border-amber-500/25 bg-amber-50/60 dark:bg-amber-950/20' : 'border-line bg-white/70 dark:bg-stone-800/50 cursor-pointer'
                 }`}
               >
                 <input type="checkbox" className="mt-1 w-4 h-4 accent-accent" disabled={Boolean(problem) || busy} checked={!problem && selected.has(entry.id)} onChange={() => toggle(entry.id)} />

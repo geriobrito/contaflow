@@ -62,7 +62,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descId}
-        className="relative w-full max-w-md rounded-3xl p-6 backdrop-blur-xl bg-white/90 dark:bg-stone-900/90 border border-black/10 dark:border-white/10 shadow-2xl animate-pop-in"
+        className="relative w-full max-w-md rounded-3xl p-6 bg-surface border border-line-strong shadow-overlay animate-pop-in"
       >
         <div className="flex flex-col items-center text-center">
           <span className="w-12 h-12 rounded-full flex items-center justify-center bg-amber-100/80 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400">
@@ -88,7 +88,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
           </p>
         </div>
 
-        <dl className="mt-5 rounded-2xl bg-black/3 dark:bg-white/4 border border-black/5 dark:border-white/6 px-4 py-3 space-y-1.5 font-mono text-[12px] text-stone-500 dark:text-stone-400">
+        <dl className="mt-5 rounded-2xl bg-black/3 dark:bg-white/4 border border-line px-4 py-3 space-y-1.5 font-mono text-[12px] text-stone-500 dark:text-stone-400">
           <div className="flex justify-between gap-4">
             <dt>Arquivo</dt>
             <dd className="truncate text-stone-700 dark:text-stone-200" title={info.fileName}>

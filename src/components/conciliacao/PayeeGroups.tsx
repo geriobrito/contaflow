@@ -55,7 +55,7 @@ export function PayeeGroupList({ groups, onOpen }: PayeeGroupListProps) {
               >
                 <span
                   className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${
-                    incoming ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15' : 'bg-stone-100 text-stone-500 dark:bg-stone-800'
+                    incoming ? 'bg-emerald-50 text-emerald-600 dark:text-emerald-300 dark:bg-emerald-500/15' : 'bg-stone-100 text-stone-500 dark:bg-stone-800'
                   }`}
                   title={incoming ? 'Entrada' : 'Saída'}
                 >
@@ -166,7 +166,7 @@ export function GroupClassifySheet({ group, accounts, pool, suggestions, isSavin
               {allPicked ? 'Desmarcar todos' : 'Marcar todos'}
             </button>
           </div>
-          <ul className="max-h-44 overflow-y-auto overscroll-contain rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 divide-y divide-black/4">
+          <ul className="max-h-44 overflow-y-auto overscroll-contain rounded-2xl bg-white dark:bg-stone-800/60 border border-line divide-y divide-black/4">
             {group.transactions.map((t) => (
               <li key={t.id}>
                 <label className="flex items-center gap-3 px-3.5 py-2 cursor-pointer hover:bg-black/2">
@@ -203,7 +203,7 @@ export function GroupClassifySheet({ group, accounts, pool, suggestions, isSavin
           suggestion={group.term}
           note={
             opposite > 0 ? (
-              <p className="mt-1.5 text-[11px] text-amber-700">
+              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
                 A regra também casa {opposite} lançamento(s) pendente(s) de {group.direction === 'IN' ? 'saída' : 'entrada'} deste mesmo favorecido; eles
                 irão para a mesma conta.
               </p>

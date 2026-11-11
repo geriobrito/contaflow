@@ -63,7 +63,7 @@ export function AccountTreeRow({ node, expanded, onToggle, onEdit, onDelete, isA
 
         <span className="flex items-center gap-1.5 shrink-0">
           {account.isContra && (
-            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200/60">
+            <span className="inline px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200/60 dark:border-amber-500/25">
               Redutora
             </span>
           )}

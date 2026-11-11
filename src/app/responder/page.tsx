@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Sparkles } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import { BrandMark } from '@/components/ui/BrandMark';
 import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { answerAt, MAX_ANSWER_LENGTH, tokenFromLocation } from '@/lib/client-requests';
@@ -81,22 +82,20 @@ export default function ResponderPage() {
   const answered = drafts.filter((d) => d.trim()).length;
 
   return (
-    <main className="min-h-screen bg-apple-bg dark:bg-stone-950 px-4 py-10">
+    <main className="min-h-screen bg-canvas px-4 py-10">
       <div className="max-w-2xl mx-auto space-y-6">
-        <header className="flex items-center gap-2 text-stone-500">
-          <span className="w-6 h-6 rounded-lg bg-linear-to-br from-[#D97757] to-[#C15F3C] flex items-center justify-center">
-            <Sparkles className="w-3.5 h-3.5 text-white" />
-          </span>
-          <span className="text-[13px] font-medium">{request?.officeName || 'ContaFlow'}</span>
+        <header className="flex items-center gap-2.5 pb-4 border-b-[3px] border-double border-line-strong">
+          <BrandMark size="sm" />
+          <span className="text-[14px] font-semibold tracking-tight text-stone-800 dark:text-stone-100">{request?.officeName || 'ContaFlow'}</span>
         </header>
 
         {state === 'loading' && (
-          <div className="rounded-3xl bg-white dark:bg-stone-900 p-8">
+          <div className="rounded-3xl bg-surface border border-line shadow-card p-8">
             <TextSkeleton paragraphs={2} label="Carregando…" />
           </div>
         )}
         {state === 'invalid' && (
-          <div className="rounded-3xl bg-white dark:bg-stone-900 p-8 text-center">
+          <div className="rounded-3xl bg-surface border border-line shadow-card p-8 text-center">
             <h1 className="text-[20px] font-semibold tracking-tight">Link inválido</h1>
             <p className="mt-2 text-[14px] text-stone-500">Confira se o endereço foi copiado inteiro ou peça um novo link ao escritório.</p>
           </div>
@@ -111,12 +110,12 @@ export default function ResponderPage() {
                 Explique em poucas palavras do que se trata cada um e envie.
               </p>
               {state === 'closed' && (
-                <p className="rounded-2xl bg-amber-50 border border-amber-200/60 px-4 py-3 text-[13px] text-amber-800">
+                <p className="rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/25 px-4 py-3 text-[13px] text-amber-800 dark:text-amber-300">
                   Este link não aceita mais respostas. Se precisar complementar algo, fale com o escritório.
                 </p>
               )}
               {state === 'sent' && (
-                <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-50 border border-emerald-200/60 px-4 py-3 text-[13px] text-emerald-800">
+                <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/60 dark:border-emerald-500/25 px-4 py-3 text-[13px] text-emerald-800 dark:text-emerald-300">
                   <CheckCircle2 className="w-4 h-4" /> Respostas enviadas. Obrigado! Você pode complementar enquanto o link estiver aberto.
                 </p>
               )}
@@ -124,12 +123,12 @@ export default function ResponderPage() {
 
             <ol className="space-y-4">
               {request.items.map((item, idx) => (
-                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 shadow-[0_2px_12px_rgba(0,0,0,0.04)] p-5 space-y-3">
+                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 shadow-card p-5 space-y-3">
                   <div className="flex items-baseline justify-between gap-4">
                     <span className="text-[12px] font-medium text-stone-400">
                       {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
                     </span>
-                    <span className={`font-mono tabular-nums text-[17px] font-semibold ${item.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600'}`}>
+                    <span className={`font-mono tabular-nums text-[17px] font-semibold ${item.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
                       {formatCurrency(item.amount)}
                     </span>
                   </div>
@@ -149,7 +148,7 @@ export default function ResponderPage() {
               ))}
             </ol>
 
-            {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+            {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
             {state !== 'closed' && (
               <div className="sticky bottom-4">
                 <button

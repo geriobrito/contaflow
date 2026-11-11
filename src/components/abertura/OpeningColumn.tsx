@@ -13,7 +13,7 @@ import { AccountSelectField } from '@/components/ui/AccountCombobox';
 
 /** Campo de valor compacto (o INPUT padrão tem 44px de altura, alto demais para uma lista de contas). */
 const FIELD =
-  'w-full h-8 px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-right font-mono tabular-nums text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_3px_rgba(181,85,47,0.12)]';
+  'w-full h-8 px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-line-strong text-right font-mono tabular-nums text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_3px_rgba(181,85,47,0.12)]';
 const ROW = 'flex items-center gap-3 px-5 py-1 min-h-10';
 const VALUE_BOX = 'w-36 shrink-0 text-right text-[13px]';
 
@@ -46,7 +46,7 @@ export function OpeningColumn(props: OpeningColumnProps) {
   const { title, total, sections } = props;
   return (
     <section aria-label={title} className={`${SURFACE} min-w-0 rounded-[22px] overflow-hidden`}>
-      <header className="flex items-baseline justify-between gap-3 px-5 py-4 border-b border-black/6 dark:border-white/8">
+      <header className="flex items-baseline justify-between gap-3 px-5 py-4 border-b border-line">
         <h2 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">{title}</h2>
         <AccountingAmount value={total} className="text-[15px] font-semibold text-stone-900 dark:text-stone-50" />
       </header>
@@ -162,7 +162,7 @@ function AccountRowView({ row, frozen, values, invalid, onValue, onValueBlur }: 
               placeholder="0,00"
               aria-invalid={bad}
               title={contra ? 'Retificadora: informe o valor positivo; ele reduz o grupo.' : undefined}
-              className={`${FIELD} ${contra ? 'pl-7' : ''} ${bad ? 'border-rose-300' : ''}`}
+              className={`${FIELD} ${contra ? 'pl-7' : ''} ${bad ? 'border-rose-300 dark:border-rose-500/25' : ''}`}
             />
           </div>
         )}
@@ -216,7 +216,7 @@ function BankRowView({ row, frozen, date, bankValues, bankInvalid, onBankValue, 
             placeholder={bank.openingBalance === undefined ? 'não informado' : '0,00'}
             aria-invalid={bad}
             title="Saldo do extrato no início do dia da abertura; saldo devedor com sinal de menos."
-            className={`${FIELD} ${bad ? 'border-rose-300' : ''}`}
+            className={`${FIELD} ${bad ? 'border-rose-300 dark:border-rose-500/25' : ''}`}
           />
         )}
       </div>

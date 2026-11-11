@@ -99,7 +99,7 @@ export function EditAccountSheet({ account, accounts, hasChildren, lockState, lo
       onClose={onClose}
       footer={
         <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">{saveError}</p>}
           <button
             type="button"
             disabled={!valid || saving}
@@ -200,7 +200,7 @@ export function EditAccountSheet({ account, accounts, hasChildren, lockState, lo
 
         {!synthetic && (
           <label
-            className={`flex items-start gap-2.5 rounded-xl border border-black/6 dark:border-white/8 px-3.5 py-2.5 text-[13px] ${
+            className={`flex items-start gap-2.5 rounded-xl border border-line px-3.5 py-2.5 text-[13px] ${
               structuralFrozen ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
             }`}
           >

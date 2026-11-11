@@ -292,7 +292,7 @@ export function CostCompositionChart({ composition }: { composition: CostComposi
         {items.map((item) => (
           <div
             key={item.key}
-            className="flex items-center justify-between gap-3 rounded-xl border border-black/5 dark:border-white/6 bg-black/2 dark:bg-white/3 px-3.5 py-2.5 text-[12px]"
+            className="flex items-center justify-between gap-3 rounded-xl border border-line bg-black/2 dark:bg-white/3 px-3.5 py-2.5 text-[12px]"
           >
             <div className="flex items-center gap-2 min-w-0">
               <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${item.dotClass}`} />

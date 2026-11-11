@@ -25,7 +25,7 @@ function Delta({ current, previous, favorable, small = false }: { current: numbe
   }
   const good = favorable === 'up' ? current > previous : current < previous;
   return (
-    <span className={`${small ? 'text-[10px]' : 'text-[12px]'} font-mono tabular-nums ${good ? 'text-emerald-600' : 'text-rose-600'}`}>
+    <span className={`${small ? 'text-[10px]' : 'text-[12px]'} font-mono tabular-nums ${good ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'}`}>
       {pct > 0 ? '+' : ''}
       {pct.toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%
     </span>
@@ -47,16 +47,16 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/5 dark:border-white/6">
-            <th className="font-medium pl-5 pr-3 py-2.5 min-w-[220px]">Demonstrativo</th>
+          <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+            <th className="font-semibold pl-5 pr-3 py-2.5 min-w-[220px]">Demonstrativo</th>
             {columns.map((c) => (
               <th key={c.label} className="font-medium px-3 py-2.5 text-right whitespace-nowrap">{c.label}</th>
             ))}
-            {mode === 'monthly' && total && <th className="font-medium pl-3 pr-5 py-2.5 text-right whitespace-nowrap">{total.label}</th>}
+            {mode === 'monthly' && total && <th className="font-semibold pl-3 pr-5 py-2.5 text-right whitespace-nowrap">{total.label}</th>}
             {mode === 'yoy' && (
               <>
-                <th className="font-medium px-3 py-2.5 text-right whitespace-nowrap">Variação R$</th>
-                <th className="font-medium pl-3 pr-5 py-2.5 text-right whitespace-nowrap">Variação %</th>
+                <th className="font-semibold px-3 py-2.5 text-right whitespace-nowrap">Variação R$</th>
+                <th className="font-semibold pl-3 pr-5 py-2.5 text-right whitespace-nowrap">Variação %</th>
               </>
             )}
           </tr>

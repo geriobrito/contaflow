@@ -29,7 +29,7 @@ export function ReadQuotaMeter() {
   return (
     <section
       aria-label="Leituras do banco de dados hoje"
-      className="flex items-center gap-4 rounded-2xl px-4 py-2.5 border border-black/6 dark:border-white/8 bg-white/60 dark:bg-stone-900/50 text-[12px]"
+      className="flex items-center gap-4 rounded-2xl px-4 py-2.5 border border-line bg-white/60 dark:bg-stone-900/50 text-[12px]"
     >
       <Database className="w-4 h-4 shrink-0 text-stone-400" strokeWidth={1.75} />
       <div className="flex-1 min-w-0 space-y-1.5">

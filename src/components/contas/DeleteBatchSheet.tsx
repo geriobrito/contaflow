@@ -66,7 +66,7 @@ export function DeleteBatchSheet({
       onClose={onClose}
       footer={
         <>
-          {error && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{error}</p>}
+          {error && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">{error}</p>}
           <button
             type="button"
             disabled={!preview || blocked || busy}
@@ -89,7 +89,7 @@ export function DeleteBatchSheet({
             <div className="flex justify-between gap-4"><dt className="text-stone-400">Importado em</dt><dd>{formatDateTime(batch.importedAt)}</dd></div>
           </dl>
           {blocked ? (
-            <p role="alert" className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 border border-rose-200/60">
+            <p role="alert" className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-500/25">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
                 Há lançamentos em competência fechada ({preview.lockedMonths.map((m) => formatMonth(m)).join(', ')}). Reabra a competência na

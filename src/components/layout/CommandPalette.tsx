@@ -155,14 +155,14 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
 
   const palette = (
     <div className="fixed inset-0 z-70 flex items-start justify-center px-4 pt-[12vh] print:hidden" role="presentation">
-      <div className="absolute inset-0 bg-stone-900/25 dark:bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-stone-950/35 dark:bg-black/55 backdrop-blur-[3px] animate-fade-in" onClick={onClose} aria-hidden />
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Busca rápida"
-        className="relative w-full max-w-[560px] rounded-[20px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_64px_rgba(0,0,0,0.22)] overflow-hidden animate-pop-in"
+        className="relative w-full max-w-[560px] rounded-[20px] bg-surface border border-line-strong shadow-overlay overflow-hidden animate-pop-in"
       >
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-black/6 dark:border-white/8">
+        <div className="flex items-center gap-3 px-4 h-14 border-b border-line">
           <Search className="w-[18px] h-[18px] text-stone-400 shrink-0" strokeWidth={1.75} />
           <input
             autoFocus
@@ -227,7 +227,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           })}
         </ul>
 
-        <div className="flex items-center gap-4 px-4 h-9 border-t border-black/6 dark:border-white/8 text-[11px] text-stone-400">
+        <div className="flex items-center gap-4 px-4 h-9 border-t border-line bg-surface-2 text-[11px] text-stone-400">
           <span>↑↓ navegar</span>
           <span>Enter abrir</span>
           <span>Esc fechar</span>

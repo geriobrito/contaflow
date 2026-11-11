@@ -83,7 +83,7 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
           <button
             type="button"
             onClick={() => setReopening(true)}
-            className="rounded-xl px-3 py-1.5 text-[12px] font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.97] transition-all duration-150"
+            className="rounded-xl px-3 py-1.5 text-[12px] font-medium text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.97] transition-all duration-150"
           >
             Reabrir competência
           </button>

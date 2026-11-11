@@ -193,7 +193,7 @@ export function ImportFeedback({ files }: { files: StatementFiles }) {
         </p>
       )}
       {files.errorMessage && (
-        <p role="alert" className="flex items-center gap-2 px-1 text-[12px] text-rose-600">
+        <p role="alert" className="flex items-center gap-2 px-1 text-[12px] text-rose-600 dark:text-rose-300">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" />
           {files.errorMessage}
         </p>
@@ -264,7 +264,7 @@ export function FileDropOverlay({ files, disabled = false }: { files: StatementF
   return (
     <ModalPortal>
       <div aria-hidden className="fixed inset-3 z-[70] pointer-events-none rounded-[28px] border-2 border-dashed border-accent/60 bg-accent/5 backdrop-blur-[2px] flex items-center justify-center animate-fade-in">
-        <div className="flex items-center gap-3 px-5 py-4 rounded-2xl bg-white dark:bg-stone-900 shadow-[0_12px_32px_rgba(0,0,0,0.14)]">
+        <div className="flex items-center gap-3 px-5 py-4 rounded-2xl bg-surface shadow-[0_12px_32px_rgba(0,0,0,0.14)]">
           <span className="w-9 h-9 rounded-xl bg-accent text-white flex items-center justify-center">
             <Upload className="w-4 h-4" strokeWidth={2} />
           </span>
@@ -281,15 +281,15 @@ export function FileDropOverlay({ files, disabled = false }: { files: StatementF
 /** Tabela vazia: convite a importar, com o extrato modelo para experimentar. */
 export function ImportEmptyState({ files, hasAnyTransaction }: { files: StatementFiles; hasAnyTransaction: boolean }) {
   return (
-    <div className="px-6 py-12 flex flex-col items-center text-center gap-3">
-      <span className="w-11 h-11 rounded-2xl bg-stone-100 dark:bg-stone-800 text-stone-500 flex items-center justify-center">
-        <Upload className="w-5 h-5" strokeWidth={1.75} />
+    <div className="px-6 py-14 flex flex-col items-center text-center gap-4">
+      <span className="w-14 h-14 rounded-2xl bg-surface border border-line shadow-card text-accent-ink -rotate-3 flex items-center justify-center">
+        <Upload className="w-6 h-6 rotate-3" strokeWidth={1.6} />
       </span>
       <div>
-        <p className="text-[15px] font-medium tracking-tight text-stone-800 dark:text-stone-200">
+        <p className="font-serif text-[21px] leading-snug font-medium text-stone-900 dark:text-stone-100">
           {hasAnyTransaction ? 'Nada por aqui' : 'Nenhum lançamento ainda'}
         </p>
-        <p className="mt-1 text-[13px] text-stone-500 max-w-md">
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-stone-500 dark:text-stone-400 max-w-md">
           {hasAnyTransaction
             ? 'Nenhum lançamento neste filtro ou busca.'
             : 'Importe um extrato OFX, CSV ou fatura de cartão: use o botão abaixo ou arraste os arquivos para a página.'}

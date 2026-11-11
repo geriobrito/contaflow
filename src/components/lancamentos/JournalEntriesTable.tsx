@@ -24,11 +24,11 @@ interface JournalEntriesTableProps {
 export function JournalEntriesTable({ entries, accountMap, monthLocked, deletingId, onEdit, onDuplicate, onDelete }: JournalEntriesTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   return (
-    <div className={`${SURFACE} rounded-2xl overflow-hidden border border-black/8 dark:border-white/10`}>
+    <div className={`${SURFACE} rounded-2xl overflow-hidden border border-line-strong`}>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px] border-collapse">
           <thead>
-            <tr className="border-b border-black/6 dark:border-white/8 bg-stone-100/60 dark:bg-stone-800/60 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+            <tr className="border-b border-line bg-surface-2 text-[11px] font-semibold text-stone-500 uppercase tracking-[0.08em]">
               <th className="py-3 px-4 w-12 text-center"></th>
               <th className="py-3 px-4 w-28">Data</th>
               <th className="py-3 px-4 w-44">Categoria</th>
@@ -187,10 +187,10 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                               ))}
                           </div>
 
-                          <div className="border border-black/6 dark:border-white/8 rounded-xl overflow-hidden bg-white dark:bg-stone-900">
+                          <div className="border border-line rounded-xl overflow-hidden bg-surface">
                             <table className="w-full text-left text-[12px]">
                               <thead>
-                                <tr className="border-b border-black/4 bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-medium text-stone-500 uppercase">
+                                <tr className="border-b border-black/4 bg-surface-2 text-[11px] font-medium text-stone-500 uppercase">
                                   <th className="py-2 px-3 w-16 text-center">Tipo</th>
                                   <th className="py-2 px-3 w-36">Código</th>
                                   <th className="py-2 px-3">Conta Contábil</th>

@@ -11,13 +11,13 @@ import { SURFACE } from '@/components/ui/primitives';
 export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range: DateRange }) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-      <div className="p-5 border-b border-black/5 dark:border-white/6 flex flex-wrap items-center justify-between gap-3 bg-stone-50/50 dark:bg-stone-900/50">
+      <div className="p-5 border-b border-line flex flex-wrap items-center justify-between gap-3 bg-stone-50/50 dark:bg-stone-900/50">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-mono text-[13px] font-semibold text-stone-800 dark:text-stone-200 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
               {ledger.code}
             </span>
-            <span className="text-[11px] uppercase tracking-wider text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
               {ledger.kind === 'ASSET' ? 'Ativo' : ledger.kind === 'LIABILITY' ? 'Passivo' : ledger.kind === 'EQUITY' ? 'Patrimônio Líquido' : 'Resultado'}
             </span>
             {ledger.synthetic && (
@@ -35,8 +35,8 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
 
       {/* 4 Cards de Resumo */}
       <div className="grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6">
-        <div className="bg-white dark:bg-stone-900 p-4">
-          <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Anterior</span>
+        <div className="bg-surface p-4">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Anterior</span>
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="font-mono tabular-nums text-[17px] font-semibold text-stone-900 dark:text-stone-100">
               {formatCurrency(ledger.openingBalance)}
@@ -51,26 +51,26 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
           </div>
         </div>
 
-        <div className="bg-white dark:bg-stone-900 p-4">
-          <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium flex items-center gap-1">
-            <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600" /> Total Débitos
+        <div className="bg-surface p-4">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+            <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" /> Total Débitos
           </span>
           <div className="mt-1 font-mono tabular-nums text-[17px] font-semibold text-emerald-700 dark:text-emerald-400">
             {formatCurrency(ledger.totals.debits)}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-stone-900 p-4">
-          <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium flex items-center gap-1">
-            <ArrowUpRight className="w-3.5 h-3.5 text-rose-600" /> Total Créditos
+        <div className="bg-surface p-4">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5 text-rose-600 dark:text-rose-300" /> Total Créditos
           </span>
           <div className="mt-1 font-mono tabular-nums text-[17px] font-semibold text-rose-700 dark:text-rose-400">
             {formatCurrency(ledger.totals.credits)}
           </div>
         </div>
 
-        <div className="bg-white dark:bg-stone-900 p-4">
-          <span className="text-[11px] uppercase tracking-wider text-stone-400 font-medium">Saldo Atual</span>
+        <div className="bg-surface p-4">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Atual</span>
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="font-mono tabular-nums text-[17px] font-semibold text-stone-900 dark:text-stone-100">
               {formatCurrency(ledger.totals.closingBalance)}

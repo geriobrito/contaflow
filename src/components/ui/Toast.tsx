@@ -55,10 +55,11 @@ export function Toast({ toast, onDismiss }: { toast: ToastState | ToastData | nu
       key={'key' in toast ? toast.key : undefined}
       role="status"
       aria-live="polite"
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 dark:bg-stone-100/90 text-white dark:text-stone-900 text-[13px] tracking-tight shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in ${
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 max-w-[calc(100vw-2rem)] rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight ring-1 ring-white/10 dark:ring-black/5 shadow-[0_1px_2px_rgba(0,0,0,0.2),0_14px_32px_-8px_rgba(0,0,0,0.4)] animate-sheet-in ${
         action ? 'pl-4 pr-1.5 py-1.5' : 'px-4 py-2.5'
       }`}
     >
+      <span aria-hidden className="w-1.5 h-1.5 shrink-0 rounded-full bg-accent-hover" />
       <span className="min-w-0 truncate">{toast.message}</span>
       {action && (
         <button

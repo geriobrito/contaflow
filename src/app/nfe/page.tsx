@@ -71,7 +71,7 @@ export default function NotasFiscaisPage() {
       <InvoiceDropzone busy={busy} disabled={!currentClient} onFiles={(files) => void handleFiles(files)} />
 
       {outcome && <InvoiceImportResult outcome={outcome} onClose={() => setOutcome(null)} />}
-      {error && <p role="alert" className="text-[13px] text-rose-600">{error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">

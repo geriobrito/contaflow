@@ -113,11 +113,11 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
               onAcknowledged={(v) => setAckKey(v ? draftKey : '')}
               className="mt-1"
             />
-            {error && !needsAck && <p className="text-[11px] text-rose-600">{error}</p>}
+            {error && !needsAck && <p className="text-[11px] text-rose-600 dark:text-rose-300">{error}</p>}
           </div>
         ) : (
           <div className="min-w-0 space-y-1">
-            <span className="block text-[10px] uppercase tracking-wider text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
+            <span className="block text-[10px] uppercase tracking-[0.08em] text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
             <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>

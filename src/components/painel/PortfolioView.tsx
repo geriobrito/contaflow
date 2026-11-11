@@ -130,7 +130,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
             <li key={c.id} className="flex items-center gap-3 px-5 py-3.5 text-[13px]">
               <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
               <span className="font-medium truncate">{c.tradeName || c.name}</span>
-              <span className="text-rose-600 truncate">Não foi possível carregar ({entry.message}).</span>
+              <span className="text-rose-600 dark:text-rose-300 truncate">Não foi possível carregar ({entry.message}).</span>
             </li>
           ) : (
             <li key={c.id} role="status" aria-busy="true" className="flex items-center gap-4 px-5 py-3.5">

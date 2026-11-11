@@ -56,7 +56,7 @@ function ColumnSelect({
 /** Mapeamento das colunas do CSV: data, histórico, documento, valor (único ou débito/crédito) e inversão de sinais. */
 export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsProps) {
   return (
-    <div className="p-4 rounded-xl border border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/30 space-y-4">
+    <div className="p-4 rounded-xl border border-line bg-stone-50/50 dark:bg-stone-800/30 space-y-4">
       <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100 flex items-center gap-2">Mapeamento de Campos</h3>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -74,7 +74,7 @@ export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsPro
           <ColumnSelect
             label="Coluna da Descrição / Histórico *"
             icon={FileText}
-            iconClassName="text-purple-600"
+            iconClassName="text-purple-600 dark:text-purple-300"
             value={mapping.memoCol}
             onChange={(memoCol) => onEdit((m) => ({ ...m, memoCol }))}
             columns={columns}
@@ -131,7 +131,7 @@ export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsPro
             <ColumnSelect
               label="Coluna do Valor *"
               icon={DollarSign}
-              iconClassName="text-emerald-600"
+              iconClassName="text-emerald-600 dark:text-emerald-300"
               value={mapping.amountCol ?? 0}
               onChange={(amountCol) => onEdit((m) => ({ ...m, amountCol }))}
               columns={columns}
@@ -143,7 +143,7 @@ export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsPro
               <ColumnSelect
                 label="Coluna de Saída (Débito) *"
                 icon={DollarSign}
-                iconClassName="text-rose-600"
+                iconClassName="text-rose-600 dark:text-rose-300"
                 value={mapping.debitCol ?? 0}
                 onChange={(debitCol) => onEdit((m) => ({ ...m, debitCol }))}
                 columns={columns}
@@ -153,7 +153,7 @@ export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsPro
               <ColumnSelect
                 label="Coluna de Entrada (Crédito) *"
                 icon={DollarSign}
-                iconClassName="text-emerald-600"
+                iconClassName="text-emerald-600 dark:text-emerald-300"
                 value={mapping.creditCol ?? 0}
                 onChange={(creditCol) => onEdit((m) => ({ ...m, creditCol }))}
                 columns={columns}
@@ -173,7 +173,7 @@ export function CSVColumnFields({ mapping, columns, onEdit }: CSVColumnFieldsPro
               const invertSigns = e.target.checked;
               onEdit((m) => ({ ...m, invertSigns }));
             }}
-            className="mt-0.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+            className="mt-0.5 rounded border-amber-300 dark:border-amber-500/25 text-amber-600 dark:text-amber-300 focus:ring-amber-500"
           />
           <div className="text-[12px]">
             <span className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">

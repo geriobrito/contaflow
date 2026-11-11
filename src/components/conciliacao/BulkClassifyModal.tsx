@@ -91,7 +91,7 @@ export function BulkClassifyModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto flex flex-col rounded-[24px] bg-white dark:bg-stone-900 border border-black/8 dark:border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.25)] overflow-hidden"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] my-auto flex flex-col rounded-[24px] bg-surface border border-line-strong shadow-[0_24px_60px_rgba(0,0,0,0.25)] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Cabeçalho (fixo) */}
@@ -117,7 +117,7 @@ export function BulkClassifyModal({
         {/* Corpo rolável */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 pb-4 space-y-5">
           {/* Resumo dos lançamentos */}
-          <div className="rounded-xl p-3.5 bg-black/3 dark:bg-white/4 border border-black/5 dark:border-white/6 space-y-2 text-[12px]">
+          <div className="rounded-xl p-3.5 bg-black/3 dark:bg-white/4 border border-line space-y-2 text-[12px]">
             <div className="flex items-center justify-between text-stone-600 dark:text-stone-400">
               <span>Total selecionado:</span>
               <span className="font-mono tabular-nums font-semibold text-stone-900 dark:text-stone-100">
@@ -153,7 +153,7 @@ export function BulkClassifyModal({
           </div>
 
           {/* Opção de Regra */}
-          <div className="pt-1 border-t border-black/5 dark:border-white/6">
+          <div className="pt-1 border-t border-line">
             <RuleLearnPanel
               checked={learnRule}
               onChecked={setCustomLearnRule}
@@ -172,7 +172,7 @@ export function BulkClassifyModal({
         </div>
 
         {/* Rodapé com Ações (fixo) */}
-        <div className="shrink-0 flex items-center justify-end gap-2.5 px-6 py-4 border-t border-black/5 dark:border-white/6">
+        <div className="shrink-0 flex items-center justify-end gap-2.5 px-6 py-4 border-t border-line">
           <button type="button" onClick={onClose} disabled={isSaving} className={`${BUTTON.secondary} h-9 px-4`}>
             Cancelar
           </button>

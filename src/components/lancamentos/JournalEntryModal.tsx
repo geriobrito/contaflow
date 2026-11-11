@@ -165,10 +165,10 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
       <div
-        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/8 dark:border-white/10 overflow-hidden"
+        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-surface rounded-2xl shadow-overlay border border-line-strong overflow-hidden"
       >
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-line bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-accent/10 text-accent-ink flex items-center justify-center">
               <Calculator className="w-5 h-5" />
@@ -212,7 +212,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   className={`px-2.5 py-1 rounded-lg border transition-colors shrink-0 ${
                     templateId === t.id
                       ? 'bg-accent border-accent text-white'
-                      : 'bg-white dark:bg-stone-700 border-black/6 dark:border-white/8 text-stone-700 dark:text-stone-200 hover:border-accent/60 hover:text-accent-ink'
+                      : 'bg-white dark:bg-stone-700 border-line text-stone-700 dark:text-stone-200 hover:border-accent/60 hover:text-accent-ink'
                   }`}
                 >
                   {t.label}
@@ -220,7 +220,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               ))}
             </div>
             {template && (
-              <div className="rounded-xl bg-white dark:bg-stone-900 border border-black/6 dark:border-white/8 p-3 space-y-3">
+              <div className="rounded-xl bg-surface border border-line p-3 space-y-3">
                 <p className="text-stone-500">{template.description} Competência pela data do lançamento.</p>
                 <div className="grid grid-cols-3 gap-3">
                   {template.fields.map((f) => (
@@ -239,7 +239,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                     </label>
                   ))}
                 </div>
-                {templateError && <p role="alert" className="text-rose-600">{templateError}</p>}
+                {templateError && <p role="alert" className="text-rose-600 dark:text-rose-300">{templateError}</p>}
                 <button type="button" onClick={applyTemplate} className={`${BUTTON.secondary} h-8`}>
                   Preencher as partidas
                 </button>
@@ -253,7 +253,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
             {locked && (
               <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200 text-[13px] flex items-center gap-2.5">
-                <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+                <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-300" />
                 <span>
                   <strong>Competência bloqueada:</strong> O mês {month} foi fechado e não aceita novos lançamentos ou edições.
                 </span>
@@ -262,7 +262,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
             {error && (
               <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200 text-[13px] flex items-center gap-2.5">
-                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-300" />
                 <span>{error}</span>
               </div>
             )}
@@ -354,11 +354,11 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 </button>
               </div>
 
-              <div className="border border-black/8 dark:border-white/10 rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
+              <div className="border border-line-strong rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-[13px] border-collapse">
                     <thead>
-                      <tr className="border-b border-black/6 dark:border-white/8 bg-stone-100/50 dark:bg-stone-800/50 text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+                      <tr className="border-b border-line bg-surface-2 text-[11px] font-semibold text-stone-500 uppercase tracking-[0.08em]">
                         <th className="py-2.5 px-3 w-16 text-center">Tipo</th>
                         <th className="py-2.5 px-3">Conta Contábil (Analítica)</th>
                         <th className="py-2.5 px-3 w-40 text-right">Valor (R$)</th>
@@ -412,7 +412,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                               }
                               disabled={saving || locked}
                               required
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] font-mono text-right outline-none focus:border-accent/60"
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] font-mono text-right outline-none focus:border-accent/60"
                             />
                           </td>
 
@@ -423,7 +423,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                               value={line.memo ?? ''}
                               onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
                               disabled={saving || locked}
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[13px] outline-none focus:border-accent/60"
+                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] outline-none focus:border-accent/60"
                             />
                           </td>
 
@@ -445,7 +445,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 </div>
 
                 {/* Barra de Balanço das Partidas */}
-                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-black/6 dark:border-white/8 flex flex-wrap items-center justify-between gap-4 text-[13px]">
+                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-line flex flex-wrap items-center justify-between gap-4 text-[13px]">
                   <div className="flex items-center gap-6 font-mono">
                     <div>
                       <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Débitos</span>
@@ -470,12 +470,12 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   <div>
                     {isBalanced ? (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-[12px] font-medium">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
                         Partidas Equilibradas (Σ D = Σ C)
                       </div>
                     ) : (
                       <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-[12px] font-medium">
-                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                        <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-300" />
                         Diferença de {formatCurrency(difference)}
                       </div>
                     )}
@@ -501,7 +501,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 className={INPUT}
               />
               {attachment && 'problem' in attachment ? (
-                <p className="mt-1.5 text-[12px] text-rose-600">{attachment.problem}</p>
+                <p className="mt-1.5 text-[12px] text-rose-600 dark:text-rose-300">{attachment.problem}</p>
               ) : attachment ? (
                 <p className="mt-1.5 text-[12px] text-stone-500">
                   Abre em <span className="font-mono">{attachment.host}</span> ·{' '}
@@ -518,7 +518,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           </div>
 
           {/* Rodapé / Ações (fixo) */}
-          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-black/6 dark:border-white/8">
+          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-line">
             <button
               type="button"
               onClick={onClose}

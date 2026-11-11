@@ -365,11 +365,16 @@ export default function ConciliacaoPage() {
   return (
     <main className={PAGE}>
       {/* Cabeçalho editorial, com a importação de extratos */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-1.5 min-w-0">
-          <p className="text-[13px] font-medium text-stone-500">{currentClient?.tradeName || currentClient?.name || '—'}</p>
-          <h1 className="text-[32px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">Conciliação bancária</h1>
-          <p className="text-[14px] text-stone-500">
+      <header className="flex flex-wrap items-end justify-between gap-4 pb-5 border-b-[3px] border-double border-line-strong">
+        <div className="space-y-2 min-w-0">
+          {(currentClient?.tradeName || currentClient?.name) && (
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-accent-ink">
+              <span aria-hidden className="w-1.5 h-1.5 rounded-[2px] bg-accent rotate-45 shrink-0" />
+              <span className="truncate">{currentClient?.tradeName || currentClient?.name}</span>
+            </p>
+          )}
+          <h1 className="font-serif text-[36px] leading-[1.08] font-medium text-stone-900 dark:text-stone-50">Conciliação bancária</h1>
+          <p className="text-[14px] leading-relaxed text-stone-500 dark:text-stone-400">
             Classifique os lançamentos; cada classificação memorizada ensina o sistema —{' '}
             <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{rules.length}</span> regra(s) ativa(s).
           </p>
@@ -386,7 +391,7 @@ export default function ConciliacaoPage() {
         onBankAccountUpdated={handleBankAccountUpdated}
       />
       {loadError && loadError.id === clientId && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {loadError.message}
         </p>
       )}
@@ -435,7 +440,7 @@ export default function ConciliacaoPage() {
       <ImportSummary lastImport={importFlow.lastImport} error={error} onDismiss={importFlow.dismissLastImport} />
 
       {hasBrokenText && (
-        <p role="status" className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200/60 text-[13px] text-amber-800">
+        <p role="status" className="flex items-start gap-2 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/25 text-[13px] text-amber-800 dark:text-amber-300">
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
           <span>
             Alguns históricos estão com acentuação quebrada (ex.: “transferÃªncia”) por importações antigas.{' '}

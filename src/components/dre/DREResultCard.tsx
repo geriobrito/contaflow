@@ -9,7 +9,7 @@ export type DRETone = 'neutral' | 'profit' | 'loss';
 
 const TONES: Record<DRETone, { card: string; label: string; value: string; icon: string }> = {
   neutral: {
-    card: 'bg-white/70 dark:bg-stone-900/60 border-black/6 dark:border-white/8',
+    card: 'bg-white/70 dark:bg-stone-900/60 border-line',
     label: 'text-stone-500',
     value: 'text-stone-400 dark:text-stone-500',
     icon: 'bg-stone-200 dark:bg-stone-700 text-stone-500',

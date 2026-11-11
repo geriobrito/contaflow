@@ -99,7 +99,7 @@ export default function NotasPage() {
         }
       />
 
-      {(error ?? saveError) && <p role="alert" className="text-[13px] text-rose-600">{error ?? saveError}</p>}
+      {(error ?? saveError) && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error ?? saveError}</p>}
 
       {!currentClient ? (
         <section className={`${SURFACE} rounded-[22px]`}>
@@ -122,13 +122,13 @@ export default function NotasPage() {
               </select>
             </Field>
             {saveLabel && (
-              <p role="status" className={`flex items-center gap-1.5 pb-2 text-[12px] ${saveState === 'local' ? 'text-amber-700' : 'text-stone-500'}`}>
-                {saveState === 'saved' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+              <p role="status" className={`flex items-center gap-1.5 pb-2 text-[12px] ${saveState === 'local' ? 'text-amber-700 dark:text-amber-300' : 'text-stone-500'}`}>
+                {saveState === 'saved' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />}
                 {saveLabel}
               </p>
             )}
             {pending.length > 0 && (
-              <p role="status" className="flex items-start gap-2 pb-2 text-[13px] text-amber-700">
+              <p role="status" className="flex items-start gap-2 pb-2 text-[13px] text-amber-700 dark:text-amber-300">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 {pending.length} trecho(s) entre colchetes ainda por preencher nas notas selecionadas.
               </p>
@@ -179,7 +179,7 @@ export default function NotasPage() {
                   value={n.text}
                   onChange={(e) => update(n.id, { text: e.target.value })}
                   rows={Math.min(12, Math.max(4, Math.ceil(n.text.length / 110) + n.text.split('\n').length))}
-                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[13px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+                  className="w-full px-3.5 py-3 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-line-strong text-[13px] leading-relaxed outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
                 />
               </section>
             );

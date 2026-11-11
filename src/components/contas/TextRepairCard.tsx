@@ -8,9 +8,9 @@ import { BUTTON, SURFACE } from '@/components/ui/primitives';
 /** Aviso de históricos e regras com acentuação quebrada (importações antigas) e o botão que os corrige. */
 export function TextRepairCard({ plan, busy, onRepair }: { plan: TextRepairPlan; busy: boolean; onRepair: () => void }) {
   return (
-    <section className={`${SURFACE} rounded-[22px] p-5 space-y-3 border-amber-200/70`} aria-label="Correção de acentuação">
+    <section className={`${SURFACE} rounded-[22px] p-5 space-y-3 border-amber-200/70 dark:border-amber-500/25`} aria-label="Correção de acentuação">
       <div className="flex flex-wrap items-start gap-3">
-        <span className="w-9 h-9 shrink-0 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-700 flex items-center justify-center">
+        <span className="w-9 h-9 shrink-0 rounded-full bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 flex items-center justify-center">
           <Type className="w-4 h-4" />
         </span>
         <div className="flex-1 min-w-[260px] space-y-1">
@@ -26,7 +26,7 @@ export function TextRepairCard({ plan, busy, onRepair }: { plan: TextRepairPlan;
             </p>
           )}
           {plan.lockedMemos.length > 0 && (
-            <p className="text-[12px] text-amber-700">
+            <p className="text-[12px] text-amber-700 dark:text-amber-300">
               {plan.lockedMemos.length} histórico(s) estão em competência fechada e só serão corrigidos depois de reabri-la.
             </p>
           )}

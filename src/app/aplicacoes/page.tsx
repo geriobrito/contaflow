@@ -94,7 +94,7 @@ export default function AplicacoesPage() {
       />
       <ControlsTabs />
       {data.error && !editing && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {data.error}
         </p>
       )}
@@ -139,9 +139,9 @@ export default function AplicacoesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                  <th className="font-medium pl-5 pr-3 py-2.5">Aplicação</th>
-                  <th className="font-medium px-3 py-2.5 text-right w-56">Saldo bruto do extrato em {competence(month)}</th>
+                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                  <th className="font-semibold pl-5 pr-3 py-2.5">Aplicação</th>
+                  <th className="font-semibold px-3 py-2.5 text-right w-56">Saldo bruto do extrato em {competence(month)}</th>
                   <th className="pl-3 pr-5 py-2.5 w-20">
                     <span className="sr-only">Ações</span>
                   </th>
@@ -220,11 +220,11 @@ export default function AplicacoesPage() {
               {rows.length > 0 && (
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-y border-black/4">
-                      <th className="font-medium pl-5 pr-3 py-2.5">Conta</th>
-                      <th className="font-medium px-3 py-2.5 text-right">Extrato</th>
-                      <th className="font-medium px-3 py-2.5 text-right">Contábil antes do rendimento</th>
-                      <th className="font-medium pl-3 pr-5 py-2.5 text-right">Rendimento</th>
+                    <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-y border-line">
+                      <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
+                      <th className="font-semibold px-3 py-2.5 text-right">Extrato</th>
+                      <th className="font-semibold px-3 py-2.5 text-right">Contábil antes do rendimento</th>
+                      <th className="font-semibold pl-3 pr-5 py-2.5 text-right">Rendimento</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -233,7 +233,7 @@ export default function AplicacoesPage() {
                         <td className="pl-5 pr-3 py-2.5">{r.label}</td>
                         <td className={NUM}>{formatCurrency(fromCents(r.informedCents))}</td>
                         <td className={NUM}>{formatCurrency(fromCents(r.ledgerCents))}</td>
-                        <td className={`${NUM} pr-5 ${r.yieldCents < 0 ? 'text-rose-600' : ''}`}>{formatCurrency(fromCents(r.yieldCents))}</td>
+                        <td className={`${NUM} pr-5 ${r.yieldCents < 0 ? 'text-rose-600 dark:text-rose-300' : ''}`}>{formatCurrency(fromCents(r.yieldCents))}</td>
                       </tr>
                     ))}
                   </tbody>

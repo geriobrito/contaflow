@@ -38,7 +38,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
             placeholder="Filtrar por histórico, documento ou contrapartida..."
             value={tableSearch}
             onChange={(e) => setTableSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
+            className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-line-strong rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
           />
         </div>
         <span className="text-[11px] text-stone-400 tabular-nums font-mono whitespace-nowrap">
@@ -66,7 +66,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         ) : (
           <table className="w-full text-left border-collapse text-[12px] print-fit-table">
             <thead>
-              <tr className="sticky top-0 z-10 bg-stone-100/95 dark:bg-stone-800/95 backdrop-blur text-stone-500 uppercase tracking-wider text-[10px] font-semibold border-b border-black/5 dark:border-white/6">
+              <tr className="sticky top-0 z-10 bg-surface-2 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line">
                 <th className="pl-5 pr-3 py-2.5 w-24">Data</th>
                 <th className="px-3 py-2.5 w-28">Doc / FITID</th>
                 <th className="px-3 py-2.5">Histórico</th>
@@ -90,7 +90,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                   {formatCurrency(ledger.openingBalance)}{' '}
                   <span
                     className={`text-[10px] font-bold ${
-                      ledger.openingNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                      ledger.openingNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                     }`}
                   >
                     {ledger.openingNature}
@@ -140,7 +140,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                     </span>{' '}
                     <span
                       className={`text-[10px] font-bold ${
-                        e.balanceNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                        e.balanceNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                       }`}
                     >
                       {e.balanceNature}
@@ -173,7 +173,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                   {formatCurrency(ledger.totals.closingBalance)}{' '}
                   <span
                     className={`text-[10px] font-bold ${
-                      ledger.totals.closingNature === 'D' ? 'text-blue-600' : 'text-amber-600'
+                      ledger.totals.closingNature === 'D' ? 'text-blue-600 dark:text-blue-300' : 'text-amber-600 dark:text-amber-300'
                     }`}
                   >
                     {ledger.totals.closingNature}

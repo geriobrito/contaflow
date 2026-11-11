@@ -25,7 +25,7 @@ export function TransferPanel({ pairs, banks, busy, onReconcile }: TransferPanel
   const name = (key?: string) => banks.find((b) => b.accountKey === key)?.nickname ?? key ?? '—';
 
   return (
-    <section className={`${SURFACE} rounded-[22px] overflow-hidden border-sky-200/60`} aria-label="Transferências entre contas próprias">
+    <section className={`${SURFACE} rounded-[22px] overflow-hidden border-sky-200/60 dark:border-sky-500/25`} aria-label="Transferências entre contas próprias">
       <div className="flex flex-wrap items-center gap-3 px-5 py-3.5">
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex flex-1 min-w-0 items-center gap-3 text-left">
           <span className="w-8 h-8 shrink-0 rounded-full bg-sky-100 dark:bg-sky-500/15 text-sky-700 dark:text-sky-300 flex items-center justify-center">
@@ -72,7 +72,7 @@ export function TransferPanel({ pairs, banks, busy, onReconcile }: TransferPanel
                 type="button"
                 disabled={busy}
                 onClick={() => void onReconcile([p])}
-                className="h-8 px-3 rounded-full text-[12px] font-medium text-sky-700 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-40"
+                className="h-8 px-3 rounded-full text-[12px] font-medium text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 disabled:opacity-40"
               >
                 Conciliar
               </button>

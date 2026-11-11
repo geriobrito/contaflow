@@ -97,7 +97,7 @@ export default function EstoquePage() {
       />
       <ControlsTabs />
       {data.error && !setup && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {data.error}
         </p>
       )}

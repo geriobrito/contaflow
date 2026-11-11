@@ -47,10 +47,10 @@ export function OpeningFooter(props: OpeningFooterProps) {
           {error}
         </p>
       )}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[20px] px-5 py-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border border-black/8 dark:border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.10)]">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[20px] px-5 py-3 bg-white/90 dark:bg-stone-900/90 backdrop-blur-xl border border-line-strong shadow-raised">
         <div role="group" aria-label="Equação da abertura" className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
           <Term label="Ativo" value={totals.assets} />
-          <span aria-hidden className={`text-[15px] font-semibold ${balanced ? 'text-emerald-600' : 'text-amber-600'}`}>
+          <span aria-hidden className={`text-[15px] font-semibold ${balanced ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'}`}>
             {balanced ? '=' : '≠'}
           </span>
           <span className="sr-only">{balanced ? 'igual a' : 'diferente de'}</span>
@@ -91,7 +91,7 @@ function Status({ mode, plug, totals, balanced }: OpeningFooterProps & { balance
   if (mode === 'OPENING_BALANCE' && plug) {
     return (
       <p className="flex items-start gap-2 text-[12px] text-stone-600 dark:text-stone-300">
-        <Scale className="w-4 h-4 shrink-0 text-emerald-600" />
+        <Scale className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
         <span>
           <b className="font-medium">{describePlug(plug)}</b>. A abertura fecha.
         </span>
@@ -119,10 +119,10 @@ function Status({ mode, plug, totals, balanced }: OpeningFooterProps & { balance
 }
 
 const SELECT =
-  'h-8 max-w-[260px] px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[12px] text-stone-900 dark:text-stone-100 outline-none focus:border-accent/60';
+  'h-8 max-w-[260px] px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-line-strong text-[12px] text-stone-900 dark:text-stone-100 outline-none focus:border-accent/60';
 
 const SMALL_BUTTON =
-  'inline-flex items-center h-8 px-3 rounded-full text-[12px] font-medium bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-black/8 dark:border-white/10 hover:bg-white transition-all duration-150 active:scale-[0.98]';
+  'inline-flex items-center h-8 px-3 rounded-full text-[12px] font-medium bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-line-strong hover:bg-white transition-all duration-150 active:scale-[0.98]';
 
 function PlugPicker({ equityAccounts, plugAccount, onPlugAccount, onPlugInto }: OpeningFooterProps) {
   if (!equityAccounts.length) return null;

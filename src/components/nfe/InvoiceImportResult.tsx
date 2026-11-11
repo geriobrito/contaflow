@@ -12,9 +12,9 @@ export function InvoiceImportResult({ outcome, onClose }: { outcome: InvoiceImpo
   ].filter(Boolean);
 
   return (
-    <section role="status" aria-label="Resultado da importação" className="rounded-2xl border border-black/6 dark:border-white/8 bg-white/70 dark:bg-stone-900/60 px-4 py-3 text-[13px] space-y-2 animate-fade-in">
+    <section role="status" aria-label="Resultado da importação" className="rounded-2xl border border-line bg-white/70 dark:bg-stone-900/60 px-4 py-3 text-[13px] space-y-2 animate-fade-in">
       <div className="flex items-start gap-2">
-        {outcome.imported > 0 ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />}
+        {outcome.imported > 0 ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />}
         <p className="flex-1 text-stone-700 dark:text-stone-200">
           {outcome.imported > 0 ? `${outcome.imported} nota(s) importada(s)${parts.length ? ` · ${parts.join(', ')}` : ''}.` : 'Nenhuma nota importada.'}
           {outcome.cancelled > 0 && ` ${outcome.cancelled} marcada(s) como cancelada(s).`}
@@ -39,7 +39,7 @@ export function InvoiceImportResult({ outcome, onClose }: { outcome: InvoiceImpo
         </p>
       )}
       {outcome.warnings.length > 0 && (
-        <ul className="pl-6 space-y-0.5 text-[12px] text-amber-700">
+        <ul className="pl-6 space-y-0.5 text-[12px] text-amber-700 dark:text-amber-300">
           {outcome.warnings.map((w) => (
             <li key={`${w.file}-${w.message}`}>
               {w.file}: {w.message}
@@ -49,7 +49,7 @@ export function InvoiceImportResult({ outcome, onClose }: { outcome: InvoiceImpo
       )}
       {outcome.rejected.length > 0 && (
         <div className="pl-6 text-[12px]">
-          <p className="font-medium text-rose-700">{outcome.rejected.length} arquivo(s) não importado(s):</p>
+          <p className="font-medium text-rose-700 dark:text-rose-300">{outcome.rejected.length} arquivo(s) não importado(s):</p>
           <ul className="space-y-0.5 text-stone-600 dark:text-stone-300">
             {outcome.rejected.slice(0, 20).map((r) => (
               <li key={`${r.file}-${r.reason}`}>

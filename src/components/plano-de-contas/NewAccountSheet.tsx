@@ -75,7 +75,7 @@ export function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewA
       onClose={onClose}
       footer={
         <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">{saveError}</p>}
           <button
             type="button"
             disabled={!valid || saving}

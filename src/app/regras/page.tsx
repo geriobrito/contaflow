@@ -99,7 +99,7 @@ export default function RegrasPage() {
 
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por termo ou conta" />
       {actionError && (
-        <p role="alert" className="-mt-4 px-1 text-[13px] text-rose-600 animate-fade-in">
+        <p role="alert" className="-mt-4 px-1 text-[13px] text-rose-600 dark:text-rose-300 animate-fade-in">
           {actionError}
         </p>
       )}

@@ -16,10 +16,10 @@ const thisYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => String(thisYear - i));
 
 const ICON: Record<CheckLevel, React.ReactNode> = {
-  block: <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />,
-  warn: <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />,
+  block: <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-300 shrink-0 mt-0.5" />,
+  warn: <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0 mt-0.5" />,
   info: <Info className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />,
-  ok: <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />,
+  ok: <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300 shrink-0 mt-0.5" />,
 };
 const ORDER: Record<CheckLevel, number> = { block: 0, warn: 1, info: 2, ok: 3 };
 
@@ -54,7 +54,7 @@ export default function FechamentoPage() {
         }
       />
       {data.error && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {data.error}
         </p>
       )}

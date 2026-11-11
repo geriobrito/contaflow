@@ -36,7 +36,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
         <div className="space-y-0.5">
           <div className="flex flex-wrap items-center gap-2 text-[12px] text-stone-500">
             <span className="inline-flex items-center gap-1 font-medium text-stone-800 dark:text-stone-200">
-              <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
               Relatório Executivo para a Diretoria
             </span>
             <span>·</span>
@@ -80,7 +80,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
       {/* KPIs Executivos (4 Cards) */}
       <section
         aria-label="Indicadores-chave dos últimos 12 meses"
-        className="rounded-[22px] overflow-hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-black/5 dark:bg-white/6 border border-black/6 dark:border-white/8 shadow-[0_2px_12px_rgba(0,0,0,0.04)]"
+        className="rounded-[22px] overflow-hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-black/5 dark:bg-white/6 border border-line shadow-card"
       >
         <div className="px-5 py-4 bg-white/85 dark:bg-stone-900/85">
           <div className="flex items-center justify-between gap-2">
@@ -198,14 +198,14 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[12px]">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4 dark:border-white/6">
-                <th className="font-medium pl-6 pr-3 py-2.5">Mês</th>
-                <th className="font-medium px-3 py-2.5 text-right">Receita Bruta</th>
-                <th className="font-medium px-3 py-2.5 text-right">Tributos / Ded.</th>
-                <th className="font-medium px-3 py-2.5 text-right">Custos (CMV/CSP)</th>
-                <th className="font-medium px-3 py-2.5 text-right">Despesas Op./Fin.</th>
-                <th className="font-medium px-3 py-2.5 text-right">Resultado Líquido</th>
-                <th className="font-medium pl-3 pr-6 py-2.5 text-right">Margem</th>
+              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                <th className="font-semibold pl-6 pr-3 py-2.5">Mês</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Receita Bruta</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Tributos / Ded.</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Custos (CMV/CSP)</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Despesas Op./Fin.</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Resultado Líquido</th>
+                <th className="font-semibold pl-3 pr-6 py-2.5 text-right">Margem</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/4 dark:divide-white/5 font-mono tabular-nums">

@@ -69,14 +69,14 @@ export function FixedAssetsTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                <th className="font-medium pl-5 pr-3 py-2.5">Bem</th>
-                <th className="font-medium px-3 py-2.5">Em uso desde</th>
-                <th className="font-medium px-3 py-2.5 text-right">Custo</th>
-                <th className="font-medium px-3 py-2.5 text-right">Taxa</th>
-                <th className="font-medium px-3 py-2.5 text-right">Cota do mês</th>
-                <th className="font-medium px-3 py-2.5 text-right">Acumulada</th>
-                <th className="font-medium px-3 py-2.5 text-right">Valor líquido</th>
+              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                <th className="font-semibold pl-5 pr-3 py-2.5">Bem</th>
+                <th className="font-semibold px-3 py-2.5">Em uso desde</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Custo</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Taxa</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Cota do mês</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Acumulada</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Valor líquido</th>
                 <th className="pl-3 pr-5 py-2.5 w-28"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>

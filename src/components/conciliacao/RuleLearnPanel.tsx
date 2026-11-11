@@ -55,7 +55,7 @@ export function RuleLearnPanel({
   memoSuggestion,
 }: RuleLearnPanelProps) {
   return (
-    <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-black/6 dark:border-white/6 overflow-hidden">
+    <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line overflow-hidden">
       <label htmlFor="learn-rule" className="flex items-center gap-4 px-4 py-3 cursor-pointer">
         <span className="flex-1 min-w-0">
           <span className="block text-[14px] tracking-tight text-stone-900 dark:text-stone-100">{title}</span>
@@ -119,8 +119,8 @@ export function TermWarning({
       role="alert"
       className={`${className} rounded-xl px-3 py-2.5 text-[12px] leading-snug border ${
         generic
-          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/70 text-rose-800 dark:text-rose-300'
-          : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/70 text-amber-800 dark:text-amber-300'
+          ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200/70 dark:border-rose-500/25 text-rose-800 dark:text-rose-300'
+          : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200/70 dark:border-amber-500/25 text-amber-800 dark:text-amber-300'
       }`}
     >
       <p className="flex items-start gap-1.5 font-medium">

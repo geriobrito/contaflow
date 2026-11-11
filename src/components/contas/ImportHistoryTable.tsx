@@ -23,13 +23,13 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-b border-black/4">
-                <th className="font-medium pl-5 pr-3 py-2.5">Importado em</th>
-                <th className="font-medium px-3 py-2.5">Arquivo</th>
-                <th className="font-medium px-3 py-2.5">Conta</th>
-                <th className="font-medium px-3 py-2.5">Período</th>
-                <th className="font-medium px-3 py-2.5 text-right">Lançamentos</th>
-                <th className="font-medium px-3 py-2.5">Saldo</th>
+              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
+                <th className="font-semibold pl-5 pr-3 py-2.5">Importado em</th>
+                <th className="font-semibold px-3 py-2.5">Arquivo</th>
+                <th className="font-semibold px-3 py-2.5">Conta</th>
+                <th className="font-semibold px-3 py-2.5">Período</th>
+                <th className="font-semibold px-3 py-2.5 text-right">Lançamentos</th>
+                <th className="font-semibold px-3 py-2.5">Saldo</th>
                 <th className="pl-3 pr-5 py-2.5 w-14"><span className="sr-only">Ações</span></th>
               </tr>
             </thead>
@@ -52,11 +52,11 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
                     </td>
                     <td className="px-3 py-2.5">
                       {b.status === 'FAILED' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded-full border border-rose-200/60" title="A importação foi interrompida com erro. Exclua o lote para remover os lançamentos parciais.">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded-full border border-rose-200/60 dark:border-rose-500/25" title="A importação foi interrompida com erro. Exclua o lote para remover os lançamentos parciais.">
                           <AlertTriangle className="w-3 h-3" /> Falha na importação
                         </span>
                       ) : b.status === 'PROCESSING' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200/60">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-500/25">
                           Importando…
                         </span>
                       ) : (

@@ -91,7 +91,7 @@ export default function ImobilizadoPage() {
       />
       <ControlsTabs />
       {data.error && !editing && !disposing && (
-        <p role="alert" className="text-[13px] text-rose-600">
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
           {data.error}
         </p>
       )}
@@ -137,7 +137,7 @@ export default function ImobilizadoPage() {
               {reconciliation.loading ? 'Conferindo…' : reconciliation.result ? 'Conferir de novo' : 'Conferir'}
             </button>
           </div>
-          {reconciliation.error && <p className="px-5 py-3 text-[13px] text-rose-600">{reconciliation.error}</p>}
+          {reconciliation.error && <p className="px-5 py-3 text-[13px] text-rose-600 dark:text-rose-300">{reconciliation.error}</p>}
           {reconciliation.result && (
             <>
               <p className={`flex items-center gap-2 px-5 py-3 text-[13px] ${diverging.length ? 'text-amber-800 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-400'}`}>
@@ -148,11 +148,11 @@ export default function ImobilizadoPage() {
               </p>
               <table className="w-full text-left">
                 <thead>
-                  <tr className="text-[11px] uppercase tracking-wider text-stone-400 border-y border-black/4">
-                    <th className="font-medium pl-5 pr-3 py-2.5">Conta</th>
-                    <th className="font-medium px-3 py-2.5 text-right">Cadastro</th>
-                    <th className="font-medium px-3 py-2.5 text-right">Balancete</th>
-                    <th className="font-medium pl-3 pr-5 py-2.5 text-right">Diferença</th>
+                  <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-y border-line">
+                    <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
+                    <th className="font-semibold px-3 py-2.5 text-right">Cadastro</th>
+                    <th className="font-semibold px-3 py-2.5 text-right">Balancete</th>
+                    <th className="font-semibold pl-3 pr-5 py-2.5 text-right">Diferença</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -163,7 +163,7 @@ export default function ImobilizadoPage() {
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.register)}</td>
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.ledger)}</td>
-                      <td className={`pl-3 pr-5 py-2.5 text-right font-mono tabular-nums ${Math.abs(r.difference) >= 0.005 ? 'text-rose-600' : 'text-stone-400'}`}>
+                      <td className={`pl-3 pr-5 py-2.5 text-right font-mono tabular-nums ${Math.abs(r.difference) >= 0.005 ? 'text-rose-600 dark:text-rose-300' : 'text-stone-400'}`}>
                         {formatCurrency(r.difference)}
                       </td>
                     </tr>

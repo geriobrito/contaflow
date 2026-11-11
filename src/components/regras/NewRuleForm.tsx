@@ -119,9 +119,9 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
           className="mt-0"
         />
       )}
-      {addError && <p className="text-[12px] text-rose-600 animate-fade-in">{addError}</p>}
+      {addError && <p className="text-[12px] text-rose-600 dark:text-rose-300 animate-fade-in">{addError}</p>}
       {notice && (
-        <p role="status" className="text-[12px] text-emerald-700 animate-fade-in">
+        <p role="status" className="text-[12px] text-emerald-700 dark:text-emerald-300 animate-fade-in">
           {notice}
         </p>
       )}

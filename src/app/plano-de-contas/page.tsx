@@ -97,7 +97,7 @@ export default function PlanoDeContasPage() {
 
       <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
         {loadFailure ? (
-          <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600">
+          <p role="alert" className="px-5 py-10 text-center text-[13px] text-rose-600 dark:text-rose-300">
             Não foi possível carregar o plano de contas ({loadFailure}). Recarregue a página para tentar de novo.
           </p>
         ) : isLoading ? (
@@ -119,7 +119,7 @@ export default function PlanoDeContasPage() {
           <>
             <div
               aria-hidden
-              className="flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-black/5 dark:border-white/6 text-[11px] uppercase tracking-wider text-stone-400"
+              className="flex items-center gap-2 pr-3 pl-[44px] py-2.5 border-b border-line bg-surface-2 text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400"
             >
               <span className="w-32 shrink-0">Código</span>
               <span className="flex-1">Conta</span>

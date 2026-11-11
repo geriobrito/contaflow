@@ -112,7 +112,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
       onClose={onClose}
       footer={
         <>
-          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600">{saveError}</p>}
+          {saveError && <p role="alert" className="mb-2 text-center text-[12px] text-rose-600 dark:text-rose-300">{saveError}</p>}
           <button
             type="button"
             disabled={!valid || saving}
@@ -163,8 +163,8 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               placeholder="00.000.000/0000-00"
               aria-invalid={Boolean(cnpjError)}
               className={`${INPUT} pr-10 font-mono tabular-nums ${
-                cnpjError ? 'border-rose-300 focus:border-rose-400 focus:shadow-[0_0_0_4px_rgba(225,29,72,0.10)]' : ''
-              } ${cnpjValid ? 'border-emerald-300' : ''}`}
+                cnpjError ? 'border-rose-300 dark:border-rose-500/25 focus:border-rose-400 focus:shadow-[0_0_0_4px_rgba(225,29,72,0.10)]' : ''
+              } ${cnpjValid ? 'border-emerald-300 dark:border-emerald-500/25' : ''}`}
             />
             {lookup.loading ? (
               <span className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -178,7 +178,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               )
             )}
           </div>
-          {cnpjError && <p className="text-[12px] text-rose-600 px-0.5">{cnpjError}</p>}
+          {cnpjError && <p className="text-[12px] text-rose-600 dark:text-rose-300 px-0.5">{cnpjError}</p>}
           {!cnpjError && lookup.loading && <p className="text-[12px] text-stone-500 px-0.5">Consultando dados cadastrais do CNPJ…</p>}
           {!cnpjError && !lookup.loading && notice && (
             <p
@@ -244,7 +244,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
             maxLength={ACTIVITY_MAX}
             rows={2}
             placeholder="ex.: Fabricação de produtos de panificação"
-            className="w-full px-3.5 py-2.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-black/8 dark:border-white/10 text-[14px] leading-snug tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+            className="w-full px-3.5 py-2.5 rounded-xl bg-white/80 dark:bg-stone-800/70 border border-line-strong text-[14px] leading-snug tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
           />
         </Field>
 

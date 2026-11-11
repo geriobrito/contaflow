@@ -291,14 +291,14 @@ export default function FolhaPagamentoPage() {
       />
 
       {error && (
-        <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">
+        <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/10 px-4 py-3 text-[13px] text-rose-700 dark:text-rose-300">
           {error}
         </div>
       )}
 
       {toast && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[13px] text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 text-[13px] text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300 shrink-0" />
           <span>{toast}</span>
         </div>
       )}
@@ -336,7 +336,7 @@ export default function FolhaPagamentoPage() {
       {calc && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
               Proventos Brutos ({formatMonth(month)})
             </p>
             <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
@@ -347,7 +347,7 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
               Líquido a Pagar
             </p>
             <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
@@ -358,7 +358,7 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
               Guias a Recolher (INSS / FGTS / IRRF)
             </p>
             <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
@@ -369,10 +369,10 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
               Conciliação no Extrato
             </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-emerald-700">
+            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
               {settledCount} / {obligations.length} obrigações
             </p>
             <p className="mt-0.5 text-[11.5px] text-stone-500">

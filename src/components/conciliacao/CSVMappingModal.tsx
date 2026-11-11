@@ -304,9 +304,9 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
       aria-labelledby="csv-mapping-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
-      <div className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-black/8 dark:border-white/10 overflow-hidden">
+      <div className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-surface rounded-2xl shadow-overlay border border-line-strong overflow-hidden">
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-line bg-stone-50/50 dark:bg-stone-800/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <FileSpreadsheet className="w-5 h-5" />
@@ -342,14 +342,14 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-5">
           {error && (
             <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-200 text-[13px] flex items-center gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-300" />
               <span>{error}</span>
             </div>
           )}
 
           {configSource === 'saved' && (
             <div className="px-3.5 py-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/70 dark:border-emerald-800/40 text-emerald-800 dark:text-emerald-200 text-[12px] flex items-center gap-2">
-              <Sparkles className="w-4 h-4 shrink-0 text-emerald-600" />
+              <Sparkles className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-300" />
               <span>Formato memorizado desta conta aplicado automaticamente.</span>
             </div>
           )}
@@ -467,9 +467,9 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             <div className="p-3.5 rounded-xl bg-stone-100/70 dark:bg-stone-800/60 flex items-center justify-between text-[13px]">
               <div className="flex items-center gap-2">
                 {parseSimulation.count > 0 ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300 shrink-0" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0" />
                 )}
                 <span>
                   <strong>{parseSimulation.count}</strong> lançamento(s) prontos neste arquivo
@@ -485,7 +485,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             {remainingFiles > 0 && (
-              <label className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-black/6 dark:border-white/8 text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
+              <label className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border border-line text-[13px] text-stone-700 dark:text-stone-300 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={applyToRemaining}
@@ -501,7 +501,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-black/6 dark:border-white/8 bg-stone-50/50 dark:bg-stone-800/40">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-line bg-stone-50/50 dark:bg-stone-800/40">
           <span className="text-[12px] text-stone-400">
             {allBanks.some((b) => b.accountKey === selectedBankKey)
               ? 'O mapeamento escolhido será memorizado nesta conta para os próximos meses.'
