@@ -19,7 +19,7 @@
   "dependencies": {
     "@sentry/nextjs": "^11.10.0",
     "exceljs": "^4.4.0",
-    "firebase": "^12.19.0",
+    "firebase": "^13.2.0",
     "firebase-admin": "^14.5.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
