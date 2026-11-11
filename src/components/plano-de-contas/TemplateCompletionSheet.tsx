@@ -72,7 +72,7 @@ export function TemplateCompletionSheet({ missing, ignoredCount, busy, onAdd, on
             <li key={a.code}>
               <label className="flex items-center gap-3 py-2 text-[13px]">
                 <input type="checkbox" checked={selected.has(a.code)} onChange={() => toggle(a.code)} />
-                <span className="w-24 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{a.code}</span>
+                <span className="w-24 shrink-0 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{a.code}</span>
                 <span className={`flex-1 min-w-0 truncate ${a.nature === 'SYNTHETIC' ? 'font-medium' : ''}`}>{a.name}</span>
                 {forced && <span className="text-[11px] text-amber-700 dark:text-amber-300">entra como grupo</span>}
               </label>

@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import { Trash2 } from 'lucide-react';
 import type { InvoiceSummary } from '@/types/firestore';
 import { paymentStateOf, type InvoicePaymentState } from '@/lib/nfe/import';
@@ -29,14 +30,14 @@ export function InvoiceTable({ invoices, busy, onDelete }: InvoiceTableProps) {
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-            <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-24">Emissão</th>
-            <th scope="col" className="font-medium px-3 py-2.5 w-28">Nota</th>
-            <th scope="col" className="font-medium px-3 py-2.5">Fornecedor / cliente</th>
-            <th scope="col" className="font-medium px-3 py-2.5 w-20">CFOP</th>
-            <th scope="col" className="font-medium px-3 py-2.5 w-32">Situação</th>
-            <th scope="col" className="font-medium px-3 py-2.5 text-right w-36">Valor</th>
-            <th scope="col" className="pl-1 pr-5 py-2.5 w-12" />
+          <tr className={TABLE_HEAD}>
+            <Th scope="col" edge="start" className="w-24">Emissão</Th>
+            <Th scope="col" className="w-28">Nota</Th>
+            <Th scope="col">Fornecedor / cliente</Th>
+            <Th scope="col" className="w-20">CFOP</Th>
+            <Th scope="col" className="w-32">Situação</Th>
+            <Th scope="col" align="right" className="w-36">Valor</Th>
+            <Th scope="col" className="pl-1 pr-5 py-2.5 w-12" />
           </tr>
         </thead>
         <tbody>
@@ -58,15 +59,15 @@ export function InvoiceTable({ invoices, busy, onDelete }: InvoiceTableProps) {
                 </td>
                 <td className="px-3 py-3 max-w-0 w-full">
                   <p className="truncate text-stone-900 dark:text-stone-100">{inv.counterpartyName || (inv.direction === 'SALE' ? 'Consumidor não identificado' : '—')}</p>
-                  {inv.counterpartyDoc && <p className="font-mono tabular-nums text-[11px] text-stone-400">{docLabel(inv.counterpartyDoc)}</p>}
-                  {inv.installments.length > 1 && <p className="text-[11px] text-stone-400">{inv.installments.length} parcelas</p>}
+                  {inv.counterpartyDoc && <p className="font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{docLabel(inv.counterpartyDoc)}</p>}
+                  {inv.installments.length > 1 && <p className="text-[11px] text-stone-500 dark:text-stone-400">{inv.installments.length} parcelas</p>}
                   {Boolean(inv.ibs || inv.cbs) && (
-                    <p className="font-mono tabular-nums text-[11px] text-stone-400">
+                    <p className="font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">
                       IBS {formatCurrency(inv.ibs ?? 0)} · CBS {formatCurrency(inv.cbs ?? 0)}
                     </p>
                   )}
                   {Boolean(inv.altTotal) && inv.model === NFSE_MODEL && (
-                    <p className="text-[11px] text-stone-400">
+                    <p className="text-[11px] text-stone-500 dark:text-stone-400">
                       Serviço {formatCurrency(inv.altTotal ?? 0)}, líquido das retenções
                       {inv.retentions ? `: ${retentionParts(inv.retentions).map((p) => `${p.label} ${formatCurrency(p.cents / 100)}`).join(' · ')}` : ''}
                     </p>

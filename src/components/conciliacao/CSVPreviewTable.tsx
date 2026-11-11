@@ -1,5 +1,6 @@
 'use client';
 
+import { Th } from '@/components/ui/Table';
 import React from 'react';
 import { Table } from 'lucide-react';
 import type { previewCSV } from '@/lib/csv/parser';
@@ -35,10 +36,10 @@ export function CSVPreviewTable({ preview, hasHeader, onHasHeaderChange }: CSVPr
             <thead>
               <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/6 text-stone-600">
                 {preview.headers.map((h, i) => (
-                  <th key={i} className="py-2 px-3 whitespace-nowrap">
-                    <span className="text-[10px] text-stone-400 block font-normal">Col {i + 1}</span>
+                  <Th key={i} className="py-2 px-3 whitespace-nowrap">
+                    <span className="text-[10px] text-stone-500 dark:text-stone-400 block font-normal">Col {i + 1}</span>
                     {h || '—'}
-                  </th>
+                  </Th>
                 ))}
               </tr>
             </thead>

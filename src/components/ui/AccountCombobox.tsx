@@ -129,7 +129,7 @@ function OptionList({ accounts, value, onPick, suggestions, autoFocus, placehold
           section.rows.length === 0 ? null : (
             <React.Fragment key={section.title ?? 'contas'}>
               {section.title && (
-                <li role="presentation" className="sticky top-0 z-10 px-4 py-1.5 bg-stone-50/95 dark:bg-stone-800/95 backdrop-blur text-[11px] font-medium uppercase tracking-wide text-stone-400">
+                <li role="presentation" className="sticky top-0 z-10 px-4 py-1.5 bg-stone-50/95 dark:bg-stone-800/95 backdrop-blur text-[11px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400">
                   {section.title}
                 </li>
               )}
@@ -153,9 +153,9 @@ function OptionList({ accounts, value, onPick, suggestions, autoFocus, placehold
                       <span className={`${compact ? 'w-[86px] text-[11px]' : 'w-[96px] text-[12px]'} shrink-0 font-mono tabular-nums text-stone-400`}>{a.code}</span>
                       <span className="flex-1 min-w-0">
                         <span className={`block truncate ${text} tracking-tight ${selected ? 'text-accent-ink font-medium' : 'text-stone-800 dark:text-stone-200'}`}>{a.name}</span>
-                        {reason && <span className="block truncate text-[11px] text-stone-400">{reason}</span>}
+                        {reason && <span className="block truncate text-[11px] text-stone-500 dark:text-stone-400">{reason}</span>}
                       </span>
-                      {showNature && <span className="text-[10px] uppercase text-stone-400 font-mono shrink-0">{a.nature === 'SYNTHETIC' ? 'Sintética' : 'Analítica'}</span>}
+                      {showNature && <span className="text-[10px] uppercase text-stone-500 dark:text-stone-400 font-mono shrink-0">{a.nature === 'SYNTHETIC' ? 'Sintética' : 'Analítica'}</span>}
                       {selected && <Check className="w-4 h-4 text-accent-ink shrink-0" strokeWidth={2.5} />}
                     </button>
                   </li>
@@ -312,7 +312,7 @@ export function AccountSelectField({
       >
         {selected ? (
           <span className="flex-1 min-w-0 truncate text-[13px] text-stone-900 dark:text-stone-100">
-            <span className="font-mono tabular-nums text-[11px] text-stone-400 mr-1.5">{selected.code}</span>
+            <span className="font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 mr-1.5">{selected.code}</span>
             {selected.name}
           </span>
         ) : (

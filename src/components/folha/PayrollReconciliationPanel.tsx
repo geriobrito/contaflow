@@ -30,7 +30,7 @@ const REASON_BADGE: Record<'EXACT_AND_MEMO' | 'EXACT_AMOUNT' | 'MEMO_KEYWORD', {
   },
   MEMO_KEYWORD: {
     label: 'Palavra-chave no extrato',
-    cls: 'bg-stone-100 text-stone-700 border-stone-200',
+    cls: 'bg-surface-2 text-stone-700 dark:text-stone-300 border-line',
   },
 };
 
@@ -59,11 +59,11 @@ export function PayrollReconciliationPanel({
 
   return (
     <section className={`${SURFACE} rounded-[22px] p-5 md:p-6 space-y-5`}>
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-200/70 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
         <div>
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="w-4 h-4 text-amber-700 dark:text-amber-300" />
-            <h2 className="text-[15px] font-semibold text-stone-900">
+            <h2 className="text-[15px] font-semibold text-stone-900 dark:text-stone-100">
               Cruzamento Automático com o Extrato Bancário ({formatMonth(month)} e {formatMonth(nextMonth)})
             </h2>
           </div>
@@ -72,7 +72,7 @@ export function PayrollReconciliationPanel({
           </p>
         </div>
         <div className="flex items-center gap-4 text-[12px] font-mono tabular-nums">
-          <span className="text-stone-600">
+          <span className="text-stone-600 dark:text-stone-300">
             Provisionado: <strong>{formatCurrency(totalProvisioned)}</strong>
           </span>
           <span className="text-emerald-700 dark:text-emerald-300">
@@ -92,7 +92,7 @@ export function PayrollReconciliationPanel({
           return (
             <div
               key={ob.key}
-              className="rounded-2xl border border-stone-200/80 bg-white/80 p-4 space-y-3"
+              className="rounded-2xl border border-line bg-white/80 p-4 space-y-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
@@ -104,14 +104,14 @@ export function PayrollReconciliationPanel({
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[11.5px] text-stone-500">{ob.accountCode}</span>
-                      <span className="text-[13.5px] font-semibold text-stone-900">{ob.label}</span>
+                      <span className="text-[13.5px] font-semibold text-stone-900 dark:text-stone-100">{ob.label}</span>
                       <span
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
                           isSettled
                             ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/25'
                             : isPartial
                               ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/25'
-                              : 'bg-stone-100 text-stone-600 border border-stone-200'
+                              : 'bg-surface-2 text-stone-600 dark:text-stone-300 border border-line'
                         }`}
                       >
                         {isSettled ? 'Quitado no extrato' : isPartial ? 'Pago parcialmente' : 'Aguardando conciliação'}
@@ -123,7 +123,7 @@ export function PayrollReconciliationPanel({
                 <div className="flex flex-wrap items-center gap-4 text-[12.5px] font-mono tabular-nums">
                   <div>
                     <span className="text-stone-400 mr-1">Provisão:</span>
-                    <strong className="text-stone-800">{formatCurrency(ob.provisioned)}</strong>
+                    <strong className="text-stone-800 dark:text-stone-100">{formatCurrency(ob.provisioned)}</strong>
                   </div>
                   <div>
                     <span className="text-stone-400 mr-1">Pago:</span>
@@ -149,7 +149,7 @@ export function PayrollReconciliationPanel({
                       <div key={tx.id} className="py-1 flex items-center justify-between gap-2 text-[12px]">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="font-mono text-stone-500 shrink-0">{formatDateBR(tx.date)}</span>
-                          <span className="text-stone-800 truncate">{tx.memo}</span>
+                          <span className="text-stone-800 dark:text-stone-100 truncate">{tx.memo}</span>
                         </div>
                         <span className="font-mono tabular-nums font-medium text-emerald-800 dark:text-emerald-300 shrink-0">
                           {formatCurrency(Math.abs(tx.amount))}
@@ -174,14 +174,14 @@ export function PayrollReconciliationPanel({
                       return (
                         <div key={tx.id} className="py-2 flex flex-wrap items-center justify-between gap-3 text-[12.5px]">
                           <div className="flex flex-wrap items-center gap-2 min-w-0">
-                            <span className="font-mono text-stone-600 shrink-0">{formatDateBR(tx.date)}</span>
-                            <span className="font-medium text-stone-900 truncate max-w-md">{tx.memo}</span>
+                            <span className="font-mono text-stone-600 dark:text-stone-300 shrink-0">{formatDateBR(tx.date)}</span>
+                            <span className="font-medium text-stone-900 dark:text-stone-100 truncate max-w-md">{tx.memo}</span>
                             <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${badge.cls}`}>
                               {badge.label}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 shrink-0">
-                            <span className="font-mono tabular-nums font-semibold text-stone-900">
+                            <span className="font-mono tabular-nums font-semibold text-stone-900 dark:text-stone-100">
                               {formatCurrency(Math.abs(tx.amount))}
                             </span>
                             <button

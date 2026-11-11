@@ -10,7 +10,10 @@ const PORT = 3210;
  *
  *   npm run test:e2e                                  (Chromium do Playwright: `npx playwright install chromium`)
  *   PLAYWRIGHT_CHANNEL=chrome npm run test:e2e        (Chrome já instalado na máquina)
+ *   npm run test:visual | npm run test:visual:update  (comparação de imagens das telas; ver e2e/visual.spec.ts)
  */
+const browser = { ...devices['Desktop Chrome'], ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) };
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 90_000,
@@ -27,7 +30,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) },
+      testIgnore: /visual\.spec\.ts$/,
+      use: browser,
+    },
+    // Comparação de imagens (npm run test:visual): fica fora do `test:e2e` porque as referências
+    // valem para a máquina que as gerou.
+    {
+      name: 'visual',
+      testMatch: /visual\.spec\.ts$/,
+      use: browser,
     },
   ],
   webServer: {

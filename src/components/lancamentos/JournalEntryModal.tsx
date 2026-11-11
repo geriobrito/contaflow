@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useState, useMemo } from 'react';
 import {
   X,
@@ -15,7 +16,7 @@ import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine
 import { formatCurrency } from '@/lib/utils/formatters';
 import { JOURNAL_TEMPLATES, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
 import { buildJournalEntry, emptyJournalLines, nextJournalLine, parseTemplateValues, type JournalEntryInput } from '@/lib/journal-form';
-import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { BUTTON, INPUT, INPUT_COMPACT, FIELD_LABEL } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { reportError } from '@/lib/monitoring';
@@ -233,9 +234,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                         value={templateValues[f.key] ?? ''}
                         onChange={(e) => setTemplateValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
                         placeholder="0,00"
-                        className={`${INPUT} h-9 text-right font-mono tabular-nums text-[13px]`}
+                        className={`${INPUT_COMPACT} w-full text-right font-mono tabular-nums`}
                       />
-                      {f.hint && <span className="block text-[11px] text-stone-400">{f.hint}</span>}
+                      {f.hint && <span className="block text-[11px] text-stone-500 dark:text-stone-400">{f.hint}</span>}
                     </label>
                   ))}
                 </div>
@@ -270,7 +271,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             {/* Dados Gerais */}
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                <label className={`${FIELD_LABEL} block mb-1.5`}>
                   Data do Lançamento
                 </label>
                 <div className="relative">
@@ -286,7 +287,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                <label className={`${FIELD_LABEL} block mb-1.5`}>
                   Categoria
                 </label>
                 <select
@@ -304,7 +305,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+                <label className={`${FIELD_LABEL} block mb-1.5`}>
                   Documento / Ref. (Opcional)
                 </label>
                 <input
@@ -319,7 +320,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+              <label className={`${FIELD_LABEL} block mb-1.5`}>
                 Histórico Contábil Geral (Memo) *
               </label>
               <input
@@ -358,12 +359,12 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-[13px] border-collapse">
                     <thead>
-                      <tr className="border-b border-line bg-surface-2 text-[11px] font-semibold text-stone-500 uppercase tracking-[0.08em]">
-                        <th className="py-2.5 px-3 w-16 text-center">Tipo</th>
-                        <th className="py-2.5 px-3">Conta Contábil (Analítica)</th>
-                        <th className="py-2.5 px-3 w-40 text-right">Valor (R$)</th>
-                        <th className="py-2.5 px-3">Complemento / Memo</th>
-                        <th className="py-2.5 px-3 w-12 text-center"></th>
+                      <tr className={TABLE_HEAD}>
+                        <Th align="center" className="w-16">Tipo</Th>
+                        <Th>Conta Contábil (Analítica)</Th>
+                        <Th align="right" className="w-40">Valor (R$)</Th>
+                        <Th>Complemento / Memo</Th>
+                        <Th align="center" className="w-12"></Th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-black/4 dark:divide-white/6">
@@ -486,7 +487,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
             {/* Anexo / Link */}
             <div>
-              <label htmlFor="journal-attachment" className="block text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5">
+              <label htmlFor="journal-attachment" className={`${FIELD_LABEL} block mb-1.5`}>
                 Link do comprovante (opcional)
               </label>
               <input
@@ -510,7 +511,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   </a>
                 </p>
               ) : (
-                <p className="mt-1.5 text-[12px] text-stone-400">
+                <p className="mt-1.5 text-[12px] text-stone-500 dark:text-stone-400">
                   Cole o link de compartilhamento, não o caminho do arquivo no computador: assim o comprovante abre em qualquer aparelho.
                 </p>
               )}

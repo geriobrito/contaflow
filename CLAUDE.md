@@ -19,6 +19,7 @@
 - **Teste de Arquivo Único**: `npx vitest run <caminho-do-arquivo>` (ex: `npx vitest run src/lib/ledger.test.ts`)
 - **Testes de Regras Firestore**: `npm run test:rules` (emulador Firestore, requer Java 21+)
 - **Testes E2E**: `npm run test:e2e` (Playwright, modo local; `PLAYWRIGHT_CHANNEL=chrome` usa o Chrome instalado)
+- **Testes Visuais**: `npm run test:visual` (compara capturas das telas principais, temas claro e escuro, com `e2e/visual.spec.ts-snapshots/`); após mudança visual desejada, `npm run test:visual:update`
 - **Deploy Firestore**: `npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>`
 - **Limpar Firestore Emulador**: `npm run clean:firestore`
 

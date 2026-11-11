@@ -300,7 +300,7 @@ export function CostCompositionChart({ composition }: { composition: CostComposi
             </div>
             <div className="text-right font-mono tabular-nums shrink-0">
               <span className="font-semibold text-stone-900 dark:text-stone-100">{formatCurrency(item.amount)}</span>
-              <span className="ml-1.5 text-[11px] text-stone-400">({item.pct.toFixed(1)}%)</span>
+              <span className="ml-1.5 text-[11px] text-stone-500 dark:text-stone-400">({item.pct.toFixed(1)}%)</span>
             </div>
           </div>
         ))}

@@ -7,7 +7,7 @@ import { accumulatedAtDisposalCents, assetCostCents, DISPOSAL_REASON_LABEL, disp
 import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 /**
  * Baixa do bem por venda, perda ou sucata: mostra o lançamento antes de gravar. Na venda, a
@@ -81,7 +81,7 @@ export function DisposeAssetSheet({
       <div className="space-y-4 pb-2">
         <div className="grid grid-cols-2 gap-3">
           <Field label={isSale ? 'Data da venda' : 'Data da baixa'} error={date && !valid ? 'Antes do início de uso.' : null}>
-            <input type="date" value={date} min={asset.inUseDate} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input type="date" value={date} min={asset.inUseDate} onChange={(e) => setDate(e.target.value)} className={INPUT_MONEY} />
           </Field>
           <Field label="Motivo">
             <select value={reason} onChange={(e) => setReason(e.target.value as FixedAssetDisposalReason)} className={INPUT}>
@@ -98,7 +98,7 @@ export function DisposeAssetSheet({
           <>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor da venda" error={saleText && !saleValid ? 'Valor inválido.' : null}>
-                <input value={saleText} onChange={(e) => setSaleText(e.target.value)} placeholder="0,00" inputMode="decimal" className={`${INPUT} font-mono tabular-nums`} />
+                <input value={saleText} onChange={(e) => setSaleText(e.target.value)} placeholder="0,00" inputMode="decimal" className={INPUT_MONEY} />
               </Field>
               <Field label="Nota fiscal nº">
                 <input value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} placeholder="ou contrato" className={INPUT} />

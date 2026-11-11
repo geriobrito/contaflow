@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, FileText } from 'lucide-react';
 import type { BalanceCheck, ImportBatch } from '@/types/firestore';
@@ -12,7 +13,7 @@ import { SURFACE } from '@/components/ui/primitives';
 export function BalanceCheckBadge({ check }: { check?: BalanceCheck }) {
   if (!check || check.status === 'NO_LEDGER') {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-stone-400">
+      <span className="inline-flex items-center gap-1 text-[11px] text-stone-500 dark:text-stone-400">
         <CircleDashed className="w-3 h-3" /> Sem saldo no arquivo
       </span>
     );
@@ -139,12 +140,12 @@ export function StatementDetails({ summary }: { summary: StatementSummary }) {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                  <th className="font-semibold pl-5 pr-3 py-2">Conta</th>
-                  <th className="font-semibold px-3 py-2">Período</th>
-                  <th className="font-semibold px-3 py-2 text-right">Saldo informado</th>
-                  <th className="font-semibold px-3 py-2 text-right">Esperado</th>
-                  <th className="font-semibold pl-3 pr-5 py-2">Conferência</th>
+                <tr className={TABLE_HEAD}>
+                  <Th className="pl-5 pr-3 py-2">Conta</Th>
+                  <Th className="px-3 py-2">Período</Th>
+                  <Th align="right" className="px-3 py-2">Saldo informado</Th>
+                  <Th align="right" className="px-3 py-2">Esperado</Th>
+                  <Th className="pl-3 pr-5 py-2">Conferência</Th>
                 </tr>
               </thead>
               <tbody>
@@ -152,7 +153,7 @@ export function StatementDetails({ summary }: { summary: StatementSummary }) {
                   <tr key={b.id} className="border-b border-black/4 last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-2.5">
                       <span className="font-mono text-[12px] text-stone-700 dark:text-stone-300">{b.accountKey}</span>
-                      {b.bankName && <span className="block text-[11px] text-stone-400">{b.bankName}</span>}
+                      {b.bankName && <span className="block text-[11px] text-stone-500 dark:text-stone-400">{b.bankName}</span>}
                     </td>
                     <td className="px-3 py-2.5 font-mono tabular-nums text-[12px] text-stone-500 whitespace-nowrap">
                       {b.startDate ? formatDateBR(b.startDate) : '?'} – {b.endDate ? formatDateBR(b.endDate) : '?'}

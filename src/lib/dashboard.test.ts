@@ -144,6 +144,22 @@ describe('buildDashboard: cadastros', () => {
   });
 });
 
+describe('buildDashboard: folha do mês', () => {
+  it('lembra da folha da competência anterior quando a empresa lançou folha há pouco', () => {
+    const alert = buildDashboard(base({ payrollMonths: ['2025-03', '2025-04'] })).alerts.find((a) => a.id === 'payroll');
+    expect(alert).toMatchObject({ severity: 'medium', href: '/folha?mes=2025-05' });
+    expect(alert?.detail).toMatch(/abril/i);
+  });
+
+  it('não lembra com a folha lançada, a competência fechada ou sem folha recente', () => {
+    expect(ids(buildDashboard(base({ payrollMonths: ['2025-04', '2025-05'] })))).not.toContain('payroll');
+    const locks = [{ id: 'c_2025-05', clientId: 'c', month: '2025-05', lockedAt: '', lockedByUid: 'u' }];
+    expect(ids(buildDashboard(base({ payrollMonths: ['2025-04'], locks })))).not.toContain('payroll');
+    expect(ids(buildDashboard(base({ payrollMonths: ['2025-01'] })))).not.toContain('payroll');
+    expect(ids(buildDashboard(base()))).not.toContain('payroll');
+  });
+});
+
 describe('buildDashboard: atividade principal', () => {
   it('lembra de cadastrar a atividade (declaração de conformidade); com ela, não', () => {
     expect(buildDashboard(base()).alerts.find((a) => a.id === 'activity')).toMatchObject({ severity: 'low', href: '/clientes' });

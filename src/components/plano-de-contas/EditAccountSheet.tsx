@@ -11,7 +11,7 @@ import { DRE_GROUPS, DRE_LABEL, dreLabel, isCodeTaken, RESULT_TYPES, TYPE_LABEL 
 import { CASH_FLOW_ACTIVITY_LABEL, defaultCashFlowActivity } from '@/lib/cash-flow';
 
 const CASH_FLOW_OPTIONS: readonly CashFlowActivity[] = ['OPERATING', 'INVESTING', 'FINANCING', 'CASH'];
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 interface EditAccountSheetProps {
   account: ChartAccount;
@@ -155,7 +155,7 @@ export function EditAccountSheet({ account, accounts, hasChildren, lockState, lo
             disabled={codeDisabled}
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            className={`${INPUT} font-mono tabular-nums`}
+            className={INPUT_MONEY}
           />
         </Field>
 

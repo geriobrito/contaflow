@@ -23,6 +23,18 @@ const base: PortfolioInput = {
 const ids = (input: Partial<PortfolioInput>) => buildPortfolioRow({ ...base, ...input }).tasks.map((t) => t.id);
 
 describe('carteira no painel', () => {
+  it('folha: cobra a competência de foco quando houve folha num dos dois meses anteriores', () => {
+    const open = { locks: [lock('2026-07'), lock('2026-08')] };
+    const task = buildPortfolioRow({ ...base, ...open, payrollMonths: ['2026-07', '2026-08'] }).tasks.find((t) => t.id === 'payroll');
+    expect(task).toMatchObject({ label: 'Lançar folha de set/2026', severity: 'medium', href: '/folha?mes=2026-09' });
+    // Já lançada, competência fechada, empresa sem folha ou folha antiga demais: nada a cobrar.
+    expect(ids({ ...open, payrollMonths: ['2026-08', '2026-09'] })).not.toContain('payroll');
+    expect(ids({ payrollMonths: ['2026-08'] })).not.toContain('payroll');
+    expect(ids({ ...open, payrollMonths: [] })).not.toContain('payroll');
+    expect(ids({ ...open })).not.toContain('payroll');
+    expect(ids({ ...open, payrollMonths: ['2026-03'] })).not.toContain('payroll');
+  });
+
   it('empresa em dia: competência anterior fechada, extratos até ela, nada pendente', () => {
     const row = buildPortfolioRow(base);
     expect(row).toMatchObject({ name: 'Padaria Aurora', focusMonth: '2026-09', focus: 'closed', openMonths: [], tasks: [], upToDate: true, weight: 0 });

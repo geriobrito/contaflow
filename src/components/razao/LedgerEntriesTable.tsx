@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useMemo, useState } from 'react';
 import { BookOpen, Search } from 'lucide-react';
 import type { DateRange } from '@/lib/data/repository';
@@ -41,7 +42,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
             className="w-full pl-9 pr-3 py-1.5 text-[12px] bg-white dark:bg-stone-800 border border-line-strong rounded-lg focus:outline-none focus:ring-1 focus:ring-stone-400 placeholder:text-stone-400"
           />
         </div>
-        <span className="text-[11px] text-stone-400 tabular-nums font-mono whitespace-nowrap">
+        <span className="text-[11px] text-stone-500 dark:text-stone-400 tabular-nums font-mono whitespace-nowrap">
           {visibleEntries.length} {visibleEntries.length === 1 ? 'partida' : 'partidas'} no período
         </span>
       </div>
@@ -66,14 +67,14 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
         ) : (
           <table className="w-full text-left border-collapse text-[12px] print-fit-table">
             <thead>
-              <tr className="sticky top-0 z-10 bg-surface-2 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line">
-                <th className="pl-5 pr-3 py-2.5 w-24">Data</th>
-                <th className="px-3 py-2.5 w-28">Doc / FITID</th>
-                <th className="px-3 py-2.5">Histórico</th>
-                <th className="px-3 py-2.5 w-48">Contrapartida</th>
-                <th className="px-3 py-2.5 text-right w-28">Débito</th>
-                <th className="px-3 py-2.5 text-right w-28">Crédito</th>
-                <th className="pl-3 pr-5 py-2.5 text-right w-36">Saldo Atual</th>
+              <tr className={`${TABLE_HEAD} sticky top-0 z-10`}>
+                <Th edge="start" className="w-24">Data</Th>
+                <Th className="w-28">Doc / FITID</Th>
+                <Th>Histórico</Th>
+                <Th className="w-48">Contrapartida</Th>
+                <Th align="right" className="w-28">Débito</Th>
+                <Th align="right" className="w-28">Crédito</Th>
+                <Th align="right" edge="end" className="w-36">Saldo Atual</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/3 dark:divide-white/3">
@@ -110,7 +111,7 @@ export function LedgerEntriesTable({ ledger, range }: { ledger: AccountLedger; r
                   <td className="pl-5 pr-3 py-2 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">
                     {formatDateBR(e.date)}
                   </td>
-                  <td className="px-3 py-2 font-mono tabular-nums text-[11px] text-stone-400 truncate max-w-[120px]" title={e.documentId}>
+                  <td className="px-3 py-2 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 truncate max-w-[120px]" title={e.documentId}>
                     {e.documentId || '—'}
                   </td>
                   <td className="px-3 py-2 text-stone-800 dark:text-stone-200 font-medium">

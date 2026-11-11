@@ -28,7 +28,7 @@ import {
 import { bankLedgerCandidates } from '@/lib/bank-accounts';
 import { getRepository } from '@/lib/services/data-service';
 import { describeError } from '@/lib/utils/errors';
-import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { BUTTON, INPUT, FIELD_LABEL } from '@/components/ui/primitives';
 import { reportError } from '@/lib/monitoring';
 import { CSVQuickBankForm } from '@/components/conciliacao/CSVQuickBankForm';
 import { CSVPreviewTable } from '@/components/conciliacao/CSVPreviewTable';
@@ -392,7 +392,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             <div className="md:col-span-4">
-                <label className="text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5 flex items-center gap-1.5">
+                <label className={`${FIELD_LABEL} mb-1.5 flex items-center gap-1.5`}>
                   <Sparkles className="w-3.5 h-3.5 text-stone-400" />
                   Modelo de Banco / Fatura
                 </label>
@@ -413,7 +413,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
             </div>
 
             <div className="md:col-span-3">
-                <label className="text-[12px] font-medium text-stone-500 dark:text-stone-400 mb-1.5 flex items-center gap-1.5">
+                <label className={`${FIELD_LABEL} mb-1.5 flex items-center gap-1.5`}>
                   <ArrowRightLeft className="w-3.5 h-3.5 text-stone-400" />
                   Separador (Delimitador)
                 </label>
@@ -502,7 +502,7 @@ export const CSVMappingModal: React.FC<CSVMappingModalProps> = ({
 
         {/* Footer Actions */}
         <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-line bg-stone-50/50 dark:bg-stone-800/40">
-          <span className="text-[12px] text-stone-400">
+          <span className="text-[12px] text-stone-500 dark:text-stone-400">
             {allBanks.some((b) => b.accountKey === selectedBankKey)
               ? 'O mapeamento escolhido será memorizado nesta conta para os próximos meses.'
               : 'Cadastre ou selecione uma conta para memorizar este formato.'}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { Calendar, CreditCard, DollarSign, FileText, HelpCircle, type LucideIcon } from 'lucide-react';
 import type { CSVColumnMapping } from '@/lib/csv/parser';
+import { FIELD_LABEL, INPUT_COMPACT } from '@/components/ui/primitives';
 import type { csvColumnOptions } from '@/lib/csv/batch';
 
 type ColumnOption = ReturnType<typeof csvColumnOptions>[number];
@@ -14,8 +15,8 @@ interface CSVColumnFieldsProps {
   onEdit: (update: (m: CSVColumnMapping) => CSVColumnMapping) => void;
 }
 
-const SELECT = 'w-full h-10 px-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[13px] outline-none';
-const LABEL = 'text-[12px] font-medium text-stone-600 dark:text-stone-300 mb-1.5 flex items-center gap-1.5';
+const SELECT = `${INPUT_COMPACT} w-full`;
+const LABEL = `${FIELD_LABEL} mb-1.5 flex items-center gap-1.5`;
 
 function ColumnSelect({
   label,

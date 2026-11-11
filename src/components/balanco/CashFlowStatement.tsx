@@ -45,7 +45,7 @@ export function CashFlowStatement({ statement, detail, onDetailChange }: CashFlo
             return (
               <tr key={`${i}-${r.label}`} className={style.row}>
                 <td className={style.label} colSpan={r.value === undefined ? 2 : 1}>
-                  {r.kind === 'detail' && r.code && <span className="mr-2 font-mono tabular-nums text-[11px] text-stone-400">{r.code}</span>}
+                  {r.kind === 'detail' && r.code && <span className="mr-2 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{r.code}</span>}
                   {r.label}
                 </td>
                 {r.value !== undefined && (

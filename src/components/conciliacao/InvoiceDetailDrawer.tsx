@@ -165,7 +165,7 @@ export function InvoiceDetailDrawer({
             className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 grid grid-cols-2 sm:grid-cols-3 gap-4"
           >
             <div>
-              <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">
                 {isNfse && invoice.altTotal ? 'Valor Líquido (NF)' : 'Valor Total da Nota'}
               </p>
               <p className="mt-1 text-[20px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
@@ -175,7 +175,7 @@ export function InvoiceDetailDrawer({
 
             {invoice.altTotal !== undefined && invoice.altTotal !== invoice.total && (
               <div>
-                <p className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">
                   {isNfse ? 'Valor Bruto do Serviço' : 'Total c/ IBS e CBS'}
                 </p>
                 <p className="mt-1 text-[17px] font-semibold font-mono tabular-nums text-stone-700 dark:text-stone-300">
@@ -229,7 +229,7 @@ export function InvoiceDetailDrawer({
           {/* Chave de Acesso */}
           <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">
                 Chave de Acesso ({invoice.key.length} dígitos)
               </span>
               <button
@@ -294,7 +294,7 @@ export function InvoiceDetailDrawer({
                     key={r.label}
                     className="rounded-xl bg-stone-50 dark:bg-stone-900/60 border border-black/4 dark:border-white/6 px-3 py-2"
                   >
-                    <span className="text-[11px] text-stone-400 block">{r.label}</span>
+                    <span className="text-[11px] text-stone-500 dark:text-stone-400 block">{r.label}</span>
                     <span className="font-mono tabular-nums text-[13px] font-semibold text-stone-800 dark:text-stone-200">
                       {formatCurrency(r.cents / 100)}
                     </span>
@@ -312,13 +312,13 @@ export function InvoiceDetailDrawer({
               </h3>
               <div className="grid grid-cols-2 gap-3 text-[13px]">
                 <div className="rounded-xl bg-stone-50 dark:bg-stone-900/60 px-3 py-2">
-                  <span className="text-[11px] text-stone-400 block">IBS destacado</span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400 block">IBS destacado</span>
                   <span className="font-mono tabular-nums font-semibold text-stone-800 dark:text-stone-200">
                     {formatCurrency(invoice.ibs ?? 0)}
                   </span>
                 </div>
                 <div className="rounded-xl bg-stone-50 dark:bg-stone-900/60 px-3 py-2">
-                  <span className="text-[11px] text-stone-400 block">CBS destacada</span>
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400 block">CBS destacada</span>
                   <span className="font-mono tabular-nums font-semibold text-stone-800 dark:text-stone-200">
                     {formatCurrency(invoice.cbs ?? 0)}
                   </span>

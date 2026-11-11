@@ -8,12 +8,11 @@ import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
 import { isISODate } from '@/lib/periods';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { AccountingAmount } from '@/components/ui/Amount';
-import { SURFACE } from '@/components/ui/primitives';
+import { INPUT_SMALL, SURFACE } from '@/components/ui/primitives';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 
 /** Campo de valor compacto (o INPUT padrão tem 44px de altura, alto demais para uma lista de contas). */
-const FIELD =
-  'w-full h-8 px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-line-strong text-right font-mono tabular-nums text-[13px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 dark:placeholder:text-stone-600 outline-none transition-all duration-150 hover:border-black/[0.14] focus:border-accent/60 focus:bg-white dark:focus:bg-stone-800 focus:shadow-[0_0_0_3px_rgba(181,85,47,0.12)]';
+const FIELD = `${INPUT_SMALL} w-full text-right font-mono tabular-nums`;
 const ROW = 'flex items-center gap-3 px-5 py-1 min-h-10';
 const VALUE_BOX = 'w-36 shrink-0 text-right text-[13px]';
 
@@ -79,14 +78,14 @@ function SectionBlock({ section, collapsed, onToggle, searching, onAdd, ...rest 
       {open && (
         <div id={bodyId} className="pb-2">
           {section.groups.length === 0 ? (
-            empty && <p className="px-5 pb-2 pl-11 text-[12px] text-stone-400">{empty}</p>
+            empty && <p className="px-5 pb-2 pl-11 text-[12px] text-stone-500 dark:text-stone-400">{empty}</p>
           ) : (
             section.groups.map((g) => (
               <div key={g.key}>
                 {g.title && (
                   <div className="flex items-baseline justify-between gap-3 px-5 pl-11 pt-2 pb-0.5">
                     <span className="truncate text-[12px] font-medium text-stone-500">{g.title}</span>
-                    <AccountingAmount value={g.subtotal} zero="—" className="text-[12px] text-stone-400" />
+                    <AccountingAmount value={g.subtotal} zero="—" className="text-[12px] text-stone-500 dark:text-stone-400" />
                   </div>
                 )}
                 <ul>
@@ -127,7 +126,7 @@ function RowView({ row, ...rest }: RowProps & { row: OpeningRow }) {
 }
 
 const Code = ({ children }: { children: React.ReactNode }) => (
-  <span className="w-20 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{children}</span>
+  <span className="w-20 shrink-0 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{children}</span>
 );
 
 function AccountRowView({ row, frozen, values, invalid, onValue, onValueBlur }: RowProps & { row: OpeningAccountRow }) {
@@ -177,7 +176,7 @@ function BankRowView({ row, frozen, date, bankValues, bankInvalid, onBankValue, 
   const moves = bank.openingDate && isISODate(date) && bank.openingDate !== date && bank.openingBalance !== undefined;
   return (
     <div className={`${ROW} pl-11`}>
-      <span className="w-20 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{ledger?.code ?? ''}</span>
+      <span className="w-20 shrink-0 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{ledger?.code ?? ''}</span>
       <div className="flex-1 min-w-0">
         <span className="flex items-center gap-1.5 min-w-0">
           <Landmark aria-hidden className="w-3.5 h-3.5 shrink-0 text-stone-400" />

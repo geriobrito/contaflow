@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import type { StockControl, StockCountFrequency } from '@/types/firestore';
 import type { StockContext } from '@/lib/services/stock-service';
 import { COST_DEFAULT_CODE, costAccounts, STOCK_DEFAULT_CODE, STOCK_FREQUENCY_LABEL, stockAccounts } from '@/lib/stock';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 /** Configuração do controle de estoque: contas do estoque e do custo, início e frequência do relatório. */
 export function StockSetupSheet({
@@ -93,7 +93,7 @@ export function StockSetupSheet({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primeira competência">
-            <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className={INPUT_MONEY} />
           </Field>
           <Field label="Relatório do cliente">
             <select value={frequency} onChange={(e) => setFrequency(e.target.value as StockCountFrequency)} className={INPUT}>

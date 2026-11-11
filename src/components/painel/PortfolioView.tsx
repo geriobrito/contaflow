@@ -89,7 +89,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
                     {row.name}
                   </span>
                 </button>
-                {current && <span className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.06em] text-stone-400">Atual</span>}
+                {current && <span className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.06em] text-stone-500 dark:text-stone-400">Atual</span>}
               </div>
               <div className="w-[150px] shrink-0">
                 <FocusPill row={row} />

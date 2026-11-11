@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import { BookOpen } from 'lucide-react';
 import type { TrialBalance } from '@/lib/ledger';
@@ -34,7 +35,7 @@ export function TrialBalanceTable({
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
       <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/4 print:hidden">
-        <span className="text-[12px] text-stone-400 flex items-center gap-1.5">
+        <span className="text-[12px] text-stone-500 dark:text-stone-400 flex items-center gap-1.5">
           <BookOpen className="w-3.5 h-3.5 text-stone-400" />
           Clique em qualquer conta para abrir a ficha do Livro Razão
         </span>
@@ -59,13 +60,13 @@ export function TrialBalanceTable({
       <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-left print-fit-table">
           <thead>
-            <tr className="text-[10.5px] print:text-[9.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 print:text-stone-700 bg-surface-2 print:bg-transparent border-b border-line print:border-b-2 print:border-black/40">
-              <th className="font-semibold pl-5 pr-3 py-2.5 w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</th>
-              <th className="font-semibold px-3 py-2.5 print:w-[33%] print:px-1.5 print:py-1.5">Conta</th>
-              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</th>
-              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Débitos</th>
-              <th className="font-semibold px-3 py-2.5 text-right print:w-[13%] print:px-1 print:py-1.5">Créditos</th>
-              <th className="font-semibold pl-3 pr-5 py-2.5 text-right print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</th>
+            <tr className={`${TABLE_HEAD} print:text-[9.5px] print:text-stone-700 print:bg-transparent print:border-b-2 print:border-black/40`}>
+              <Th edge="start" className="w-32 print:w-[15%] print:pl-1.5 print:pr-1 print:py-1.5">Código</Th>
+              <Th className="print:w-[33%] print:px-1.5 print:py-1.5">Conta</Th>
+              <Th align="right" className="print:w-[13%] print:px-1 print:py-1.5">Saldo anterior</Th>
+              <Th align="right" className="print:w-[13%] print:px-1 print:py-1.5">Débitos</Th>
+              <Th align="right" className="print:w-[13%] print:px-1 print:py-1.5">Créditos</Th>
+              <Th align="right" edge="end" className="print:w-[13%] print:pl-1 print:pr-1.5 print:py-1.5">Saldo atual</Th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +81,7 @@ export function TrialBalanceTable({
                 }`}
                 title="Clique para abrir o Livro Razão desta conta"
               >
-                <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 print:text-stone-600 whitespace-nowrap">
+                <td className="pl-5 pr-3 py-1.5 print:pl-1.5 print:pr-1 print:py-1 font-mono tabular-nums text-[12px] print:text-[9px] text-stone-500 dark:text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200 print:text-stone-600 whitespace-nowrap">
                   {r.code}
                 </td>
                 <td className="px-3 py-1.5 print:px-1.5 print:py-1 leading-snug">

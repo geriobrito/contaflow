@@ -11,7 +11,7 @@ import { countDue, STOCK_FREQUENCY_LABEL, stockCloseProblem, stockRequestText } 
 import { fromCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_COMPACT, INPUT_MONEY } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
@@ -90,7 +90,7 @@ export default function EstoquePage() {
           control ? (
             <label className="flex items-center gap-2 text-[12px] text-stone-500">
               Competência
-              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`} />
+              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
             </label>
           ) : undefined
         }
@@ -162,7 +162,7 @@ export default function EstoquePage() {
                       onChange={(e) => setDraft({ key, amount: e.target.value, source: sourceText })}
                       placeholder="0,00"
                       inputMode="decimal"
-                      className={`${INPUT} text-right font-mono tabular-nums`}
+                      className={`${INPUT_MONEY} text-right`}
                     />
                   </Field>
                   <Field label="Origem">

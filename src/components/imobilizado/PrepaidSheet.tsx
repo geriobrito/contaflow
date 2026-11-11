@@ -17,7 +17,7 @@ import {
 import { fromCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const moneyText = (v: number | undefined) => (v ? String(v).replace('.', ',') : '');
 const newId = () => `pp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -230,14 +230,14 @@ export function PrepaidSheet({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label={kind === 'INSURANCE' ? 'Prêmio líquido total' : 'Valor total'} error={amount.trim() && parsedAmount === null ? 'Valor inválido.' : null}>
-            <input disabled={frozen} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="Vigência (meses)">
-            <input disabled={frozen} value={months} onChange={(e) => setMonths(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={months} onChange={(e) => setMonths(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className={INPUT_MONEY} />
           </Field>
         </div>
         <Field label={kind === 'INSURANCE' ? 'Data da apólice (início da vigência)' : 'Data do contrato (início da vigência)'}>
-          <input disabled={frozen} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+          <input disabled={frozen} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={INPUT_MONEY} />
         </Field>
         {valid && (
           <p className="-mt-2 px-0.5 text-[12px] text-stone-500">
@@ -289,7 +289,7 @@ export function PrepaidSheet({
                     setPriorTouched(true);
                     setPriorThrough(e.target.value);
                   }}
-                  className={`${INPUT} font-mono tabular-nums`}
+                  className={INPUT_MONEY}
                 />
               </Field>
               <Field label="Valor apropriado">
@@ -301,7 +301,7 @@ export function PrepaidSheet({
                     setPriorAmount(e.target.value);
                   }}
                   placeholder="0,00"
-                  className={`${INPUT} font-mono tabular-nums`}
+                  className={INPUT_MONEY}
                 />
               </Field>
             </div>

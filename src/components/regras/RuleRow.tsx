@@ -6,7 +6,7 @@ import type { ChartAccount, ClassificationRule, RuleMatchType } from '@/types/fi
 import { MATCH_TYPE_LABEL, normalizePattern, ruleKey, type RuleConflict } from '@/lib/reconciliation';
 import { assessRuleTerm, type TermAssessment } from '@/lib/payee';
 import { formatDateBR } from '@/lib/utils/formatters';
-import { ConfirmButton, INPUT } from '@/components/ui/primitives';
+import { ConfirmButton, INPUT, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
 
 /** Tipos oferecidos na interface (REGEX existente continua funcionando e sendo exibido). */
@@ -104,7 +104,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 if (e.key === 'Escape') cancel();
               }}
               aria-invalid={Boolean(error)}
-              className={`${INPUT} h-9 font-mono text-[13px]`}
+              className={`${INPUT_COMPACT} w-full font-mono`}
             />
             <MatchTypeSelect value={draftType} onChange={setDraftType} className="h-9 text-[12px]" />
             <TermWarning
@@ -117,7 +117,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
           </div>
         ) : (
           <div className="min-w-0 space-y-1">
-            <span className="block text-[10px] uppercase tracking-[0.08em] text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
+            <span className="block text-[10px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
             <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>
@@ -155,11 +155,11 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
       </td>
       <td className="px-3 py-3 max-w-0 w-full">
         <p className="text-[13px] text-stone-800 dark:text-stone-200 truncate">
-          <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{account?.code ?? rule.accountCode ?? '—'}</span>
+          <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 mr-1.5">{account?.code ?? rule.accountCode ?? '—'}</span>
           {account?.name ?? rule.accountName ?? 'Conta removida'}
         </p>
       </td>
-      <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">
+      <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 whitespace-nowrap">
         {rule.createdAt ? formatDateBR(rule.createdAt.slice(0, 10)) : '—'}
       </td>
       <td className="px-3 py-3 text-right font-mono tabular-nums text-[13px] text-stone-600 dark:text-stone-400 whitespace-nowrap">

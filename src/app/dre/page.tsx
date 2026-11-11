@@ -212,7 +212,7 @@ export default function DREPage() {
         <DREStatement dre={dre} failed={failed} isLoading={isLoading} hasData={hasData} profit={profit} />
       )}
 
-      <p className="text-[12px] text-stone-400">
+      <p className="text-[12px] text-stone-500 dark:text-stone-400">
         Baseado em <span className="font-mono tabular-nums">{dre.reconciledCount}</span> lançamento(s) conciliado(s). Valores entre
         parênteses reduzem o resultado.
       </p>

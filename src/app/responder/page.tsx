@@ -125,7 +125,7 @@ export default function ResponderPage() {
               {request.items.map((item, idx) => (
                 <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 shadow-card p-5 space-y-3">
                   <div className="flex items-baseline justify-between gap-4">
-                    <span className="text-[12px] font-medium text-stone-400">
+                    <span className="text-[12px] font-medium text-stone-500 dark:text-stone-400">
                       {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
                     </span>
                     <span className={`font-mono tabular-nums text-[17px] font-semibold ${item.amount < 0 ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
@@ -161,7 +161,7 @@ export default function ResponderPage() {
                 </button>
               </div>
             )}
-            <p className="text-center text-[12px] text-stone-400">
+            <p className="text-center text-[12px] text-stone-500 dark:text-stone-400">
               Link válido até {new Date(request.expiresAtMs).toLocaleDateString('pt-BR')}. Somente estas perguntas ficam visíveis por ele.
             </p>
           </>

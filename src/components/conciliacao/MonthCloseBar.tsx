@@ -6,7 +6,7 @@ import { Landmark, Lock, LockOpen } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { formatMonth, monthsBetween } from '@/lib/periods';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
-import { INPUT } from '@/components/ui/primitives';
+import { INPUT_COMPACT } from '@/components/ui/primitives';
 
 interface MonthCloseBarProps {
   /** Competência selecionada (modo Mês) ou null em trimestre/ano. */
@@ -101,7 +101,7 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
               onChange={(e) => setReason(e.target.value)}
               placeholder="Motivo da reabertura (fica na auditoria)"
               aria-label="Motivo da reabertura"
-              className={`${INPUT} h-9 w-72 max-w-full text-[13px]`}
+              className={`${INPUT_COMPACT} w-72 max-w-full`}
             />
             <button
               type="submit"

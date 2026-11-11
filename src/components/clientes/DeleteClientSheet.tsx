@@ -53,7 +53,7 @@ export function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConf
           {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" /> : <Download className="w-4 h-4" />}
           {backingUp ? 'Gerando backup…' : saved ? 'Backup baixado · baixar de novo' : 'Baixar backup (JSON)'}
         </button>
-        {!saved && <p className="text-[12px] text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}
+        {!saved && <p className="text-[12px] text-stone-500 dark:text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}
       </div>
     </Sheet>
   );

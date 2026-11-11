@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Loader2, MessageCircleQuestion, X } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
-import { BUTTON, INPUT } from '@/components/ui/primitives';
+import { BUTTON, INPUT, FIELD_LABEL } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface BulkAskClientModalProps {
@@ -65,7 +65,7 @@ export function BulkAskClientModal({
         </div>
 
         <div className="space-y-1.5">
-          <label className="block text-[12px] font-medium text-stone-700 dark:text-stone-300">
+          <label className={`${FIELD_LABEL} block`}>
             Mensagem para o cliente
           </label>
           <textarea

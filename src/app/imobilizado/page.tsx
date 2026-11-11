@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Landmark, Scale } from 'lucide-react';
 import type { FixedAsset } from '@/types/firestore';
@@ -12,7 +13,7 @@ import { DisposeAssetSheet } from '@/components/imobilizado/DisposeAssetSheet';
 import { ControlsTabs } from '@/components/imobilizado/ControlsTabs';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 
@@ -72,7 +73,7 @@ export default function ImobilizadoPage() {
           <>
             <label className="flex items-center gap-2 text-[12px] text-stone-500">
               Posição no fim de
-              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`} />
+              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
             </label>
             {data.assets.length > 0 && (
               <>
@@ -148,18 +149,18 @@ export default function ImobilizadoPage() {
               </p>
               <table className="w-full text-left">
                 <thead>
-                  <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-y border-line">
-                    <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
-                    <th className="font-semibold px-3 py-2.5 text-right">Cadastro</th>
-                    <th className="font-semibold px-3 py-2.5 text-right">Balancete</th>
-                    <th className="font-semibold pl-3 pr-5 py-2.5 text-right">Diferença</th>
+                  <tr className={`${TABLE_HEAD} border-t`}>
+                    <Th edge="start">Conta</Th>
+                    <Th align="right">Cadastro</Th>
+                    <Th align="right">Balancete</Th>
+                    <Th align="right" edge="end">Diferença</Th>
                   </tr>
                 </thead>
                 <tbody>
                   {reconciliation.result.rows.map((r) => (
                     <tr key={r.accountId} className="border-b border-black/4 last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-2.5">
-                        <span className="font-mono text-[12px] text-stone-400">{r.accountCode}</span> {r.accountName}
+                        <span className="font-mono text-[12px] text-stone-500 dark:text-stone-400">{r.accountCode}</span> {r.accountName}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.register)}</td>
                       <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.ledger)}</td>

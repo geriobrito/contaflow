@@ -129,7 +129,7 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
             <Download className={`w-3.5 h-3.5 ${backingUp ? 'animate-pulse' : ''}`} />
           </button>
           {deleting ? (
-            <span className="px-2 text-[12px] text-stone-400">Excluindo…</span>
+            <span className="px-2 text-[12px] text-stone-500 dark:text-stone-400">Excluindo…</span>
           ) : (
             <button
               type="button"

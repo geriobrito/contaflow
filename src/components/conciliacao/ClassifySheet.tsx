@@ -288,7 +288,7 @@ export function ClassifySheet({
         {/* Corpo: rola por dentro quando a janela é baixa; cabeçalho e botão de confirmar ficam sempre visíveis */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
           <div className="px-6 pb-4 flex items-baseline justify-between">
-            <span className="text-[12px] text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
+            <span className="text-[12px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
             <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
               {formatCurrency(transaction.amount)}
             </span>
@@ -362,7 +362,7 @@ export function ClassifySheet({
                 />
               </label>
               {openQuery && (
-                <p className="text-[12px] text-stone-400">
+                <p className="text-[12px] text-stone-500 dark:text-stone-400">
                   Perguntado por {openQuery.askedByEmail ?? openQuery.askedByUid} em {formatDateBR(openQuery.askedAt.slice(0, 10))}.
                 </p>
               )}

@@ -19,7 +19,7 @@ import {
 import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, SegmentedControl, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const moneyText = (v: number | undefined) => (v ? String(v).replace('.', ',') : '');
 const newId = () => `fc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -244,27 +244,27 @@ export function FinancingSheet({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label={kind === 'INSTALLMENT_PLAN' ? 'Data da adesão' : 'Data do contrato'}>
-            <input disabled={frozen} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} type="date" value={date} onChange={(e) => setDate(e.target.value)} className={INPUT_MONEY} />
           </Field>
           <Field label={PRINCIPAL_LABEL[kind]}>
-            <input disabled={frozen} value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
         </div>
         {kind !== 'INSTALLMENT_PLAN' && (
           <Field label="Encargos da contratação financiados (IOF, cadastro, registro)" hint="Vão para despesa financeira na data do contrato. Deixe em branco se foram pagos à vista.">
-            <input disabled={frozen} value={upfront} onChange={(e) => setUpfront(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={upfront} onChange={(e) => setUpfront(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
         )}
 
         <div className="grid grid-cols-3 gap-3">
           <Field label="Parcelas">
-            <input disabled={frozen} value={installments} onChange={(e) => setInstallments(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={installments} onChange={(e) => setInstallments(e.target.value.replace(/\D/g, ''))} inputMode="numeric" className={INPUT_MONEY} />
           </Field>
           <Field label={mode === 'FLOATING' ? 'Parcela-base' : 'Valor da parcela'}>
-            <input disabled={frozen} value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={installmentAmount} onChange={(e) => setInstallmentAmount(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="1º vencimento">
-            <input disabled={frozen} type="date" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} type="date" value={firstDueDate} onChange={(e) => setFirstDueDate(e.target.value)} className={INPUT_MONEY} />
           </Field>
         </div>
 
@@ -282,7 +282,7 @@ export function FinancingSheet({
         </Field>
         {mode === 'PREFIXED' ? (
           <Field label="Taxa de juros ao mês (%)" hint={valid ? `Pela parcela, a taxa é de ${computedRate.toFixed(2).replace('.', ',')}% ao mês. Deixe em branco para usá-la.` : 'Opcional: sem ela, é calculada pela parcela.'}>
-            <input disabled={frozen} value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="ex.: 1,10" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={rate} onChange={(e) => setRate(e.target.value)} inputMode="decimal" placeholder="ex.: 1,10" className={INPUT_MONEY} />
           </Field>
         ) : (
           <p className="text-[12px] text-stone-500 px-0.5">
@@ -342,7 +342,7 @@ export function FinancingSheet({
                 setPriorTouched(true);
                 setPriorThrough(e.target.value);
               }}
-              className={`${INPUT} font-mono tabular-nums`}
+              className={INPUT_MONEY}
             />
           </Field>
         )}

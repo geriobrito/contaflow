@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, Landmark, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import type { InvestmentAccount } from '@/types/firestore';
@@ -12,7 +13,7 @@ import { investmentCloseProblem, isActiveIn } from '@/lib/investments';
 import { fromCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const NUM = 'px-3 py-2.5 text-right font-mono tabular-nums whitespace-nowrap';
@@ -88,7 +89,7 @@ export default function AplicacoesPage() {
         actions={
           <label className="flex items-center gap-2 text-[12px] text-stone-500">
             Competência
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`} />
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
           </label>
         }
       />
@@ -139,12 +140,12 @@ export default function AplicacoesPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                  <th className="font-semibold pl-5 pr-3 py-2.5">Aplicação</th>
-                  <th className="font-semibold px-3 py-2.5 text-right w-56">Saldo bruto do extrato em {competence(month)}</th>
-                  <th className="pl-3 pr-5 py-2.5 w-20">
+                <tr className={TABLE_HEAD}>
+                  <Th edge="start">Aplicação</Th>
+                  <Th align="right" className="w-56">Saldo bruto do extrato em {competence(month)}</Th>
+                  <Th edge="end" className="w-20">
                     <span className="sr-only">Ações</span>
-                  </th>
+                  </Th>
                 </tr>
               </thead>
               <tbody>
@@ -154,7 +155,7 @@ export default function AplicacoesPage() {
                     <tr key={inv.id} className="border-b border-black/4 last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-3">
                         <p className="font-medium text-stone-900 dark:text-stone-100">{inv.description}</p>
-                        <p className="text-[11px] text-stone-400">
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400">
                           {inv.ledgerAccountCode} {inv.ledgerAccountName ?? ''} · desde {competence(inv.startMonth)}
                           {inv.closedMonth ? ` · encerrada em ${competence(inv.closedMonth)}` : ''}
                         </p>
@@ -170,7 +171,7 @@ export default function AplicacoesPage() {
                               onKeyDown={(e) => e.key === 'Enter' && saveBalance(inv)}
                               placeholder="0,00"
                               inputMode="decimal"
-                              className={`${INPUT} h-9 w-36 text-right font-mono tabular-nums`}
+                              className={`${INPUT_COMPACT} w-36 text-right font-mono tabular-nums`}
                             />
                             {drafts[draftKey(inv)] !== undefined && (
                               <button type="button" disabled={data.busy} onClick={() => saveBalance(inv)} className={`${BUTTON.accent} h-9`}>
@@ -179,7 +180,7 @@ export default function AplicacoesPage() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-[12px] text-stone-400">fora do período</span>
+                          <span className="text-[12px] text-stone-500 dark:text-stone-400">fora do período</span>
                         )}
                       </td>
                       <td className="pl-3 pr-5 py-3 text-right whitespace-nowrap">
@@ -220,11 +221,11 @@ export default function AplicacoesPage() {
               {rows.length > 0 && (
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-y border-line">
-                      <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
-                      <th className="font-semibold px-3 py-2.5 text-right">Extrato</th>
-                      <th className="font-semibold px-3 py-2.5 text-right">Contábil antes do rendimento</th>
-                      <th className="font-semibold pl-3 pr-5 py-2.5 text-right">Rendimento</th>
+                    <tr className={`${TABLE_HEAD} border-t`}>
+                      <Th edge="start">Conta</Th>
+                      <Th align="right">Extrato</Th>
+                      <Th align="right">Contábil antes do rendimento</Th>
+                      <Th align="right" edge="end">Rendimento</Th>
                     </tr>
                   </thead>
                   <tbody>

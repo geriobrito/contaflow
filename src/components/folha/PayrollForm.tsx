@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useMemo, useState } from 'react';
 import {
   Calculator,
@@ -23,7 +24,7 @@ import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 
 interface PayrollFormProps {
   month: string;
@@ -198,9 +199,9 @@ export function PayrollForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <section className={`${SURFACE} rounded-[22px] p-5 md:p-6 space-y-6`}>
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-stone-200/70 pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line pb-4">
           <div>
-            <h2 className="text-[15px] font-semibold text-stone-900">
+            <h2 className="text-[15px] font-semibold text-stone-900 dark:text-stone-100">
               Resumo da Folha de Pagamento — {formatMonth(month)}
             </h2>
             <p className="text-[12.5px] text-stone-500 mt-0.5">
@@ -236,7 +237,7 @@ export function PayrollForm({
           <div className="rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-amber-50/50 dark:bg-amber-500/10 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-[13px] font-medium text-stone-800">
+                <p className="text-[13px] font-medium text-stone-800 dark:text-stone-100">
                   Importação rápida do resumo da folha (CSV ou texto colado)
                 </p>
                 <p className="text-[12px] text-stone-500">
@@ -287,7 +288,7 @@ export function PayrollForm({
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               1. Proventos Brutos (Despesas de Pessoal)
             </h3>
-            <span className="text-[12px] font-mono tabular-nums text-stone-600">
+            <span className="text-[12px] font-mono tabular-nums text-stone-600 dark:text-stone-300">
               Total bruto: <strong>{formatCurrency(calc.totalGross)}</strong>
             </span>
           </div>
@@ -300,7 +301,7 @@ export function PayrollForm({
                 value={fields.grossSalaries}
                 onChange={(e) => setField('grossSalaries', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
             <Field label="Pró-Labore Bruto dos Sócios (R$)" hint="Conta 3.3.2.02 · Pró-Labore">
@@ -311,19 +312,19 @@ export function PayrollForm({
                 value={fields.grossProLabore}
                 onChange={(e) => setField('grossProLabore', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
           </div>
         </div>
 
         {/* 2. Retenções e Descontos */}
-        <div className="space-y-3 pt-2 border-t border-stone-200/60">
+        <div className="space-y-3 pt-2 border-t border-line">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               2. Retenções sobre a Folha (Descontados dos Empregados e Sócios)
             </h3>
-            <span className="text-[12px] font-mono tabular-nums text-stone-600">
+            <span className="text-[12px] font-mono tabular-nums text-stone-600 dark:text-stone-300">
               Salário líquido: <strong>{formatCurrency(calc.netSalaries)}</strong> · Pró-labore líquido: <strong>{formatCurrency(calc.netProLabore)}</strong>
             </span>
           </div>
@@ -336,7 +337,7 @@ export function PayrollForm({
                 value={fields.inssEmployees}
                 onChange={(e) => setField('inssEmployees', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
             <Field label="INSS Pró-Labore (R$)" hint="C: 2.1.1.03 INSS a Recolher">
@@ -347,7 +348,7 @@ export function PayrollForm({
                 value={fields.inssProLabore}
                 onChange={(e) => setField('inssProLabore', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
             <Field label="IRRF s/ Salários (R$)" hint="C: 2.1.5.04 IRRF a Recolher">
@@ -358,7 +359,7 @@ export function PayrollForm({
                 value={fields.irrfEmployees}
                 onChange={(e) => setField('irrfEmployees', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
             <Field label="IRRF s/ Pró-Labore (R$)" hint="C: 2.1.5.04 IRRF a Recolher">
@@ -369,7 +370,7 @@ export function PayrollForm({
                 value={fields.irrfProLabore}
                 onChange={(e) => setField('irrfProLabore', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
             <Field label="Outros Descontos (R$)" hint="VT, faltas, convênios (reduz 3.3.2.01)">
@@ -380,19 +381,19 @@ export function PayrollForm({
                 value={fields.otherDeductions}
                 onChange={(e) => setField('otherDeductions', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
           </div>
         </div>
 
         {/* 3. Encargos Sociais Patronais */}
-        <div className="space-y-3 pt-2 border-t border-stone-200/60">
+        <div className="space-y-3 pt-2 border-t border-line">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               3. Encargos Sociais Patronais (FGTS e INSS Empresa)
             </h3>
-            <span className="text-[12px] font-mono tabular-nums text-stone-600">
+            <span className="text-[12px] font-mono tabular-nums text-stone-600 dark:text-stone-300">
               Total de encargos: <strong>{formatCurrency(calc.totalEmployerCharges)}</strong>
             </span>
           </div>
@@ -407,7 +408,7 @@ export function PayrollForm({
                     value={fields.fgts}
                     onChange={(e) => setField('fgts', e.target.value)}
                     placeholder="0,00"
-                    className={`${INPUT} font-mono tabular-nums flex-1`}
+                    className={`${INPUT_MONEY} flex-1`}
                   />
                   {!locked && calc.grossSalaries > 0 && (
                     <button
@@ -431,19 +432,19 @@ export function PayrollForm({
                 value={fields.inssEmployer}
                 onChange={(e) => setField('inssEmployer', e.target.value)}
                 placeholder="0,00"
-                className={`${INPUT} font-mono tabular-nums`}
+                className={INPUT_MONEY}
               />
             </Field>
           </div>
         </div>
 
         {/* 4. Provisões Mensais (Férias e 13º) e Observações */}
-        <div className="space-y-3 pt-2 border-t border-stone-200/60">
+        <div className="space-y-3 pt-2 border-t border-line">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500">
               4. Provisões Mensais de Férias e 13º Salário (Regime de Competência)
             </h3>
-            <span className="text-[12px] font-mono tabular-nums text-stone-600">
+            <span className="text-[12px] font-mono tabular-nums text-stone-600 dark:text-stone-300">
               Total de provisões: <strong>{formatCurrency(calc.totalProvisions)}</strong>
             </span>
           </div>
@@ -457,7 +458,7 @@ export function PayrollForm({
                   value={fields.vacationProvision}
                   onChange={(e) => setField('vacationProvision', e.target.value)}
                   placeholder="0,00"
-                  className={`${INPUT} font-mono tabular-nums flex-1`}
+                  className={`${INPUT_MONEY} flex-1`}
                 />
                 {!locked && calc.grossSalaries > 0 && (
                   <button
@@ -481,7 +482,7 @@ export function PayrollForm({
                   value={fields.thirteenthProvision}
                   onChange={(e) => setField('thirteenthProvision', e.target.value)}
                   placeholder="0,00"
-                  className={`${INPUT} font-mono tabular-nums flex-1`}
+                  className={`${INPUT_MONEY} flex-1`}
                 />
                 {!locked && calc.grossSalaries > 0 && (
                   <button
@@ -511,26 +512,26 @@ export function PayrollForm({
 
         {/* Prévia das Partidas Dobradas */}
         {previewDraft && (
-          <div className="rounded-2xl border border-stone-200/80 bg-stone-50/70 p-4 space-y-3">
+          <div className="rounded-2xl border border-line bg-surface-2 p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
-                <span className="text-[13px] font-semibold text-stone-800">
+                <span className="text-[13px] font-semibold text-stone-800 dark:text-stone-100">
                   Espelho do Lançamento de Provisão ({formatDateBR(previewDraft.date)})
                 </span>
               </div>
-              <span className="text-[12px] font-mono tabular-nums text-stone-600">
+              <span className="text-[12px] font-mono tabular-nums text-stone-600 dark:text-stone-300">
                 Partidas dobradas equilibradas: <strong>{formatCurrency(previewDraft.totalAmount)}</strong>
               </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-[12.5px]">
                 <thead>
-                  <tr className="border-b border-stone-200 text-left text-[11px] uppercase tracking-[0.08em] text-stone-400">
-                    <th className="py-1.5 pr-3">Natureza</th>
-                    <th className="py-1.5 pr-3">Conta Contábil</th>
-                    <th className="py-1.5 pr-3">Histórico</th>
-                    <th className="py-1.5 text-right">Valor (R$)</th>
+                  <tr className={`${TABLE_HEAD} text-left`}>
+                    <Th className="py-1.5 pr-3">Natureza</Th>
+                    <Th className="py-1.5 pr-3">Conta Contábil</Th>
+                    <Th className="py-1.5 pr-3">Histórico</Th>
+                    <Th align="right" className="py-1.5">Valor (R$)</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200/50">
@@ -547,12 +548,12 @@ export function PayrollForm({
                           {line.type === 'DEBIT' ? 'D · Débito' : 'C · Crédito'}
                         </span>
                       </td>
-                      <td className="py-1.5 pr-3 font-medium text-stone-800">
+                      <td className="py-1.5 pr-3 font-medium text-stone-800 dark:text-stone-100">
                         <span className="font-mono text-[11.5px] text-stone-500 mr-1.5">{line.accountCode}</span>
                         {line.accountName}
                       </td>
                       <td className="py-1.5 pr-3 text-stone-500">{line.memo}</td>
-                      <td className="py-1.5 text-right font-mono tabular-nums font-medium text-stone-800">
+                      <td className="py-1.5 text-right font-mono tabular-nums font-medium text-stone-800 dark:text-stone-100">
                         {formatCurrency(line.amount)}
                       </td>
                     </tr>
@@ -564,7 +565,7 @@ export function PayrollForm({
         )}
 
         {/* Rodapé de Ações */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-200/70">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-line">
           <div className="text-[12.5px] text-stone-500">
             {locked ? (
               <span className="text-amber-700 dark:text-amber-300 font-medium">

@@ -17,7 +17,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
             <span className="font-mono text-[13px] font-semibold text-stone-800 dark:text-stone-200 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
               {ledger.code}
             </span>
-            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
               {ledger.kind === 'ASSET' ? 'Ativo' : ledger.kind === 'LIABILITY' ? 'Passivo' : ledger.kind === 'EQUITY' ? 'Patrimônio Líquido' : 'Resultado'}
             </span>
             {ledger.synthetic && (
@@ -36,7 +36,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
       {/* 4 Cards de Resumo */}
       <div className="grid grid-cols-4 gap-px bg-black/5 dark:bg-white/6">
         <div className="bg-surface p-4">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Anterior</span>
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Saldo Anterior</span>
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="font-mono tabular-nums text-[17px] font-semibold text-stone-900 dark:text-stone-100">
               {formatCurrency(ledger.openingBalance)}
@@ -52,7 +52,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
         </div>
 
         <div className="bg-surface p-4">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium flex items-center gap-1">
             <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" /> Total Débitos
           </span>
           <div className="mt-1 font-mono tabular-nums text-[17px] font-semibold text-emerald-700 dark:text-emerald-400">
@@ -61,7 +61,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
         </div>
 
         <div className="bg-surface p-4">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium flex items-center gap-1">
             <ArrowUpRight className="w-3.5 h-3.5 text-rose-600 dark:text-rose-300" /> Total Créditos
           </span>
           <div className="mt-1 font-mono tabular-nums text-[17px] font-semibold text-rose-700 dark:text-rose-400">
@@ -70,7 +70,7 @@ export function LedgerSummary({ ledger, range }: { ledger: AccountLedger; range:
         </div>
 
         <div className="bg-surface p-4">
-          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Atual</span>
+          <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Saldo Atual</span>
           <div className="mt-1 flex items-baseline gap-1.5">
             <span className="font-mono tabular-nums text-[17px] font-semibold text-stone-900 dark:text-stone-100">
               {formatCurrency(ledger.totals.closingBalance)}

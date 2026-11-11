@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -61,6 +62,8 @@ interface Loaded {
   openings: OpeningBalances | null;
   /** Só no balanço de abertura com contrapartida (lembrete de zerar a 2.3.3.04). */
   journalEntries?: JournalEntry[];
+  /** Competências com folha lançada (lembrete da folha do mês). */
+  payrollMonths?: string[];
   today: string;
   nowMs: number;
 }
@@ -143,8 +146,9 @@ export default function PainelPage() {
       repo.getOrgSettings(),
       repo.getOpeningBalances(clientId),
       repo.listOpenQueries(clientId),
+      repo.getPayrollRegister(clientId),
     ])
-      .then(async ([accounts, batches, banks, locks, requests, org, openings, openQueries]) => {
+      .then(async ([accounts, batches, banks, locks, requests, org, openings, openQueries, payroll]) => {
         // Meses fechados entram pelas contagens consolidadas; só o período aberto é lido lançamento a lançamento.
         // Lançamentos manuais só no balanço de abertura com contrapartida: lembrete de zerar a 2.3.3.04.
         const [ledger, journalEntries] = await Promise.all([
@@ -165,6 +169,7 @@ export default function PainelPage() {
           org,
           openings,
           journalEntries,
+          payrollMonths: payroll?.summaries.map((s) => s.month),
           today: new Date().toISOString().slice(0, 10),
           nowMs: Date.now(),
         });
@@ -266,7 +271,7 @@ export default function PainelPage() {
         {!readyExec || !currentClient ? (
           !error && (
             <>
-              <CardsSkeleton count={4} className="grid grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando visão executiva…" />
+              <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando visão executiva…" />
               <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
                 <TableSkeleton rows={5} />
               </section>
@@ -292,7 +297,7 @@ export default function PainelPage() {
       {!dash ? (
         !error && (
           <>
-            <CardsSkeleton count={4} className="grid grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando painel…" />
+            <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[92px] rounded-[18px]" label="Carregando painel…" />
             <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
               <TableSkeleton rows={4} />
             </section>
@@ -300,7 +305,7 @@ export default function PainelPage() {
         )
       ) : (
         <>
-          <section aria-label="Resumo" className="grid grid-cols-4 gap-3">
+          <section aria-label="Resumo" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <StatCard
               icon={ListChecks}
               label="Pendentes de classificação"
@@ -400,11 +405,11 @@ export default function PainelPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                      <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
-                      <th className="font-semibold px-3 py-2.5">Último extrato até</th>
-                      <th className="font-semibold px-3 py-2.5 text-right">Último saldo</th>
-                      <th className="font-semibold pl-3 pr-5 py-2.5">Situação</th>
+                    <tr className={TABLE_HEAD}>
+                      <Th edge="start">Conta</Th>
+                      <Th>Último extrato até</Th>
+                      <Th align="right">Último saldo</Th>
+                      <Th edge="end">Situação</Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -414,7 +419,7 @@ export default function PainelPage() {
                         <tr key={a.accountKey} className="border-b border-black/4 last:border-0 text-[13px] align-top">
                           <td className="pl-5 pr-3 py-3">
                             <p className="font-medium">{a.nickname}</p>
-                            <p className="font-mono text-[11px] text-stone-400">{a.accountKey}</p>
+                            <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">{a.accountKey}</p>
                           </td>
                           <td className="px-3 py-3 font-mono tabular-nums text-[12px]">{a.lastEnd ? formatDateBR(a.lastEnd) : '—'}</td>
                           <td className="px-3 py-3 text-right font-mono tabular-nums">{a.lastLedgerBalance !== undefined ? formatCurrency(a.lastLedgerBalance) : '—'}</td>

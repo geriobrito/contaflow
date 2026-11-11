@@ -46,6 +46,8 @@ export interface DashboardInput {
    * 2.3.3.04. Sem eles, o lembrete não aparece.
    */
   journalEntries?: readonly JournalEntry[];
+  /** Competências (YYYY-MM) com folha de pagamento lançada. Sem isto, o lembrete da folha não aparece. */
+  payrollMonths?: readonly string[];
   /** Hoje (YYYY-MM-DD) e em ms (validade dos links). */
   today: string;
   nowMs: number;
@@ -109,6 +111,24 @@ export const lastDayOfPrevMonth = (today: string): string => addDays(`${today.sl
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** Situação dos extratos de cada conta: último período importado, lacunas, divergências e atraso. */
+/** Competência anterior (YYYY-MM). */
+export const previousMonthOf = (month: string): string => {
+  const [y, m] = month.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+};
+
+/**
+ * Folha que falta lançar na competência de foco: a empresa lançou folha em um dos dois meses
+ * anteriores, mas não nesta. Devolve a última competência lançada (de onde repetir os valores) ou
+ * `null` quando não há o que cobrar (sem folha recente, já lançada ou competência fechada).
+ */
+export function missingPayroll(payrollMonths: readonly string[] | undefined, focusMonth: string, focusLocked: boolean): string | null {
+  if (!payrollMonths?.length || focusLocked || payrollMonths.includes(focusMonth)) return null;
+  const before = previousMonthOf(focusMonth);
+  const recent = [before, previousMonthOf(before)].find((m) => payrollMonths.includes(m));
+  return recent ?? null;
+}
+
 export function accountStatuses(banks: readonly BankAccount[], batches: readonly ImportBatch[], today: string): AccountStatus[] {
   const keys = new Set([...banks.map((b) => b.accountKey), ...batches.map((b) => b.accountKey).filter((k): k is string => Boolean(k))]);
   const prevMonthEnd = lastDayOfPrevMonth(today);
@@ -263,6 +283,18 @@ export function buildDashboard(input: DashboardInput): Dashboard {
   }
   if (queries.waiting > 0) {
     add({ id: 'waiting', severity: 'low', title: `Aguardando o cliente: ${plural(queries.waiting, 'pergunta', 'perguntas')}`, href: '/pendencias' });
+  }
+
+  const focusMonth = previousMonthOf(today.slice(0, 7));
+  const payrollFrom = missingPayroll(input.payrollMonths, focusMonth, lockedMonths.has(focusMonth));
+  if (payrollFrom) {
+    add({
+      id: 'payroll',
+      severity: 'medium',
+      title: `Folha de ${formatMonth(focusMonth)} não lançada`,
+      detail: `A última folha lançada é a de ${formatMonth(payrollFrom)}: repita os valores dela e ajuste o que mudou.`,
+      href: `/folha?mes=${focusMonth}`,
+    });
   }
 
   const ready = months.filter((m) => m.state === 'READY' && m.month < today.slice(0, 7));

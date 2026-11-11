@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   X,
@@ -169,7 +170,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
               <span className="font-mono text-[13px] font-semibold text-stone-700 dark:text-stone-300 bg-black/4 dark:bg-white/6 px-2 py-0.5 rounded">
                 {ledger.code || 'Conta'}
               </span>
-              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
+              <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">
                 {kindLabel}
               </span>
               {ledger.synthetic ? (
@@ -222,7 +223,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
         {/* Resumo dos Saldos e Movimentação */}
         <section className="shrink-0 grid grid-cols-4 gap-px bg-black/6 dark:bg-white/8 border-b border-line">
           <div className="bg-surface p-4">
-            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Anterior</span>
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Saldo Anterior</span>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="font-mono tabular-nums text-[16px] font-semibold text-stone-900 dark:text-stone-100">
                 {formatCurrency(ledger.openingBalance)}
@@ -238,7 +239,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           </div>
 
           <div className="bg-surface p-4">
-            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium flex items-center gap-1">
               <ArrowDownLeft className="w-3 h-3 text-emerald-600 dark:text-emerald-300" /> Total Débitos
             </span>
             <div className="mt-1 font-mono tabular-nums text-[16px] font-semibold text-emerald-700 dark:text-emerald-400">
@@ -247,7 +248,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           </div>
 
           <div className="bg-surface p-4">
-            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium flex items-center gap-1">
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium flex items-center gap-1">
               <ArrowUpRight className="w-3 h-3 text-rose-600 dark:text-rose-300" /> Total Créditos
             </span>
             <div className="mt-1 font-mono tabular-nums text-[16px] font-semibold text-rose-700 dark:text-rose-400">
@@ -256,7 +257,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           </div>
 
           <div className="bg-surface p-4">
-            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Saldo Atual</span>
+            <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Saldo Atual</span>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="font-mono tabular-nums text-[16px] font-semibold text-stone-900 dark:text-stone-100">
                 {formatCurrency(ledger.totals.closingBalance)}
@@ -287,12 +288,12 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="text-[11px] text-stone-400 hover:text-stone-600 px-2 py-1"
+              className="text-[11px] text-stone-500 dark:text-stone-400 hover:text-stone-600 px-2 py-1"
             >
               Limpar
             </button>
           )}
-          <span className="text-[11px] text-stone-400 tabular-nums font-mono whitespace-nowrap pl-2">
+          <span className="text-[11px] text-stone-500 dark:text-stone-400 tabular-nums font-mono whitespace-nowrap pl-2">
             {filteredEntries.length} {filteredEntries.length === 1 ? 'partida' : 'partidas'}
           </span>
         </div>
@@ -312,14 +313,14 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
           ) : (
             <table className="w-full text-left border-collapse text-[12px]">
               <thead>
-                <tr className="sticky top-0 bg-stone-100 dark:bg-stone-800/90 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line backdrop-blur z-10">
-                  <th className="pl-6 pr-3 py-2.5 w-24">Data</th>
-                  <th className="px-3 py-2.5 w-28">Doc / FITID</th>
-                  <th className="px-3 py-2.5">Histórico</th>
-                  <th className="px-3 py-2.5 w-44">Contrapartida</th>
-                  <th className="px-3 py-2.5 text-right w-28">Débito</th>
-                  <th className="px-3 py-2.5 text-right w-28">Crédito</th>
-                  <th className="pl-3 pr-6 py-2.5 text-right w-36">Saldo Atual</th>
+                <tr className={`${TABLE_HEAD} sticky top-0 z-10`}>
+                  <Th className="pl-6 pr-3 py-2.5 w-24">Data</Th>
+                  <Th className="w-28">Doc / FITID</Th>
+                  <Th>Histórico</Th>
+                  <Th className="w-44">Contrapartida</Th>
+                  <Th align="right" className="w-28">Débito</Th>
+                  <Th align="right" className="w-28">Crédito</Th>
+                  <Th align="right" className="pl-3 pr-6 py-2.5 w-36">Saldo Atual</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black/4 dark:divide-white/4">
@@ -359,7 +360,7 @@ export const AccountLedgerDrawer: React.FC<AccountLedgerDrawerProps> = ({
                     <td className="pl-6 pr-3 py-2 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">
                       {formatDateBR(e.date)}
                     </td>
-                    <td className="px-3 py-2 font-mono tabular-nums text-[11px] text-stone-400 truncate max-w-[120px]" title={e.documentId}>
+                    <td className="px-3 py-2 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 truncate max-w-[120px]" title={e.documentId}>
                       {e.documentId || '—'}
                     </td>
                     <td className="px-3 py-2 text-stone-800 dark:text-stone-200 font-medium">

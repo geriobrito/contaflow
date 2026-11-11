@@ -171,7 +171,7 @@ export function GroupClassifySheet({ group, accounts, pool, suggestions, isSavin
               <li key={t.id}>
                 <label className="flex items-center gap-3 px-3.5 py-2 cursor-pointer hover:bg-black/2">
                   <input type="checkbox" checked={picked.has(t.id)} onChange={() => toggle(t.id)} aria-label={`${formatDateBR(t.date)} ${formatCurrency(t.amount)}`} />
-                  <span className="font-mono tabular-nums text-[11px] text-stone-400 w-20 shrink-0">{formatDateBR(t.date)}</span>
+                  <span className="font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 w-20 shrink-0">{formatDateBR(t.date)}</span>
                   <span className="flex-1 min-w-0 truncate text-[12px] text-stone-500" title={t.memo}>{t.memo}</span>
                   <span className="font-mono tabular-nums text-[13px] whitespace-nowrap">{formatCurrency(t.amount)}</span>
                 </label>

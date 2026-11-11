@@ -9,7 +9,7 @@ import { useClosingChecklist } from '@/hooks/fechamento/useClosingChecklist';
 import { BOOK_METHOD_LABEL } from '@/lib/closing-checklist';
 import type { CheckLevel, StatementCheck } from '@/lib/statement-checks';
 import { formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_COMPACT, INPUT_MONEY } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const thisYear = new Date().getFullYear();
@@ -44,7 +44,7 @@ export default function FechamentoPage() {
         title="Fechamento do exercício"
         description="Checklist do encerramento anual: o que o sistema confere sozinho no balancete, o que você confere com os documentos do cliente e a comprovação da escrituração."
         actions={
-          <select aria-label="Exercício" value={year} onChange={(e) => setYear(e.target.value)} className={`${INPUT} h-9 w-32 font-mono tabular-nums text-[13px]`}>
+          <select aria-label="Exercício" value={year} onChange={(e) => setYear(e.target.value)} className={`${INPUT_COMPACT} w-32 font-mono tabular-nums`}>
             {YEARS.map((y) => (
               <option key={y} value={y}>
                 {y}
@@ -113,7 +113,7 @@ export default function FechamentoPage() {
                       <span className="block text-[13px] font-medium text-stone-800 dark:text-stone-100">{item.title}</span>
                       <span className="block text-[12px] text-stone-500">{item.hint}</span>
                     </label>
-                    {state?.done && <span className="shrink-0 text-[11px] text-stone-400 font-mono tabular-nums">{formatDateBR(state.at.slice(0, 10))}</span>}
+                    {state?.done && <span className="shrink-0 text-[11px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">{formatDateBR(state.at.slice(0, 10))}</span>}
                   </li>
                 );
               })}
@@ -195,7 +195,7 @@ function BooksSection({
           </select>
         </Field>
         <Field label="Data da entrega ou do registro">
-          <input type="date" disabled={!method} value={date} onChange={(e) => setDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+          <input type="date" disabled={!method} value={date} onChange={(e) => setDate(e.target.value)} className={INPUT_MONEY} />
         </Field>
         <Field label="Recibo ou número do registro">
           <input disabled={!method} value={protocol} onChange={(e) => setProtocol(e.target.value)} className={INPUT} placeholder="opcional" />

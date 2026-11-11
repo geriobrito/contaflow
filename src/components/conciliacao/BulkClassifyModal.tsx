@@ -9,7 +9,7 @@ import { AccountPicker } from '@/components/ui/AccountCombobox';
 import { directionOf, orderAccountsByDirection, type AccountSuggestion } from '@/lib/account-suggestions';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
 import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
-import { BUTTON } from '@/components/ui/primitives';
+import { BUTTON, FIELD_LABEL } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 
 interface BulkClassifyModalProps {
@@ -141,7 +141,7 @@ export function BulkClassifyModal({
 
           {/* Seleção de Conta */}
           <div className="space-y-1.5">
-            <label className="block text-[12px] font-medium text-stone-700 dark:text-stone-300">
+            <label className={`${FIELD_LABEL} block`}>
               Conta do plano de contas <span className="text-rose-500">*</span>
             </label>
             <AccountPicker

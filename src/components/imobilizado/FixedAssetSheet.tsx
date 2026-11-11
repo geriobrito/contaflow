@@ -20,7 +20,7 @@ import {
 import { fromCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const moneyText = (v: number | undefined) => (v ? String(v).replace('.', ',') : '');
 const newAssetId = () => `fa_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -216,14 +216,14 @@ export function FixedAssetSheet({
                 if (!inUseDate || inUseDate === acquisitionDate) setInUseDate(e.target.value);
                 setAcquisitionDate(e.target.value);
               }}
-              className={`${INPUT} font-mono tabular-nums`}
+              className={INPUT_MONEY}
             />
           </Field>
           <Field label="Em uso desde">
-            <input disabled={frozen} type="date" value={inUseDate} onChange={(e) => setInUseDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} type="date" value={inUseDate} onChange={(e) => setInUseDate(e.target.value)} className={INPUT_MONEY} />
           </Field>
         </div>
-        <p className="-mt-2 px-0.5 text-[12px] text-stone-400">A depreciação começa quando o bem fica disponível para uso, proporcional aos dias do primeiro mês.</p>
+        <p className="-mt-2 px-0.5 text-[12px] text-stone-500 dark:text-stone-400">A depreciação começa quando o bem fica disponível para uso, proporcional aos dias do primeiro mês.</p>
 
         <Field label="Nota fiscal nº">
           <input value={documentRef} onChange={(e) => setDocumentRef(e.target.value)} className={INPUT} placeholder="opcional" />
@@ -231,16 +231,16 @@ export function FixedAssetSheet({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Valor da nota" error={values.invoiceValue === null ? 'Valor inválido.' : null}>
-            <input disabled={frozen} value={invoiceValue} onChange={(e) => setInvoiceValue(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={invoiceValue} onChange={(e) => setInvoiceValue(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="Frete, montagem, instalação" error={values.additionalCosts === null ? 'Valor inválido.' : null}>
-            <input disabled={frozen} value={additionalCosts} onChange={(e) => setAdditionalCosts(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={additionalCosts} onChange={(e) => setAdditionalCosts(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="Tributos não recuperáveis" error={values.nonRecoverableTaxes === null ? 'Valor inválido.' : null}>
-            <input disabled={frozen} value={taxes} onChange={(e) => setTaxes(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={taxes} onChange={(e) => setTaxes(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="(−) Descontos" error={values.discounts === null ? 'Valor inválido.' : null}>
-            <input disabled={frozen} value={discounts} onChange={(e) => setDiscounts(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={discounts} onChange={(e) => setDiscounts(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
         </div>
         <p className="-mt-2 px-0.5 text-[12px] text-stone-500">
@@ -268,7 +268,7 @@ export function FixedAssetSheet({
             }}
             inputMode="decimal"
             placeholder="ex.: 20"
-            className={`${INPUT} font-mono tabular-nums`}
+            className={INPUT_MONEY}
           />
         </Field>
         {quota > 0 && (
@@ -282,7 +282,7 @@ export function FixedAssetSheet({
           <summary className="cursor-pointer text-[12px] font-medium text-stone-600 dark:text-stone-300">Avançado: valor residual</summary>
           <div className="mt-3">
             <Field label="Valor residual" hint="Quanto se espera obter pelo bem no fim da vida útil. Dispensável na microentidade (NBC TG 1002).">
-              <input disabled={frozen} value={residual} onChange={(e) => setResidual(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+              <input disabled={frozen} value={residual} onChange={(e) => setResidual(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
             </Field>
           </div>
         </details>
@@ -303,7 +303,7 @@ export function FixedAssetSheet({
                     setPriorOn(true);
                     setPriorThrough(e.target.value);
                   }}
-                  className={`${INPUT} font-mono tabular-nums`}
+                  className={INPUT_MONEY}
                 />
               </Field>
               <Field label="Valor acumulado" error={priorOn && money(priorAmount) === null ? 'Valor inválido.' : null}>
@@ -316,7 +316,7 @@ export function FixedAssetSheet({
                     setPriorAmount(e.target.value);
                   }}
                   placeholder="0,00"
-                  className={`${INPUT} font-mono tabular-nums`}
+                  className={INPUT_MONEY}
                 />
               </Field>
             </div>

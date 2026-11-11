@@ -25,7 +25,7 @@ export const emptySplitDraft = (cents = 0): SplitDraft => ({ id: newSplitId(), a
 function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cents: number) => void; label: string }) {
   return (
     <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-stone-400 pointer-events-none">R$</span>
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-stone-500 dark:text-stone-400 pointer-events-none">R$</span>
       <input
         aria-label={label}
         value={cents === 0 ? '' : formatCents(cents)}
@@ -109,7 +109,7 @@ function GrossNetPanel({
         {origin.code ? (
           byCode.has(origin.code) ? (
             <span className="block text-[12px] text-stone-700 dark:text-stone-300">
-              <span className="font-mono text-[11px] text-stone-400 mr-1.5">{origin.code}</span>
+              <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400 mr-1.5">{origin.code}</span>
               {byCode.get(origin.code)!.name}
             </span>
           ) : (
@@ -142,7 +142,7 @@ function GrossNetPanel({
                       ))}
                     </select>
                   ) : (
-                    <span className="block text-[11px] text-stone-400">
+                    <span className="block text-[11px] text-stone-500 dark:text-stone-400">
                       {options[0].code} · {options[0].hint}
                     </span>
                   )}
@@ -270,7 +270,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
             className="rounded-2xl bg-white/70 dark:bg-stone-800/40 border border-line p-3 space-y-2 animate-fade-in"
           >
             <div className="flex items-center gap-2">
-              <span className="w-5 shrink-0 text-center font-mono tabular-nums text-[11px] text-stone-400">{i + 1}</span>
+              <span className="w-5 shrink-0 text-center font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{i + 1}</span>
               <div className="flex-1 min-w-0">
                 <AccountSelectField
                   accounts={analytic}

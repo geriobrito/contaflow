@@ -1,12 +1,13 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FileText, Loader2 } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useLedgerData } from '@/hooks/useLedgerData';
 import { useVirtualTable } from '@/hooks/useVirtualTable';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { buildDaybook, DAYBOOK_TEXT_MAX, normalizeDaybookInfo, type DaybookBookInfo, type DaybookOrigin } from '@/lib/daybook';
 import { updateClientDaybook } from '@/lib/services/data-service';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
@@ -229,7 +230,7 @@ export default function DiarioPage() {
         </div>
         <div className="grid grid-cols-[8rem_1fr_1fr] gap-3">
           <Field label="Livro nº">
-            <input value={book.number} onChange={(e) => updateBook({ number: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={`${INPUT} font-mono tabular-nums`} />
+            <input value={book.number} onChange={(e) => updateBook({ number: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={INPUT_MONEY} />
           </Field>
           <Field label="Sede (município/UF)" hint="Opcional">
             <input value={book.city ?? ''} maxLength={DAYBOOK_TEXT_MAX} onChange={(e) => updateBook({ city: e.target.value })} placeholder="ex.: Recife/PE" className={INPUT} />
@@ -269,15 +270,15 @@ export default function DiarioPage() {
         <>
           <div className="grid grid-cols-3 gap-px rounded-[22px] overflow-hidden bg-black/5 dark:bg-white/6 border border-line">
             <div className="bg-surface p-4">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Lançamentos</span>
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Lançamentos</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{daybook.entries.length}</p>
             </div>
             <div className="bg-surface p-4">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Total a débito</span>
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Total a débito</span>
               <p className="mt-1 font-mono tabular-nums text-[17px] font-semibold">{formatCurrency(daybook.totals.debits)}</p>
             </div>
             <div className="bg-surface p-4">
-              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-400 font-medium">Total a crédito</span>
+              <span className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 font-medium">Total a crédito</span>
               <p className={`mt-1 font-mono tabular-nums text-[17px] font-semibold ${daybook.balanced ? '' : 'text-rose-600 dark:text-rose-300'}`}>{formatCurrency(daybook.totals.credits)}</p>
             </div>
           </div>
@@ -302,13 +303,13 @@ export default function DiarioPage() {
               >
                 <table className="w-full text-left border-collapse text-[12px]">
                   <thead>
-                    <tr className="sticky top-0 z-10 bg-surface-2 text-stone-500 uppercase tracking-[0.08em] text-[10px] font-semibold border-b border-line">
-                      <th className="pl-5 pr-3 py-2.5 w-16 text-right">Nº</th>
-                      <th className="px-3 py-2.5 w-24">Data</th>
-                      <th className="px-3 py-2.5">Conta</th>
-                      <th className="px-3 py-2.5">Histórico</th>
-                      <th className="px-3 py-2.5 text-right w-32">Débito</th>
-                      <th className="pl-3 pr-5 py-2.5 text-right w-32">Crédito</th>
+                    <tr className={`${TABLE_HEAD} sticky top-0 z-10`}>
+                      <Th align="right" edge="start" className="w-16">Nº</Th>
+                      <Th className="w-24">Data</Th>
+                      <Th>Conta</Th>
+                      <Th>Histórico</Th>
+                      <Th align="right" className="w-32">Débito</Th>
+                      <Th align="right" edge="end" className="w-32">Crédito</Th>
                     </tr>
                   </thead>
                   {offsetTop > 0 && (
@@ -325,7 +326,7 @@ export default function DiarioPage() {
                         <td className="px-3 pt-2.5 pb-1 font-mono tabular-nums text-stone-600 dark:text-stone-400 whitespace-nowrap">{formatDateBR(e.date)}</td>
                         <td className="px-3 pt-2.5 pb-1 font-medium text-stone-900 dark:text-stone-100" colSpan={4}>
                           {e.memo}
-                          <span className="ml-2 font-normal text-[11px] text-stone-400">
+                          <span className="ml-2 font-normal text-[11px] text-stone-500 dark:text-stone-400">
                             {ORIGIN_LABEL[e.origin]}
                             {e.document && <span className="font-mono"> · {e.document}</span>}
                           </span>
@@ -336,7 +337,7 @@ export default function DiarioPage() {
                         <tr key={i}>
                           <td colSpan={2} />
                           <td className={`px-3 py-1 text-stone-700 dark:text-stone-300 ${l.credit ? 'pl-8' : ''}`}>
-                            {l.code && <span className="font-mono text-[11px] text-stone-400 mr-1.5">{l.code}</span>}
+                            {l.code && <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400 mr-1.5">{l.code}</span>}
                             {l.name}
                           </td>
                           <td className="px-3 py-1 text-stone-500 max-w-xs truncate" title={l.memo}>{l.memo ?? ''}</td>
@@ -361,7 +362,7 @@ export default function DiarioPage() {
                 <span>
                   Exibindo {startIndex + 1}–{endIndex} de {visible.length} lançamento(s)
                 </span>
-                <span className="text-[11px] text-stone-400 font-mono">Rolagem virtualizada ativa</span>
+                <span className="text-[11px] text-stone-500 dark:text-stone-400 font-mono">Rolagem virtualizada ativa</span>
               </div>
             )}
           </section>

@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Link2, Pencil, Plus, Wallet } from 'lucide-react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
@@ -59,13 +60,13 @@ export function BankAccountsTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                <th className="font-semibold pl-5 pr-3 py-2.5">Conta</th>
-                <th className="font-semibold px-3 py-2.5">Conta contábil</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Saldo inicial</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Saldo contábil</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Último saldo do banco</th>
-                <th className="pl-3 pr-5 py-2.5 w-20"><span className="sr-only">Ações</span></th>
+              <tr className={TABLE_HEAD}>
+                <Th edge="start">Conta</Th>
+                <Th>Conta contábil</Th>
+                <Th align="right">Saldo inicial</Th>
+                <Th align="right">Saldo contábil</Th>
+                <Th align="right">Último saldo do banco</Th>
+                <Th edge="end" className="w-20"><span className="sr-only">Ações</span></Th>
               </tr>
             </thead>
             <tbody>
@@ -88,7 +89,7 @@ export function BankAccountsTable({
                           </span>
                         )}
                       </div>
-                      <p className="font-mono text-[11px] text-stone-400">
+                      <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">
                         {b.accountKey}
                         {b.csvPreset ? ' · formato CSV memorizado' : ''}
                       </p>
@@ -97,7 +98,7 @@ export function BankAccountsTable({
                       {b.ledgerAccountId ? (
                         <span className="inline-flex items-center gap-1.5 text-stone-700 dark:text-stone-300">
                           <Link2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-300" />
-                          <span className="font-mono text-[12px] text-stone-400">{b.ledgerAccountCode}</span> {b.ledgerAccountName}
+                          <span className="font-mono text-[12px] text-stone-500 dark:text-stone-400">{b.ledgerAccountCode}</span> {b.ledgerAccountName}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300"><AlertTriangle className="w-3.5 h-3.5" /> Sem vínculo contábil</span>
@@ -107,7 +108,7 @@ export function BankAccountsTable({
                       {b.openingBalance !== undefined ? (
                         <>
                           {formatCurrency(b.openingBalance)}
-                          <span className="block text-[11px] text-stone-400">{formatDateBR(b.openingDate)}</span>
+                          <span className="block text-[11px] text-stone-500 dark:text-stone-400">{formatDateBR(b.openingDate)}</span>
                         </>
                       ) : (
                         <span className="text-amber-700 dark:text-amber-300 font-sans text-[12px]">não informado</span>
@@ -151,7 +152,7 @@ export function BankAccountsTable({
                 <tr key={batch.accountKey} className="border-b border-black/4 last:border-0 text-[13px] bg-amber-50/40 dark:bg-amber-950/10">
                   <td className="pl-5 pr-3 py-3">
                     <p className="font-mono text-[12px] text-stone-700">{batch.accountKey}</p>
-                    <p className="text-[11px] text-stone-400">Encontrada em extratos importados antes do cadastro</p>
+                    <p className="text-[11px] text-stone-500 dark:text-stone-400">Encontrada em extratos importados antes do cadastro</p>
                   </td>
                   <td colSpan={4} />
                   <td className="pl-3 pr-5 py-3 text-right">

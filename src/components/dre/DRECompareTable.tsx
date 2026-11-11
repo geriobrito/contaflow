@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useMemo } from 'react';
 import type { DREStatement } from '@/lib/dre/build';
 import { compareRows, variation, type CompareRow } from '@/lib/dre/compare';
@@ -21,7 +22,7 @@ function Delta({ current, previous, favorable, small = false }: { current: numbe
   const pct = variation(current, previous);
   if (pct === null || Math.abs(current - previous) < 0.005) {
     // Sem base de comparação: na coluna mensal não polui a célula; no comparativo anual mostra traço.
-    return small ? null : <span className="text-[12px] text-stone-400">—</span>;
+    return small ? null : <span className="text-[12px] text-stone-500 dark:text-stone-400">—</span>;
   }
   const good = favorable === 'up' ? current > previous : current < previous;
   return (
@@ -47,16 +48,16 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-            <th className="font-semibold pl-5 pr-3 py-2.5 min-w-[220px]">Demonstrativo</th>
+          <tr className={TABLE_HEAD}>
+            <Th edge="start" className="min-w-[220px]">Demonstrativo</Th>
             {columns.map((c) => (
-              <th key={c.label} className="font-medium px-3 py-2.5 text-right whitespace-nowrap">{c.label}</th>
+              <Th key={c.label} align="right" className="whitespace-nowrap">{c.label}</Th>
             ))}
-            {mode === 'monthly' && total && <th className="font-semibold pl-3 pr-5 py-2.5 text-right whitespace-nowrap">{total.label}</th>}
+            {mode === 'monthly' && total && <Th align="right" edge="end" className="whitespace-nowrap">{total.label}</Th>}
             {mode === 'yoy' && (
               <>
-                <th className="font-semibold px-3 py-2.5 text-right whitespace-nowrap">Variação R$</th>
-                <th className="font-semibold pl-3 pr-5 py-2.5 text-right whitespace-nowrap">Variação %</th>
+                <Th align="right" className="whitespace-nowrap">Variação R$</Th>
+                <Th align="right" edge="end" className="whitespace-nowrap">Variação %</Th>
               </>
             )}
           </tr>
@@ -73,7 +74,7 @@ export function DRECompareTable({ mode, columns, total, withAccounts }: DRECompa
                 }`}
               >
                 <td className={`pr-3 py-2 ${r.kind === 'account' ? 'pl-9' : 'pl-5'}`}>
-                  {r.code && <span className="font-mono text-[11px] text-stone-400 mr-2">{r.code}</span>}
+                  {r.code && <span className="font-mono text-[11px] text-stone-500 dark:text-stone-400 mr-2">{r.code}</span>}
                   {r.label}
                 </td>
                 {r.values.slice(0, n).map((v, i) => (

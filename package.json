@@ -11,7 +11,9 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:rules": "npx --yes firebase-tools@15.31.0 emulators:exec --only firestore --project demo-contaflow \"vitest run --project rules\"",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=chromium",
+    "test:visual": "playwright test --project=visual",
+    "test:visual:update": "playwright test --project=visual --update-snapshots",
     "clean:firestore": "node scripts/clean-firestore.mjs"
   },
   "dependencies": {

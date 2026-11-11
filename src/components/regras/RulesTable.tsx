@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
 import type { RuleConflict } from '@/lib/reconciliation';
@@ -52,20 +53,20 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                <th scope="col" className="font-medium pl-5 pr-3 py-2.5 w-[34%]">Termo</th>
-                <th scope="col" className="font-medium px-3 py-2.5">Conta de destino</th>
-                <th scope="col" className="font-medium px-3 py-2.5 w-32">Criada em</th>
-                <th
+              <tr className={TABLE_HEAD}>
+                <Th scope="col" edge="start" className="w-[34%]">Termo</Th>
+                <Th scope="col">Conta de destino</Th>
+                <Th scope="col" className="w-32">Criada em</Th>
+                <Th
                   scope="col"
                   title={`Pendentes de qualquer período e lançamentos dos últimos ${RULE_SAMPLE_MONTHS} meses`}
-                  className="font-medium px-3 py-2.5 text-right w-44 whitespace-nowrap"
+                  align="right" className="w-44 whitespace-nowrap"
                 >
                   Lançamentos afetados
-                </th>
-                <th scope="col" className="pl-3 pr-4 py-2.5 w-24">
+                </Th>
+                <Th scope="col" className="pl-3 pr-4 py-2.5 w-24">
                   <span className="sr-only">Ações</span>
-                </th>
+                </Th>
               </tr>
             </thead>
             <tbody>

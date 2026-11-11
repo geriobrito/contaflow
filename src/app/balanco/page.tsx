@@ -65,7 +65,7 @@ function Side({
         {previous && <AccountingAmount value={previous.total} className="w-32 text-right text-[13px] font-semibold text-stone-400" />}
       </div>
       {rows.length === 0 ? (
-        <p className="px-5 py-3 text-[12px] text-stone-400">Sem saldo.</p>
+        <p className="px-5 py-3 text-[12px] text-stone-500 dark:text-stone-400">Sem saldo.</p>
       ) : (
         <ul>
           {rows.map((l) => (
@@ -77,7 +77,7 @@ function Side({
               }`}
               title="Clique para abrir o Livro Razão desta conta"
             >
-              <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200">
+              <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 group-hover:text-stone-700 dark:group-hover:text-stone-200">
                 {l.code}
               </span>
               <span className="flex-1 min-w-0 truncate" style={{ paddingLeft: `${Math.max(0, l.level - 1) * 12}px` }}>
@@ -432,7 +432,7 @@ export default function BalancoPage() {
         <div className="grid grid-cols-2 gap-6 items-start">
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
             {bsPrev && (
-              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-400">
+              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-500 dark:text-stone-400">
                 <span>{formatDateBR(range.end)}</span>
                 <span className="w-32 text-right">{formatDateBR(prevDate)}</span>
               </p>
@@ -441,7 +441,7 @@ export default function BalancoPage() {
           </section>
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
             {bsPrev && (
-              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-400">
+              <p className="flex justify-end gap-3 px-5 pt-3 text-[11px] font-mono tabular-nums text-stone-500 dark:text-stone-400">
                 <span>{formatDateBR(range.end)}</span>
                 <span className="w-32 text-right">{formatDateBR(prevDate)}</span>
               </p>

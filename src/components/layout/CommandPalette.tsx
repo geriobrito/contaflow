@@ -196,7 +196,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
             return (
               <React.Fragment key={cmd.id}>
                 {header && (
-                  <li role="presentation" className={`px-3 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-400 ${i === 0 ? 'pt-1' : 'pt-3'}`}>
+                  <li role="presentation" className={`px-3 pb-1 text-[10.5px] font-medium uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 ${i === 0 ? 'pt-1' : 'pt-3'}`}>
                     {cmd.group}
                   </li>
                 )}
@@ -213,7 +213,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
                   <Icon className={`w-4 h-4 shrink-0 ${selected ? 'text-accent-ink' : 'text-stone-400'}`} strokeWidth={1.75} />
                   <span className="min-w-0 flex-1 flex items-baseline gap-2">
                     <span className="truncate text-[14px] tracking-tight text-stone-900 dark:text-stone-100">{cmd.label}</span>
-                    {cmd.hint && <span className="truncate text-[12px] text-stone-400">{cmd.hint}</span>}
+                    {cmd.hint && <span className="truncate text-[12px] text-stone-500 dark:text-stone-400">{cmd.hint}</span>}
                   </span>
                   {cmd.current && (
                     <span className="inline-flex items-center gap-1 text-[11px] text-stone-500">
@@ -227,7 +227,7 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
           })}
         </ul>
 
-        <div className="flex items-center gap-4 px-4 h-9 border-t border-line bg-surface-2 text-[11px] text-stone-400">
+        <div className="flex items-center gap-4 px-4 h-9 border-t border-line bg-surface-2 text-[11px] text-stone-500 dark:text-stone-400">
           <span>↑↓ navegar</span>
           <span>Enter abrir</span>
           <span>Esc fechar</span>

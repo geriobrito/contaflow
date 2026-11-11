@@ -66,6 +66,8 @@ function ThemeSwitcher({ collapsed }: { collapsed: boolean }) {
 }
 
 const COLLAPSE_KEY = 'contaflow_sidebar_collapsed';
+/** Abaixo desta largura a barra lateral começa recolhida (enquanto o usuário não escolher). */
+const NARROW_QUERY = '(max-width: 1279px)';
 
 function initials(name: string): string {
   return name
@@ -141,7 +143,7 @@ function ClientSwitcher({
         {!collapsed && (
           <>
             <span className="flex-1 min-w-0">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.09em] text-stone-400">
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.09em] text-stone-500 dark:text-stone-400">
                 Cliente ativo
                 {totalOtherClientsUnread > 0 && (
                   <span className="ml-1.5 normal-case tracking-normal text-emerald-600 dark:text-emerald-400 font-medium">
@@ -164,7 +166,7 @@ function ClientSwitcher({
           className="absolute z-50 left-0 top-full mt-1.5 w-64 max-h-72 overflow-y-auto overscroll-contain rounded-2xl p-1.5 bg-surface border border-line-strong shadow-raised animate-pop-in"
         >
           {clients.length === 0 && (
-            <li className="px-3 py-2 text-xs text-stone-400">Nenhum cliente cadastrado</li>
+            <li className="px-3 py-2 text-xs text-stone-500 dark:text-stone-400">Nenhum cliente cadastrado</li>
           )}
           {clients.map((c) => {
             const active = c.id === currentClient?.id;
@@ -185,7 +187,7 @@ function ClientSwitcher({
                     <span className="block text-[13px] tracking-tight text-stone-900 dark:text-stone-100 truncate">
                       {c.tradeName || c.name}
                     </span>
-                    <span className="block text-[11px] font-mono tabular-nums text-stone-400">{c.cnpj}</span>
+                    <span className="block text-[11px] font-mono tabular-nums text-stone-500 dark:text-stone-400">{c.cnpj}</span>
                   </span>
                   {unread > 0 && (
                     <span
@@ -287,7 +289,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
             {collapsed ? (
               s > 0 && <div aria-hidden className="mx-3 my-1.5 border-t border-line" />
             ) : (
-              <p className={`flex items-center gap-2 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-400 dark:text-stone-500 ${s > 0 ? 'pt-2.5' : 'pt-1'}`}>
+              <p className={`flex items-center gap-2 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500 dark:text-stone-500 ${s > 0 ? 'pt-2.5' : 'pt-1'}`}>
                 {section.title}
                 <span aria-hidden className="flex-1 border-t border-line" />
               </p>
@@ -353,7 +355,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
               <span className="block text-[13px] font-medium tracking-tight text-stone-900 dark:text-stone-100 truncate">
                 {displayName}
               </span>
-              <span className="block text-[11px] text-stone-400 truncate">{user?.email}</span>
+              <span className="block text-[11px] text-stone-500 dark:text-stone-400 truncate">{user?.email}</span>
             </span>
           )}
           <button type="button" onClick={() => void signOut()} title="Sair" aria-label="Sair" className={iconButton}>
@@ -369,7 +371,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
           {!collapsed && (
             <span className="flex-1 min-w-0 leading-tight">
               <span className="block text-stone-600 dark:text-stone-300">{connected ? 'Firestore' : 'Modo local'}</span>
-              <span className="block text-[10px] text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
+              <span className="block text-[10px] text-stone-500 dark:text-stone-400 font-mono tabular-nums truncate" title={versionDetail(APP_VERSION)}>
                 {APP_VERSION.commitUrl ? (
                   <a href={APP_VERSION.commitUrl} target="_blank" rel="noopener noreferrer" className="hover:text-stone-700 dark:hover:text-stone-200 hover:underline">
                     {versionShort(APP_VERSION)}
@@ -394,15 +396,32 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
-  // Restaura preferência de colapso (fora do corpo síncrono do effect).
+  // Restaura a preferência de colapso. Sem preferência gravada, a barra acompanha a largura da
+  // janela: recolhida abaixo de 1280px (notebook pequeno, janela dividida), aberta acima disso.
   useEffect(() => {
-    let stored = false;
+    let stored: string | null = null;
     try {
-      stored = localStorage.getItem(COLLAPSE_KEY) === '1';
+      stored = localStorage.getItem(COLLAPSE_KEY);
     } catch {
       /* armazenamento indisponível */
     }
-    if (stored) queueMicrotask(() => setCollapsed(true));
+    if (stored === '1' || stored === '0') {
+      if (stored === '1') queueMicrotask(() => setCollapsed(true));
+      return;
+    }
+    const narrow = window.matchMedia(NARROW_QUERY);
+    const follow = () => {
+      let chosen = false;
+      try {
+        chosen = localStorage.getItem(COLLAPSE_KEY) !== null;
+      } catch {
+        /* armazenamento indisponível */
+      }
+      if (!chosen) setCollapsed(narrow.matches);
+    };
+    queueMicrotask(follow);
+    narrow.addEventListener('change', follow);
+    return () => narrow.removeEventListener('change', follow);
   }, []);
 
   const toggleCollapsed = () => {

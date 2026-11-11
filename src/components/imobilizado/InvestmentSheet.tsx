@@ -4,7 +4,7 @@ import React, { useMemo, useState } from 'react';
 import type { InvestmentAccount } from '@/types/firestore';
 import type { InvestmentContext } from '@/lib/services/investment-service';
 import { INVESTMENT_DEFAULT_CODE, investmentLedgerAccounts } from '@/lib/investments';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const newInvestmentId = () => `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -86,10 +86,10 @@ export function InvestmentSheet({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primeira competência" hint="Desde quando o saldo do extrato é informado.">
-            <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)} className={INPUT_MONEY} />
           </Field>
           <Field label="Encerrada em" hint="Opcional: resgatada por inteiro.">
-            <input type="month" value={closedMonth} onChange={(e) => setClosedMonth(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input type="month" value={closedMonth} onChange={(e) => setClosedMonth(e.target.value)} className={INPUT_MONEY} />
           </Field>
         </div>
         <div className="rounded-2xl bg-black/3 dark:bg-white/4 px-3.5 py-3 text-[12px] text-stone-600 dark:text-stone-300 space-y-1.5">

@@ -308,7 +308,7 @@ export default function PendenciasPage() {
               return (
                 <li key={q.id} className="px-5 py-4 space-y-2">
                   <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <span className="font-mono tabular-nums text-[12px] text-stone-400">{formatDateBR(q.date)}</span>
+                    <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{formatDateBR(q.date)}</span>
                     <span className="flex-1 min-w-0 text-[14px] font-medium tracking-tight truncate" title={q.memo}>
                       {q.memo}
                     </span>
@@ -339,7 +339,7 @@ export default function PendenciasPage() {
                       <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap wrap-break-word">{answer.text}</p>
                     </div>
                   ) : (
-                    <p className="ml-6 text-[12px] text-stone-400">
+                    <p className="ml-6 text-[12px] text-stone-500 dark:text-stone-400">
                       {inOpenLink.has(q.id) ? 'Enviado ao cliente · aguardando resposta' : 'Ainda não enviado em link ativo · gere ou reative um link'}
                     </p>
                   )}

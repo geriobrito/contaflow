@@ -5,7 +5,7 @@ import type { ChartAccount, OpeningMode } from '@/types/firestore';
 import type { OpeningSheet } from '@/lib/opening-view';
 import { continuityDivergence, describePlug, type OpeningPlug } from '@/lib/opening';
 import { AccountingAmount } from '@/components/ui/Amount';
-import { BUTTON } from '@/components/ui/primitives';
+import { BUTTON, INPUT_SMALL } from '@/components/ui/primitives';
 
 interface OpeningFooterProps {
   totals: OpeningSheet['totals'];
@@ -118,8 +118,7 @@ function Status({ mode, plug, totals, balanced }: OpeningFooterProps & { balance
   );
 }
 
-const SELECT =
-  'h-8 max-w-[260px] px-2.5 rounded-lg bg-white/80 dark:bg-stone-800/70 border border-line-strong text-[12px] text-stone-900 dark:text-stone-100 outline-none focus:border-accent/60';
+const SELECT = `${INPUT_SMALL} max-w-[260px]`;
 
 const SMALL_BUTTON =
   'inline-flex items-center h-8 px-3 rounded-full text-[12px] font-medium bg-white/80 dark:bg-stone-800 text-stone-800 dark:text-stone-100 border border-line-strong hover:bg-white transition-all duration-150 active:scale-[0.98]';

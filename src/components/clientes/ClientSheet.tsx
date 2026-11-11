@@ -12,7 +12,7 @@ import { newClientId } from '@/lib/utils/id';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
 import { useCnpjLookup } from '@/hooks/clientes/useCnpjLookup';
 import { ACTIVITY_MAX } from '@/lib/cnpj';
-import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, SegmentedControl, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 import { PORTES, REGIMES } from '@/components/clientes/options';
 
 interface ClientSheetProps {
@@ -234,7 +234,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               options={PORTES.map((p) => ({ value: p, label: PORTE_LABEL[p] }))}
             />
           </div>
-          <p className="text-[11px] text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
+          <p className="text-[11px] text-stone-500 dark:text-stone-400 px-0.5">{PORTE_HINT[porte]} Define a norma citada nas demonstrações.</p>
         </div>
 
         <Field label="Atividade principal" hint="Descrição do CNAE ou do objeto social. Sai na declaração de conformidade, no fim das demonstrações; vem da consulta à Receita.">
@@ -259,7 +259,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
 
         <div className="pt-2 space-y-1">
           <span className="block text-[13px] font-semibold text-stone-800 dark:text-stone-200 px-0.5">Representante legal</span>
-          <p className="text-[12px] text-stone-400 px-0.5">Assina a DRE exportada (PDF e Excel) ao lado do contador.</p>
+          <p className="text-[12px] text-stone-500 dark:text-stone-400 px-0.5">Assina a DRE exportada (PDF e Excel) ao lado do contador.</p>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Nome do representante" hint="Opcional">
@@ -271,7 +271,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
               onChange={(e) => setRepCpf(maskCPF(e.target.value))}
               placeholder="000.000.000-00"
               aria-invalid={Boolean(cpfError)}
-              className={`${INPUT} font-mono tabular-nums`}
+              className={INPUT_MONEY}
             />
           </Field>
         </div>

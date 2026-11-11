@@ -63,7 +63,7 @@ const PILLARS = [
 /** Painel de apresentação: capa escura de livro-razão com uma folha de conciliação por cima. */
 function Showcase() {
   return (
-    <aside className="relative flex flex-col justify-between gap-10 overflow-hidden p-12 xl:p-16 bg-[#1B1917] text-stone-100 dark:border-r dark:border-white/6">
+    <aside className="relative hidden lg:flex flex-col justify-between gap-10 overflow-hidden p-12 xl:p-16 bg-[#1B1917] text-stone-100 dark:border-r dark:border-white/6">
       {/* Brilho em terracota, pautas de livro contábil e a margem */}
       <div aria-hidden className="pointer-events-none absolute -top-40 -left-40 w-[640px] h-[640px] rounded-full bg-[radial-gradient(closest-side,rgba(217,119,87,0.22),transparent)]" />
       <div aria-hidden className="pointer-events-none absolute -bottom-56 right-[-180px] w-[620px] h-[620px] rounded-full bg-[radial-gradient(closest-side,rgba(217,119,87,0.10),transparent)]" />
@@ -108,7 +108,7 @@ function Showcase() {
             <ul className="divide-y divide-stone-900/6">
               {STATEMENT.map((row) => (
                 <li key={row.day} className="flex items-center gap-3 px-5 py-2.5 text-[13px]">
-                  <span className="font-mono tabular-nums text-[12px] text-stone-400">{row.day}</span>
+                  <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{row.day}</span>
                   <span className="flex-1 min-w-0 truncate font-medium tracking-tight">{row.memo}</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${row.tone}`}>{row.status}</span>
                   <span className={`w-[84px] text-right font-mono tabular-nums ${row.credit ? 'text-emerald-700' : 'text-stone-700'}`}>{row.amount}</span>
@@ -235,7 +235,7 @@ export default function LoginPage() {
   const error = errorMessage ?? authError;
 
   return (
-    <div className="min-h-screen w-full min-w-[1080px] grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-canvas text-stone-900 dark:text-stone-100">
+    <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] bg-canvas text-stone-900 dark:text-stone-100">
       <Showcase />
 
       <div className="relative flex flex-col min-h-screen">
@@ -380,7 +380,7 @@ export default function LoginPage() {
           </div>
         </main>
 
-        <footer className="flex items-center justify-between gap-4 px-8 h-14 border-t border-line text-[11px] text-stone-400">
+        <footer className="flex items-center justify-between gap-4 px-8 h-14 border-t border-line text-[11px] text-stone-500 dark:text-stone-400">
           <span>© {new Date().getFullYear()} ContaFlow</span>
           <span className="font-mono tabular-nums">{versionLabel(APP_VERSION)}</span>
         </footer>

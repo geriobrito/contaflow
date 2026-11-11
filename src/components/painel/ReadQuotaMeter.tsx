@@ -40,7 +40,7 @@ export function ReadQuotaMeter() {
             <span className="font-mono tabular-nums">{NUMBER.format(reads)}</span> de{' '}
             <span className="font-mono tabular-nums">{NUMBER.format(FREE_DAILY_READS)}</span> ({percent.toFixed(percent < 10 ? 1 : 0)}%)
           </p>
-          <p className="shrink-0 text-[11px] text-stone-400" title="A cota do Firestore reinicia à meia-noite no horário do Pacífico (EUA).">
+          <p className="shrink-0 text-[11px] text-stone-500 dark:text-stone-400" title="A cota do Firestore reinicia à meia-noite no horário do Pacífico (EUA).">
             Aproximado, só deste navegador · reinicia por volta das 4h–5h (Brasília)
           </p>
         </div>

@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import Link from 'next/link';
 import { ArrowDownRight, ArrowUpRight, Printer, TrendingUp } from 'lucide-react';
@@ -103,7 +104,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           <p className="mt-1.5 text-[24px] leading-none font-semibold tracking-tight font-mono tabular-nums text-stone-900 dark:text-stone-100">
             {formatCurrency(summary.twelveMonthsGrossRevenue)}
           </p>
-          <p className="mt-2 text-[11px] text-stone-400">
+          <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
             Média mensal: {formatCurrency(summary.twelveMonthsGrossRevenue / 12)}
           </p>
         </div>
@@ -113,7 +114,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           <p className="mt-1.5 text-[24px] leading-none font-semibold tracking-tight font-mono tabular-nums text-stone-900 dark:text-stone-100">
             {formatCurrency(summary.twelveMonthsNetRevenue)}
           </p>
-          <p className="mt-2 text-[11px] text-stone-400">
+          <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
             Após deduções e tributos s/ vendas
           </p>
         </div>
@@ -127,7 +128,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           >
             {formatCurrency(summary.twelveMonthsNetResult)}
           </p>
-          <p className="mt-2 text-[11px] text-stone-400">
+          <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
             {isProfitable ? 'Lucro líquido acumulado' : 'Prejuízo líquido no período'}
           </p>
         </div>
@@ -141,7 +142,7 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           >
             {summary.twelveMonthsNetMargin.toFixed(1)}%
           </p>
-          <p className="mt-2 text-[11px] text-stone-400 font-mono tabular-nums">
+          <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">
             EBITDA est.: {formatCurrency(summary.twelveMonthsEbitda)}
           </p>
         </div>
@@ -193,19 +194,19 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           <h2 className="text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
             Demonstrativo Gerencial Mês a Mês
           </h2>
-          <span className="text-[12px] text-stone-400 font-mono">{summary.periodLabel}</span>
+          <span className="text-[12px] text-stone-500 dark:text-stone-400 font-mono">{summary.periodLabel}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-[12px]">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                <th className="font-semibold pl-6 pr-3 py-2.5">Mês</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Receita Bruta</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Tributos / Ded.</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Custos (CMV/CSP)</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Despesas Op./Fin.</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Resultado Líquido</th>
-                <th className="font-semibold pl-3 pr-6 py-2.5 text-right">Margem</th>
+              <tr className={TABLE_HEAD}>
+                <Th className="pl-6 pr-3 py-2.5">Mês</Th>
+                <Th align="right">Receita Bruta</Th>
+                <Th align="right">Tributos / Ded.</Th>
+                <Th align="right">Custos (CMV/CSP)</Th>
+                <Th align="right">Despesas Op./Fin.</Th>
+                <Th align="right">Resultado Líquido</Th>
+                <Th align="right" className="pl-3 pr-6 py-2.5">Margem</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/4 dark:divide-white/5 font-mono tabular-nums">

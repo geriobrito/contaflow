@@ -23,7 +23,7 @@ const localToday = () => {
 /** Resumo de uma empresa só com leituras baratas: contagens no servidor e cadastros pequenos. */
 async function loadRow(client: ClientCompany): Promise<PortfolioRow> {
   const repo = getRepository();
-  const [pending, auto, locks, batches, banks, openQueries, requests] = await Promise.all([
+  const [pending, auto, locks, batches, banks, openQueries, requests, payroll] = await Promise.all([
     repo.countTransactionsByStatus(client.id, 'PENDING'),
     repo.countTransactionsByStatus(client.id, 'AUTO_CLASSIFIED'),
     repo.listPeriodLocks(client.id),
@@ -31,12 +31,13 @@ async function loadRow(client: ClientCompany): Promise<PortfolioRow> {
     repo.listBankAccounts(client.id),
     repo.listOpenQueries(client.id),
     repo.listClientRequests(client.id),
+    repo.getPayrollRegister(client.id),
   ]);
   // Só quando há o que procurar; sem o índice publicado (ou com falha), o atalho cai no primeiro mês aberto.
   const oldest = (count: number, status: 'PENDING' | 'AUTO_CLASSIFIED') =>
     count > 0 ? repo.oldestTransactionDate(client.id, status).catch(() => null) : Promise.resolve(null);
   const [oldestPending, oldestAuto] = await Promise.all([oldest(pending, 'PENDING'), oldest(auto, 'AUTO_CLASSIFIED')]);
-  return buildPortfolioRow({ client, pending, auto, oldestPending, oldestAuto, locks, batches, banks, openQueries, requests, today: localToday(), nowMs: Date.now() });
+  return buildPortfolioRow({ client, pending, auto, oldestPending, oldestAuto, locks, batches, banks, openQueries, requests, payrollMonths: payroll?.summaries.map((s) => s.month), today: localToday(), nowMs: Date.now() });
 }
 
 /**

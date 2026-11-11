@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, HandCoins, Landmark, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FinancingContract } from '@/types/firestore';
@@ -11,7 +12,7 @@ import { FinancingSheet } from '@/components/imobilizado/FinancingSheet';
 import { contractMonths, contractPositionAt, FINANCING_KIND_LABEL, installmentSchedule } from '@/lib/financing';
 import { fromCents } from '@/lib/money';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const NUM = 'px-3 py-2.5 text-right font-mono tabular-nums whitespace-nowrap';
@@ -56,7 +57,7 @@ export default function FinanciamentosPage() {
         actions={
           <label className="flex items-center gap-2 text-[12px] text-stone-500">
             Posição no fim de
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`} />
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
           </label>
         }
       />
@@ -112,14 +113,14 @@ export default function FinanciamentosPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                  <th className="w-10" />
-                  <th className="font-semibold pr-3 py-2.5">Contrato</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Parcelas</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Curto prazo</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Longo prazo</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Saldo devedor</th>
-                  <th className="pl-3 pr-5 py-2.5 w-20"><span className="sr-only">Ações</span></th>
+                <tr className={TABLE_HEAD}>
+                  <Th className="w-10" />
+                  <Th className="pr-3 py-2.5">Contrato</Th>
+                  <Th align="right">Parcelas</Th>
+                  <Th align="right">Curto prazo</Th>
+                  <Th align="right">Longo prazo</Th>
+                  <Th align="right">Saldo devedor</Th>
+                  <Th edge="end" className="w-20"><span className="sr-only">Ações</span></Th>
                 </tr>
               </thead>
               <tbody>
@@ -136,14 +137,14 @@ export default function FinanciamentosPage() {
                         </td>
                         <td className="pr-3 py-3">
                           <p className="font-medium text-stone-900 dark:text-stone-100">{c.description}</p>
-                          <p className="text-[11px] text-stone-400">
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400">
                             {FINANCING_KIND_LABEL[c.kind]}
                             {c.lender ? ` · ${c.lender}` : ''} · {formatDateBR(c.date)} · {c.interestMode === 'PREFIXED' ? `prefixado${c.monthlyRate ? ` ${c.monthlyRate.toLocaleString('pt-BR')}% a.m.` : ''}` : 'pós-fixado (Selic)'}
                           </p>
                         </td>
                         <td className={NUM}>
                           {pos.paidCount}/{c.installments}
-                          <span className="block text-[11px] text-stone-400 font-sans">{formatCurrency(c.installmentAmount)}</span>
+                          <span className="block text-[11px] text-stone-500 dark:text-stone-400 font-sans">{formatCurrency(c.installmentAmount)}</span>
                         </td>
                         <td className={NUM}>{formatCurrency(fromCents(pos.shortPayments - pos.shortInterest))}</td>
                         <td className={NUM}>{formatCurrency(fromCents(pos.longPayments - pos.longInterest))}</td>
@@ -162,13 +163,13 @@ export default function FinanciamentosPage() {
                           <td colSpan={7} className="px-5 py-3">
                             <table aria-label={`Parcelas de ${c.description}`} className="w-full text-left text-[12px]">
                               <thead>
-                                <tr className="text-[10px] uppercase tracking-[0.08em] text-stone-400">
-                                  <th className="font-semibold py-1.5">Parcela</th>
-                                  <th className="font-semibold py-1.5">Vencimento</th>
-                                  <th className="font-semibold py-1.5 text-right">Valor</th>
-                                  <th className="font-semibold py-1.5 text-right">Juros</th>
-                                  <th className="font-semibold py-1.5 text-right">Amortização</th>
-                                  <th className="font-semibold py-1.5 text-right">Saldo devedor</th>
+                                <tr className={TABLE_HEAD}>
+                                  <Th className="py-1.5">Parcela</Th>
+                                  <Th className="py-1.5">Vencimento</Th>
+                                  <Th align="right" className="py-1.5">Valor</Th>
+                                  <Th align="right" className="py-1.5">Juros</Th>
+                                  <Th align="right" className="py-1.5">Amortização</Th>
+                                  <Th align="right" className="py-1.5">Saldo devedor</Th>
                                 </tr>
                               </thead>
                               <tbody>

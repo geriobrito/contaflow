@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useState } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, Copy, Edit2, ExternalLink, Loader2, Trash2 } from 'lucide-react';
 import type { ChartAccount, JournalEntry } from '@/types/firestore';
@@ -28,14 +29,14 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
       <div className="overflow-x-auto">
         <table className="w-full text-left text-[13px] border-collapse">
           <thead>
-            <tr className="border-b border-line bg-surface-2 text-[11px] font-semibold text-stone-500 uppercase tracking-[0.08em]">
-              <th className="py-3 px-4 w-12 text-center"></th>
-              <th className="py-3 px-4 w-28">Data</th>
-              <th className="py-3 px-4 w-44">Categoria</th>
-              <th className="py-3 px-4">Histórico Contábil</th>
-              <th className="py-3 px-4 w-36">Documento</th>
-              <th className="py-3 px-4 w-36 text-right">Valor Total</th>
-              <th className="py-3 px-4 w-36 text-center">Ações</th>
+            <tr className={TABLE_HEAD}>
+              <Th align="center" className="py-3 px-4 w-12"></Th>
+              <Th className="py-3 px-4 w-28">Data</Th>
+              <Th className="py-3 px-4 w-44">Categoria</Th>
+              <Th className="py-3 px-4">Histórico Contábil</Th>
+              <Th className="py-3 px-4 w-36">Documento</Th>
+              <Th align="right" className="py-3 px-4 w-36">Valor Total</Th>
+              <Th align="center" className="py-3 px-4 w-36">Ações</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/4 dark:divide-white/6">
@@ -77,32 +78,32 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                         {catCfg.label}
                       </span>
                       {(entry.depreciationMonth || entry.fixedAssetId) && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelo cadastro do imobilizado; altere o bem na tela Imobilizado">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelo cadastro do imobilizado; altere o bem na tela Imobilizado">
                           {entry.fixedAssetId ? 'Baixa de bem · Imobilizado' : 'Gerado pelo Imobilizado'}
                         </span>
                       )}
                       {(entry.financingMonth || entry.financingId) && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelos contratos; altere em Bens e Contratos">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelos contratos; altere em Bens e Contratos">
                           {entry.financingId ? 'Contrato · Financiamentos' : 'Juros · Financiamentos'}
                         </span>
                       )}
                       {entry.stockMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelo estoque final informado; altere em Bens e Contratos">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelo estoque final informado; altere em Bens e Contratos">
                           CMV · Estoque
                         </span>
                       )}
                       {entry.investmentMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelos saldos das aplicações; altere em Bens e Contratos">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelos saldos das aplicações; altere em Bens e Contratos">
                           Rendimento · Aplicações financeiras
                         </span>
                       )}
                       {(entry.prepaidMonth || entry.prepaidId) && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pelas despesas antecipadas; altere em Bens e Contratos">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelas despesas antecipadas; altere em Bens e Contratos">
                           {entry.prepaidId ? 'Apólice · Despesas antecipadas' : 'Apropriação · Despesas antecipadas'}
                         </span>
                       )}
                       {entry.payrollMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-400" title="Gerado pela folha de pagamento; altere na tela Folha de Pagamento">
+                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pela folha de pagamento; altere na tela Folha de Pagamento">
                           Provisão · Folha de pagamento
                         </span>
                       )}
@@ -110,7 +111,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
 
                     <td className="py-3 px-4 font-medium text-stone-900 dark:text-stone-100">
                       {entry.memo}
-                      <span className="text-[11px] text-stone-400 font-normal ml-2">
+                      <span className="text-[11px] text-stone-500 dark:text-stone-400 font-normal ml-2">
                         ({entry.lines.length} partidas)
                       </span>
                     </td>
@@ -190,12 +191,12 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           <div className="border border-line rounded-xl overflow-hidden bg-surface">
                             <table className="w-full text-left text-[12px]">
                               <thead>
-                                <tr className="border-b border-black/4 bg-surface-2 text-[11px] font-medium text-stone-500 uppercase">
-                                  <th className="py-2 px-3 w-16 text-center">Tipo</th>
-                                  <th className="py-2 px-3 w-36">Código</th>
-                                  <th className="py-2 px-3">Conta Contábil</th>
-                                  <th className="py-2 px-3">Memo / Histórico Complementar</th>
-                                  <th className="py-2 px-3 w-36 text-right">Valor</th>
+                                <tr className={TABLE_HEAD}>
+                                  <Th align="center" className="py-2 px-3 w-16">Tipo</Th>
+                                  <Th className="py-2 px-3 w-36">Código</Th>
+                                  <Th className="py-2 px-3">Conta Contábil</Th>
+                                  <Th className="py-2 px-3">Memo / Histórico Complementar</Th>
+                                  <Th align="right" className="py-2 px-3 w-36">Valor</Th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-black/3 dark:divide-white/4">

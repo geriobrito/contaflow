@@ -1,5 +1,5 @@
 import type { BankAccount, BankTransaction, ClientCompany, ClientRequest, ImportBatch, PeriodLock } from '@/types/firestore';
-import { accountStatuses, plural, summarizeQueries } from '@/lib/dashboard';
+import { accountStatuses, missingPayroll, plural, previousMonthOf, summarizeQueries } from '@/lib/dashboard';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
 
 /**
@@ -21,6 +21,8 @@ export interface PortfolioInput {
   banks: readonly BankAccount[];
   openQueries: readonly BankTransaction[];
   requests: readonly ClientRequest[];
+  /** Competências (YYYY-MM) com folha de pagamento lançada. */
+  payrollMonths?: readonly string[];
   /** Hoje (YYYY-MM-DD) e em ms (validade dos links). */
   today: string;
   nowMs: number;
@@ -72,7 +74,7 @@ export const shortMonth = (month: string): string => {
 
 export function buildPortfolioRow(input: PortfolioInput): PortfolioRow {
   const { client, pending, auto, locks, batches, banks, openQueries, requests, today, nowMs } = input;
-  const focusMonth = previousMonth(today.slice(0, 7));
+  const focusMonth = previousMonthOf(today.slice(0, 7));
   const locked = new Set(locks.map((l) => l.month));
   const covered = statementMonths(batches);
   const openMonths = [...covered].filter((m) => m <= focusMonth && !locked.has(m)).sort();
@@ -110,6 +112,10 @@ export function buildPortfolioRow(input: PortfolioInput): PortfolioRow {
   if (queries.notSent > 0) add({ id: 'not-sent', label: `${plural(queries.notSent, 'pergunta', 'perguntas')} sem link`, severity: 'medium', href: '/pendencias' });
   if (queries.waiting > 0) add({ id: 'waiting', label: `Aguardando cliente (${queries.waiting})`, severity: 'low', href: '/pendencias' });
 
+  if (missingPayroll(input.payrollMonths, focusMonth, locked.has(focusMonth))) {
+    add({ id: 'payroll', label: `Lançar folha de ${shortMonth(focusMonth)}`, severity: 'medium', href: `/folha?mes=${focusMonth}` });
+  }
+
   if (focus === 'open') add({ id: 'close-focus', label: `Fechar ${shortMonth(focusMonth)}`, severity: 'medium', href: `/?mes=${focusMonth}` });
   const earlier = openMonths.filter((m) => m < focusMonth);
   if (earlier.length > 0) {
@@ -128,11 +134,6 @@ export function buildPortfolioRow(input: PortfolioInput): PortfolioRow {
     upToDate: !tasks.some((t) => t.severity !== 'low'),
     weight: tasks.reduce((s, t) => s + WEIGHT[t.severity], 0),
   };
-}
-
-function previousMonth(month: string): string {
-  const [y, m] = month.split('-').map(Number);
-  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
 /** Linhas da carteira em ordem de trabalho: mais pendências primeiro; empate, pelo nome. */

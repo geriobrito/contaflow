@@ -54,7 +54,7 @@ export function TransferPanel({ pairs, banks, busy, onReconcile }: TransferPanel
         <ul className="border-t border-black/4 dark:border-white/6 divide-y divide-black/4 dark:divide-white/5 animate-fade-in">
           {pairs.map((p) => (
             <li key={`${p.out.id}-${p.in.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2.5 text-[13px]">
-              <span className="font-mono tabular-nums text-[12px] text-stone-400 w-40 shrink-0">
+              <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 w-40 shrink-0">
                 {formatDateBR(p.out.date)}
                 {p.days > 0 && ` → ${formatDateBR(p.in.date)}`}
               </span>

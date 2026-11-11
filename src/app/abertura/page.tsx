@@ -13,7 +13,7 @@ import { frozenMessage } from '@/lib/lock-guard';
 import { openingAccounts } from '@/lib/opening';
 import { buildOpeningSheet } from '@/lib/opening-view';
 import { round2 } from '@/lib/money';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { OpeningColumn } from '@/components/abertura/OpeningColumn';
@@ -199,13 +199,13 @@ export default function AberturaPage() {
             <div className="flex flex-wrap items-start gap-x-8 gap-y-4">
               <div className="w-48">
                 <Field label="Data do balanço de abertura" hint="Posição no início do dia.">
-                  <input disabled={frozen} type="date" value={o.date} onChange={(e) => o.setDate(e.target.value)} className={`${INPUT} h-10 font-mono tabular-nums`} />
+                  <input disabled={frozen} type="date" value={o.date} onChange={(e) => o.setDate(e.target.value)} className={`${INPUT_MONEY} h-10`} />
                 </Field>
               </div>
               <div className="flex-1 min-w-[280px] space-y-1.5">
                 <span className="block text-[12px] font-medium text-stone-500 px-0.5">A empresa já tinha contabilidade?</span>
                 <SegmentedControl ariaLabel="A empresa já tinha contabilidade?" value={o.mode} onChange={o.setMode} options={MODE_OPTIONS} disabled={frozen} />
-                <span className="block text-[12px] text-stone-400 px-0.5">{MODE_HINT[o.mode]}</span>
+                <span className="block text-[12px] text-stone-500 dark:text-stone-400 px-0.5">{MODE_HINT[o.mode]}</span>
               </div>
             </div>
             {o.mode === 'OPENING_BALANCE' && (

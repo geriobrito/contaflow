@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import type { ImportBatch } from '@/types/firestore';
@@ -23,14 +24,14 @@ export function ImportHistoryTable({ current, onDelete }: { current: ContasData 
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                <th className="font-semibold pl-5 pr-3 py-2.5">Importado em</th>
-                <th className="font-semibold px-3 py-2.5">Arquivo</th>
-                <th className="font-semibold px-3 py-2.5">Conta</th>
-                <th className="font-semibold px-3 py-2.5">Período</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Lançamentos</th>
-                <th className="font-semibold px-3 py-2.5">Saldo</th>
-                <th className="pl-3 pr-5 py-2.5 w-14"><span className="sr-only">Ações</span></th>
+              <tr className={TABLE_HEAD}>
+                <Th edge="start">Importado em</Th>
+                <Th>Arquivo</Th>
+                <Th>Conta</Th>
+                <Th>Período</Th>
+                <Th align="right">Lançamentos</Th>
+                <Th>Saldo</Th>
+                <Th edge="end" className="w-14"><span className="sr-only">Ações</span></Th>
               </tr>
             </thead>
             <tbody>

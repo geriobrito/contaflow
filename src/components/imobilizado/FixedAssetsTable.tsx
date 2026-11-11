@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import { Car, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
 import type { FixedAsset } from '@/types/firestore';
@@ -69,15 +70,15 @@ export function FixedAssetsTable({
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
-              <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                <th className="font-semibold pl-5 pr-3 py-2.5">Bem</th>
-                <th className="font-semibold px-3 py-2.5">Em uso desde</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Custo</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Taxa</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Cota do mês</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Acumulada</th>
-                <th className="font-semibold px-3 py-2.5 text-right">Valor líquido</th>
-                <th className="pl-3 pr-5 py-2.5 w-28"><span className="sr-only">Ações</span></th>
+              <tr className={TABLE_HEAD}>
+                <Th edge="start">Bem</Th>
+                <Th>Em uso desde</Th>
+                <Th align="right">Custo</Th>
+                <Th align="right">Taxa</Th>
+                <Th align="right">Cota do mês</Th>
+                <Th align="right">Acumulada</Th>
+                <Th align="right">Valor líquido</Th>
+                <Th edge="end" className="w-28"><span className="sr-only">Ações</span></Th>
               </tr>
             </thead>
             <tbody>
@@ -88,7 +89,7 @@ export function FixedAssetsTable({
                   <tr key={a.id} className={`border-b border-black/4 last:border-0 text-[13px] ${gone ? 'text-stone-400' : ''}`}>
                     <td className="pl-5 pr-3 py-3">
                       <p className="font-medium text-stone-900 dark:text-stone-100">{a.description}</p>
-                      <p className="text-[11px] text-stone-400">
+                      <p className="text-[11px] text-stone-500 dark:text-stone-400">
                         <span className="font-mono">{a.accountCode}</span> {a.accountName}
                         {a.documentRef ? ` · NF ${a.documentRef}` : ''} · {a.use === 'COST' ? 'custo' : 'despesa'}
                       </p>

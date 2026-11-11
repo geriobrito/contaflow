@@ -12,7 +12,7 @@ import {
   sendVerificationEmail,
   startAuthenticatorEnrollment,
 } from '@/lib/auth/two-factor';
-import { BUTTON, ConfirmButton, Field, INPUT, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, Field, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { reportError } from '@/lib/monitoring';
 
 /** Chave em grupos de 4, como os aplicativos autenticadores mostram. */
@@ -146,7 +146,7 @@ export function TwoFactorSection() {
                   maxLength={6}
                   value={code}
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className={`${INPUT} font-mono tabular-nums tracking-[0.3em]`}
+                  className={`${INPUT_MONEY} tracking-[0.3em]`}
                 />
               </Field>
             </div>

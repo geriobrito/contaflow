@@ -6,7 +6,7 @@ import { saveAccount } from '@/lib/services/data-service';
 import { newAccountId } from '@/lib/utils/id';
 import { describeError } from '@/lib/utils/errors';
 import { codeError as validateCode, defaultParent, DRE_GROUPS, inheritedDREGroup, RESULT_TYPES, suggestCode, TYPE_LABEL } from '@/lib/chart/tree';
-import { BUTTON, Field, INPUT, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 
 interface NewAccountSheetProps {
@@ -93,7 +93,7 @@ export function NewAccountSheet({ accounts, clientId, onClose, onCreated }: NewA
         </Field>
 
         <Field label="Código" error={codeError} hint={parent ? `Tipo herdado: ${TYPE_LABEL[parent.type]}` : undefined}>
-          <input value={code} onChange={(e) => setCode(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+          <input value={code} onChange={(e) => setCode(e.target.value)} className={INPUT_MONEY} />
         </Field>
 
         <Field label="Nome">

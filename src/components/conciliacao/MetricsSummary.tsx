@@ -31,7 +31,7 @@ function Metric({ label, value, caption, tone = 'neutral', progress }: MetricPro
           <span aria-hidden className={`w-1.5 h-1.5 shrink-0 rounded-full ${DOT[tone]}`} />
           <span className="truncate">{label}</span>
         </p>
-        {caption && <p className="pl-3 text-[11px] text-stone-400 truncate">{caption}</p>}
+        {caption && <p className="pl-3 text-[11px] text-stone-500 dark:text-stone-400 truncate">{caption}</p>}
       </div>
       <div className="shrink-0 flex flex-col items-end gap-1">
         <p className={`text-[17px] leading-none font-semibold tracking-tight font-mono tabular-nums ${TONE[tone]}`}>{value}</p>

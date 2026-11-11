@@ -1,3 +1,4 @@
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import { ArrowLeftRight, ChevronDown, Lock, MessageCircleQuestion, Pencil, ReceiptText, Split } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
@@ -59,8 +60,8 @@ export function TransactionTable({
     <div className="overflow-x-auto">
       <table className="w-full text-left">
         <thead>
-          <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-            <th scope="col" className="pl-5 pr-2 py-2.5 w-10">
+          <tr className={TABLE_HEAD}>
+            <Th scope="col" className="pl-5 pr-2 py-2.5 w-10">
               <input
                 type="checkbox"
                 aria-label="Selecionar todos da página"
@@ -71,12 +72,12 @@ export function TransactionTable({
                 onChange={onToggleSelectAllPage}
                 className="rounded border-stone-300 dark:border-stone-600 text-accent-ink focus:ring-accent cursor-pointer"
               />
-            </th>
-            <th scope="col" className="font-medium px-3 py-2.5 w-24">Data</th>
-            <th scope="col" className="font-medium px-3 py-2.5">Descrição</th>
-            <th scope="col" className="font-medium px-3 py-2.5">Conta</th>
-            <th scope="col" className="font-medium px-3 py-2.5 w-28">Status</th>
-            <th scope="col" className="font-medium pl-3 pr-5 py-2.5 text-right w-36">Valor</th>
+            </Th>
+            <Th scope="col" className="w-24">Data</Th>
+            <Th scope="col">Descrição</Th>
+            <Th scope="col">Conta</Th>
+            <Th scope="col" className="w-28">Status</Th>
+            <Th scope="col" align="right" edge="end" className="w-36">Valor</Th>
           </tr>
         </thead>
         <tbody>
@@ -128,13 +129,13 @@ export function TransactionTable({
                       className="rounded border-stone-300 dark:border-stone-600 text-accent-ink focus:ring-accent cursor-pointer"
                     />
                   </td>
-                  <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-400 whitespace-nowrap">{formatDateBR(t.date)}</td>
+                  <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 whitespace-nowrap">{formatDateBR(t.date)}</td>
                   <td className="px-3 py-3 max-w-0 w-full">
                     <p title={t.memo} className="text-[14px] tracking-tight text-stone-900 dark:text-stone-100 whitespace-normal wrap-break-word">
                       {t.memo}
                     </p>
                     {bankNamesByKey && t.accountKey && bankNamesByKey.has(t.accountKey) && (
-                      <span className="mt-0.5 inline-block text-[11px] text-stone-400 dark:text-stone-500">
+                      <span className="mt-0.5 inline-block text-[11px] text-stone-500 dark:text-stone-500">
                         {bankNamesByKey.get(t.accountKey)}
                       </span>
                     )}
@@ -144,7 +145,7 @@ export function TransactionTable({
                       splitBadge
                     ) : t.accountName ? (
                       <p className="text-[13px] text-stone-600 dark:text-stone-400 truncate">
-                        <span className="font-mono tabular-nums text-[12px] text-stone-400 mr-1.5">{t.accountCode}</span>
+                        <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 mr-1.5">{t.accountCode}</span>
                         {t.accountName}
                       </p>
                     ) : (
@@ -216,7 +217,7 @@ export function TransactionTable({
                       <ul className="rounded-2xl border border-line bg-white/70 dark:bg-stone-900/40 divide-y divide-black/4 dark:divide-white/5 animate-fade-in">
                         {t.splits?.map((sp) => (
                           <li key={sp.id} className="flex items-baseline gap-3 px-4 py-2 text-[13px]">
-                            <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-400">{sp.accountCode}</span>
+                            <span className="w-24 shrink-0 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{sp.accountCode}</span>
                             <span className="flex-1 min-w-0 truncate text-stone-700 dark:text-stone-300">
                               {sp.accountName}
                               {sp.memo && <span className="ml-2 text-stone-400">· {sp.memo}</span>}

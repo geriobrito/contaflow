@@ -1,5 +1,6 @@
 'use client';
 
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useEffect, useState } from 'react';
 import { Landmark, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import type { PrepaidExpense } from '@/types/firestore';
@@ -11,7 +12,7 @@ import { PrepaidSheet } from '@/components/imobilizado/PrepaidSheet';
 import { lockedPrepaidMonths, postedPrepaidCents, prepaidBalanceAt, prepaidEndDate, PREPAID_KIND_LABEL } from '@/lib/prepaid-expenses';
 import { fromCents } from '@/lib/money';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, ConfirmButton, EmptyState, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, ConfirmButton, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const NUM = 'px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap';
@@ -59,7 +60,7 @@ export default function DespesasAntecipadasPage() {
         actions={
           <label className="flex items-center gap-2 text-[12px] text-stone-500">
             Posição no fim de
-            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`} />
+            <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
           </label>
         }
       />
@@ -115,13 +116,13 @@ export default function DespesasAntecipadasPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
-                <tr className="text-[10.5px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 bg-surface-2 border-b border-line">
-                  <th className="font-semibold pl-5 pr-3 py-2.5">Descrição</th>
-                  <th className="font-semibold px-3 py-2.5">Vigência</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Valor</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">Cota do mês</th>
-                  <th className="font-semibold px-3 py-2.5 text-right">A apropriar</th>
-                  <th className="pl-3 pr-5 py-2.5 w-20"><span className="sr-only">Ações</span></th>
+                <tr className={TABLE_HEAD}>
+                  <Th edge="start">Descrição</Th>
+                  <Th>Vigência</Th>
+                  <Th align="right">Valor</Th>
+                  <Th align="right">Cota do mês</Th>
+                  <Th align="right">A apropriar</Th>
+                  <Th edge="end" className="w-20"><span className="sr-only">Ações</span></Th>
                 </tr>
               </thead>
               <tbody>
@@ -131,14 +132,14 @@ export default function DespesasAntecipadasPage() {
                     <tr key={item.id} className="border-b border-black/4 last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-3">
                         <p className="font-medium text-stone-900 dark:text-stone-100">{item.description}</p>
-                        <p className="text-[11px] text-stone-400">
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400">
                           {PREPAID_KIND_LABEL[item.kind]}
                           {item.documentRef ? ` nº ${item.documentRef}` : ''} · {item.use === 'COST' ? 'custo' : 'despesa'} · <span className="font-mono">{item.expenseAccountCode}</span>
                         </p>
                       </td>
                       <td className="px-3 py-3 font-mono tabular-nums text-[12px] whitespace-nowrap">
                         {formatDateBR(item.startDate)} a {formatDateBR(prepaidEndDate(item))}
-                        <span className="block text-[11px] text-stone-400 font-sans">{item.months} meses</span>
+                        <span className="block text-[11px] text-stone-500 dark:text-stone-400 font-sans">{item.months} meses</span>
                       </td>
                       <td className={NUM}>{formatCurrency(item.amount)}</td>
                       <td className={NUM}>{quota ? formatCurrency(fromCents(quota)) : '—'}</td>

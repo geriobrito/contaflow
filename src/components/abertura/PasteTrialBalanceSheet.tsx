@@ -135,7 +135,7 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
                 <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS[r.status as Exclude<ImportStatus, 'ignored'>].dot}`} title={STATUS[r.status as Exclude<ImportStatus, 'ignored'>].label} />
                 <div className="flex-1 min-w-0">
                   <p className="truncate text-[13px] text-stone-800 dark:text-stone-200" title={r.raw}>
-                    {r.code && <span className="mr-1.5 font-mono text-[11px] text-stone-400">{r.code}</span>}
+                    {r.code && <span className="mr-1.5 font-mono text-[11px] text-stone-500 dark:text-stone-400">{r.code}</span>}
                     {r.name || <span className="text-stone-400">(sem nome)</span>}
                   </p>
                   {r.status !== 'matched' && <p className="text-[11px] text-stone-500">{r.reason}</p>}
@@ -182,12 +182,12 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
                     <li key={r.line} className="flex items-center gap-3 px-3.5 py-1.5">
                       <div className="flex-1 min-w-0">
                         <p className="truncate text-[12px] text-stone-600 dark:text-stone-400" title={r.raw}>
-                          {r.code && <span className="mr-1.5 font-mono text-[11px] text-stone-400">{r.code}</span>}
+                          {r.code && <span className="mr-1.5 font-mono text-[11px] text-stone-500 dark:text-stone-400">{r.code}</span>}
                           {r.name}
                         </p>
-                        <p className="text-[11px] text-stone-400">{r.reason}</p>
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400">{r.reason}</p>
                       </div>
-                      <span className="w-36 shrink-0 text-right font-mono tabular-nums text-[12px] text-stone-400">{lineValue(r)}</span>
+                      <span className="w-36 shrink-0 text-right font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{lineValue(r)}</span>
                       {r.amount ? (
                         <AccountSelectField
                           accounts={targets}

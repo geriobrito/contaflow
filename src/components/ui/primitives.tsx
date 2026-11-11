@@ -12,14 +12,26 @@ import { ModalPortal } from '@/components/ui/ModalPortal';
 
 /** Container fluido das páginas: ocupa o espaço útil ao lado da sidebar, com teto para monitores ultrawide. */
 export const PAGE =
-  'w-full max-w-[1680px] mx-auto px-8 pt-7 pb-12 space-y-7';
+  'w-full max-w-[1680px] mx-auto px-5 xl:px-8 pt-6 xl:pt-7 pb-12 space-y-6 xl:space-y-7';
 
 /** Cartão: superfície sólida com fio e sombra em duas camadas (contato + ambiente). */
 export const SURFACE =
   'bg-surface border border-line shadow-card';
 
-export const INPUT =
-  'w-full h-11 px-3.5 rounded-xl bg-surface border border-line-strong text-[14px] tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none shadow-[inset_0_1px_2px_rgba(28,25,23,0.035)] transition-[border-color,box-shadow,background-color] duration-150 hover:border-stone-400/70 dark:hover:border-white/25 focus:border-accent/70 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.14)] disabled:opacity-55 disabled:cursor-not-allowed disabled:bg-surface-2';
+/** Aparência comum dos campos, sem medidas: cada tamanho abaixo traz altura, recuo e corpo próprios. */
+const INPUT_BASE =
+  'bg-surface border border-line-strong tracking-tight text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none shadow-[inset_0_1px_2px_rgba(28,25,23,0.035)] transition-[border-color,box-shadow,background-color] duration-150 hover:border-stone-400/70 dark:hover:border-white/25 focus:border-accent/70 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.14)] disabled:opacity-55 disabled:cursor-not-allowed disabled:bg-surface-2';
+
+/** Campo padrão de formulário (44px). */
+export const INPUT = `w-full h-11 px-3.5 rounded-xl text-[14px] ${INPUT_BASE}`;
+/** Campo de valor ou código: algarismos alinhados. */
+export const INPUT_MONEY = `${INPUT} font-mono tabular-nums`;
+/** Campo compacto (36px) para filtros e barras de ação. A largura fica por conta de quem usa. */
+export const INPUT_COMPACT = `h-9 px-3 rounded-[10px] text-[13px] ${INPUT_BASE}`;
+/** Campo pequeno (32px) para listas densas, como o balanço de abertura. */
+export const INPUT_SMALL = `h-8 px-2.5 rounded-lg text-[13px] ${INPUT_BASE}`;
+/** Rótulo de campo fora do `Field` (quando o rótulo precisa de ícone ou de outro arranjo). */
+export const FIELD_LABEL = 'text-[12px] font-medium text-stone-600 dark:text-stone-400';
 
 const BUTTON_BASE =
   'inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full text-[13px] font-medium tracking-tight whitespace-nowrap transition-all duration-150 active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none';
@@ -53,7 +65,7 @@ interface PageHeaderProps {
 /** Título em serifa sobre o fio duplo de fechamento de conta (o "total" do livro contábil). */
 export function PageHeader({ eyebrow, title, description, actions }: PageHeaderProps) {
   return (
-    <header className="flex items-end justify-between gap-6 pb-5 border-b-[3px] border-double border-line-strong print:border-0 print:pb-0">
+    <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 pb-5 border-b-[3px] border-double border-line-strong print:border-0 print:pb-0">
       <div className="space-y-2 min-w-0">
         {eyebrow && (
           <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-accent-ink">
@@ -61,7 +73,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
             <span className="truncate">{eyebrow}</span>
           </p>
         )}
-        <h1 className="font-serif text-[36px] leading-[1.08] font-medium text-stone-900 dark:text-stone-50">
+        <h1 className="font-serif text-[30px] xl:text-[36px] leading-[1.08] font-medium text-stone-900 dark:text-stone-50">
           {title}
         </h1>
         {description && <p className="text-[14px] leading-relaxed text-stone-500 dark:text-stone-400 max-w-2xl">{description}</p>}
@@ -384,7 +396,7 @@ export function Field({
       {error ? (
         <span className="block text-[12px] text-rose-600 dark:text-rose-400 px-0.5">{error}</span>
       ) : (
-        hint && <span className="block text-[12px] text-stone-400 px-0.5">{hint}</span>
+        hint && <span className="block text-[12px] text-stone-500 dark:text-stone-400 px-0.5">{hint}</span>
       )}
     </label>
   );

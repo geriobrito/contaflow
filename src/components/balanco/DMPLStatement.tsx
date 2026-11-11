@@ -1,3 +1,4 @@
+import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
 import type { DMPL } from '@/lib/dmpl';
 import { formatDateBR } from '@/lib/utils/formatters';
@@ -17,17 +18,17 @@ export function DMPLStatement({ dmpl }: { dmpl: DMPL }) {
       <div className="overflow-x-auto print:overflow-visible">
         <table className="w-full text-[13px] print-fit-table">
           <thead>
-            <tr className="text-[11px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400 border-b border-line bg-black/2 dark:bg-white/2">
-              <th className="py-2.5 pl-5 pr-4 text-left font-medium min-w-[220px]">Descrição</th>
+            <tr className={TABLE_HEAD}>
+              <Th align="left" className="py-2.5 pl-5 pr-4 min-w-[220px]">Descrição</Th>
               {dmpl.columns.map((col) => (
-                <th key={col.key} className="py-2.5 px-4 text-right font-medium min-w-[130px]">
+                <Th key={col.key} align="right" className="py-2.5 px-4 min-w-[130px]">
                   <span className="block text-stone-700 dark:text-stone-200">{col.label}</span>
-                  <span className="block font-mono tabular-nums text-[10px] text-stone-400 font-normal">{col.code}</span>
-                </th>
+                  <span className="block font-mono tabular-nums text-[10px] text-stone-500 dark:text-stone-400 font-normal">{col.code}</span>
+                </Th>
               ))}
-              <th className="py-2.5 pl-4 pr-5 text-right font-semibold text-stone-800 dark:text-stone-100 min-w-[130px] bg-black/2 dark:bg-white/3">
+              <Th align="right" className="py-2.5 pl-4 pr-5 text-stone-800 dark:text-stone-100 min-w-[130px] bg-black/2 dark:bg-white/3">
                 Total do PL
-              </th>
+              </Th>
             </tr>
           </thead>
           <tbody>

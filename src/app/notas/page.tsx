@@ -8,7 +8,7 @@ import { accountingStandard, porteOf } from '@/lib/accounting-standard';
 import { noteIssue, placeholdersIn } from '@/lib/notes';
 import { letterGaps } from '@/lib/responsibility-letter';
 import { describeError } from '@/lib/utils/errors';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, Field, PAGE, PageHeader, SURFACE, INPUT_COMPACT, INPUT_MONEY } from '@/components/ui/primitives';
 import { useSignatureReminder } from '@/hooks/useSignatureReminder';
 import { TextSkeleton } from '@/components/ui/Skeleton';
 
@@ -113,7 +113,7 @@ export default function NotasPage() {
         <>
           <div className="flex flex-wrap items-end gap-4">
             <Field label="Exercício">
-              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${INPUT} w-36 font-mono tabular-nums`}>
+              <select value={year} onChange={(e) => setYear(e.target.value)} className={`${INPUT_MONEY} w-36`}>
                 {YEARS.map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -152,7 +152,7 @@ export default function NotasPage() {
                     aria-label="Título da nota"
                     value={n.title}
                     onChange={(e) => update(n.id, { title: e.target.value })}
-                    className={`${INPUT} h-9 flex-1 min-w-48 text-[14px] font-semibold`}
+                    className={`${INPUT_COMPACT} flex-1 min-w-48 font-semibold`}
                   />
                   <button type="button" onClick={() => restore(n.id)} className={`${BUTTON.secondary} h-9`} title="Voltar ao texto-padrão desta nota, com os saldos do exercício">
                     <RotateCcw className="w-3.5 h-3.5" /> Texto-padrão

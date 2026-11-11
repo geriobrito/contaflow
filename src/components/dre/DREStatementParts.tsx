@@ -36,9 +36,9 @@ function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 })
     <>
       {lines.map((l) => (
         <div key={l.accountId} className="flex items-baseline gap-3 py-2 pl-8 pr-5 text-[13px] text-stone-600 dark:text-stone-400">
-          <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-400">{l.code}</span>
+          <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{l.code}</span>
           <span className="flex-1 min-w-0 truncate">{l.name}</span>
-          <span className="inline font-mono tabular-nums text-[11px] text-stone-400 w-10 text-right">{l.count}×</span>
+          <span className="inline font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 w-10 text-right">{l.count}×</span>
           <Pct value={sign * l.value} />
           <span className="w-36 xl:w-44 text-right">
             <Amount value={sign * l.value} />

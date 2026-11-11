@@ -11,7 +11,7 @@ import { BANKS_PARENT_CODE, createBankSubaccounts } from '@/lib/services/account
 import { frozenMessage, isFrozen } from '@/lib/lock-guard';
 import { describeError } from '@/lib/utils/errors';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, SegmentedControl, Sheet } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, SegmentedControl, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const LIABILITY_TYPES = new Set(['LIABILITY']);
 
@@ -271,10 +271,10 @@ export function BankAccountSheet({
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Saldo inicial" error={frozen ? null : openingError}>
-            <input disabled={frozen} value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} value={opening} onChange={(e) => setOpening(e.target.value)} placeholder="0,00" className={INPUT_MONEY} />
           </Field>
           <Field label="No início do dia">
-            <input disabled={frozen} type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={`${INPUT} font-mono tabular-nums`} />
+            <input disabled={frozen} type="date" value={openingDate} onChange={(e) => setOpeningDate(e.target.value)} className={INPUT_MONEY} />
           </Field>
         </div>
         {suggestion && !frozen && (
@@ -289,7 +289,7 @@ export function BankAccountSheet({
             Usar o saldo do primeiro extrato: {formatCurrency(suggestion.openingBalance)} em {formatDateBR(suggestion.openingDate)}
           </button>
         )}
-        <p className="text-[12px] text-stone-400">
+        <p className="text-[12px] text-stone-500 dark:text-stone-400">
           Lançamentos até a data do saldo inicial já estão contidos nele e não são somados de novo.
         </p>
       </div>

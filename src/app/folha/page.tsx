@@ -32,7 +32,7 @@ import { PayrollReconciliationPanel } from '@/components/folha/PayrollReconcilia
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { reportError } from '@/lib/monitoring';
-import { BUTTON, EmptyState, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 function downloadBlob(blob: Blob, fileName: string) {
@@ -261,7 +261,7 @@ export default function FolhaPagamentoPage() {
                 type="month"
                 value={month}
                 onChange={(e) => e.target.value && setMonth(e.target.value)}
-                className={`${INPUT} h-9 w-40 font-mono tabular-nums text-[13px]`}
+                className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`}
               />
             </label>
             {existingSummary && (
@@ -320,8 +320,8 @@ export default function FolhaPagamentoPage() {
                   onClick={() => setMonth(s.month)}
                   className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-mono transition ${
                     active
-                      ? 'bg-stone-900 text-white font-semibold'
-                      : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-100'
+                      ? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 font-semibold'
+                      : 'bg-surface border border-line text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-white/8'
                   }`}
                 >
                   {isLocked && <Lock className="w-3 h-3 opacity-70" />}
@@ -336,10 +336,10 @@ export default function FolhaPagamentoPage() {
       {calc && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
               Proventos Brutos ({formatMonth(month)})
             </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
+            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
               {formatCurrency(calc.totalGross)}
             </p>
             <p className="mt-0.5 text-[11.5px] text-stone-500">
@@ -347,10 +347,10 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
               Líquido a Pagar
             </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
+            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
               {formatCurrency(calc.totalNetPayable)}
             </p>
             <p className="mt-0.5 text-[11.5px] text-stone-500">
@@ -358,10 +358,10 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
               Guias a Recolher (INSS / FGTS / IRRF)
             </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900">
+            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
               {formatCurrency(calc.totalTaxesPayable)}
             </p>
             <p className="mt-0.5 text-[11.5px] text-stone-500">
@@ -369,7 +369,7 @@ export default function FolhaPagamentoPage() {
             </p>
           </div>
           <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-400">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
               Conciliação no Extrato
             </p>
             <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">

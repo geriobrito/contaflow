@@ -6,7 +6,7 @@ import type { OrgSettings } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF, normalizeCRC } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { TwoFactorSection } from '@/components/escritorio/TwoFactorSection';
 
 /** Ícone de validação ao lado do campo. */
@@ -118,7 +118,7 @@ export default function EscritorioPage() {
                   value={officeCnpj}
                   onChange={(e) => setOfficeCnpj(maskCNPJ(e.target.value))}
                   placeholder="00.000.000/0000-00"
-                  className={`${INPUT} pr-10 font-mono tabular-nums`}
+                  className={`${INPUT_MONEY} pr-10`}
                 />
                 <Valid ok={cnpjDigits.length === 14 ? cnpjOk : null} />
               </div>
@@ -154,7 +154,7 @@ export default function EscritorioPage() {
                   value={accountantCpf}
                   onChange={(e) => setAccountantCpf(maskCPF(e.target.value))}
                   placeholder="000.000.000-00"
-                  className={`${INPUT} pr-10 font-mono tabular-nums`}
+                  className={`${INPUT_MONEY} pr-10`}
                 />
                 <Valid ok={cpfDigits.length === 11 ? cpfOk : null} />
               </div>
@@ -173,7 +173,7 @@ export default function EscritorioPage() {
             </p>
           )}
         </div>
-        <p className="text-[12px] text-stone-400">
+        <p className="text-[12px] text-stone-500 dark:text-stone-400">
           O representante legal (nome e CPF) é cadastrado em cada empresa, na tela de Clientes.
         </p>
       </form>
