@@ -28,7 +28,8 @@ export type AuditAction =
   | 'FINANCING_SAVE'
   | 'INVESTMENT_SAVE'
   | 'STOCK_SAVE'
-  | 'PAYROLL_SAVE';
+  | 'PAYROLL_SAVE'
+  | 'CLIENT_RESTORE';
 
 /** Estado de classificação de um lançamento num instante (antes/depois). */
 export interface ClassificationSnapshot {

@@ -8,8 +8,8 @@ import { BUTTON, Sheet } from '@/components/ui/primitives';
 interface DeleteClientSheetProps {
   client: ClientCompany;
   backingUp: boolean;
-  /** Baixa o backup; devolve se deu certo. */
-  onBackup: () => Promise<boolean>;
+  /** Baixa o backup; devolve se deu certo e se a auditoria atingiu o teto. */
+  onBackup: () => Promise<{ ok: boolean; auditTruncated?: boolean }>;
   onClose: () => void;
   onConfirm: () => void;
 }
@@ -17,6 +17,7 @@ interface DeleteClientSheetProps {
 /** Confirmação de exclusão de empresa, oferecendo o backup antes. Pede dois toques. */
 export function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConfirm }: DeleteClientSheetProps) {
   const [saved, setSaved] = useState(false);
+  const [auditTruncated, setAuditTruncated] = useState(false);
   const [armed, setArmed] = useState(false);
 
   return (
@@ -47,12 +48,27 @@ export function DeleteClientSheet({ client, backingUp, onBackup, onClose, onConf
         <button
           type="button"
           disabled={backingUp}
-          onClick={() => void onBackup().then((ok) => ok && setSaved(true))}
+          onClick={() =>
+            void onBackup().then((res) => {
+              if (!res.ok) return;
+              setSaved(true);
+              setAuditTruncated(Boolean(res.auditTruncated));
+            })
+          }
           className={`${BUTTON.secondary} w-full`}
         >
           {saved ? <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" /> : <Download className="w-4 h-4" />}
           {backingUp ? 'Gerando backup…' : saved ? 'Backup baixado · baixar de novo' : 'Baixar backup (JSON)'}
         </button>
+        {saved && auditTruncated && (
+          <p className="flex gap-2 rounded-2xl px-4 py-3 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 border border-amber-200/70 dark:border-amber-500/25 text-[12px]">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              Auditoria parcial neste backup: o histórico atingiu o limite de 20.000 eventos por arquivo, então registros mais antigos ficaram de
+              fora do JSON (eles permanecem guardados na nuvem).
+            </span>
+          </p>
+        )}
         {!saved && <p className="text-[12px] text-stone-500 dark:text-stone-400">Sem o backup, os dados excluídos não poderão ser recuperados.</p>}
       </div>
     </Sheet>

@@ -33,7 +33,10 @@ export function AuditTimeline({ entries, showTransaction = false, emptyText = 'N
           <li key={e.id} className="relative pl-6">
             <span
               className={`absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-[#F9F9F8] dark:border-stone-900 ${
-                e.action === 'UNRECONCILE' || e.action === 'PERIOD_REOPEN' || e.action === 'ACCOUNT_DELETE'
+                e.action === 'UNRECONCILE' ||
+                e.action === 'PERIOD_REOPEN' ||
+                e.action === 'ACCOUNT_DELETE' ||
+                e.action === 'JOURNAL_DELETE'
                   ? 'bg-rose-400'
                   : e.action === 'AUTO_CLASSIFY'
                     ? 'bg-accent/70'

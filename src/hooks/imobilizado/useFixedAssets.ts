@@ -16,7 +16,7 @@ import {
 import { lastDayOf, naturalAssetBalances, pendingDepreciationMonths, reconcileWithLedger, type ReconciliationRow } from '@/lib/fixed-assets';
 import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
-import { describeError } from '@/lib/utils/errors';
+import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -82,6 +82,7 @@ export function useFixedAssets(clientId: string | undefined, authorUid: string |
     } catch (e) {
       reportError(e, { area: 'imobilizado', op });
       setError(describeError(e));
+      if (isRegisterConflictError(e)) reload();
       return false;
     } finally {
       setBusy(false);

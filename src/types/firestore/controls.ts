@@ -79,6 +79,7 @@ export interface FixedAssetRegister {
   orgId?: string;
   clientId: string;
   assets: FixedAsset[];
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }
@@ -127,6 +128,7 @@ export interface PrepaidRegister {
   orgId?: string;
   clientId: string;
   items: PrepaidExpense[];
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }
@@ -186,6 +188,7 @@ export interface FinancingRegister {
   orgId?: string;
   clientId: string;
   contracts: FinancingContract[];
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }
@@ -218,6 +221,7 @@ export interface InvestmentRegister {
   orgId?: string;
   clientId: string;
   accounts: InvestmentAccount[];
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }
@@ -250,6 +254,7 @@ export interface StockControl {
   counts: Record<string, number>;
   /** Origem do valor (ex.: "Relatório Bling de 31/07"), por competência. */
   notes?: Record<string, string>;
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }
@@ -318,6 +323,7 @@ export interface PayrollRegister {
   clientId: string;
   summaries: PayrollSummary[];
   defaultMapping?: Partial<PayrollAccountMapping>;
+  version?: number;
   updatedAt: string;
   updatedByUid?: string;
 }

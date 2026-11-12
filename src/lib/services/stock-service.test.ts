@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { JournalEntry, StockControl } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
+import { journalAudit } from '@/lib/audit';
 import { setSession } from '@/lib/data/scope';
 import { getRepository } from '@/lib/services/data-service';
 import { closeMonth } from '@/lib/services/reconciliation-service';
@@ -40,7 +41,7 @@ describe('CMV pelo estoque final (repositório local)', () => {
       entry(2, '2026-07-15', '1.1.3.01', '1.1.1.02', 897086.78),
       entry(3, '2026-07-20', '2.3.3.03', '1.1.1.02', 10000),
     ])
-      await repo.createJournalEntry(m);
+      await repo.createJournalEntry(m, journalAudit('JOURNAL_CREATE', { uid: 'u1' }, CLIENT, 'T', m));
   });
 
   it('sem o estoque final, julho só avisa (inclusive a distribuição de lucros)', async () => {

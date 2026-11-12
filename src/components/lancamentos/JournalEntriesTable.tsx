@@ -18,7 +18,7 @@ interface JournalEntriesTableProps {
   deletingId: string | null;
   onEdit: (entry: JournalEntry) => void;
   onDuplicate: (entry: JournalEntry) => void;
-  onDelete: (entry: JournalEntry) => void;
+  onDelete?: (entry: JournalEntry) => void;
 }
 
 /** Lançamentos manuais do período; cada linha expande para mostrar as partidas e o comprovante. */
@@ -146,19 +146,21 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                           <Copy className="w-3.5 h-3.5" />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => onDelete(entry)}
-                          disabled={monthLocked || deletingId === entry.id}
-                          title={monthLocked ? 'Mês bloqueado' : 'Excluir lançamento'}
-                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          {deletingId === entry.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                        {onDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(entry)}
+                            disabled={monthLocked || deletingId === entry.id}
+                            title={monthLocked ? 'Mês bloqueado' : 'Excluir lançamento'}
+                            className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          >
+                            {deletingId === entry.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

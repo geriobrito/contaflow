@@ -28,7 +28,7 @@ import { reportError } from '@/lib/monitoring';
  */
 export default function LancamentosPage() {
   const { currentClient } = useClient();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const clientId = currentClient?.id;
   const period = usePeriod('month');
   const { range } = period;
@@ -326,7 +326,15 @@ export default function LancamentosPage() {
           )}
         </div>
       ) : (
-        <JournalEntriesTable entries={filteredEntries} accountMap={accountMap} monthLocked={monthLocked} deletingId={deletingId} onEdit={openModal} onDuplicate={handleDuplicate} onDelete={requestDelete} />
+        <JournalEntriesTable
+          entries={filteredEntries}
+          accountMap={accountMap}
+          monthLocked={monthLocked}
+          deletingId={deletingId}
+          onEdit={openModal}
+          onDuplicate={handleDuplicate}
+          onDelete={isAdmin ? requestDelete : undefined}
+        />
       )}
 
       {deleteTarget && (

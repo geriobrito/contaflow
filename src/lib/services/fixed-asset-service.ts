@@ -1,11 +1,11 @@
 import type { AuditEntry, ChartAccount, CompanyPorte, FixedAsset, FixedAssetDisposalReason, FixedAssetRegister, FixedAssetSale, JournalEntry } from '@/types/firestore';
-import type { DataRepository } from '@/lib/data/repository';
+import type { DataRepository, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { journalAudit, newAuditId } from '@/lib/audit';
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import { implantationDate, implantationProblem } from '@/lib/opening';
-import { monthOf } from '@/lib/periods';
+import { formatMonth, monthOf } from '@/lib/periods';
 import {
   assetProblem,
   depreciationCloseProblem,
@@ -64,6 +64,11 @@ const assetAudit = (clientId: string, note: string): AuditEntry => {
 
 const emptyRegister = (clientId: string): FixedAssetRegister => ({ id: clientId, clientId, assets: [], updatedAt: '' });
 
+const optimistic = (register: FixedAssetRegister | null): RegisterSaveOptions => ({
+  expectedVersion: register?.version ?? null,
+  expectedUpdatedAt: register?.updatedAt ?? null,
+});
+
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
 /**
@@ -88,7 +93,9 @@ export async function saveFixedAsset(clientId: string, asset: FixedAsset, ctx: F
   const assets = before ? register.assets.map((a) => (a.id === asset.id ? { ...asset, updatedAt: now } : a)) : [...register.assets, { ...asset, createdAt: now, updatedAt: now }];
   await getRepository().saveFixedAssets(
     { ...register, assets, updatedAt: now, updatedByUid: getActor().uid },
-    assetAudit(clientId, `${before ? 'Alterou' : 'Cadastrou'} o bem ${asset.description}`)
+    assetAudit(clientId, `${before ? 'Alterou' : 'Cadastrou'} o bem ${asset.description}`),
+    {},
+    optimistic(ctx.register)
   );
 }
 
@@ -100,7 +107,9 @@ export async function deleteFixedAsset(clientId: string, asset: FixedAsset, ctx:
   const now = new Date().toISOString();
   await getRepository().saveFixedAssets(
     { ...register, assets: register.assets.filter((a) => a.id !== asset.id), updatedAt: now, updatedByUid: getActor().uid },
-    assetAudit(clientId, `Excluiu o bem ${asset.description}`)
+    assetAudit(clientId, `Excluiu o bem ${asset.description}`),
+    {},
+    optimistic(ctx.register)
   );
 }
 
@@ -154,7 +163,8 @@ export async function disposeFixedAsset(
   return getRepository().saveFixedAssets(
     { ...register, assets: register.assets.map((a) => (a.id === asset.id ? disposed : a)), updatedAt: now, updatedByUid: getActor().uid },
     assetAudit(clientId, `Baixou o bem ${asset.description}`),
-    { create: { ...draft, id: journalId, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' } }
+    { create: { ...draft, id: journalId, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' } },
+    optimistic(ctx.register)
   );
 }
 
@@ -169,7 +179,8 @@ export async function undoFixedAssetDisposal(clientId: string, asset: FixedAsset
   await getRepository().saveFixedAssets(
     { ...register, assets: register.assets.map((a) => (a.id === asset.id ? restored : a)), updatedAt: restored.updatedAt, updatedByUid: getActor().uid },
     assetAudit(clientId, `Desfez a baixa do bem ${asset.description}`),
-    { deleteId: asset.disposal.journalEntryId }
+    { deleteId: asset.disposal.journalEntryId },
+    optimistic(ctx.register)
   );
 }
 
@@ -225,21 +236,37 @@ export async function postMonthDepreciation(clientId: string, month: string, aut
   const entries = await repo.listJournalEntries(clientId, { start: `${month}-01`, end: lastDayOf(month) });
   const status = depreciationStatus({ assets, month, implantationMonth: ctx.implantationMonth, accounts, entries });
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `Depreciação mensal automática (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'REMOVE':
-      await repo.deleteJournalEntry(status.existing.id);
+      await repo.deleteJournalEntry(
+        status.existing.id,
+        journalAudit('JOURNAL_DELETE', actor, clientId, now, status.existing, { note: routineNote })
+      );
       return 'removed';
     case 'PENDING': {
       const before = implantationProblem(status.draft.date, ctx.implantation);
       if (before) throw new Error(before);
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({ ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now });
+        const updated: JournalEntry = {
+          ...e,
+          ...status.draft,
+          id: e.id,
+          clientId,
+          entryNumber: e.entryNumber,
+          createdAt: e.createdAt,
+          createdByUid: e.createdByUid,
+          updatedAt: now,
+        };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({ ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' });
+      const draft = { ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

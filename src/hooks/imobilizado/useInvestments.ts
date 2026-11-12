@@ -13,7 +13,7 @@ import {
   type MonthInvestment,
 } from '@/lib/services/investment-service';
 import { missingBalanceMonths } from '@/lib/investments';
-import { describeError } from '@/lib/utils/errors';
+import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -82,6 +82,7 @@ export function useInvestments(clientId: string | undefined, authorUid: string |
     } catch (e) {
       reportError(e, { area: 'aplicacoes', op });
       setError(describeError(e));
+      if (isRegisterConflictError(e)) reload();
       return false;
     } finally {
       setBusy(false);

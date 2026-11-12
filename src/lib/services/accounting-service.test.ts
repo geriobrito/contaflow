@@ -140,21 +140,22 @@ describe('deleteChartAccount e integridade referencial', () => {
     const acc = account('prov1', '2.1.05.001', 'Salários a pagar', { type: 'LIABILITY' });
     const other = account('desp1', '3.2.01.001', 'Salários');
     await repo.insertAccounts([acc, other]);
-    await repo.createJournalEntry({
+    const j1 = {
       id: 'j1',
       clientId: 'c1',
       date: '2025-01-31',
       memo: 'Provisão de folha',
-      category: 'PAYROLL',
+      category: 'PAYROLL' as const,
       lines: [
-        { id: 'd', accountId: 'desp1', type: 'DEBIT', amount: 100 },
-        { id: 'c', accountId: 'prov1', type: 'CREDIT', amount: 100 },
+        { id: 'd', accountId: 'desp1', type: 'DEBIT' as const, amount: 100 },
+        { id: 'c', accountId: 'prov1', type: 'CREDIT' as const, amount: 100 },
       ],
       totalAmount: 100,
       createdAt: '',
       updatedAt: '',
       createdByUid: 'u',
-    });
+    };
+    await repo.createJournalEntry(j1, { id: 'au-j1', clientId: 'c1', action: 'JOURNAL_CREATE', actorUid: 'u', at: 'T' });
     await expect(deleteChartAccount(acc, repo)).rejects.toThrow(/lançamento manual #1/);
     expect((await repo.listAccounts('c1')).some((a) => a.id === 'prov1')).toBe(true);
   });

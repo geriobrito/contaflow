@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BankTransaction, ClientCompany } from '@/types/firestore';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
+import { journalAudit } from '@/lib/audit';
 import { backupFileName, buildClientBackup } from '@/lib/export/client-backup';
 
 function memoryStore(): KeyValueStore {
@@ -43,32 +44,51 @@ describe('backup da empresa em JSON', () => {
       { id: 'c1_2025-01', clientId: 'c1', month: '2025-01', lockedAt: 'T', lockedByUid: 'u' },
       { id: '', clientId: 'c1', action: 'PERIOD_CLOSE', actorUid: 'u', at: 'T2', month: '2025-01' }
     );
-    await repo.createJournalEntry({
+    const jDraft = {
       id: 'j1',
       clientId: 'c1',
       date: '2025-03-31',
       memo: 'Provisão',
-      category: 'PROVISION',
+      category: 'PROVISION' as const,
       lines: [
-        { id: 'd', accountId: 'a1', type: 'DEBIT', amount: 50 },
-        { id: 'c', accountId: 'g1', type: 'CREDIT', amount: 50 },
+        { id: 'd', accountId: 'a1', type: 'DEBIT' as const, amount: 50 },
+        { id: 'c', accountId: 'g1', type: 'CREDIT' as const, amount: 50 },
       ],
       totalAmount: 50,
       createdAt: '',
       updatedAt: '',
       createdByUid: 'u',
+    };
+    await repo.createJournalEntry(jDraft, journalAudit('JOURNAL_CREATE', { uid: 'u' }, 'c1', 'T3', jDraft));
+    await repo.saveClosingChecklist({
+      id: 'c1_2025',
+      clientId: 'c1',
+      year: '2025',
+      items: { cash: { done: true, at: 'T4', byUid: 'u' } },
+      updatedAt: 'T4',
+    });
+    await repo.saveExplanatoryNotes({
+      id: 'c1_2025',
+      clientId: 'c1',
+      year: '2025',
+      notes: [{ id: 'context', title: 'Contexto', text: 'Texto', enabled: true }],
+      updatedAt: 'T4',
     });
 
     const backup = await buildClientBackup(alpha, repo, '2026-10-13T12:00:00.000Z');
-    expect(backup).toMatchObject({ format: 'contaflow-backup', version: 1, exportedAt: '2026-10-13T12:00:00.000Z', client: alpha, auditTruncated: false });
+    expect(backup).toMatchObject({ format: 'contaflow-backup', version: 2, exportedAt: '2026-10-13T12:00:00.000Z', client: alpha, auditTruncated: false });
     expect(backup.accounts.map((a) => a.id).sort()).toEqual(['a1', 'g1']);
     expect(backup.rules.map((r) => r.id)).toEqual(['r1']);
     expect(backup.bankAccounts.map((b) => b.accountKey)).toEqual(['k1']);
     expect(backup.transactions.map((t) => t.fitid).sort()).toEqual(['t1', 't2']);
     expect(backup.openingBalances?.entries).toEqual([{ accountId: 'a1', amount: 100 }]);
     expect(backup.periodLocks.map((l) => l.month)).toEqual(['2025-01']);
+    expect(backup.lockState).toMatchObject({ clientId: 'c1', count: 1, seq: 1 });
     expect(backup.journalEntries.map((j) => j.entryNumber)).toEqual([1]);
-    expect(backup.audit.map((a) => a.action).sort()).toEqual(['OPENING_SAVE', 'PERIOD_CLOSE']);
+    expect(backup.journalCounter).toMatchObject({ clientId: 'c1', last: 1 });
+    expect(backup.closingChecklists?.map((c) => c.year)).toEqual(['2025']);
+    expect(backup.explanatoryNotes?.map((n) => n.year)).toEqual(['2025']);
+    expect(backup.audit.map((a) => a.action).sort()).toEqual(['JOURNAL_CREATE', 'OPENING_SAVE', 'PERIOD_CLOSE']);
     // O arquivo é JSON puro: volta idêntico depois de gravado e lido.
     expect(JSON.parse(JSON.stringify(backup))).toEqual(backup);
   });

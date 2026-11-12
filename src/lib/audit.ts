@@ -1,4 +1,5 @@
-import type { AuditAction, AuditEntry, BankTransaction, ClassificationSnapshot } from '@/types/firestore';
+import type { AuditAction, AuditEntry, BankTransaction, ClassificationSnapshot, JournalEntry } from '@/types/firestore';
+import { round2 } from '@/lib/money';
 
 /** Quem executa a ação (usuário autenticado). */
 export interface Actor {
@@ -94,7 +95,34 @@ export const AUDIT_LABEL: Record<AuditAction, string> = {
   INVESTMENT_SAVE: 'Atualizou as aplicações financeiras',
   STOCK_SAVE: 'Atualizou o controle de estoque',
   PAYROLL_SAVE: 'Atualizou a folha de pagamento',
+  CLIENT_RESTORE: 'Restaurou empresa a partir de backup',
 };
+
+/** Registro de auditoria para inclusão, edição ou exclusão de lançamento contábil no Diário. */
+export function journalAudit(
+  action: 'JOURNAL_CREATE' | 'JOURNAL_UPDATE' | 'JOURNAL_DELETE',
+  actor: Actor,
+  clientId: string,
+  at: string,
+  entry: Pick<JournalEntry, 'id' | 'date' | 'memo' | 'lines'> | { id: string; date?: string; memo?: string; lines?: JournalEntry['lines'] },
+  extra: Partial<AuditEntry> = {}
+): AuditEntry {
+  const amount =
+    entry.lines?.filter((l) => l.type === 'DEBIT').reduce((sum, l) => sum + l.amount, 0) ?? undefined;
+  return {
+    id: newAuditId(),
+    clientId,
+    action,
+    actorUid: actor.uid,
+    ...(actor.email ? { actorEmail: actor.email } : {}),
+    at,
+    transactionId: entry.id,
+    ...(entry.date ? { transactionDate: entry.date, month: entry.date.slice(0, 7) } : {}),
+    ...(entry.memo ? { transactionMemo: entry.memo } : {}),
+    ...(amount !== undefined ? { transactionAmount: round2(amount) } : {}),
+    ...extra,
+  };
+}
 
 /** Descrição curta de um estado de classificação. */
 export function describeSnapshot(s?: ClassificationSnapshot): string {

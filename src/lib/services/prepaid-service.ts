@@ -1,11 +1,11 @@
-import type { AuditEntry, ChartAccount, FixedAsset, PrepaidExpense, PrepaidRegister } from '@/types/firestore';
-import type { DataRepository, FixedAssetJournalChange } from '@/lib/data/repository';
+import type { AuditEntry, ChartAccount, FixedAsset, JournalEntry, PrepaidExpense, PrepaidRegister } from '@/types/firestore';
+import type { DataRepository, FixedAssetJournalChange, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { journalAudit, newAuditId } from '@/lib/audit';
 import { missingTemplateAccounts, withMissingParents } from '@/lib/chart/itg1000';
 import { implantationDate, implantationProblem } from '@/lib/opening';
-import { monthOf } from '@/lib/periods';
+import { formatMonth, monthOf } from '@/lib/periods';
 import { lastDayOf } from '@/lib/fixed-assets';
 import {
   appropriationCloseProblem,
@@ -62,6 +62,10 @@ const audit = (clientId: string, note: string): AuditEntry => {
 };
 
 const emptyRegister = (clientId: string): PrepaidRegister => ({ id: clientId, clientId, items: [], updatedAt: '' });
+const optimistic = (register: PrepaidRegister | null): RegisterSaveOptions => ({
+  expectedVersion: register?.version ?? null,
+  expectedUpdatedAt: register?.updatedAt ?? null,
+});
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
 /** Cria no plano as contas do modelo entre `codes` que faltam (com os grupos) e devolve o plano atualizado. */
@@ -122,10 +126,24 @@ export async function savePrepaidExpense(
     if (prior) throw new Error(`${prior} Para uma apólice anterior à implantação, marque que o lançamento inicial já está nos saldos de abertura.`);
     const { draft, problem: draftProblem } = recognitionDraft(item, accounts);
     if (!draft) throw new Error(draftProblem ?? 'Não foi possível montar o lançamento inicial.');
-    const id = newJournalId();
-    journal.create = { ...draft, id, clientId, createdAt: now, updatedAt: now, createdByUid: options.authorUid || 'local' };
-    if (before?.recognitionEntryId) journal.deleteId = before.recognitionEntryId;
-    next = { ...next, recognitionEntryId: id };
+    if (before?.recognitionEntryId) {
+      journal.replace = {
+        id: before.recognitionEntryId,
+        draft: {
+          ...draft,
+          id: before.recognitionEntryId,
+          clientId,
+          createdAt: before.createdAt,
+          updatedAt: now,
+          createdByUid: options.authorUid || 'local',
+        },
+      };
+      next = { ...next, recognitionEntryId: before.recognitionEntryId };
+    } else {
+      const id = newJournalId();
+      journal.create = { ...draft, id, clientId, createdAt: now, updatedAt: now, createdByUid: options.authorUid || 'local' };
+      next = { ...next, recognitionEntryId: id };
+    }
   } else if (before?.recognitionEntryId) {
     next = { ...next, recognitionEntryId: before.recognitionEntryId };
   } else {
@@ -136,7 +154,8 @@ export async function savePrepaidExpense(
   await getRepository().savePrepaidExpenses(
     { ...register, items, updatedAt: now, updatedByUid: getActor().uid },
     audit(clientId, `${before ? 'Alterou' : 'Cadastrou'} ${item.description}`),
-    journal
+    journal,
+    optimistic(ctx.register)
   );
 }
 
@@ -149,7 +168,8 @@ export async function deletePrepaidExpense(clientId: string, item: PrepaidExpens
   await getRepository().savePrepaidExpenses(
     { ...register, items: register.items.filter((i) => i.id !== item.id), updatedAt: now, updatedByUid: getActor().uid },
     audit(clientId, `Excluiu ${item.description}`),
-    item.recognitionEntryId ? { deleteId: item.recognitionEntryId } : {}
+    item.recognitionEntryId ? { deleteId: item.recognitionEntryId } : {},
+    optimistic(ctx.register)
   );
 }
 
@@ -184,19 +204,26 @@ export async function postMonthAppropriation(clientId: string, month: string, au
   const entries = await repo.listJournalEntries(clientId, { start: `${month}-01`, end: lastDayOf(month) });
   const status = appropriationStatus({ items, month, implantationMonth: ctx.implantationMonth, accounts, entries });
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `Apropriação de despesas antecipadas (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'REMOVE':
-      await repo.deleteJournalEntry(status.existing.id);
+      await repo.deleteJournalEntry(
+        status.existing.id,
+        journalAudit('JOURNAL_DELETE', actor, clientId, now, status.existing, { note: routineNote })
+      );
       return 'removed';
     case 'PENDING': {
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({ ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now });
+        const updated: JournalEntry = { ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({ ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' });
+      const draft = { ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

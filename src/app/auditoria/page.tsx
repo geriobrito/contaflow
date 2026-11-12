@@ -45,6 +45,7 @@ const GROUP: Record<AuditAction, Filter> = {
   INVESTMENT_SAVE: 'PERIOD',
   STOCK_SAVE: 'PERIOD',
   PAYROLL_SAVE: 'PERIOD',
+  CLIENT_RESTORE: 'PERIOD',
 };
 
 const LIMIT = 300;

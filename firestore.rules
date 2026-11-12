@@ -35,9 +35,10 @@ rules_version = '2';
 //      na mesma operação — e o inverso: registros de fechar/reabrir competência ou
 //      exercício só nascem junto da operação. A data do fechamento é a do servidor.
 //  12. Papéis: users/{uid}.role == 'operator' (definido só pelo console / Admin SDK) não
-//      reabre competência nem exclui empresa, extrato, lançamento, conta do plano, conta
-//      bancária ou saldos de abertura; em regras de classificação, só exclui as que ele
-//      mesmo criou (`createdByUid == auth.uid`). Sem o campo, é administrador.
+//      reabre competência nem exclui empresa, extrato, lançamento (bancário ou manual),
+//      checklist do fechamento, notas explicativas, conta do plano, conta bancária ou saldos
+//      de abertura; em regras de classificação, só exclui as que ele mesmo criou
+//      (`createdByUid == auth.uid`). Sem o campo, é administrador.
 //  13. period_snapshots guarda saldos consolidados de competências fechadas: é um cache
 //      que o app confere antes de usar, isolado por escritório como os demais dados.
 //  14. Encerramento do exercício: todos os lançamentos dele (yearClosing, em 31/12) entram
@@ -323,10 +324,12 @@ service cloud.firestore {
 
     match /journal_entries/{entryId} {
       allow read: if isMine(resource.data);
-      // Reabrir o exercício (apagar o encerramento em dezembro fechado): só administrador, auditado.
+      // Exclusão de lançamentos do Diário: somente administrador (em competência aberta, ou no
+      // encerramento do exercício junto com YEAR_REOPEN).
       allow delete: if isMine(resource.data)
+        && isAdmin()
         && (monthOpen(resource.data)
-            || (isAdmin() && isYearClosing(resource.data)
+            || (isYearClosing(resource.data)
                 && auditedNowAs(resource.data.closingAuditId + '_reopen', resource.data.clientId, 'YEAR_REOPEN')));
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
@@ -403,6 +406,17 @@ service cloud.firestore {
                 && stampsCurrentSeq(resource.data.clientId, request.resource.data)));
     }
 
+    // Concorrência otimista em cadastros de documento único por empresa:
+    // - criação exige `version == 1`;
+    // - atualização exige incremento exato +1 sobre a versão atual (`0` para docs legados).
+    function validRegisterVersionCreate(data) {
+      return data.get('version', null) is int && data.version == 1;
+    }
+    function validRegisterVersionUpdate(before, after) {
+      return after.get('version', null) is int
+        && after.version == before.get('version', 0) + 1;
+    }
+
     // ── Imobilizado (um documento por cliente, id = clientId) ────────────
     // A lista de bens; as cotas são calculadas pelo app (src/lib/fixed-assets.ts) e só os
     // lançamentos delas, em journal_entries, respeitam as competências fechadas.
@@ -416,9 +430,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && validFixedAssets(request.resource.data);
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && validFixedAssets(request.resource.data);
     }
 
@@ -431,9 +447,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && request.resource.data.items is list && request.resource.data.items.size() <= 300;
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && request.resource.data.items is list && request.resource.data.items.size() <= 300;
     }
 
@@ -446,9 +464,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && request.resource.data.contracts is list && request.resource.data.contracts.size() <= 100;
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && request.resource.data.contracts is list && request.resource.data.contracts.size() <= 100;
     }
 
@@ -461,9 +481,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && request.resource.data.accounts is list && request.resource.data.accounts.size() <= 50;
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && request.resource.data.accounts is list && request.resource.data.accounts.size() <= 50;
     }
 
@@ -481,9 +503,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && validStock(request.resource.data);
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && validStock(request.resource.data);
     }
 
@@ -497,9 +521,11 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId
+        && validRegisterVersionCreate(request.resource.data)
         && validPayroll(request.resource.data);
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId')
+        && validRegisterVersionUpdate(resource.data, request.resource.data)
         && validPayroll(request.resource.data);
     }
 
@@ -515,7 +541,7 @@ service cloud.firestore {
         && (resource == null
             ? docId.matches('^.+_[0-9]{4}$') && clientInMyOrg({'clientId': docId[0:docId.size() - 5]})
             : isMine(resource.data));
-      allow delete: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && docId == request.resource.data.clientId + '_' + request.resource.data.year
@@ -533,7 +559,7 @@ service cloud.firestore {
         && (resource == null
             ? docId.matches('^.+_[0-9]{4}$') && clientInMyOrg({'clientId': docId[0:docId.size() - 5]})
             : isMine(resource.data));
-      allow delete: if isMine(resource.data);
+      allow delete: if isMine(resource.data) && isAdmin();
       allow create: if isMine(request.resource.data)
         && clientInMyOrg(request.resource.data)
         && request.resource.data.year is string
@@ -757,7 +783,7 @@ service cloud.firestore {
         'PERIOD_CLOSE', 'PERIOD_REOPEN', 'TRANSFER', 'BATCH_DELETE', 'MEMO_REPAIR', 'OPENING_SAVE',
         'ACCOUNT_DELETE', 'QUERY_ASK', 'QUERY_RESOLVE', 'JOURNAL_CREATE', 'JOURNAL_UPDATE',
         'JOURNAL_DELETE', 'YEAR_CLOSE', 'YEAR_REOPEN', 'ASSET_SAVE', 'PREPAID_SAVE', 'FINANCING_SAVE',
-        'INVESTMENT_SAVE', 'STOCK_SAVE', 'PAYROLL_SAVE'];
+        'INVESTMENT_SAVE', 'STOCK_SAVE', 'PAYROLL_SAVE', 'CLIENT_RESTORE'];
     }
 
     // Fechamento da competência citada no registro (`${clientId}_${month}`).

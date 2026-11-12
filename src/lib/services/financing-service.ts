@@ -1,10 +1,10 @@
-import type { AuditEntry, ChartAccount, FinancingContract, FinancingRegister } from '@/types/firestore';
-import type { DataRepository, FixedAssetJournalChange } from '@/lib/data/repository';
+import type { AuditEntry, ChartAccount, FinancingContract, FinancingRegister, JournalEntry } from '@/types/firestore';
+import type { DataRepository, FixedAssetJournalChange, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { journalAudit, newAuditId } from '@/lib/audit';
 import { implantationDate, implantationProblem } from '@/lib/opening';
-import { monthOf } from '@/lib/periods';
+import { formatMonth, monthOf } from '@/lib/periods';
 import { lastDayOf } from '@/lib/fixed-assets';
 import { ensureTemplateAccounts } from '@/lib/services/prepaid-service';
 import {
@@ -52,6 +52,10 @@ const audit = (clientId: string, note: string): AuditEntry => {
 };
 
 const emptyRegister = (clientId: string): FinancingRegister => ({ id: clientId, clientId, contracts: [], updatedAt: '' });
+const optimistic = (register: FinancingRegister | null): RegisterSaveOptions => ({
+  expectedVersion: register?.version ?? null,
+  expectedUpdatedAt: register?.updatedAt ?? null,
+});
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
 /** Pares (id, código) das contas do contrato, na ordem em que são resolvidos. */
@@ -119,10 +123,24 @@ export async function saveFinancingContract(
     if (prior) throw new Error(`${prior} Para um contrato anterior à implantação, marque que o lançamento inicial já está nos saldos de abertura.`);
     const { draft: entry, problem: entryProblem } = initialEntryDraft(contract, accounts);
     if (!entry) throw new Error(entryProblem ?? 'Não foi possível montar o lançamento inicial.');
-    const id = newJournalId();
-    journal.create = { ...entry, id, clientId, createdAt: now, updatedAt: now, createdByUid: options.authorUid || 'local' };
-    if (before?.initialEntryId) journal.deleteId = before.initialEntryId;
-    next = { ...next, initialEntryId: id };
+    if (before?.initialEntryId) {
+      journal.replace = {
+        id: before.initialEntryId,
+        draft: {
+          ...entry,
+          id: before.initialEntryId,
+          clientId,
+          createdAt: before.createdAt,
+          updatedAt: now,
+          createdByUid: options.authorUid || 'local',
+        },
+      };
+      next = { ...next, initialEntryId: before.initialEntryId };
+    } else {
+      const id = newJournalId();
+      journal.create = { ...entry, id, clientId, createdAt: now, updatedAt: now, createdByUid: options.authorUid || 'local' };
+      next = { ...next, initialEntryId: id };
+    }
   } else if (before?.initialEntryId) {
     next = { ...next, initialEntryId: before.initialEntryId };
   } else {
@@ -133,7 +151,8 @@ export async function saveFinancingContract(
   await getRepository().saveFinancingContracts(
     { ...register, contracts, updatedAt: now, updatedByUid: getActor().uid },
     audit(clientId, `${before ? 'Alterou' : 'Cadastrou'} o contrato ${contract.description}`),
-    journal
+    journal,
+    optimistic(ctx.register)
   );
 }
 
@@ -147,7 +166,8 @@ export async function deleteFinancingContract(clientId: string, contract: Financ
   await getRepository().saveFinancingContracts(
     { ...register, contracts: register.contracts.filter((c) => c.id !== contract.id), updatedAt: now, updatedByUid: getActor().uid },
     audit(clientId, `Excluiu o contrato ${contract.description}`),
-    contract.initialEntryId ? { deleteId: contract.initialEntryId } : {}
+    contract.initialEntryId ? { deleteId: contract.initialEntryId } : {},
+    optimistic(ctx.register)
   );
 }
 
@@ -181,19 +201,26 @@ export async function postMonthFinancing(clientId: string, month: string, author
   const entries = await repo.listJournalEntries(clientId, { start: `${month}-01`, end: lastDayOf(month) });
   const status = financingRoutineStatus({ contracts, month, implantationMonth: ctx.implantationMonth, accounts, entries });
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `Juros e reclassificação de financiamentos (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'REMOVE':
-      await repo.deleteJournalEntry(status.existing.id);
+      await repo.deleteJournalEntry(
+        status.existing.id,
+        journalAudit('JOURNAL_DELETE', actor, clientId, now, status.existing, { note: routineNote })
+      );
       return 'removed';
     case 'PENDING': {
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({ ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now });
+        const updated: JournalEntry = { ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({ ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' });
+      const draft = { ...status.draft, id: newJournalId(), clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

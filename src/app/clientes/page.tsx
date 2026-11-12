@@ -1,27 +1,44 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Check, Plus } from 'lucide-react';
+import { Check, Plus, Upload } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
+import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { filterClients } from '@/lib/client-record';
-import { useClientMaintenance } from '@/hooks/clientes/useClientMaintenance';
+import { getRepository } from '@/lib/services/data-service';
+import { useClientMaintenance, type MaintenanceResult } from '@/hooks/clientes/useClientMaintenance';
 import { ClientCard } from '@/components/clientes/ClientCard';
 import { ClientSheet } from '@/components/clientes/ClientSheet';
 import { DeleteClientSheet } from '@/components/clientes/DeleteClientSheet';
+import { RestoreClientSheet } from '@/components/clientes/RestoreClientSheet';
 import { BUTTON, EmptyState, PAGE, PageHeader, SearchField } from '@/components/ui/primitives';
 import { CardsSkeleton } from '@/components/ui/Skeleton';
 
 const GRID = 'grid grid-cols-1 @2xl:grid-cols-2 @5xl:grid-cols-3 @7xl:grid-cols-4 gap-6';
 
 export default function ClientesPage() {
+  const { user } = useAuth();
   const { clients, currentClient, selectClient, refreshClients, removeClient, isLoading } = useClient();
-  const { backingUpId, deletingId, exportBackup, deleteClient } = useClientMaintenance(removeClient);
+  const { backingUpId, deletingId, restoring, exportBackup, restoreBackup, deleteClient } = useClientMaintenance(removeClient);
   const [confirmDelete, setConfirmDelete] = useState<ClientCompany | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ClientCompany | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const actor = useMemo(
+    () => ({ uid: user?.uid || 'local', ...(user?.email ? { email: user.email } : {}) }),
+    [user]
+  );
+  const repoMode = useMemo(() => {
+    try {
+      return getRepository().mode;
+    } catch {
+      return 'local' as const;
+    }
+  }, []);
 
   const visible = useMemo(() => filterClients(clients, search), [clients, search]);
 
@@ -32,13 +49,13 @@ export default function ClientesPage() {
 
   const flash = (message: string) => {
     setToast(message);
-    setTimeout(() => setToast((t) => (t === message ? null : t)), 2800);
+    setTimeout(() => setToast((t) => (t === message ? null : t)), 3500);
   };
 
-  const backup = async (client: ClientCompany): Promise<boolean> => {
+  const backup = async (client: ClientCompany): Promise<MaintenanceResult> => {
     const result = await exportBackup(client);
     flash(result.message);
-    return result.ok;
+    return result;
   };
 
   const handleDelete = async (client: ClientCompany) => {
@@ -66,10 +83,16 @@ export default function ClientesPage() {
           </>
         }
         actions={
-          <button type="button" onClick={openNew} className={BUTTON.primary}>
-            <Plus className="w-4 h-4" strokeWidth={2} />
-            Novo cliente
-          </button>
+          <>
+            <button type="button" onClick={() => setRestoreOpen(true)} className={BUTTON.secondary}>
+              <Upload className="w-4 h-4" strokeWidth={2} />
+              Restaurar backup
+            </button>
+            <button type="button" onClick={openNew} className={BUTTON.primary}>
+              <Plus className="w-4 h-4" strokeWidth={2} />
+              Novo cliente
+            </button>
+          </>
         }
       />
 
@@ -137,6 +160,21 @@ export default function ClientesPage() {
           onBackup={() => backup(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => void handleDelete(confirmDelete)}
+        />
+      )}
+
+      {restoreOpen && (
+        <RestoreClientSheet
+          repoMode={repoMode}
+          restoring={restoring}
+          onRestore={(b, opts) => restoreBackup(b, { ...opts, actor })}
+          onClose={() => setRestoreOpen(false)}
+          onRestored={async (client, message) => {
+            setRestoreOpen(false);
+            await refreshClients();
+            selectClient(client);
+            flash(message);
+          }}
         />
       )}
 

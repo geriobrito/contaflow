@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { InvestmentAccount, JournalEntry } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
+import { journalAudit } from '@/lib/audit';
 import { setSession } from '@/lib/data/scope';
 import { getRepository } from '@/lib/services/data-service';
 import { closeMonth } from '@/lib/services/reconciliation-service';
@@ -45,7 +46,7 @@ describe('rendimento das aplicações (repositório local)', () => {
       entry(6, '2025-12-29', '1.1.1.02', '1.1.1.03', 300, [['3.3.2.19', 'DEBIT', 1.78]]),
       entry(7, '2025-12-29', '1.1.1.02', '1.1.1.03', 200, [['3.3.2.19', 'DEBIT', 1.18]]),
     ];
-    for (const m of moves) await repo.createJournalEntry(m);
+    for (const m of moves) await repo.createJournalEntry(m, journalAudit('JOURNAL_CREATE', { uid: 'u1' }, CLIENT, 'T', m));
   });
 
   it('sem o saldo do extrato, dezembro não fecha e a barra pede o saldo', async () => {

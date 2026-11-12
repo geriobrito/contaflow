@@ -24,7 +24,16 @@ import type {
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange, FixedAssetJournalChange, JournalEntryDraft } from '@/lib/data/repository';
+import {
+  type ChangeSet,
+  type DataRepository,
+  type DateRange,
+  type FixedAssetJournalChange,
+  type JournalEntryDraft,
+  type LocalClientRestorePayload,
+  type RegisterSaveOptions,
+  resolveNextRegisterVersion,
+} from '@/lib/data/repository';
 import { isAdminSession, peekActor } from '@/lib/data/scope';
 import { assertValidJournalEntry } from '@/lib/journal';
 import { invoiceId } from '@/lib/nfe/import';
@@ -128,23 +137,86 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
   }
   const stamp = <T extends object>(x: T): T => ({ ...x, orgId: LOCAL_ORG_ID });
 
-  /** Cadastro de um documento por cliente com auditoria e lançamento; valida antes de gravar: tudo ou nada. */
-  async function saveRegister<T extends { clientId: string }>(
+  /** Cadastro de um documento por cliente com auditoria, versão otimista e lançamentos atômicos. */
+  async function saveRegister<T extends { clientId: string; version?: number }>(
     key: string,
     register: T,
     audit: AuditEntry,
-    journal: FixedAssetJournalChange
+    journal: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
   ): Promise<JournalEntry | null> {
     const id = register.clientId;
+    const deleteIds = Array.from(
+      new Set([...(journal.deleteId ? [journal.deleteId] : []), ...(journal.deleteIds ?? [])])
+    );
+    if (deleteIds.length > 0 && !isAdminSession()) {
+      throw Object.assign(new Error('Somente administradores podem excluir lançamentos do Diário.'), {
+        code: 'permission-denied',
+      });
+    }
     if (journal.create) assertValidJournalEntry(journal.create);
-    const created = journal.create ? await repo.createJournalEntry(journal.create) : null;
-    if (journal.deleteId) await repo.deleteJournalEntry(journal.deleteId);
-    write(key, [
-      ...read<T>(key).filter((r) => r.clientId !== id),
-      stamp(JSON.parse(JSON.stringify({ ...register, id })) as T),
-    ]);
+    if (journal.replace) assertValidJournalEntry(journal.replace.draft);
+
+    const regs = read<T>(key);
+    const existing = regs.find((r) => r.clientId === id) ?? null;
+    const nextVersion = resolveNextRegisterVersion(register, existing as { version?: unknown; updatedAt?: unknown } | null, options);
+
+    const entries = read<JournalEntry>(LOCAL_KEYS.journalEntries);
+    const counters = read<JournalCounter>(LOCAL_KEYS.journalCounters);
+    let lastCounter =
+      counters.find((c) => c.clientId === id)?.last ??
+      entries.filter((j) => j.clientId === id).reduce((max, j) => Math.max(max, j.entryNumber || 0), 0);
+
+    const deleteSet = new Set(deleteIds);
+    const nextEntries = deleteSet.size > 0 ? entries.filter((j) => !deleteSet.has(j.id)) : [...entries];
+    let resultEntry: JournalEntry | null = null;
+    let counterTouched = false;
+
+    if (journal.replace) {
+      const idx = nextEntries.findIndex((j) => j.id === journal.replace!.id);
+      if (idx >= 0) {
+        const prev = nextEntries[idx];
+        resultEntry = stamp({
+          ...journal.replace.draft,
+          id: journal.replace.id,
+          entryNumber: prev.entryNumber,
+          ...(prev.createdAt ? { createdAt: prev.createdAt } : {}),
+          ...(prev.createdByUid ? { createdByUid: prev.createdByUid } : {}),
+        });
+        nextEntries[idx] = resultEntry;
+      } else {
+        lastCounter += 1;
+        counterTouched = true;
+        resultEntry = stamp({ ...journal.replace.draft, id: journal.replace.id, entryNumber: lastCounter });
+        nextEntries.push(resultEntry);
+      }
+    }
+
+    if (journal.create) {
+      lastCounter += 1;
+      counterTouched = true;
+      resultEntry = stamp({ ...journal.create, entryNumber: lastCounter });
+      nextEntries.push(resultEntry);
+    }
+
+    if (counterTouched) {
+      write(LOCAL_KEYS.journalCounters, [
+        ...counters.filter((c) => c.clientId !== id),
+        stamp({ id, clientId: id, last: lastCounter }),
+      ]);
+    }
+    if (journal.create || journal.replace || deleteSet.size > 0) {
+      write(LOCAL_KEYS.journalEntries, nextEntries);
+    }
+
+    const storedReg = stamp({
+      ...(JSON.parse(JSON.stringify(register)) as T),
+      id,
+      version: nextVersion,
+    });
+    write(key, [...regs.filter((r) => r.clientId !== id), storedReg]);
     write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
-    return created;
+    return resultEntry;
   }
 
   function lockedMonthsOf(clientId: string): string[] {
@@ -589,7 +661,11 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         .filter((j) => j.clientId === clientId && (!range || (j.date >= range.start && j.date <= range.end)))
         .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
     },
-    async createJournalEntry(draft: JournalEntryDraft, audit?: AuditEntry): Promise<JournalEntry> {
+    async getJournalCounter(clientId: string): Promise<JournalCounter | null> {
+      if (!hydrated) await store.ready;
+      return read<JournalCounter>(LOCAL_KEYS.journalCounters).find((c) => c.clientId === clientId) ?? null;
+    },
+    async createJournalEntry(draft: JournalEntryDraft, audit: AuditEntry): Promise<JournalEntry> {
       assertValidJournalEntry(draft);
       const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
       const counters = read<JournalCounter>(LOCAL_KEYS.journalCounters);
@@ -603,12 +679,10 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
         stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }),
       ]);
       write(LOCAL_KEYS.journalEntries, [...list, stamp(entry)]);
-      if (audit) {
-        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
-      }
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
       return entry;
     },
-    async updateJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void> {
+    async updateJournalEntry(entry: JournalEntry, audit: AuditEntry): Promise<void> {
       assertValidJournalEntry(entry);
       const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
       const idx = list.findIndex((j) => j.id === entry.id);
@@ -616,16 +690,17 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       // O número é imutável, como nas regras do Firestore.
       const stamped = stamp({ ...entry, entryNumber: list[idx].entryNumber });
       write(LOCAL_KEYS.journalEntries, list.map((j, i) => (i === idx ? stamped : j)));
-      if (audit) {
-        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
-      }
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
-    async deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void> {
+    async deleteJournalEntry(entryId: string, audit: AuditEntry): Promise<void> {
+      if (!isAdminSession()) {
+        throw Object.assign(new Error('Somente administradores podem excluir lançamentos do Diário.'), {
+          code: 'permission-denied',
+        });
+      }
       const list = read<JournalEntry>(LOCAL_KEYS.journalEntries);
       write(LOCAL_KEYS.journalEntries, list.filter((j) => j.id !== entryId));
-      if (audit) {
-        write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
-      }
+      write(LOCAL_KEYS.audit, [...read<AuditEntry>(LOCAL_KEYS.audit), stamp(audit)]);
     },
 
     // Valida tudo antes de escrever: entra o encerramento inteiro ou nada, como no Firestore.
@@ -703,45 +778,51 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       if (!hydrated) await store.ready;
       return read<FixedAssetRegister>(LOCAL_KEYS.fixedAssets).find((r) => r.clientId === clientId) ?? null;
     },
-    async saveFixedAssets(register, audit, journal = {}) {
-      return saveRegister(LOCAL_KEYS.fixedAssets, register, audit, journal);
+    async saveFixedAssets(register, audit, journal = {}, options) {
+      return saveRegister(LOCAL_KEYS.fixedAssets, register, audit, journal, options);
     },
     async getPrepaidExpenses(clientId) {
       if (!hydrated) await store.ready;
       return read<PrepaidRegister>(LOCAL_KEYS.prepaid).find((r) => r.clientId === clientId) ?? null;
     },
-    async savePrepaidExpenses(register, audit, journal = {}) {
-      return saveRegister(LOCAL_KEYS.prepaid, register, audit, journal);
+    async savePrepaidExpenses(register, audit, journal = {}, options) {
+      return saveRegister(LOCAL_KEYS.prepaid, register, audit, journal, options);
     },
     async getFinancingContracts(clientId) {
       if (!hydrated) await store.ready;
       return read<FinancingRegister>(LOCAL_KEYS.financing).find((r) => r.clientId === clientId) ?? null;
     },
-    async saveFinancingContracts(register, audit, journal = {}) {
-      return saveRegister(LOCAL_KEYS.financing, register, audit, journal);
+    async saveFinancingContracts(register, audit, journal = {}, options) {
+      return saveRegister(LOCAL_KEYS.financing, register, audit, journal, options);
     },
     async getInvestments(clientId) {
       if (!hydrated) await store.ready;
       return read<InvestmentRegister>(LOCAL_KEYS.investments).find((r) => r.clientId === clientId) ?? null;
     },
-    async saveInvestments(register, audit) {
-      return saveRegister(LOCAL_KEYS.investments, register, audit, {});
+    async saveInvestments(register, audit, options) {
+      return saveRegister(LOCAL_KEYS.investments, register, audit, {}, options);
     },
     async getStockControl(clientId) {
       if (!hydrated) await store.ready;
       return read<StockControl>(LOCAL_KEYS.stock).find((r) => r.clientId === clientId) ?? null;
     },
-    async saveStockControl(control, audit) {
-      return saveRegister(LOCAL_KEYS.stock, control, audit, {});
+    async saveStockControl(control, audit, options) {
+      return saveRegister(LOCAL_KEYS.stock, control, audit, {}, options);
     },
     async getPayrollRegister(clientId) {
       if (!hydrated) await store.ready;
       return read<PayrollRegister>(LOCAL_KEYS.payroll).find((r) => r.clientId === clientId) ?? null;
     },
-    async savePayrollRegister(register, audit, journal = {}) {
-      return saveRegister(LOCAL_KEYS.payroll, register, audit, journal);
+    async savePayrollRegister(register, audit, journal = {}, options) {
+      return saveRegister(LOCAL_KEYS.payroll, register, audit, journal, options);
     },
 
+    async listClosingChecklists(clientId) {
+      if (!hydrated) await store.ready;
+      return read<ClosingChecklist>(LOCAL_KEYS.checklists)
+        .filter((c) => c.clientId === clientId)
+        .sort((a, b) => a.year.localeCompare(b.year));
+    },
     async getClosingChecklist(clientId, year) {
       if (!hydrated) await store.ready;
       return read<ClosingChecklist>(LOCAL_KEYS.checklists).find((c) => c.clientId === clientId && c.year === year) ?? null;
@@ -754,6 +835,12 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
       ]);
     },
 
+    async listExplanatoryNotes(clientId) {
+      if (!hydrated) await store.ready;
+      return read<ExplanatoryNotes>(LOCAL_KEYS.notes)
+        .filter((n) => n.clientId === clientId)
+        .sort((a, b) => a.year.localeCompare(b.year));
+    },
     async getExplanatoryNotes(clientId, year) {
       if (!hydrated) await store.ready;
       return read<ExplanatoryNotes>(LOCAL_KEYS.notes).find((n) => n.clientId === clientId && n.year === year) ?? null;
@@ -761,6 +848,69 @@ export function createLocalRepository(store: KeyValueStore): DataRepository {
     async saveExplanatoryNotes(notes) {
       const id = `${notes.clientId}_${notes.year}`;
       write(LOCAL_KEYS.notes, [...read<ExplanatoryNotes>(LOCAL_KEYS.notes).filter((n) => n.id !== id), stamp({ ...notes, id })]);
+    },
+
+    async restoreLocalClientData(payload: LocalClientRestorePayload) {
+      if (!hydrated) await store.ready;
+      const clientId = payload.client.id;
+      const replaceForClient = <T extends { clientId: string }>(key: string, items: readonly T[]) => {
+        const others = read<T>(key).filter((x) => x.clientId !== clientId);
+        write(key, [...others, ...items.map((x) => stamp(x))]);
+      };
+      const mergeScopedOrGlobal = <T extends { id: string; clientId: string }>(key: string, items: readonly T[]) => {
+        const current = read<T>(key);
+        const others = current.filter((x) => x.clientId !== clientId);
+        const existingGlobalIds = new Set(others.filter((x) => x.clientId === 'global').map((x) => x.id));
+        const clientItems = items.filter((x) => x.clientId === clientId).map((x) => stamp(x));
+        const missingGlobals = items.filter((x) => x.clientId === 'global' && !existingGlobalIds.has(x.id)).map((x) => stamp(x));
+        write(key, [...others, ...missingGlobals, ...clientItems]);
+      };
+
+      replace(LOCAL_KEYS.clients, stamp(payload.client));
+      mergeScopedOrGlobal(LOCAL_KEYS.accounts, payload.accounts);
+      mergeScopedOrGlobal(LOCAL_KEYS.rules, payload.rules);
+      replaceForClient(LOCAL_KEYS.bankAccounts, payload.bankAccounts);
+      replaceForClient(LOCAL_KEYS.openings, payload.openingBalances ? [payload.openingBalances] : []);
+      replaceForClient(LOCAL_KEYS.batches, payload.importBatches);
+      replaceForClient(LOCAL_KEYS.transactions, payload.transactions);
+      replaceForClient(LOCAL_KEYS.journalEntries, payload.journalEntries);
+      replaceForClient(
+        LOCAL_KEYS.journalCounters,
+        payload.journalCounter
+          ? [payload.journalCounter]
+          : payload.journalEntries.length > 0
+            ? [
+                {
+                  id: clientId,
+                  clientId,
+                  last: payload.journalEntries.reduce((max, e) => Math.max(max, e.entryNumber || 0), 0),
+                },
+              ]
+            : []
+      );
+      replaceForClient(LOCAL_KEYS.locks, payload.periodLocks);
+      const resolvedLockState: LockState =
+        payload.lockState ??
+        (() => {
+          const count = payload.periodLocks.length;
+          return { id: clientId, clientId, count, seq: count };
+        })();
+      replace(LOCAL_KEYS.lockState, stamp(resolvedLockState));
+      replaceForClient(LOCAL_KEYS.requests, payload.clientRequests);
+      replaceForClient(LOCAL_KEYS.invoices, payload.invoices);
+      replaceForClient(LOCAL_KEYS.fixedAssets, payload.fixedAssets ? [payload.fixedAssets] : []);
+      replaceForClient(LOCAL_KEYS.prepaid, payload.prepaidExpenses ? [payload.prepaidExpenses] : []);
+      replaceForClient(LOCAL_KEYS.financing, payload.financingContracts ? [payload.financingContracts] : []);
+      replaceForClient(LOCAL_KEYS.investments, payload.investments ? [payload.investments] : []);
+      replaceForClient(LOCAL_KEYS.stock, payload.stockControl ? [payload.stockControl] : []);
+      replaceForClient(LOCAL_KEYS.payroll, payload.payrollRegister ? [payload.payrollRegister] : []);
+      replaceForClient(LOCAL_KEYS.checklists, payload.closingChecklists);
+      replaceForClient(LOCAL_KEYS.notes, payload.explanatoryNotes);
+
+      const existingAudit = read<AuditEntry>(LOCAL_KEYS.audit);
+      const seenAuditIds = new Set(existingAudit.map((a) => a.id));
+      const importedAudit = payload.audit.filter((a) => !seenAuditIds.has(a.id)).map((a) => stamp(a));
+      write(LOCAL_KEYS.audit, [...existingAudit, ...importedAudit, stamp(payload.restoreAudit)]);
     },
 
     async getPublicClientRequest(token) {

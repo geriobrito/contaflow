@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { StockControl } from '@/types/firestore';
 import { loadMonthStock, loadStockContext, postMonthStock, saveStockControl, saveStockCount, type MonthStock, type StockContext } from '@/lib/services/stock-service';
 import { missingCountMonths } from '@/lib/stock';
-import { describeError } from '@/lib/utils/errors';
+import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -72,6 +72,7 @@ export function useStockControl(clientId: string | undefined, authorUid: string 
     } catch (e) {
       reportError(e, { area: 'estoque', op });
       setError(describeError(e));
+      if (isRegisterConflictError(e)) reload();
       return false;
     } finally {
       setBusy(false);

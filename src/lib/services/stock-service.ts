@@ -1,10 +1,11 @@
-import type { AuditEntry, ChartAccount, StockControl } from '@/types/firestore';
-import type { DataRepository } from '@/lib/data/repository';
+import type { AuditEntry, ChartAccount, JournalEntry, StockControl } from '@/types/firestore';
+import type { DataRepository, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { journalAudit, newAuditId } from '@/lib/audit';
 import { toCents } from '@/lib/money';
 import { monthLedgerWithout } from '@/lib/services/month-ledger';
+import { formatMonth } from '@/lib/periods';
 import { DISTRIBUTED_PROFIT_CODE, stockCloseProblem, stockLockProblem, stockProblem, stockStatus, stockWarnings, type StockStatus } from '@/lib/stock';
 
 export interface StockContext {
@@ -40,6 +41,10 @@ export async function saveStockControl(clientId: string, control: StockControl, 
   const stock = ctx.accounts.find((a) => a.id === control.stockAccountId);
   const cost = ctx.accounts.find((a) => a.id === control.costAccountId);
   const now = new Date().toISOString();
+  const options: RegisterSaveOptions = {
+    expectedVersion: ctx.control?.version ?? null,
+    expectedUpdatedAt: ctx.control?.updatedAt ?? null,
+  };
   await getRepository().saveStockControl(
     {
       ...control,
@@ -52,7 +57,8 @@ export async function saveStockControl(clientId: string, control: StockControl, 
       updatedAt: now,
       updatedByUid: getActor().uid,
     },
-    audit(clientId, note ?? `${ctx.control ? 'Alterou' : 'Configurou'} o controle de estoque`)
+    audit(clientId, note ?? `${ctx.control ? 'Alterou' : 'Configurou'} o controle de estoque`),
+    options
   );
 }
 
@@ -110,19 +116,26 @@ export async function postMonthStock(clientId: string, month: string, authorUid:
   if (ctx.lockedMonths.has(month)) throw new Error('A competência está fechada: reabra-a para lançar o CMV.');
   const { status } = await monthStatus(clientId, month, ctx, repo);
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `CMV pelo estoque final (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'REMOVE':
-      await repo.deleteJournalEntry(status.existing.id);
+      await repo.deleteJournalEntry(
+        status.existing.id,
+        journalAudit('JOURNAL_DELETE', actor, clientId, now, status.existing, { note: routineNote })
+      );
       return 'removed';
     case 'PENDING': {
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({ ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now });
+        const updated: JournalEntry = { ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({ ...status.draft, id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' });
+      const draft = { ...status.draft, id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

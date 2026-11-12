@@ -11,7 +11,7 @@ import {
   type PrepaidContext,
 } from '@/lib/services/prepaid-service';
 import { pendingAppropriationMonths } from '@/lib/prepaid-expenses';
-import { describeError } from '@/lib/utils/errors';
+import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -75,6 +75,7 @@ export function usePrepaidExpenses(clientId: string | undefined, authorUid: stri
     } catch (e) {
       reportError(e, { area: 'despesas-antecipadas', op });
       setError(describeError(e));
+      if (isRegisterConflictError(e)) reload();
       return false;
     } finally {
       setBusy(false);

@@ -19,6 +19,7 @@ import type {
   PrepaidRegister,
   InvoiceLink,
   InvoiceSummary,
+  JournalCounter,
   JournalEntry,
   LockState,
   OpeningBalances,
@@ -28,6 +29,7 @@ import type {
   ReconciliationStatus,
 } from '@/types/firestore';
 import type { Actor } from '@/lib/audit';
+import { RegisterConflictError } from '@/lib/utils/errors';
 
 /** Intervalo de datas inclusivo (YYYY-MM-DD). */
 export interface DateRange {
@@ -67,13 +69,84 @@ export interface ChangeSet {
 export type JournalEntryDraft = Omit<JournalEntry, 'entryNumber'>;
 
 /**
- * Lançamento gravado junto com um cadastro (imobilizado, despesas antecipadas): criar (ex.: a baixa
- * de um bem, o lançamento inicial de uma apólice) e/ou excluir (ex.: a baixa desfeita, o lançamento
- * inicial substituído).
+ * Lançamento gravado junto com um cadastro (imobilizado, despesas antecipadas, contratos, folha):
+ * criar (ex.: baixa, lançamento inicial, folha), substituir no mesmo id (mantendo o número no Diário)
+ * e/ou excluir (ex.: baixa desfeita, remoção).
  */
 export interface FixedAssetJournalChange {
   create?: JournalEntryDraft;
+  replace?: { id: string; draft: JournalEntryDraft };
   deleteId?: string;
+  deleteIds?: readonly string[];
+}
+
+/** Validação de concorrência otimista ao gravar um cadastro único por empresa. */
+export interface RegisterSaveOptions {
+  /** Versão esperada do documento atualmente gravado (`null` quando ainda não possuía `version`). */
+  expectedVersion?: number | null;
+  /** Carimbo `updatedAt` esperado caso o documento ainda não possua `version`. */
+  expectedUpdatedAt?: string | null;
+}
+
+/**
+ * Compara a versão/carimbo atual de um cadastro único com a esperada e calcula a próxima versão
+ * (`(actualVersion ?? 0) + 1`). Lança `RegisterConflictError` se houver edição concorrente.
+ */
+export function resolveNextRegisterVersion(
+  register: { version?: number },
+  existingData: { version?: unknown; updatedAt?: unknown } | null,
+  options?: RegisterSaveOptions
+): number {
+  const actualVersion = existingData && typeof existingData.version === 'number' ? existingData.version : null;
+  const actualUpdatedAt = existingData && typeof existingData.updatedAt === 'string' ? existingData.updatedAt : null;
+
+  if (options?.expectedVersion !== undefined) {
+    if (options.expectedVersion === null) {
+      if (actualVersion !== null) throw new RegisterConflictError();
+      if (existingData !== null && options.expectedUpdatedAt === null) throw new RegisterConflictError();
+      if (
+        existingData !== null &&
+        options.expectedUpdatedAt &&
+        actualUpdatedAt &&
+        actualUpdatedAt !== options.expectedUpdatedAt
+      ) {
+        throw new RegisterConflictError();
+      }
+    } else if (actualVersion !== options.expectedVersion) {
+      throw new RegisterConflictError();
+    }
+  } else if (typeof register.version === 'number' && register.version !== actualVersion) {
+    throw new RegisterConflictError();
+  }
+
+  return (actualVersion ?? 0) + 1;
+}
+
+/** Dados completos para restauração fiel de uma empresa no modo local. */
+export interface LocalClientRestorePayload {
+  client: ClientCompany;
+  accounts: readonly ChartAccount[];
+  rules: readonly ClassificationRule[];
+  bankAccounts: readonly BankAccount[];
+  openingBalances: OpeningBalances | null;
+  importBatches: readonly ImportBatch[];
+  transactions: readonly BankTransaction[];
+  journalEntries: readonly JournalEntry[];
+  journalCounter: JournalCounter | null;
+  periodLocks: readonly PeriodLock[];
+  lockState: LockState | null;
+  clientRequests: readonly ClientRequest[];
+  invoices: readonly InvoiceSummary[];
+  fixedAssets: FixedAssetRegister | null;
+  prepaidExpenses: PrepaidRegister | null;
+  financingContracts: FinancingRegister | null;
+  investments: InvestmentRegister | null;
+  stockControl: StockControl | null;
+  payrollRegister: PayrollRegister | null;
+  closingChecklists: readonly ClosingChecklist[];
+  explanatoryNotes: readonly ExplanatoryNotes[];
+  audit: readonly AuditEntry[];
+  restoreAudit: AuditEntry;
 }
 
 /**
@@ -194,11 +267,13 @@ export interface DataRepository {
 
   /* Lançamentos manuais de fechamento (Diário Avulso / Ajustes) */
   listJournalEntries(clientId: string, range?: DateRange): Promise<JournalEntry[]>;
+  getJournalCounter(clientId: string): Promise<JournalCounter | null>;
   /** Grava um lançamento novo com o próximo número da sequência do cliente; recusa se débito ≠ crédito. */
-  createJournalEntry(draft: JournalEntryDraft, audit?: AuditEntry): Promise<JournalEntry>;
+  createJournalEntry(draft: JournalEntryDraft, audit: AuditEntry): Promise<JournalEntry>;
   /** Altera um lançamento existente (o número não muda); recusa se débito ≠ crédito. */
-  updateJournalEntry(entry: JournalEntry, audit?: AuditEntry): Promise<void>;
-  deleteJournalEntry(entryId: string, audit?: AuditEntry): Promise<void>;
+  updateJournalEntry(entry: JournalEntry, audit: AuditEntry): Promise<void>;
+  /** Exclui um lançamento do Diário e grava a auditoria (somente administrador nas regras). */
+  deleteJournalEntry(entryId: string, audit: AuditEntry): Promise<void>;
 
   /* Encerramento do exercício (src/lib/year-closing.ts) */
   /**
@@ -227,43 +302,67 @@ export interface DataRepository {
   getFixedAssets(clientId: string): Promise<FixedAssetRegister | null>;
   /**
    * Grava o cadastro e o registro de auditoria numa única operação e, se informado, também cria
-   * o lançamento da baixa (com o próximo número da sequência) ou exclui o de uma baixa desfeita.
-   * Devolve o lançamento criado.
+   * o lançamento (com o próximo número), substitui no mesmo id ou exclui, tudo junto.
    */
-  saveFixedAssets(register: FixedAssetRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+  saveFixedAssets(
+    register: FixedAssetRegister,
+    audit: AuditEntry,
+    journal?: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
+  ): Promise<JournalEntry | null>;
 
   /* Checklist do fechamento do exercício (id `${clientId}_${year}`) */
+  listClosingChecklists(clientId: string): Promise<ClosingChecklist[]>;
   getClosingChecklist(clientId: string, year: string): Promise<ClosingChecklist | null>;
   saveClosingChecklist(checklist: ClosingChecklist): Promise<void>;
 
   /* Despesas antecipadas (um documento por cliente, id = clientId; src/lib/prepaid-expenses.ts) */
   getPrepaidExpenses(clientId: string): Promise<PrepaidRegister | null>;
-  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento (criar e/ou excluir) numa única operação. */
-  savePrepaidExpenses(register: PrepaidRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento numa única operação. */
+  savePrepaidExpenses(
+    register: PrepaidRegister,
+    audit: AuditEntry,
+    journal?: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
+  ): Promise<JournalEntry | null>;
 
   /* Empréstimos, financiamentos e parcelamentos (um documento por cliente, id = clientId; src/lib/financing.ts) */
   getFinancingContracts(clientId: string): Promise<FinancingRegister | null>;
-  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento inicial (criar e/ou excluir) numa única operação. */
-  saveFinancingContracts(register: FinancingRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+  /** Como `saveFixedAssets`: cadastro, auditoria e o lançamento inicial numa única operação. */
+  saveFinancingContracts(
+    register: FinancingRegister,
+    audit: AuditEntry,
+    journal?: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
+  ): Promise<JournalEntry | null>;
 
   /* Aplicações financeiras (um documento por cliente, id = clientId; src/lib/investments.ts) */
   getInvestments(clientId: string): Promise<InvestmentRegister | null>;
   /** Como `saveFixedAssets`: cadastro e auditoria numa única operação (o rendimento é a rotina do mês). */
-  saveInvestments(register: InvestmentRegister, audit: AuditEntry): Promise<JournalEntry | null>;
+  saveInvestments(register: InvestmentRegister, audit: AuditEntry, options?: RegisterSaveOptions): Promise<JournalEntry | null>;
 
   /* Estoque e CMV (um documento por cliente, id = clientId; src/lib/stock.ts) */
   getStockControl(clientId: string): Promise<StockControl | null>;
   /** Controle e auditoria numa única operação (o CMV é a rotina do mês). */
-  saveStockControl(control: StockControl, audit: AuditEntry): Promise<JournalEntry | null>;
+  saveStockControl(control: StockControl, audit: AuditEntry, options?: RegisterSaveOptions): Promise<JournalEntry | null>;
 
   /* Folha de pagamento e pró-labore (um documento por cliente, id = clientId; src/lib/payroll.ts) */
   getPayrollRegister(clientId: string): Promise<PayrollRegister | null>;
-  /** Como `saveFixedAssets`: cadastro da folha, auditoria e lançamento contábil numa única operação. */
-  savePayrollRegister(register: PayrollRegister, audit: AuditEntry, journal?: FixedAssetJournalChange): Promise<JournalEntry | null>;
+  /** Como `saveFixedAssets`: cadastro da folha, auditoria e lançamentos contábeis numa única operação. */
+  savePayrollRegister(
+    register: PayrollRegister,
+    audit: AuditEntry,
+    journal?: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
+  ): Promise<JournalEntry | null>;
 
   /* Notas explicativas (id `${clientId}_${year}`) */
+  listExplanatoryNotes(clientId: string): Promise<ExplanatoryNotes[]>;
   getExplanatoryNotes(clientId: string, year: string): Promise<ExplanatoryNotes | null>;
   saveExplanatoryNotes(notes: ExplanatoryNotes): Promise<void>;
+
+  /** Restaura dados completos da empresa no modo local (opcional; ausente no Firestore). */
+  restoreLocalClientData?(payload: LocalClientRestorePayload): Promise<void>;
 
   /* Pendências com o cliente (acesso público pelo link, sem login) */
   getPublicClientRequest(token: string): Promise<ClientRequest | null>;

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ChartAccount, JournalEntry, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
+import { peekActor } from '@/lib/data/scope';
+import { journalAudit } from '@/lib/audit';
 import { repeatDraft } from '@/lib/journal';
 import { implantationDate, implantationProblem } from '@/lib/opening';
 import { yearClosingLockedMessage } from '@/lib/year-closing';
@@ -73,6 +75,8 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
 
   const isMonthLocked = useCallback((month: string) => locks.some((l) => l.month === month), [locks]);
 
+  const actorOf = () => peekActor() ?? { uid: authorUid || 'local' };
+
   /** Cria (sem `existingId`) ou altera um lançamento. */
   const saveEntry = async (entryData: JournalEntryInput, existingId?: string) => {
     if (!clientId) return;
@@ -80,12 +84,13 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
     if (before) throw new Error(before);
     const repo = getRepository();
     const now = new Date().toISOString();
+    const actor = actorOf();
     if (existingId) {
       const existing = entries.find((e) => e.id === existingId);
       if (!existing) throw new Error('Lançamento não encontrado. Recarregue a página e tente novamente.');
       if (existing.yearClosing) throw new Error(yearClosingLockedMessage(existing));
       // Número, criação e autor são preservados na edição.
-      await repo.updateJournalEntry({
+      const updated: JournalEntry = {
         ...entryData,
         id: existing.id,
         clientId,
@@ -95,20 +100,22 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
         // A origem da repetição também: sem ela o lançamento seria oferecido de novo.
         ...(existing.repeatedFromId ? { repeatedFromId: existing.repeatedFromId } : {}),
         updatedAt: now,
-      });
+      };
+      await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated));
     } else {
       // O número vem da sequência do cliente, atribuído pelo repositório ao gravar. Encerramento
       // de exercício só nasce pela rotina própria (Balanço › DLPA), nunca de uma cópia.
       const plain = { ...entryData };
       delete plain.yearClosing;
-      await repo.createJournalEntry({
+      const draft = {
         ...plain,
         id: newJournalId(),
         clientId,
         createdAt: now,
         updatedAt: now,
         createdByUid: authorUid || 'local',
-      });
+      };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft));
     }
     reload();
   };
@@ -116,7 +123,11 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
   /** Exclui; se falhar, o erro sobe ao chamador e o lançamento continua na lista. */
   const deleteEntry = async (entry: JournalEntry) => {
     if (entry.yearClosing) throw new Error(yearClosingLockedMessage(entry));
-    await getRepository().deleteJournalEntry(entry.id);
+    const now = new Date().toISOString();
+    await getRepository().deleteJournalEntry(
+      entry.id,
+      journalAudit('JOURNAL_DELETE', actorOf(), entry.clientId, now, entry)
+    );
     reload();
   };
 
@@ -125,20 +136,27 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
     if (!clientId) return;
     const repo = getRepository();
     const now = new Date().toISOString();
+    const actor = actorOf();
     let created = 0;
     try {
       for (const entry of chosen) {
         const draft = repeatDraft(entry, targetMonth);
         const before = implantationProblem(draft.date, implantation);
         if (before) throw new Error(before);
-        await repo.createJournalEntry({
+        const nextDraft = {
           ...draft,
           id: newJournalId(),
           clientId,
           createdAt: now,
           updatedAt: now,
           createdByUid: authorUid || 'local',
-        });
+        };
+        await repo.createJournalEntry(
+          nextDraft,
+          journalAudit('JOURNAL_CREATE', actor, clientId, now, nextDraft, {
+            note: `Repetido do lançamento #${entry.entryNumber}`,
+          })
+        );
         created++;
       }
     } catch (e) {

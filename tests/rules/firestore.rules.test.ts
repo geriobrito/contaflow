@@ -27,7 +27,7 @@ import {
 import { writeBatch } from 'firebase/firestore';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
-import { transactionAudit } from '@/lib/audit';
+import { journalAudit, transactionAudit } from '@/lib/audit';
 import { ensureUserProfile } from '@/lib/data/profile';
 import { periodAuditId } from '@/lib/periods';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
@@ -709,13 +709,23 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
   const rawCreateCounter = (db: Firestore, last: number) =>
     setDoc(doc(db, 'journal_counters/cA'), { id: 'cA', orgId: ORG_A, clientId: 'cA', last });
 
+  /** Gravações pelo repositório com o registro de auditoria exigido, como o app faz. */
+  type Repo = ReturnType<typeof createFirestoreRepository>;
+  type Entry = Parameters<Repo['updateJournalEntry']>[0];
+  const jCreate = (repo: Repo, d: ReturnType<typeof draft>, uid = 'alice') =>
+    repo.createJournalEntry(d, journalAudit('JOURNAL_CREATE', { uid }, d.clientId, 'T', d));
+  const jUpdate = (repo: Repo, e: Entry, uid = 'alice') =>
+    repo.updateJournalEntry(e, journalAudit('JOURNAL_UPDATE', { uid }, e.clientId, 'T', e));
+  const jDelete = (repo: Repo, id: string, uid = 'alice') =>
+    repo.deleteJournalEntry(id, journalAudit('JOURNAL_DELETE', { uid }, 'cA', 'T', { id }));
+
   it('numera em sequência por cliente; número excluído não é reaproveitado', async () => {
     const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
-    expect((await repo.createJournalEntry(draft('j1'))).entryNumber).toBe(1);
-    expect((await repo.createJournalEntry(draft('j2'))).entryNumber).toBe(2);
-    expect((await repo.createJournalEntry(draft('j3'))).entryNumber).toBe(3);
-    await repo.deleteJournalEntry('j2');
-    expect((await repo.createJournalEntry(draft('j4'))).entryNumber).toBe(4);
+    expect((await jCreate(repo, draft('j1'))).entryNumber).toBe(1);
+    expect((await jCreate(repo, draft('j2'))).entryNumber).toBe(2);
+    expect((await jCreate(repo, draft('j3'))).entryNumber).toBe(3);
+    await jDelete(repo, 'j2');
+    expect((await jCreate(repo, draft('j4'))).entryNumber).toBe(4);
     expect((await repo.listJournalEntries('cA')).map((e) => e.entryNumber).sort()).toEqual([1, 3, 4]);
   });
 
@@ -723,9 +733,9 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     const alice = createFirestoreRepository(asUser('alice'), () => ORG_A);
     const carol = createFirestoreRepository(asUser('carol'), () => ORG_A);
     const created = await Promise.all([
-      alice.createJournalEntry(draft('ja')),
-      carol.createJournalEntry(draft('jc')),
-      alice.createJournalEntry(draft('ja2')),
+      jCreate(alice, draft('ja')),
+      jCreate(carol, draft('jc'), 'carol'),
+      jCreate(alice, draft('ja2')),
     ]);
     expect(created.map((e) => e.entryNumber).sort()).toEqual([1, 2, 3]);
   });
@@ -737,7 +747,7 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
       await setDoc(doc(db, 'journal_entries/antigo2'), { ...draft('antigo2'), orgId: ORG_A, entryNumber: 7 });
     });
     const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
-    expect((await repo.createJournalEntry(draft('novo'))).entryNumber).toBe(8);
+    expect((await jCreate(repo, draft('novo'))).entryNumber).toBe(8);
   });
 
   it('o número vem do contador avançado na mesma gravação; não se repete nem muda', async () => {
@@ -768,8 +778,8 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     await assertSucceeds(updateDoc(doc(db, 'journal_entries/j1'), { lines: [line('DEBIT', 80), line('CREDIT', 50), line('CREDIT', 30)] }));
     // O repositório recusa antes mesmo de enviar, com mensagem legível.
     const repo = createFirestoreRepository(db, () => ORG_A);
-    await expect(repo.createJournalEntry(draft('j2', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }))).rejects.toThrow(/desbalanceado/);
-    await expect(repo.updateJournalEntry({ ...draft('j1', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }), entryNumber: 1 })).rejects.toThrow(/desbalanceado/);
+    await expect(jCreate(repo, draft('j2', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }))).rejects.toThrow(/desbalanceado/);
+    await expect(jUpdate(repo, { ...draft('j1', { lines: [line('DEBIT', 10), line('CREDIT', 9)] }), entryNumber: 1 })).rejects.toThrow(/desbalanceado/);
   });
 
   it('recusa valor que não é número, tipo que não fecha a conta e data inválida', async () => {
@@ -783,8 +793,8 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     await assertFails(rawCreate(db, 'j1', 1, { lines: 'nenhuma' }));
     // Conta e valor positivo por partida são validados pelo app antes de gravar.
     const repo = createFirestoreRepository(db, () => ORG_A);
-    await expect(repo.createJournalEntry(draft('j1', { lines: [line('DEBIT', 100, ''), line('CREDIT', 100)] }))).rejects.toThrow(/sem conta/);
-    await expect(repo.createJournalEntry(draft('j1', { lines: [line('DEBIT', -100), line('CREDIT', -100)] }))).rejects.toThrow(/valor zerado/);
+    await expect(jCreate(repo, draft('j1', { lines: [line('DEBIT', 100, ''), line('CREDIT', 100)] }))).rejects.toThrow(/sem conta/);
+    await expect(jCreate(repo, draft('j1', { lines: [line('DEBIT', -100), line('CREDIT', -100)] }))).rejects.toThrow(/valor zerado/);
     expect(await repo.listJournalEntries('cA')).toEqual([]);
   });
 
@@ -809,26 +819,26 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
   it('competência fechada congela os lançamentos manuais', async () => {
     const db = asUser('alice');
     const repo = createFirestoreRepository(db, () => ORG_A);
-    const saved = await repo.createJournalEntry(draft('j1'));
+    const saved = await jCreate(repo, draft('j1'));
     await closeMonth(db);
-    await expect(repo.createJournalEntry(draft('j2'))).rejects.toThrow();
-    await expect(repo.updateJournalEntry({ ...saved, memo: 'alterado' })).rejects.toThrow();
-    await expect(repo.deleteJournalEntry('j1')).rejects.toThrow();
+    await expect(jCreate(repo, draft('j2'))).rejects.toThrow();
+    await expect(jUpdate(repo, { ...saved, memo: 'alterado' })).rejects.toThrow();
+    await expect(jDelete(repo, 'j1')).rejects.toThrow();
     // Nem mudando a data para "fugir" do mês fechado.
-    await expect(repo.updateJournalEntry({ ...saved, date: '2025-04-01' })).rejects.toThrow();
+    await expect(jUpdate(repo, { ...saved, date: '2025-04-01' })).rejects.toThrow();
     // Outra competência segue livre, e a numeração continua.
-    expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-30' }))).entryNumber).toBe(2);
+    expect((await jCreate(repo, draft('j3', { date: '2025-04-30' }))).entryNumber).toBe(2);
   });
 
   it('nenhum lançamento manual antes da data de implantação (saldos de abertura); no próprio dia, sim', async () => {
     const db = asUser('alice');
     const repo = createFirestoreRepository(db, () => ORG_A);
-    const saved = await repo.createJournalEntry(draft('j1', { date: '2025-04-30' }));
+    const saved = await jCreate(repo, draft('j1', { date: '2025-04-30' }));
     await repo.saveOpeningBalances({ id: 'cA', clientId: 'cA', date: '2025-04-01', entries: [], updatedAt: 'T' }, { id: 'au-op', clientId: 'cA', action: 'OPENING_SAVE', actorUid: 'alice', at: 'T' });
-    await expect(repo.createJournalEntry(draft('j2', { date: '2025-03-31' }))).rejects.toThrow();
-    await expect(repo.createJournalEntry(draft('j2', { date: '2025-01-10' }))).rejects.toThrow();
-    await expect(repo.updateJournalEntry({ ...saved, date: '2025-03-15' })).rejects.toThrow();
-    expect((await repo.createJournalEntry(draft('j3', { date: '2025-04-01' }))).entryNumber).toBe(2);
+    await expect(jCreate(repo, draft('j2', { date: '2025-03-31' }))).rejects.toThrow();
+    await expect(jCreate(repo, draft('j2', { date: '2025-01-10' }))).rejects.toThrow();
+    await expect(jUpdate(repo, { ...saved, date: '2025-03-15' })).rejects.toThrow();
+    expect((await jCreate(repo, draft('j3', { date: '2025-04-01' }))).entryNumber).toBe(2);
   });
 
   it('abertura, bancos, conta nova do plano e auditoria numa única gravação', async () => {
@@ -856,10 +866,10 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
     it('entra inteiro, numa gravação, com dezembro fechado e um único registro de auditoria', async () => {
       const db = asUser('alice');
       const repo = createFirestoreRepository(db, () => ORG_A);
-      await repo.createJournalEntry(draft('j0'));
+      await jCreate(repo, draft('j0'));
       await closeMonth(db, lockOf('2025-12'));
       // Lançamento comum continua barrado em dezembro fechado.
-      await expect(repo.createJournalEntry(draft('j1', { date: '2025-12-31' }))).rejects.toThrow();
+      await expect(jCreate(repo, draft('j1', { date: '2025-12-31' }))).rejects.toThrow();
       // Registro de outra ação, marca que não confere com a data, ou fora de 31/12: nada entra.
       await expect(repo.closeYear([closing('e1'), closing('e2')], yearAudit(CLOSE, 'YEAR_REOPEN'))).rejects.toThrow();
       await expect(repo.closeYear([closing('e1'), closing('e2', { yearClosing: '2024' })], yearAudit(CLOSE, 'YEAR_CLOSE'))).rejects.toThrow();
@@ -870,8 +880,8 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
       expect(saved.map((e) => e.entryNumber)).toEqual([2, 3, 4]);
       expect((await repo.listAudit('cA')).filter((a) => a.action === 'YEAR_CLOSE').map((a) => a.id)).toEqual([CLOSE]);
       // Dezembro fechado: o encerramento não muda; a numeração segue depois do bloco.
-      await expect(repo.updateJournalEntry({ ...saved[0], memo: 'alterado' })).rejects.toThrow();
-      expect((await repo.createJournalEntry(draft('j5', { date: '2026-01-31' }))).entryNumber).toBe(5);
+      await expect(jUpdate(repo, { ...saved[0], memo: 'alterado' })).rejects.toThrow();
+      expect((await jCreate(repo, draft('j5', { date: '2026-01-31' }))).entryNumber).toBe(5);
     });
 
     it('o salto do contador exige o YEAR_CLOSE na mesma gravação', async () => {
@@ -888,7 +898,7 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
       const repo = createFirestoreRepository(db, () => ORG_A);
       await closeMonth(db, lockOf('2025-12'));
       const saved = await repo.closeYear([closing('e1'), closing('e2')], yearAudit(CLOSE, 'YEAR_CLOSE'));
-      await expect(repo.deleteJournalEntry('e1')).rejects.toThrow();
+      await expect(jDelete(repo, 'e1')).rejects.toThrow();
       await expect(repo.reopenYear(saved, yearAudit('outro_reopen', 'YEAR_REOPEN'))).rejects.toThrow();
       await expect(repo.reopenYear(saved, yearAudit(`${CLOSE}_reopen`, 'YEAR_CLOSE'))).rejects.toThrow();
       // Operadora não reabre exercício.
@@ -911,8 +921,8 @@ describe('lançamentos manuais: partidas dobradas e numeração', () => {
   it('excluir a empresa remove os lançamentos manuais (mesmo de mês fechado) e a sequência', async () => {
     const db = asUser('alice');
     const repo = createFirestoreRepository(db, () => ORG_A);
-    await repo.createJournalEntry(draft('j1'));
-    await repo.createJournalEntry(draft('j2', { date: '2025-04-30' }));
+    await jCreate(repo, draft('j1'));
+    await jCreate(repo, draft('j2', { date: '2025-04-30' }));
     await closeMonth(db);
     await repo.deleteClient('cA', { uid: 'alice' });
     await env.withSecurityRulesDisabled(async (ctx) => {

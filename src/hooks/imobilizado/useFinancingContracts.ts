@@ -11,7 +11,7 @@ import {
   type FinancingContext,
 } from '@/lib/services/financing-service';
 import { pendingFinancingMonths } from '@/lib/financing';
-import { describeError } from '@/lib/utils/errors';
+import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 const currentMonth = () => new Date().toISOString().slice(0, 7);
@@ -75,6 +75,7 @@ export function useFinancingContracts(clientId: string | undefined, authorUid: s
     } catch (e) {
       reportError(e, { area: 'financiamentos', op });
       setError(describeError(e));
+      if (isRegisterConflictError(e)) reload();
       return false;
     } finally {
       setBusy(false);

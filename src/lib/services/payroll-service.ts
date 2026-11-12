@@ -6,10 +6,10 @@ import type {
   PayrollRegister,
   PayrollSummary,
 } from '@/types/firestore';
-import type { DataRepository } from '@/lib/data/repository';
+import type { DataRepository, FixedAssetJournalChange, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { classifyAction, newAuditId, transactionAudit } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { classifyAction, journalAudit, newAuditId, transactionAudit } from '@/lib/audit';
 import { implantationDate, implantationProblem } from '@/lib/opening';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { lastDayOf } from '@/lib/fixed-assets';
@@ -89,6 +89,11 @@ const emptyRegister = (clientId: string): PayrollRegister => ({
   updatedAt: '',
 });
 
+const optimistic = (register: PayrollRegister | null): RegisterSaveOptions => ({
+  expectedVersion: register?.version ?? null,
+  expectedUpdatedAt: register?.updatedAt ?? null,
+});
+
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
 /**
@@ -127,30 +132,32 @@ export async function savePayrollMonth(
       ? ctx.monthEntries.find((e) => e.id === existingSummary.journalEntryIds[0])
       : undefined);
 
-  let journalId: string;
-  if (existingEntry) {
-    journalId = existingEntry.id;
-    await repo.updateJournalEntry({
-      ...existingEntry,
-      ...draft,
-      id: existingEntry.id,
-      clientId,
-      entryNumber: existingEntry.entryNumber,
-      createdAt: existingEntry.createdAt,
-      createdByUid: existingEntry.createdByUid,
-      updatedAt: now,
-    });
-  } else {
-    journalId = newJournalId();
-    await repo.createJournalEntry({
-      ...draft,
-      id: journalId,
-      clientId,
-      createdAt: now,
-      updatedAt: now,
-      createdByUid: authorUid || 'local',
-    });
-  }
+  const journalId = existingEntry?.id ?? newJournalId();
+  const journal: FixedAssetJournalChange = existingEntry
+    ? {
+        replace: {
+          id: existingEntry.id,
+          draft: {
+            ...existingEntry,
+            ...draft,
+            id: existingEntry.id,
+            clientId,
+            createdAt: existingEntry.createdAt,
+            createdByUid: existingEntry.createdByUid,
+            updatedAt: now,
+          },
+        },
+      }
+    : {
+        create: {
+          ...draft,
+          id: journalId,
+          clientId,
+          createdAt: now,
+          updatedAt: now,
+          createdByUid: authorUid || 'local',
+        },
+      };
 
   const summary = buildPayrollSummary(clientId, input, [journalId], now, authorUid || getActor().uid);
   const summaries = existingSummary
@@ -166,13 +173,15 @@ export async function savePayrollMonth(
       updatedAt: now,
       updatedByUid: getActor().uid,
     },
-    payrollAudit(clientId, `${existingSummary ? 'Atualizou' : 'Contabilizou'} a folha de pagamento de ${comp} (${totalFormatted})`)
+    payrollAudit(clientId, `${existingSummary ? 'Atualizou' : 'Contabilizou'} a folha de pagamento de ${comp} (${totalFormatted})`),
+    journal,
+    optimistic(ctx.register)
   );
 
   return summary;
 }
 
-/** Exclui o resumo da folha de pagamento da competência (mês aberto) e seu lançamento de provisão. */
+/** Exclui o resumo da folha de pagamento da competência (mês aberto) e seu lançamento de provisão de forma atômica. */
 export async function deletePayrollMonth(clientId: string, month: string, ctx: PayrollContext): Promise<void> {
   if (ctx.lockedMonths.has(month)) {
     throw new Error(`A competência ${formatMonth(month)} está fechada: reabra-a para excluir a folha de pagamento.`);
@@ -186,15 +195,25 @@ export async function deletePayrollMonth(clientId: string, month: string, ctx: P
       : undefined);
 
   const repo = getRepository();
-  if (existingEntry) {
-    await repo.deleteJournalEntry(existingEntry.id);
-  } else if (existingSummary?.journalEntryIds.length) {
-    for (const id of existingSummary.journalEntryIds) {
-      await repo.deleteJournalEntry(id);
+  const deleteIds = existingEntry
+    ? [existingEntry.id]
+    : existingSummary?.journalEntryIds.length
+      ? existingSummary.journalEntryIds
+      : [];
+
+  if (!existingSummary) {
+    if (existingEntry) {
+      const now = new Date().toISOString();
+      await repo.deleteJournalEntry(
+        existingEntry.id,
+        journalAudit('JOURNAL_DELETE', getActor(), clientId, now, existingEntry, {
+          note: `Excluiu lançamento avulso da folha de ${formatMonth(month)}`,
+        })
+      );
     }
+    return;
   }
 
-  if (!existingSummary) return;
   const now = new Date().toISOString();
   await repo.savePayrollRegister(
     {
@@ -203,7 +222,9 @@ export async function deletePayrollMonth(clientId: string, month: string, ctx: P
       updatedAt: now,
       updatedByUid: getActor().uid,
     },
-    payrollAudit(clientId, `Excluiu a folha de pagamento de ${formatMonth(month)}`)
+    payrollAudit(clientId, `Excluiu a folha de pagamento de ${formatMonth(month)}`),
+    deleteIds.length ? { deleteIds } : {},
+    optimistic(ctx.register)
   );
 }
 
@@ -316,13 +337,15 @@ export async function postMonthPayroll(
   if (!status) return 'none';
 
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `Provisão da folha de pagamento (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'PENDING': {
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({
+        const updated: JournalEntry = {
           ...e,
           ...status.draft,
           id: e.id,
@@ -331,17 +354,19 @@ export async function postMonthPayroll(
           createdAt: e.createdAt,
           createdByUid: e.createdByUid,
           updatedAt: now,
-        });
+        };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({
+      const draft = {
         ...status.draft,
         id: newJournalId(),
         clientId,
         createdAt: now,
         updatedAt: now,
         createdByUid: authorUid || 'local',
-      });
+      };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

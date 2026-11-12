@@ -1,9 +1,10 @@
-import type { AuditEntry, ChartAccount, InvestmentAccount, InvestmentRegister } from '@/types/firestore';
-import type { DataRepository } from '@/lib/data/repository';
+import type { AuditEntry, ChartAccount, InvestmentAccount, InvestmentRegister, JournalEntry } from '@/types/firestore';
+import type { DataRepository, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
-import { getActor } from '@/lib/data/scope';
-import { newAuditId } from '@/lib/audit';
+import { getActor, peekActor } from '@/lib/data/scope';
+import { journalAudit, newAuditId } from '@/lib/audit';
 import { monthLedgerWithout } from '@/lib/services/month-ledger';
+import { formatMonth } from '@/lib/periods';
 import { ensureTemplateAccounts } from '@/lib/services/prepaid-service';
 import { investmentCloseProblem, investmentLockProblem, investmentProblem, investmentStatus, YIELD_CODE, type InvestmentStatus } from '@/lib/investments';
 
@@ -32,6 +33,10 @@ const audit = (clientId: string, note: string): AuditEntry => {
 };
 
 const emptyRegister = (clientId: string): InvestmentRegister => ({ id: clientId, clientId, accounts: [], updatedAt: '' });
+const optimistic = (register: InvestmentRegister | null): RegisterSaveOptions => ({
+  expectedVersion: register?.version ?? null,
+  expectedUpdatedAt: register?.updatedAt ?? null,
+});
 
 /** Grava uma aplicação nova ou alterada (inclusive os saldos informados). */
 export async function saveInvestment(clientId: string, investment: InvestmentAccount, ctx: InvestmentContext, note?: string): Promise<void> {
@@ -53,7 +58,8 @@ export async function saveInvestment(clientId: string, investment: InvestmentAcc
   const accounts = before ? register.accounts.map((a) => (a.id === next.id ? next : a)) : [...register.accounts, next];
   await getRepository().saveInvestments(
     { ...register, accounts, updatedAt: now, updatedByUid: getActor().uid },
-    audit(clientId, note ?? `${before ? 'Alterou' : 'Cadastrou'} a aplicação ${investment.description}`)
+    audit(clientId, note ?? `${before ? 'Alterou' : 'Cadastrou'} a aplicação ${investment.description}`),
+    optimistic(ctx.register)
   );
 }
 
@@ -74,7 +80,8 @@ export async function deleteInvestment(clientId: string, investment: InvestmentA
   const now = new Date().toISOString();
   await getRepository().saveInvestments(
     { ...register, accounts: register.accounts.filter((a) => a.id !== investment.id), updatedAt: now, updatedByUid: getActor().uid },
-    audit(clientId, `Excluiu a aplicação ${investment.description}`)
+    audit(clientId, `Excluiu a aplicação ${investment.description}`),
+    optimistic(ctx.register)
   );
 }
 
@@ -113,19 +120,26 @@ export async function postMonthInvestment(clientId: string, month: string, autho
   if (!ctx.accounts.some((a) => a.code === YIELD_CODE)) ctx = { ...ctx, accounts: await ensureTemplateAccounts(clientId, [YIELD_CODE], ctx.accounts) };
   const status = await monthStatus(clientId, month, ctx, repo);
   const now = new Date().toISOString();
+  const actor = peekActor() ?? { uid: authorUid || 'local' };
+  const routineNote = `Rendimento de aplicações financeiras (${formatMonth(month)})`;
   switch (status.kind) {
     case 'BLOCKED':
       throw new Error(status.problem);
     case 'REMOVE':
-      await repo.deleteJournalEntry(status.existing.id);
+      await repo.deleteJournalEntry(
+        status.existing.id,
+        journalAudit('JOURNAL_DELETE', actor, clientId, now, status.existing, { note: routineNote })
+      );
       return 'removed';
     case 'PENDING': {
       if (status.existing) {
         const e = status.existing;
-        await repo.updateJournalEntry({ ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now });
+        const updated: JournalEntry = { ...e, ...status.draft, id: e.id, clientId, entryNumber: e.entryNumber, createdAt: e.createdAt, createdByUid: e.createdByUid, updatedAt: now };
+        await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated, { note: routineNote }));
         return 'updated';
       }
-      await repo.createJournalEntry({ ...status.draft, id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' });
+      const draft = { ...status.draft, id: `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, clientId, createdAt: now, updatedAt: now, createdByUid: authorUid || 'local' };
+      await repo.createJournalEntry(draft, journalAudit('JOURNAL_CREATE', actor, clientId, now, draft, { note: routineNote }));
       return 'created';
     }
     default:

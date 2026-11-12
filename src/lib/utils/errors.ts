@@ -17,3 +17,23 @@ export function rethrowPermissionDenied(e: unknown, reason: string): never {
   }
   throw e;
 }
+
+/**
+ * Conflito de concorrência otimista ao gravar um cadastro único por empresa
+ * (outro usuário salvou alterações depois da última leitura).
+ */
+export class RegisterConflictError extends Error {
+  readonly code = 'conflict' as const;
+
+  constructor(
+    message = 'Este cadastro foi alterado por outro usuário desde que você abriu a tela. Os dados foram recarregados — revise e tente novamente.'
+  ) {
+    super(message);
+    this.name = 'RegisterConflictError';
+  }
+}
+
+export function isRegisterConflictError(e: unknown): e is RegisterConflictError {
+  if (e instanceof RegisterConflictError) return true;
+  return Boolean(e && typeof e === 'object' && (e as { code?: unknown }).code === 'conflict');
+}

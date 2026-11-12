@@ -4,8 +4,9 @@ import type { DataRepository, JournalEntryDraft } from '@/lib/data/repository';
 import { setSession } from '@/lib/data/scope';
 import type { BankTransaction, ClassificationRule } from '@/types/firestore';
 import { approveTransition, autoClassifyTransition, classifyTransition, resetTransition, splitTransition } from '@/lib/transitions';
-import { transactionAudit } from '@/lib/audit';
+import { journalAudit, transactionAudit } from '@/lib/audit';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
+import { isRegisterConflictError } from '@/lib/utils/errors';
 
 function memoryStore(): KeyValueStore & { dump: Map<string, string> } {
   const dump = new Map<string, string>();
@@ -287,46 +288,59 @@ describe('repositório local (modo único, sem Firestore)', () => {
       createdByUid: 'u',
     });
 
+    const jAudit = (
+      id: string,
+      action: 'JOURNAL_CREATE' | 'JOURNAL_UPDATE' | 'JOURNAL_DELETE' = 'JOURNAL_CREATE',
+      clientId = 'c1'
+    ) => ({
+      id,
+      clientId,
+      action,
+      actorUid: actor.uid,
+      at: 'T',
+    });
+
     it('numeração sequencial por cliente; número excluído não é reaproveitado', async () => {
-      expect((await repo.createJournalEntry(draft('j1'))).entryNumber).toBe(1);
-      expect((await repo.createJournalEntry(draft('j2'))).entryNumber).toBe(2);
-      expect((await repo.createJournalEntry(draft('j3'))).entryNumber).toBe(3);
-      expect((await repo.createJournalEntry(draft('k1', 'c2'))).entryNumber).toBe(1);
-      await repo.deleteJournalEntry('j2');
-      await repo.deleteJournalEntry('j3');
-      expect((await repo.createJournalEntry(draft('j4'))).entryNumber).toBe(4);
+      expect((await repo.createJournalEntry(draft('j1'), jAudit('aj1'))).entryNumber).toBe(1);
+      expect((await repo.createJournalEntry(draft('j2'), jAudit('aj2'))).entryNumber).toBe(2);
+      expect((await repo.createJournalEntry(draft('j3'), jAudit('aj3'))).entryNumber).toBe(3);
+      expect((await repo.createJournalEntry(draft('k1', 'c2'), jAudit('ak1', 'JOURNAL_CREATE', 'c2'))).entryNumber).toBe(1);
+      await repo.deleteJournalEntry('j2', jAudit('dj2', 'JOURNAL_DELETE'));
+      await repo.deleteJournalEntry('j3', jAudit('dj3', 'JOURNAL_DELETE'));
+      expect((await repo.createJournalEntry(draft('j4'), jAudit('aj4'))).entryNumber).toBe(4);
       expect((await repo.listJournalEntries('c1')).map((e) => e.entryNumber).sort()).toEqual([1, 4]);
+      expect((await repo.listAudit('c1')).map((a) => a.action)).toContain('JOURNAL_DELETE');
     });
 
     it('lançamentos anteriores ao contador: continua do maior número já usado', async () => {
       store.setItem(LOCAL_KEYS.journalEntries, JSON.stringify([{ ...draft('antigo'), entryNumber: 7 }]));
-      expect((await repo.createJournalEntry(draft('novo'))).entryNumber).toBe(8);
+      expect((await repo.createJournalEntry(draft('novo'), jAudit('anovo'))).entryNumber).toBe(8);
     });
 
     it('edição preserva o número e exige o lançamento existente', async () => {
-      const saved = await repo.createJournalEntry(draft('j1'));
-      await repo.updateJournalEntry({ ...saved, memo: 'Corrigido', entryNumber: 99 });
+      const saved = await repo.createJournalEntry(draft('j1'), jAudit('aj1'));
+      await repo.updateJournalEntry({ ...saved, memo: 'Corrigido', entryNumber: 99 }, jAudit('uj1', 'JOURNAL_UPDATE'));
       expect(await repo.listJournalEntries('c1')).toMatchObject([{ id: 'j1', memo: 'Corrigido', entryNumber: 1 }]);
-      await expect(repo.updateJournalEntry({ ...saved, id: 'inexistente' })).rejects.toThrow(/não encontrado/);
+      await expect(repo.updateJournalEntry({ ...saved, id: 'inexistente' }, jAudit('ux', 'JOURNAL_UPDATE'))).rejects.toThrow(/não encontrado/);
     });
 
     it('recusa débito ≠ crédito na criação e na edição, sem gravar nem gastar número', async () => {
-      await expect(repo.createJournalEntry(draft('j1', 'c1', [100, 90]))).rejects.toThrow(/desbalanceado/);
+      await expect(repo.createJournalEntry(draft('j1', 'c1', [100, 90]), jAudit('aj1'))).rejects.toThrow(/desbalanceado/);
       expect(await repo.listJournalEntries('c1')).toEqual([]);
-      const saved = await repo.createJournalEntry(draft('j2'));
+      const saved = await repo.createJournalEntry(draft('j2'), jAudit('aj2'));
       expect(saved.entryNumber).toBe(1);
-      await expect(repo.updateJournalEntry({ ...saved, lines: draft('x', 'c1', [5, 4]).lines })).rejects.toThrow(/desbalanceado/);
+      await expect(repo.updateJournalEntry({ ...saved, lines: draft('x', 'c1', [5, 4]).lines }, jAudit('uj2', 'JOURNAL_UPDATE'))).rejects.toThrow(/desbalanceado/);
       expect((await repo.listJournalEntries('c1'))[0].lines[0].amount).toBe(100);
     });
 
     it('excluir o cliente remove os lançamentos manuais e a sequência', async () => {
-      await repo.createJournalEntry(draft('j1'));
-      await repo.createJournalEntry(draft('k1', 'c2'));
+      await repo.createJournalEntry(draft('j1'), jAudit('aj1'));
+      await repo.createJournalEntry(draft('k1', 'c2'), jAudit('ak1', 'JOURNAL_CREATE', 'c2'));
       await repo.deleteClient('c1', actor);
       expect(await repo.listJournalEntries('c1')).toEqual([]);
       expect(await repo.listJournalEntries('c2')).toHaveLength(1);
       // Um cliente recriado com o mesmo id começa a sequência do zero.
-      expect((await repo.createJournalEntry(draft('j9'))).entryNumber).toBe(1);
+      expect((await repo.createJournalEntry(draft('j9'), jAudit('aj9'))).entryNumber).toBe(1);
     });
   });
   describe('encerramento do exercício e notas explicativas', () => {
@@ -338,14 +352,16 @@ describe('repositório local (modo único, sem Firestore)', () => {
     const audit = (id: string, action: 'YEAR_CLOSE' | 'YEAR_REOPEN') => ({ id, clientId: 'c1', action, actorUid: 'u1', at: 'T' });
 
     it('grava todos os lançamentos numerados em sequência e um só registro; reabre tudo de uma vez', async () => {
-      await repo.createJournalEntry({ ...closing('antes'), category: 'OTHER', yearClosing: undefined, date: '2025-06-30' });
+      const pre = { ...closing('antes'), category: 'OTHER' as const, yearClosing: undefined, date: '2025-06-30' };
+      await repo.createJournalEntry(pre, journalAudit('JOURNAL_CREATE', actor, 'c1', 'T', pre));
       const saved = await repo.closeYear([closing('e1'), closing('e2'), closing('e3')], audit('c1_2025_close_x', 'YEAR_CLOSE'));
       expect(saved.map((e) => [e.entryNumber, e.closingAuditId])).toEqual([[2, 'c1_2025_close_x'], [3, 'c1_2025_close_x'], [4, 'c1_2025_close_x']]);
       // A sequência continua depois do bloco.
-      expect((await repo.createJournalEntry({ ...closing('depois'), category: 'OTHER', yearClosing: undefined, date: '2026-01-31' })).entryNumber).toBe(5);
+      const post = { ...closing('depois'), category: 'OTHER' as const, yearClosing: undefined, date: '2026-01-31' };
+      expect((await repo.createJournalEntry(post, journalAudit('JOURNAL_CREATE', actor, 'c1', 'T', post))).entryNumber).toBe(5);
       await repo.reopenYear(saved, audit('c1_2025_close_x_reopen', 'YEAR_REOPEN'));
       expect((await repo.listJournalEntries('c1')).map((e) => e.id).sort()).toEqual(['antes', 'depois']);
-      expect((await repo.listAudit('c1')).map((a) => a.action).sort()).toEqual(['YEAR_CLOSE', 'YEAR_REOPEN']);
+      expect((await repo.listAudit('c1')).map((a) => a.action).sort()).toEqual(['JOURNAL_CREATE', 'JOURNAL_CREATE', 'YEAR_CLOSE', 'YEAR_REOPEN']);
     });
 
     it('lançamento que não fecha recusa o encerramento inteiro', async () => {
@@ -442,6 +458,55 @@ describe('repositório local (modo único, sem Firestore)', () => {
       // Regra criada pelo próprio operador pode ser excluída por ele
       await repo.deleteRule('r_op');
       expect((await repo.listRules('c1')).map((r) => r.id).sort()).toEqual(['r_admin', 'r_legada']);
+
+      // Operador pode criar e editar lançamentos manuais, mas não excluir
+      const entryDraft: JournalEntryDraft = {
+        id: 'jop1',
+        clientId: 'c1',
+        date: '2025-04-10',
+        memo: 'Lançamento operador',
+        category: 'OTHER',
+        lines: [
+          { id: 'd', accountId: 'c1_a', type: 'DEBIT', amount: 50 },
+          { id: 'c', accountId: 'c1_a', type: 'CREDIT', amount: 50 },
+        ],
+        totalAmount: 50,
+        createdAt: 'T',
+        updatedAt: 'T',
+        createdByUid: 'op1',
+      };
+      const created = await repo.createJournalEntry(entryDraft, journalAudit('JOURNAL_CREATE', { uid: 'op1' }, 'c1', 'T', entryDraft));
+      await expect(repo.deleteJournalEntry(created.id, journalAudit('JOURNAL_DELETE', { uid: 'op1' }, 'c1', 'T', created))).rejects.toThrow(/administradores/);
+      expect((await repo.listJournalEntries('c1')).some((j) => j.id === 'jop1')).toBe(true);
+
+      // Edição de cadastro com journal.replace funciona para operador sem deleteId e preserva entryNumber
+      await repo.savePrepaidExpenses(
+        { id: 'c1', clientId: 'c1', items: [], updatedAt: 'T2' },
+        { id: 'pre1', clientId: 'c1', action: 'PREPAID_SAVE', actorUid: 'op1', at: 'T2' },
+        { replace: { id: 'jop1', draft: { ...entryDraft, memo: 'Apólice atualizada' } } },
+        { expectedVersion: null, expectedUpdatedAt: null }
+      );
+      expect((await repo.listJournalEntries('c1')).find((j) => j.id === 'jop1')).toMatchObject({ memo: 'Apólice atualizada', entryNumber: created.entryNumber });
+    });
+
+    it('concorrência otimista em cadastros únicos: incrementa version e recusa gravação defasada', async () => {
+      const auditA = (id: string) => ({ id, clientId: 'c1', action: 'ASSET_SAVE' as const, actorUid: 'u1', at: 'T' });
+      await repo.saveFixedAssets({ id: 'c1', clientId: 'c1', assets: [], updatedAt: 'T1' }, auditA('as1'), {}, { expectedVersion: null, expectedUpdatedAt: null });
+      const v1 = await repo.getFixedAssets('c1');
+      expect(v1?.version).toBe(1);
+
+      // Aba A e Aba B leram v1; Aba A grava v2 primeiro
+      await repo.saveFixedAssets({ ...v1!, updatedAt: 'T2' }, auditA('as2'), {}, { expectedVersion: v1!.version, expectedUpdatedAt: v1!.updatedAt });
+      expect((await repo.getFixedAssets('c1'))?.version).toBe(2);
+
+      // Aba B tenta gravar esperando v1 -> erro de conflito
+      let caught: unknown;
+      try {
+        await repo.saveFixedAssets({ ...v1!, updatedAt: 'T3' }, auditA('as3'), {}, { expectedVersion: v1!.version, expectedUpdatedAt: v1!.updatedAt });
+      } catch (e) {
+        caught = e;
+      }
+      expect(isRegisterConflictError(caught)).toBe(true);
     });
   });
 });

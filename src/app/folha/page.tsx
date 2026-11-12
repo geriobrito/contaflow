@@ -31,6 +31,7 @@ import { PayrollForm } from '@/components/folha/PayrollForm';
 import { PayrollReconciliationPanel } from '@/components/folha/PayrollReconciliationPanel';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency } from '@/lib/utils/formatters';
+import { isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
@@ -145,6 +146,7 @@ export default function FolhaPagamentoPage() {
     } catch (err) {
       reportError(err, { area: 'folha', op: 'salvar' });
       setError(err instanceof Error ? err.message : 'Erro ao contabilizar a folha de pagamento.');
+      if (isRegisterConflictError(err)) reload();
     } finally {
       setSaving(false);
     }
@@ -161,6 +163,7 @@ export default function FolhaPagamentoPage() {
     } catch (err) {
       reportError(err, { area: 'folha', op: 'excluir' });
       setError(err instanceof Error ? err.message : 'Erro ao excluir a folha de pagamento.');
+      if (isRegisterConflictError(err)) reload();
     } finally {
       setSaving(false);
     }

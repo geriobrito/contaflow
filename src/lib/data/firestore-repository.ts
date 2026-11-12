@@ -36,6 +36,7 @@ import type {
   PayrollRegister,
   InvoiceSummary,
   PrepaidRegister,
+  JournalCounter,
   JournalEntry,
   LockState,
   OpeningBalances,
@@ -43,7 +44,15 @@ import type {
   PeriodLock,
   PeriodSnapshot,
 } from '@/types/firestore';
-import type { ChangeSet, DataRepository, DateRange, FixedAssetJournalChange, JournalEntryDraft } from '@/lib/data/repository';
+import {
+  type ChangeSet,
+  type DataRepository,
+  type DateRange,
+  type FixedAssetJournalChange,
+  type JournalEntryDraft,
+  type RegisterSaveOptions,
+  resolveNextRegisterVersion,
+} from '@/lib/data/repository';
 // Leituras contadas para o medidor da cota diária (ver read-meter.ts).
 import { getCountFromServer, getDoc, getDocs } from '@/lib/data/counted-reads';
 import { addReads } from '@/lib/data/read-meter';
@@ -58,7 +67,7 @@ import {
   nextLockStateOnYearClose,
   prepareProtectedSave,
 } from '@/lib/lock-guard';
-import { rethrowPermissionDenied } from '@/lib/utils/errors';
+import { isPermissionDenied, isRegisterConflictError, rethrowPermissionDenied } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 export const COL = {
@@ -232,34 +241,118 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
   const txFrom = (d: { id: string; data: () => DocumentData }) => ({ ...(d.data() as BankTransaction), id: d.id });
 
   /**
-   * Cadastro de um documento por cliente (imobilizado, despesas antecipadas) gravado com a
-   * auditoria e, se houver, o lançamento a criar (com o próximo número) e/ou a excluir, tudo junto.
+   * Cadastro de um documento por cliente gravado dentro de transação com:
+   * - validação otimista da versão/updatedAt (evita lost update entre abas/usuários);
+   * - registro de auditoria obrigatório;
+   * - criação (com próximo número), substituição in-place (`replace`) e/ou exclusão de lançamentos.
    */
-  async function saveRegister(name: string, register: { clientId: string }, audit: AuditEntry, journal: FixedAssetJournalChange): Promise<JournalEntry | null> {
+  async function saveRegister(
+    name: string,
+    register: { clientId: string; version?: number },
+    audit: AuditEntry,
+    journal: FixedAssetJournalChange,
+    options?: RegisterSaveOptions
+  ): Promise<JournalEntry | null> {
     const ref = doc(db, name, register.clientId);
+    const deleteIds = Array.from(
+      new Set([...(journal.deleteId ? [journal.deleteId] : []), ...(journal.deleteIds ?? [])])
+    );
     // Itens aninhados: campos `undefined` saem pelo JSON (o Firestore os recusa).
-    const data = stamp(JSON.parse(JSON.stringify({ ...register, id: register.clientId })) as object);
-    const removed = journal.deleteId ? doc(db, COL.journalEntries, journal.deleteId) : null;
-    if (journal.create) {
-      return createJournalWith(journal.create, audit, (t) => {
-        t.set(ref, data);
-        if (removed) t.delete(removed);
-      });
+    const rawBase = JSON.parse(JSON.stringify({ ...register, id: register.clientId })) as Record<string, unknown>;
+    if (journal.create) assertValidJournalEntry(journal.create);
+    if (journal.replace) assertValidJournalEntry(journal.replace.draft);
+
+    const counterRef = journal.create || journal.replace ? doc(db, COL.journalCounters, register.clientId) : null;
+    const replaceRef = journal.replace ? doc(db, COL.journalEntries, journal.replace.id) : null;
+
+    let seed = 0;
+    if (counterRef && !(await getDoc(counterRef)).exists()) {
+      const snap = await getDocs(scoped(COL.journalEntries, where('clientId', '==', register.clientId)));
+      seed = snap.docs.reduce((max, d) => Math.max(max, Number(d.data().entryNumber) || 0), 0);
     }
-    const b = writeBatch(db);
-    b.set(ref, data);
-    if (removed) b.delete(removed);
-    auditWrite(audit)(b);
-    await b.commit();
-    return null;
+
+    try {
+      for (let attempt = 1; ; attempt++) {
+        let seenCounter: number | null = null;
+        try {
+          return await runTransaction(db, async (t) => {
+            // Todas as leituras antes de qualquer escrita (exigência do Firestore).
+            const regSnap = await t.get(ref);
+            addReads(1);
+            const replaceSnap = replaceRef ? await t.get(replaceRef) : null;
+            if (replaceRef) addReads(1);
+            const needCounter = Boolean(journal.create) || Boolean(journal.replace && !replaceSnap?.exists());
+            const counterSnap = needCounter && counterRef ? await t.get(counterRef) : null;
+            if (counterSnap) addReads(1);
+
+            const nextVersion = resolveNextRegisterVersion(
+              register,
+              regSnap.exists() ? regSnap.data() : null,
+              options
+            );
+            const data = stamp({ ...rawBase, version: nextVersion });
+
+            let nextNumber: number | null = null;
+            if (needCounter && counterRef) {
+              seenCounter = counterSnap?.exists() ? Number(counterSnap.data().last) || 0 : null;
+              nextNumber = (seenCounter ?? seed) + 1;
+              t.set(counterRef, stamp({ id: register.clientId, clientId: register.clientId, last: nextNumber }));
+            }
+
+            let createdOrReplaced: JournalEntry | null = null;
+            if (journal.create && nextNumber !== null) {
+              const entry: JournalEntry = { ...journal.create, entryNumber: nextNumber };
+              t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
+              createdOrReplaced = entry;
+            }
+            if (journal.replace && replaceRef) {
+              if (replaceSnap?.exists()) {
+                const prev = replaceSnap.data() as JournalEntry;
+                const updated: JournalEntry = {
+                  ...journal.replace.draft,
+                  id: journal.replace.id,
+                  entryNumber: Number(prev.entryNumber),
+                  ...(prev.createdAt ? { createdAt: prev.createdAt } : {}),
+                  ...(prev.createdByUid ? { createdByUid: prev.createdByUid } : {}),
+                };
+                t.set(replaceRef, stamp(updated));
+                createdOrReplaced = updated;
+              } else if (nextNumber !== null) {
+                const created: JournalEntry = {
+                  ...journal.replace.draft,
+                  id: journal.replace.id,
+                  entryNumber: nextNumber,
+                };
+                t.set(replaceRef, stamp(created));
+                createdOrReplaced = created;
+              }
+            }
+
+            t.set(ref, data);
+            for (const id of deleteIds) t.delete(doc(db, COL.journalEntries, id));
+            t.set(doc(db, COL.audit, audit.id), auditData(audit));
+            return createdOrReplaced;
+          });
+        } catch (err) {
+          if (isRegisterConflictError(err) || isPermissionDenied(err) || !counterRef) throw err;
+          const current = await getDoc(counterRef);
+          const now = current.exists() ? Number(current.data().last) || 0 : null;
+          if (now === seenCounter || attempt >= JOURNAL_NUMBER_ATTEMPTS) throw err;
+        }
+      }
+    } catch (err) {
+      if (deleteIds.length > 0) {
+        rethrowPermissionDenied(err, 'Somente administradores podem excluir lançamentos do Diário.');
+      }
+      throw err;
+    }
   }
 
   /**
    * Grava um lançamento manual novo com o próximo número da sequência do cliente e, na mesma
-   * transação, o registro de auditoria e as escritas de `extra` (ex.: o cadastro do imobilizado
-   * na baixa de um bem).
+   * transação, o registro de auditoria e as escritas de `extra`.
    */
-  async function createJournalWith(draft: JournalEntryDraft, audit?: AuditEntry, extra?: (t: Transaction) => void): Promise<JournalEntry> {
+  async function createJournalWith(draft: JournalEntryDraft, audit: AuditEntry, extra?: (t: Transaction) => void): Promise<JournalEntry> {
     assertValidJournalEntry(draft);
     const counterRef = doc(db, COL.journalCounters, draft.clientId);
     // Cliente ainda sem contador: a sequência parte do maior número já usado. A consulta
@@ -280,11 +373,12 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
           const entry: JournalEntry = { ...draft, entryNumber: (seen ?? seed) + 1 };
           t.set(counterRef, stamp({ id: draft.clientId, clientId: draft.clientId, last: entry.entryNumber }));
           t.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
-          if (audit) t.set(doc(db, COL.audit, audit.id), auditData(audit));
+          t.set(doc(db, COL.audit, audit.id), auditData(audit));
           extra?.(t);
           return entry;
         });
       } catch (err) {
+        if (isPermissionDenied(err)) throw err;
         // Se outro usuário avançou o contador entre a leitura e a gravação, as regras recusam
         // o número repetido (em vez de a transação repetir sozinha). Só nesse caso tenta de
         // novo; qualquer outra recusa (ex.: competência fechada) sobe ao chamador.
@@ -730,6 +824,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
         .map((d) => ({ ...(d.data() as JournalEntry), id: d.id }))
         .sort((a, b) => b.date.localeCompare(a.date) || b.entryNumber - a.entryNumber);
     },
+    async getJournalCounter(clientId) {
+      const snap = await getDoc(doc(db, COL.journalCounters, clientId));
+      return snap.exists() ? ({ ...(snap.data() as JournalCounter), id: snap.id }) : null;
+    },
     async createJournalEntry(draft, audit) {
       return createJournalWith(draft, audit);
     },
@@ -737,14 +835,18 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       assertValidJournalEntry(entry);
       const b = writeBatch(db);
       b.set(doc(db, COL.journalEntries, entry.id), stamp(entry));
-      if (audit) auditWrite(audit)(b);
+      auditWrite(audit)(b);
       await b.commit();
     },
     async deleteJournalEntry(entryId, audit) {
       const b = writeBatch(db);
       b.delete(doc(db, COL.journalEntries, entryId));
-      if (audit) auditWrite(audit)(b);
-      await b.commit();
+      auditWrite(audit)(b);
+      try {
+        await b.commit();
+      } catch (err) {
+        rethrowPermissionDenied(err, 'Somente administradores podem excluir lançamentos do Diário.');
+      }
     },
 
     /* ── Encerramento do exercício ────────────────────────────────────── */
@@ -835,8 +937,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.fixedAssets, clientId));
       return snap.exists() ? ({ ...(snap.data() as FixedAssetRegister), id: snap.id }) : null;
     },
-    async saveFixedAssets(register, audit, journal = {}) {
-      return saveRegister(COL.fixedAssets, register, audit, journal);
+    async saveFixedAssets(register, audit, journal = {}, options) {
+      return saveRegister(COL.fixedAssets, register, audit, journal, options);
     },
 
     /* ── Despesas antecipadas ─────────────────────────────────────────── */
@@ -844,8 +946,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.prepaid, clientId));
       return snap.exists() ? ({ ...(snap.data() as PrepaidRegister), id: snap.id }) : null;
     },
-    async savePrepaidExpenses(register, audit, journal = {}) {
-      return saveRegister(COL.prepaid, register, audit, journal);
+    async savePrepaidExpenses(register, audit, journal = {}, options) {
+      return saveRegister(COL.prepaid, register, audit, journal, options);
     },
 
     /* ── Empréstimos, financiamentos e parcelamentos ─────────────────── */
@@ -853,8 +955,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.financing, clientId));
       return snap.exists() ? ({ ...(snap.data() as FinancingRegister), id: snap.id }) : null;
     },
-    async saveFinancingContracts(register, audit, journal = {}) {
-      return saveRegister(COL.financing, register, audit, journal);
+    async saveFinancingContracts(register, audit, journal = {}, options) {
+      return saveRegister(COL.financing, register, audit, journal, options);
     },
 
     /* ── Aplicações financeiras ──────────────────────────────────────── */
@@ -862,8 +964,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.investments, clientId));
       return snap.exists() ? ({ ...(snap.data() as InvestmentRegister), id: snap.id }) : null;
     },
-    async saveInvestments(register, audit) {
-      return saveRegister(COL.investments, register, audit, {});
+    async saveInvestments(register, audit, options) {
+      return saveRegister(COL.investments, register, audit, {}, options);
     },
 
     /* ── Estoque e CMV ───────────────────────────────────────────────── */
@@ -871,8 +973,8 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.stock, clientId));
       return snap.exists() ? ({ ...(snap.data() as StockControl), id: snap.id }) : null;
     },
-    async saveStockControl(control, audit) {
-      return saveRegister(COL.stock, control, audit, {});
+    async saveStockControl(control, audit, options) {
+      return saveRegister(COL.stock, control, audit, {}, options);
     },
 
     /* ── Folha de pagamento e pró-labore ─────────────────────────────── */
@@ -880,11 +982,15 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
       const snap = await getDoc(doc(db, COL.payroll, clientId));
       return snap.exists() ? ({ ...(snap.data() as PayrollRegister), id: snap.id }) : null;
     },
-    async savePayrollRegister(register, audit, journal = {}) {
-      return saveRegister(COL.payroll, register, audit, journal);
+    async savePayrollRegister(register, audit, journal = {}, options) {
+      return saveRegister(COL.payroll, register, audit, journal, options);
     },
 
     /* ── Checklist do fechamento ──────────────────────────────────────── */
+    async listClosingChecklists(clientId) {
+      const snap = await getDocs(scoped(COL.checklists, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as ClosingChecklist), id: d.id })).sort((a, b) => a.year.localeCompare(b.year));
+    },
     async getClosingChecklist(clientId, year) {
       const snap = await getDoc(doc(db, COL.checklists, `${clientId}_${year}`));
       return snap.exists() ? ({ ...(snap.data() as ClosingChecklist), id: snap.id }) : null;
@@ -896,6 +1002,10 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
     },
 
     /* ── Notas explicativas ───────────────────────────────────────────── */
+    async listExplanatoryNotes(clientId) {
+      const snap = await getDocs(scoped(COL.notes, where('clientId', '==', clientId)));
+      return snap.docs.map((d) => ({ ...(d.data() as ExplanatoryNotes), id: d.id })).sort((a, b) => a.year.localeCompare(b.year));
+    },
     async getExplanatoryNotes(clientId, year) {
       const snap = await getDoc(doc(db, COL.notes, `${clientId}_${year}`));
       return snap.exists() ? ({ ...(snap.data() as ExplanatoryNotes), id: snap.id }) : null;

@@ -6,6 +6,8 @@ import type {
   ClassificationRule,
   ClientCompany,
   ClientRequest,
+  ClosingChecklist,
+  ExplanatoryNotes,
   FinancingRegister,
   InvestmentRegister,
   StockControl,
@@ -14,7 +16,9 @@ import type {
   ImportBatch,
   PrepaidRegister,
   InvoiceSummary,
+  JournalCounter,
   JournalEntry,
+  LockState,
   OpeningBalances,
   PeriodLock,
 } from '@/types/firestore';
@@ -26,13 +30,16 @@ export const BACKUP_AUDIT_LIMIT = 20000;
 
 /**
  * Cópia completa dos dados de uma empresa num único arquivo JSON, para guarda fora do sistema
- * (antes de excluir a empresa, por exemplo). Leva tudo o que a exclusão apaga, mais a trilha
- * de auditoria; os saldos consolidados (`period_snapshots`) ficam de fora por serem um cache
- * recalculável. O plano de contas e as regras incluem os itens globais do escritório.
+ * (antes de excluir a empresa, por exemplo). Leva tudo o que a exclusão apaga, mais os termos/notas,
+ * contadores e trilha de auditoria; os saldos consolidados (`period_snapshots`) ficam de fora por
+ * serem um cache recalculável. O plano de contas e as regras incluem os itens globais do escritório.
+ *
+ * `version: 2` adiciona `closingChecklists`, `explanatoryNotes`, `lockState` e `journalCounter`.
+ * Arquivos `version: 1` continuam aceitos na restauração.
  */
 export interface ClientBackup {
   format: 'contaflow-backup';
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   client: ClientCompany;
   accounts: ChartAccount[];
@@ -42,7 +49,9 @@ export interface ClientBackup {
   importBatches: ImportBatch[];
   transactions: BankTransaction[];
   journalEntries: JournalEntry[];
+  journalCounter?: JournalCounter | null;
   periodLocks: PeriodLock[];
+  lockState?: LockState | null;
   clientRequests: ClientRequest[];
   /** Resumos das notas fiscais importadas (os XML não são guardados). */
   invoices: InvoiceSummary[];
@@ -58,6 +67,10 @@ export interface ClientBackup {
   stockControl: StockControl | null;
   /** Controle da folha de pagamento (ausente em backups anteriores a ele). */
   payrollRegister?: PayrollRegister | null;
+  /** Checklists de fechamento do exercício por ano (presente a partir da versão 2). */
+  closingChecklists?: ClosingChecklist[];
+  /** Notas explicativas por exercício (presente a partir da versão 2). */
+  explanatoryNotes?: ExplanatoryNotes[];
   /** Mais recentes primeiro. */
   audit: AuditEntry[];
   /** A trilha tem mais registros do que o teto do backup: os mais antigos ficaram de fora. */
@@ -71,29 +84,54 @@ export async function buildClientBackup(
   exportedAt: string = new Date().toISOString()
 ): Promise<ClientBackup> {
   const id = client.id;
-  const [accounts, rules, bankAccounts, openingBalances, importBatches, transactions, journalEntries, periodLocks, clientRequests, invoices, fixedAssets, prepaidExpenses, financingContracts, investments, stockControl, payrollRegister, audit] =
-    await Promise.all([
-      repo.listAccounts(id),
-      repo.listRules(id),
-      repo.listBankAccounts(id),
-      repo.getOpeningBalances(id),
-      repo.listImportBatches(id),
-      repo.listTransactions(id),
-      repo.listJournalEntries(id),
-      repo.listPeriodLocks(id),
-      repo.listClientRequests(id),
-      repo.listInvoices(id),
-      repo.getFixedAssets(id),
-      repo.getPrepaidExpenses(id),
-      repo.getFinancingContracts(id),
-      repo.getInvestments(id),
-      repo.getStockControl(id),
-      repo.getPayrollRegister(id),
-      repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
-    ]);
+  const [
+    accounts,
+    rules,
+    bankAccounts,
+    openingBalances,
+    importBatches,
+    transactions,
+    journalEntries,
+    journalCounter,
+    periodLocks,
+    lockState,
+    clientRequests,
+    invoices,
+    fixedAssets,
+    prepaidExpenses,
+    financingContracts,
+    investments,
+    stockControl,
+    payrollRegister,
+    closingChecklists,
+    explanatoryNotes,
+    audit,
+  ] = await Promise.all([
+    repo.listAccounts(id),
+    repo.listRules(id),
+    repo.listBankAccounts(id),
+    repo.getOpeningBalances(id),
+    repo.listImportBatches(id),
+    repo.listTransactions(id),
+    repo.listJournalEntries(id),
+    repo.getJournalCounter(id),
+    repo.listPeriodLocks(id),
+    repo.getLockState(id),
+    repo.listClientRequests(id),
+    repo.listInvoices(id),
+    repo.getFixedAssets(id),
+    repo.getPrepaidExpenses(id),
+    repo.getFinancingContracts(id),
+    repo.getInvestments(id),
+    repo.getStockControl(id),
+    repo.getPayrollRegister(id),
+    repo.listClosingChecklists(id),
+    repo.listExplanatoryNotes(id),
+    repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
+  ]);
   return {
     format: 'contaflow-backup',
-    version: 1,
+    version: 2,
     exportedAt,
     client,
     accounts,
@@ -103,7 +141,9 @@ export async function buildClientBackup(
     importBatches,
     transactions,
     journalEntries,
+    journalCounter,
     periodLocks,
+    lockState,
     clientRequests,
     invoices,
     fixedAssets,
@@ -112,6 +152,8 @@ export async function buildClientBackup(
     investments,
     stockControl,
     payrollRegister,
+    closingChecklists,
+    explanatoryNotes,
     audit,
     auditTruncated: audit.length >= BACKUP_AUDIT_LIMIT,
   };
