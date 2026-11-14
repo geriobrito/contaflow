@@ -17,8 +17,8 @@ const firebase = (uidByToken: Record<string, string> = { 'token-ok': 'uid-1' }):
 function setup(overrides: Partial<CnpjHandlerOptions> = {}) {
   const lookup = vi.fn(async () => FOUND);
   const GET = createCnpjHandler({ auth: firebase(), lookup, ...overrides });
-  const call = (token?: string, cnpj = CNPJ) =>
-    GET(new Request(`http://localhost/api/cnpj/${cnpj}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}), {
+  const call = (token?: string, cnpj = CNPJ, query = '') =>
+    GET(new Request(`http://localhost/api/cnpj/${cnpj}${query}`, token ? { headers: { Authorization: `Bearer ${token}` } } : {}), {
       params: Promise.resolve({ cnpj }),
     });
   return { call, lookup };
@@ -45,12 +45,12 @@ describe('GET /api/cnpj/[cnpj]', () => {
     expect((await call('token-ok')).status).toBe(200);
   });
 
-  it('tudo certo → 200 com os dados, cache só no navegador (private)', async () => {
+  it('tudo certo → 200 com os dados; o navegador não guarda a resposta', async () => {
     const { call } = setup();
     const res = await call('token-ok');
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ cnpj: CNPJ, name: 'EMPRESA TESTE LTDA' });
-    expect(res.headers.get('Cache-Control')).toBe('private, max-age=86400');
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
   });
 
   it('CNPJ inválido → 400, sem contar no limite', async () => {
@@ -79,6 +79,16 @@ describe('GET /api/cnpj/[cnpj]', () => {
     await call('token-ok');
     expect(lookup).toHaveBeenCalledTimes(1);
     now += 1001;
+    await call('token-ok');
+    expect(lookup).toHaveBeenCalledTimes(2);
+  });
+
+  it('"Atualizar pela Receita" (?atualizar=1) passa por cima do cache em memória', async () => {
+    const { call, lookup } = setup();
+    await call('token-ok');
+    await call('token-ok', CNPJ, '?atualizar=1');
+    expect(lookup).toHaveBeenCalledTimes(2);
+    // A resposta nova fica no cache para as consultas seguintes.
     await call('token-ok');
     expect(lookup).toHaveBeenCalledTimes(2);
   });

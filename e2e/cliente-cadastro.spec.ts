@@ -103,3 +103,61 @@ test('cadastro com cartão CNPJ, QSA, CEP e cliente desde; tudo editável e pres
   await expect(edit.getByLabel('Nome / razão social').nth(1)).toHaveValue('BRUNO SOCIO');
   expect(errors).toEqual([]);
 });
+
+test('"Atualizar pela Receita" em cliente antigo traz endereço com CEP, CNAEs e QSA', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // Cadastro de antes do cartão CNPJ: só os campos simples, já iguais aos da Receita.
+  const old = {
+    id: 'c-tech',
+    orgId: 'local',
+    name: RECEITA.name,
+    tradeName: RECEITA.tradeName,
+    cnpj: '11.222.333/0001-81',
+    city: RECEITA.city,
+    regime: 'SIMPLES_NACIONAL',
+    porte: 'MICROENTIDADE',
+    legalRepresentativeName: RECEITA.legalRepresentativeName,
+    activity: RECEITA.activity,
+    createdAt: '',
+    updatedAt: '',
+  };
+  await page.addInitScript((client) => {
+    if (sessionStorage.getItem('seeded')) return;
+    localStorage.setItem('contaflow_clients', JSON.stringify([client]));
+    sessionStorage.setItem('seeded', '1');
+  }, old);
+  let refreshQuery = '';
+  await page.route('**/api/cnpj/**', (route) => {
+    refreshQuery = new URL(route.request().url()).search;
+    return route.fulfill({ json: RECEITA });
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Usar credenciais de teste local' }).click();
+  await page.getByRole('button', { name: 'Entrar' }).click();
+  await page.waitForURL('**/painel');
+  await page.goto('/clientes');
+
+  await page.getByRole('button', { name: 'Editar TECH SOLUCOES LTDA' }).click();
+  const sheet = page.getByRole('dialog');
+  await sheet.getByRole('button', { name: 'Atualizar pela Receita' }).click();
+  await expect(sheet.getByText(/Atualizado pela Receita: endereço com CEP, CNAE principal e 1 secundário\(s\), 2 sócio\(s\) no QSA, situação ATIVA/)).toBeVisible();
+  // Pede dados novos: nem o cache do servidor.
+  expect(refreshQuery).toBe('?atualizar=1');
+
+  await sheet.getByRole('radio', { name: 'Endereço' }).click();
+  await expect(sheet.getByLabel('CEP')).toHaveValue('51020-000');
+  await expect(sheet.getByLabel('Logradouro')).toHaveValue('RUA DAS FLORES');
+  await sheet.getByRole('radio', { name: /Cartão CNPJ · ATIVA/ }).click();
+  await expect(sheet.getByRole('textbox', { name: 'Código' }).nth(1)).toHaveValue('62.01-5-01');
+  await expect(sheet.getByText('Atividades econômicas secundárias (1)')).toBeVisible();
+  await sheet.getByRole('radio', { name: /Sócios \(QSA\) · 2/ }).click();
+  await expect(sheet.getByLabel('Nome / razão social').first()).toHaveValue('ANA ADMINISTRADORA');
+
+  await sheet.getByRole('button', { name: 'Salvar alterações' }).click();
+  await page.getByRole('button', { name: 'Editar TECH SOLUCOES LTDA' }).click();
+  await page.getByRole('dialog').getByRole('radio', { name: /Sócios \(QSA\) · 2/ }).click();
+  await expect(page.getByRole('dialog').getByLabel('Nome / razão social').nth(1)).toHaveValue('BRUNO SOCIO');
+  expect(errors).toEqual([]);
+});

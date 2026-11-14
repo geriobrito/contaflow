@@ -105,9 +105,13 @@ export function createCnpjHandler(options: CnpjHandlerOptions) {
       return json({ error: 'Muitas consultas de CNPJ em pouco tempo. Aguarde e tente de novo.' }, 429, { 'Retry-After': String(retryAfter) });
     }
 
-    const headers = { 'Cache-Control': 'private, max-age=86400' };
+    // O navegador não guarda a resposta: um cadastro consultado antes viria sem os campos novos
+    // (cartão CNPJ, QSA) ou desatualizado. O cache fica só aqui, e "Atualizar pela Receita"
+    // (`?atualizar=1`) passa por cima dele para trazer a situação de hoje.
+    const headers = { 'Cache-Control': 'private, no-store' };
+    const refresh = new URL(request.url).searchParams.get('atualizar') === '1';
     const hit = cache.get(cnpj);
-    if (hit && hit.expiresAt > now()) return json(hit.data, 200, headers);
+    if (!refresh && hit && hit.expiresAt > now()) return json(hit.data, 200, headers);
     cache.delete(cnpj);
 
     const outcome = await options.lookup(cnpj);

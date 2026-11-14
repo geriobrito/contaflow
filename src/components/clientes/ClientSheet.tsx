@@ -11,10 +11,9 @@ import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
-import { useCnpjLookup } from '@/hooks/clientes/useCnpjLookup';
+import { useCnpjLookup, type CardMode } from '@/hooks/clientes/useCnpjLookup';
 import { useCepLookup } from '@/hooks/clientes/useCepLookup';
 import { ACTIVITY_MAX, formatCityUF } from '@/lib/cnpj';
-import { formatAddress } from '@/lib/cnpj-card';
 import { maskCEP } from '@/lib/cep';
 import { BUTTON, Field, INPUT, SegmentedControl, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 import { PORTES, REGIMES } from '@/components/clientes/options';
@@ -86,8 +85,8 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     if (cityUf && !city.trim()) setCity(cityUf);
   };
 
-  /** Grava no formulário os campos vindos da Receita (já conferidos por `reviewLookup`), com o cartão e o QSA. */
-  const applyFields = (fields: Partial<ClientFormFields>, data: CNPJLookupResult) => {
+  /** Grava no formulário os campos digitáveis vindos da Receita (já conferidos por `reviewLookup`). */
+  const applyFields = (fields: Partial<ClientFormFields>) => {
     if (fields.name !== undefined) setName(fields.name);
     if (fields.tradeName !== undefined) setTradeName(fields.tradeName);
     if (fields.city !== undefined) setCity(fields.city);
@@ -97,8 +96,15 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     if (fields.activity !== undefined) setActivity(fields.activity);
     if (fields.regime) setRegime(fields.regime);
     if (fields.porte) setPorte(fields.porte);
-    if (fields.address !== undefined && data.address) takeAddress({ ...data.address }, true);
-    // O cartão e o QSA espelham a Receita: chegam inteiros a cada consulta aceita.
+  };
+
+  /**
+   * Endereço, cartão CNPJ e QSA espelham a Receita: chegam inteiros. Num CNPJ novo, o endereço
+   * só entra se ainda estiver vazio; no "Atualizar pela Receita", troca o que estiver.
+   */
+  const applyCard = (data: CNPJLookupResult, mode: CardMode) => {
+    const addressEmpty = !address.street && !address.cep && !cleanDigits(cep);
+    if (data.address && (mode === 'replace' || addressEmpty)) takeAddress({ ...data.address }, true);
     if (data.registration) setRegistration({ ...data.registration, fetchedAt: new Date().toISOString() });
     if (data.partners) setPartners(data.partners);
   };
@@ -107,8 +113,9 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
     cnpj: cnpjChars,
     valid: cnpjValid,
     savedCnpj: client ? cleanCNPJ(client.cnpj) : null,
-    getForm: () => ({ name, tradeName, city, email, phone, legalRepresentativeName: repName, activity, regime, porte, address: formatAddress(address) }),
+    getForm: () => ({ name, tradeName, city, email, phone, legalRepresentativeName: repName, activity, regime, porte }),
     apply: applyFields,
+    applyCard,
   });
 
   const cepLookup = useCepLookup({
