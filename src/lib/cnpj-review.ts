@@ -2,6 +2,7 @@ import type { CompanyPorte, TaxRegime } from '@/types/firestore';
 import type { CNPJLookupResult } from '@/lib/cnpj';
 import { sameCompany } from '@/lib/company-name';
 import { textKey } from '@/lib/payee';
+import { formatAddress } from '@/lib/cnpj-card';
 
 /**
  * O que fazer com a resposta da Receita no cadastro de cliente, antes de tocar no formulário:
@@ -18,6 +19,8 @@ export interface ClientFormFields {
   activity: string;
   regime: TaxRegime;
   porte: CompanyPorte;
+  /** Endereço da sede numa linha (só para comparar com a Receita; o formulário guarda os campos). */
+  address?: string;
 }
 
 export type ClientField = keyof ClientFormFields;
@@ -32,6 +35,7 @@ export const FIELD_LABEL: Record<ClientField, string> = {
   activity: 'Atividade principal',
   regime: 'Regime',
   porte: 'Porte',
+  address: 'Endereço',
 };
 
 /** Campo que vai mudar: valor atual e o da Receita (regime e porte em código). */
@@ -51,13 +55,13 @@ export type LookupReview =
   /** Atualização pedida pelo botão, e o cadastro já está igual ao da Receita. */
   | { kind: 'unchanged' };
 
-const TEXT_FIELDS = ['name', 'tradeName', 'city', 'email', 'phone', 'legalRepresentativeName', 'activity'] as const;
+const TEXT_FIELDS = ['name', 'tradeName', 'city', 'email', 'phone', 'legalRepresentativeName', 'activity', 'address'] as const;
 
 /** Valores que a Receita informou, por campo do formulário. */
 function receitaFields(data: CNPJLookupResult): Partial<ClientFormFields> {
   const out: Partial<ClientFormFields> = {};
   for (const f of TEXT_FIELDS) {
-    const v = data[f]?.trim();
+    const v = (f === 'address' ? formatAddress(data.address) : data[f])?.trim();
     if (v) out[f] = v;
   }
   if (data.regime) out.regime = data.regime;
@@ -79,7 +83,7 @@ export function reviewLookup(form: ClientFormFields, data: CNPJLookupResult, ove
   if (overwrite) {
     const changes: FieldChange[] = [];
     for (const [field, to] of Object.entries(fromReceita) as [ClientField, string][]) {
-      const from = form[field].trim();
+      const from = (form[field] ?? '').trim();
       if (!sameValue(from, to)) changes.push({ field, from, to });
     }
     if (changes.length === 0) return { kind: 'unchanged' };
@@ -91,7 +95,7 @@ export function reviewLookup(form: ClientFormFields, data: CNPJLookupResult, ove
   }
   // Sem conflito: textos só onde está vazio; regime e porte vêm da Receita.
   const fields: Partial<ClientFormFields> = {};
-  for (const f of TEXT_FIELDS) if (fromReceita[f] && !form[f].trim()) fields[f] = fromReceita[f];
+  for (const f of TEXT_FIELDS) if (fromReceita[f] && !(form[f] ?? '').trim()) fields[f] = fromReceita[f];
   if (fromReceita.regime) fields.regime = fromReceita.regime;
   if (fromReceita.porte) fields.porte = fromReceita.porte;
   return { kind: 'apply', fields };

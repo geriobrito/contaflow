@@ -2024,3 +2024,23 @@ describe('gestão do escritório e resumos da DRE', () => {
     expect(second.transactions).toEqual([]);
   });
 });
+
+describe('cadastro da empresa: cartão CNPJ, endereço, QSA e cliente desde', () => {
+  it('aceita os dados completos e recusa formatos inválidos', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    const full = {
+      ...client('cA', ORG_A),
+      clientSince: '2020-05-01',
+      address: { cep: '51020000', street: 'Rua A', number: '1', district: 'Centro', municipality: 'Recife', uf: 'PE' },
+      registration: { branch: 'MATRIZ', openedAt: '2015-03-10', status: 'ATIVA', secondaryActivities: [{ code: '62.02-3-00', description: 'X' }], simples: { optant: true } },
+      partners: [{ name: 'ANA', document: '***.123.456-**', role: 'Sócio-Administrador', since: '2015-03-10' }],
+    };
+    await repo.saveClient(full as never);
+    expect((await repo.listClients()).find((c) => c.id === 'cA')).toMatchObject({ clientSince: '2020-05-01', partners: [{ name: 'ANA' }] });
+    const db = asUser('alice');
+    await assertFails(updateDoc(doc(db, 'clients/cA'), { clientSince: '01/05/2020' }));
+    await assertFails(updateDoc(doc(db, 'clients/cA'), { partners: 'ANA' }));
+    await assertFails(updateDoc(doc(db, 'clients/cA'), { partners: Array.from({ length: 301 }, (_, i) => ({ name: `S${i}` })) }));
+    await assertSucceeds(updateDoc(doc(db, 'clients/cA'), { clientSince: '2021-01-31' }));
+  });
+});

@@ -166,6 +166,16 @@ service cloud.firestore {
       return !('activity' in data) || (data.activity is string && data.activity.size() <= 300);
     }
 
+    // Cartão CNPJ, endereço, QSA e "cliente desde" (src/types/firestore/core.ts): formatos e tetos.
+    function validClientCard(data) {
+      return (!('clientSince' in data) || (data.clientSince is string && data.clientSince.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && (!('address' in data) || (data.address is map && data.address.size() <= 7))
+        && (!('partners' in data) || (data.partners is list && data.partners.size() <= 300))
+        && (!('registration' in data) || (data.registration is map
+            && (!('secondaryActivities' in data.registration)
+                || (data.registration.secondaryActivities is list && data.registration.secondaryActivities.size() <= 300))));
+    }
+
     match /clients/{clientId} {
       // Ler id ainda inexistente permite ao saveClient saber se está criando (com lock_state) ou atualizando.
       allow get: if (resource == null && hasProfile()) || isMine(resource.data);
@@ -174,10 +184,12 @@ service cloud.firestore {
       allow create: if isMine(request.resource.data)
         && existsAfter(lockStatePath(clientId))
         && validDaybook(request.resource.data)
-        && validActivity(request.resource.data);
+        && validActivity(request.resource.data)
+        && validClientCard(request.resource.data);
       allow update: if isMine(resource.data) && unchanged('orgId')
         && validDaybook(request.resource.data)
-        && validActivity(request.resource.data);
+        && validActivity(request.resource.data)
+        && validClientCard(request.resource.data);
     }
 
     // ── Dados vinculados a uma empresa ───────────────────────────────────

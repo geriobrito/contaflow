@@ -15,6 +15,78 @@ export interface ClientDaybookInfo {
   registry?: string;
 }
 
+/** Endereço da sede (cartão CNPJ ou consulta do CEP). */
+export interface CompanyAddress {
+  /** CEP só com dígitos (8). */
+  cep?: string;
+  /** Logradouro com o tipo (ex.: "Rua das Flores"). */
+  street?: string;
+  number?: string;
+  complement?: string;
+  district?: string;
+  /** Município, como na Receita/Correios (ex.: "Recife"). */
+  municipality?: string;
+  uf?: string;
+}
+
+/** Código e descrição (CNAE, natureza jurídica). */
+export interface CodeDescription {
+  code: string;
+  description: string;
+}
+
+/**
+ * Dados do Comprovante de Inscrição e de Situação Cadastral (cartão CNPJ), além dos que já são
+ * campos próprios do cadastro (razão social, nome fantasia, endereço, e-mail, telefone, porte).
+ */
+export interface CompanyRegistration {
+  branch?: 'MATRIZ' | 'FILIAL';
+  /** Data de abertura (YYYY-MM-DD). */
+  openedAt?: string;
+  legalNature?: CodeDescription;
+  mainActivity?: CodeDescription;
+  secondaryActivities?: CodeDescription[];
+  /** Porte como a Receita descreve (ex.: "MICRO EMPRESA"). */
+  sizeLabel?: string;
+  /** Ente federativo responsável (só órgãos públicos). */
+  efr?: string;
+  /** Situação cadastral (ex.: "ATIVA"), a data e o motivo. */
+  status?: string;
+  statusDate?: string;
+  statusReason?: string;
+  specialStatus?: string;
+  specialStatusDate?: string;
+  /** Capital social (R$). */
+  shareCapital?: number;
+  /** Segundo telefone do cartão. */
+  phone2?: string;
+  /** Opção pelo Simples Nacional e pelo SIMEI, com as datas (YYYY-MM-DD). */
+  simples?: { optant: boolean; since?: string; until?: string };
+  mei?: { optant: boolean; since?: string; until?: string };
+  /** Quando e de onde veio a última consulta (ISO; provedor). */
+  fetchedAt?: string;
+  source?: 'brasilapi' | 'cnpjws' | 'manual';
+}
+
+/** Sócio ou administrador do Quadro de Sócios e Administradores (QSA). */
+export interface CompanyPartner {
+  name: string;
+  /** CPF (a Receita mascara: ***.123.456-**) ou CNPJ do sócio. */
+  document?: string;
+  /** Qualificação (ex.: "Sócio-Administrador") e o código dela na Receita. */
+  role?: string;
+  roleCode?: string;
+  /** Data de entrada na sociedade (YYYY-MM-DD). */
+  since?: string;
+  ageRange?: string;
+  /** País, para sócio estrangeiro. */
+  country?: string;
+  /** Representante legal do sócio (menor, incapaz ou estrangeiro). */
+  representativeName?: string;
+  representativeDocument?: string;
+  representativeRole?: string;
+}
+
 export interface ClientCompany {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
@@ -39,6 +111,14 @@ export interface ClientCompany {
   /** Representante legal / administrador que assina as demonstrações. */
   legalRepresentativeName?: string;
   legalRepresentativeCpf?: string;
+  /** Cliente do escritório desde (YYYY-MM-DD). */
+  clientSince?: string;
+  /** Endereço da sede. `city` segue como Município/UF dos termos contábeis. */
+  address?: CompanyAddress;
+  /** Demais dados do cartão CNPJ. */
+  registration?: CompanyRegistration;
+  /** Quadro de sócios e administradores. */
+  partners?: CompanyPartner[];
   /** Dados dos termos do Livro Diário, gravados pela tela do Diário (não pelo formulário de Clientes). */
   daybook?: ClientDaybookInfo;
   /**

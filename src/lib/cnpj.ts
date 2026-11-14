@@ -1,7 +1,9 @@
 import type { CompanyPorte, TaxRegime } from '@/types/firestore';
 import { cleanCNPJ, cleanDigits } from '@/lib/utils/formatters';
+import { brasilApiCard, cnpjWsCard, type CnpjCard } from '@/lib/cnpj-card';
 
-export interface CNPJLookupResult {
+/** Campos simples do cadastro, mais o cartão CNPJ completo e o QSA (`CnpjCard`). */
+export interface CNPJLookupResult extends Partial<CnpjCard> {
   cnpj: string;
   name: string;
   tradeName?: string;
@@ -158,6 +160,7 @@ export function mapBrasilApiResponse(raw: unknown): CNPJLookupResult | null {
     ...(legalRepresentativeName ? { legalRepresentativeName } : {}),
     ...(activity ? { activity } : {}),
     ...(situacaoCadastral ? { situacaoCadastral } : {}),
+    ...brasilApiCard(raw),
     source: 'brasilapi',
   };
 }
@@ -230,6 +233,7 @@ export function mapCnpjWsResponse(raw: unknown): CNPJLookupResult | null {
     ...(legalRepresentativeName ? { legalRepresentativeName } : {}),
     ...(activity ? { activity } : {}),
     ...(situacaoCadastral ? { situacaoCadastral } : {}),
+    ...cnpjWsCard(raw),
     source: 'cnpjws',
   };
 }

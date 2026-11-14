@@ -15,6 +15,8 @@ export interface PendingLookup {
   review: Extract<LookupReview, { kind: 'other-company' | 'changes' }>;
   /** Situação cadastral fora de "ATIVA", para mostrar junto da pergunta. */
   inactiveStatus: string | null;
+  /** Resposta completa (cartão CNPJ e QSA), aplicada se o usuário aceitar. */
+  data: CNPJLookupResult;
 }
 
 interface Options {
@@ -26,8 +28,11 @@ interface Options {
   savedCnpj: string | null;
   /** Valores atuais do formulário, para comparar com a Receita. */
   getForm: () => ClientFormFields;
-  /** Grava no formulário os campos aceitos. */
-  apply: (fields: Partial<ClientFormFields>) => void;
+  /**
+   * Grava no formulário os campos aceitos e, com eles, o cartão CNPJ e o QSA de `data`
+   * (que espelham a Receita e não são digitados por cima).
+   */
+  apply: (fields: Partial<ClientFormFields>, data: CNPJLookupResult) => void;
 }
 
 const inactiveOf = (data: CNPJLookupResult): string | null => {
@@ -86,16 +91,18 @@ export function useCnpjLookup({ cnpj, valid, savedCnpj, getForm, apply }: Option
         const inactive = inactiveOf(data);
         const review = reviewLookup(getFormRef.current(), data, overwrite);
         if (review.kind === 'apply') {
-          applyRef.current(review.fields);
+          applyRef.current(review.fields, data);
           setNotice(filledNotice(inactive));
         } else if (review.kind === 'unchanged') {
+          // Campos iguais, mas o cartão (situação, sócios, CNAEs) pode ter mudado: atualiza.
+          applyRef.current({}, data);
           setNotice(
             inactive
               ? { kind: 'warn', text: `O cadastro já está igual ao da Receita · Atenção: situação cadastral "${inactive}".` }
               : { kind: 'ok', text: 'O cadastro já está igual ao da Receita.' }
           );
         } else {
-          setPending({ review, inactiveStatus: inactive });
+          setPending({ review, inactiveStatus: inactive, data });
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -124,7 +131,7 @@ export function useCnpjLookup({ cnpj, valid, savedCnpj, getForm, apply }: Option
 
   const acceptPending = useCallback(() => {
     if (!pending) return;
-    applyRef.current(pending.review.fields);
+    applyRef.current(pending.review.fields, pending.data);
     setPending(null);
     setNotice(
       pending.review.kind === 'changes'

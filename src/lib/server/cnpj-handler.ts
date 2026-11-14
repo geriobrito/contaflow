@@ -60,6 +60,25 @@ const bearer = (request: Request): string | null => {
 };
 
 /**
+ * Quem está consultando (uid, ou 'local' no modo local), ou a resposta de recusa. Compartilhado
+ * pelas consultas públicas do cadastro (CNPJ e CEP): só usuário logado do escritório.
+ */
+export async function authorizeLookup(request: Request, auth: CnpjAuth, allowed: ReadonlySet<string>, subject: 'CNPJ' | 'CEP'): Promise<string | Response> {
+  if (auth.kind === 'unavailable') return json({ error: `Consulta de ${subject} indisponível: Firebase não configurado no servidor.` }, 503);
+  if (auth.kind === 'local') return 'local';
+  const token = bearer(request);
+  if (!token) return json({ error: `Faça login para consultar o ${subject}.` }, 401);
+  let caller: string;
+  try {
+    caller = await auth.verify(token);
+  } catch {
+    return json({ error: `Sessão inválida ou expirada. Entre de novo para consultar o ${subject}.` }, 401);
+  }
+  if (allowed.size && !allowed.has(caller)) return json({ error: `Usuário sem permissão para consultar ${subject}.` }, 403);
+  return caller;
+}
+
+/**
  * Handler de `GET /api/cnpj/[cnpj]`: login → CNPJ válido → limite → cache → provedores.
  * A resposta é `private` (só o navegador guarda): uma CDN não pode servi-la sem passar pelo login.
  */
@@ -72,23 +91,9 @@ export function createCnpjHandler(options: CnpjHandlerOptions) {
   const cache = new Map<string, { data: CNPJLookupResult; expiresAt: number }>();
 
   return async function GET(request: Request, { params }: { params: Promise<{ cnpj: string }> }): Promise<Response> {
-    let caller: string;
-    if (options.auth.kind === 'unavailable') {
-      return json({ error: 'Consulta de CNPJ indisponível: Firebase não configurado no servidor.' }, 503);
-    } else if (options.auth.kind === 'local') {
-      caller = 'local';
-    } else {
-      const token = bearer(request);
-      if (!token) return json({ error: 'Faça login para consultar o CNPJ.' }, 401);
-      try {
-        caller = await options.auth.verify(token);
-      } catch {
-        return json({ error: 'Sessão inválida ou expirada. Entre de novo para consultar o CNPJ.' }, 401);
-      }
-      if (allowed.size && !allowed.has(caller)) {
-        return json({ error: 'Usuário sem permissão para consultar CNPJ.' }, 403);
-      }
-    }
+    const who = await authorizeLookup(request, options.auth, allowed, 'CNPJ');
+    if (who instanceof Response) return who;
+    const caller = who;
 
     const cnpj = cleanCNPJ((await params).cnpj);
     if (cnpj.length !== 14 || !isValidCNPJ(cnpj)) {

@@ -31,7 +31,7 @@ describe('consulta e mapeamento de CNPJ', () => {
       qsa: [{ nome_socio: 'MARIA DA SILVA', qualificacao_socio: 'Empresário' }],
     });
 
-    expect(mei).toEqual({
+    expect(mei).toMatchObject({
       cnpj: '11222333000181',
       name: 'MARIA SILVA CONFEITARIA',
       tradeName: 'DOCES DA MARIA',
@@ -85,7 +85,7 @@ describe('consulta e mapeamento de CNPJ', () => {
       },
     });
 
-    expect(mapped).toEqual({
+    expect(mapped).toMatchObject({
       cnpj: '11222333000181',
       name: 'COMERCIO ALFA LTDA',
       tradeName: 'ALFA',
