@@ -7,8 +7,11 @@
  *   npm run test:visual:update     regrava as referências depois de uma mudança visual desejada
  *
  * O relógio do navegador fica parado em uma data fixa e os dados são sempre os mesmos, para a
- * imagem só mudar quando a interface mudar. As referências valem para a máquina que as gerou
- * (a renderização de fontes varia entre sistemas).
+ * imagem só mudar quando a interface mudar. As referências valem para o sistema que as gerou (a
+ * renderização de fontes varia): as `*-win32.png` são da máquina local e as `*-linux.png` do CI,
+ * que roda na imagem oficial do Playwright (job "visual" em .github/workflows/ci.yml). Depois de
+ * uma mudança visual desejada, regrave as locais com `test:visual:update` e as do CI pela execução
+ * manual do workflow com "Regravar as referências", baixando o artefato `visual-snapshots`.
  */
 import { expect, test, type Page } from '@playwright/test';
 

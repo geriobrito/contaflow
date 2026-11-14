@@ -1,4 +1,5 @@
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, ResultSummary } from '@/types/firestore';
+import { summariesIn, summaryPostings } from '@/lib/dre/summaries';
 import { buildBalanceSheet, buildPostings, VIRTUAL, type BalanceSheet, type Posting } from '@/lib/ledger';
 import { buildDRE, type DateRange, type DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';
@@ -53,6 +54,7 @@ export function checkAccountingConsistency({
   openings = null,
   journalEntries = null,
   carry = null,
+  summaries = null,
 }: {
   transactions: readonly BankTransaction[];
   accounts: readonly ChartAccount[];
@@ -63,17 +65,21 @@ export function checkAccountingConsistency({
   journalEntries?: readonly JournalEntry[] | null;
   /** Saldos consolidados anteriores a `transactions`, sempre de antes do exercício de `date`. */
   carry?: readonly Posting[] | null;
+  /** Resumos de competências fechadas no lugar dos lançamentos delas (src/lib/dre/summaries.ts). */
+  summaries?: readonly ResultSummary[] | null;
 }): ConsistencyCheck {
   const year = date.slice(0, 4);
   const exerciseStart = `${year}-01-01`;
   const exerciseRange: DateRange = { start: exerciseStart, end: date };
+  const used = summariesIn(summaries, { start: '0000-01-01', end: date });
+  const inExercise = summariesIn(used, exerciseRange);
 
   // 1. DRE acumulada do exercício até a data de corte
-  const exerciseDRE = buildDRE(transactions, accounts, exerciseRange, journalEntries);
+  const exerciseDRE = buildDRE(transactions, accounts, exerciseRange, journalEntries, inExercise);
   const dreNetResult = round2(exerciseDRE.netResult);
 
-  // 2. Balanço Patrimonial em partidas dobradas até a data de corte
-  const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries, carry);
+  // 2. Balanço Patrimonial em partidas dobradas até a data de corte (os resumos entram como partidas do fim de cada mês)
+  const postings = buildPostings(transactions, banks, accounts, date, openings, journalEntries, [...(carry ?? []), ...summaryPostings(used)]);
   const balanceSheet = buildBalanceSheet(postings, accounts, date);
 
   // Exercício encerrado: o resultado saiu de "Resultado do exercício" para Lucros/Prejuízos
@@ -86,8 +92,9 @@ export function checkAccountingConsistency({
 
   // 3. Levantamento de pendências no período do exercício
   const txsInExercise = transactions.filter((t) => t.date >= exerciseStart && t.date <= date);
-  const pendingCount = txsInExercise.filter((t) => t.status === 'PENDING').length;
-  const awaitingApprovalCount = txsInExercise.filter((t) => t.status === 'AUTO_CLASSIFIED').length;
+  const pendingCount = txsInExercise.filter((t) => t.status === 'PENDING').length + inExercise.reduce((s, m) => s + m.pendingCount, 0);
+  const awaitingApprovalCount =
+    txsInExercise.filter((t) => t.status === 'AUTO_CLASSIFIED').length + inExercise.reduce((s, m) => s + m.awaitingApproval, 0);
   const suspenseAmount = round2(balanceSheet.suspense);
 
   const unlinkedBanks = banks.filter((b) => !b.ledgerAccountId);

@@ -1,4 +1,4 @@
-import type { BankTransaction, ChartAccount, JournalEntry } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, JournalEntry, ResultSummary } from '@/types/firestore';
 import { buildDRE, type DateRange, type DRESectionKey, type DREStatement } from '@/lib/dre/build';
 import { monthsBetween } from '@/lib/periods';
 
@@ -26,7 +26,8 @@ export function monthlyColumns(
   transactions: readonly BankTransaction[],
   accounts: readonly ChartAccount[],
   range: DateRange,
-  journalEntries?: readonly JournalEntry[] | null
+  journalEntries?: readonly JournalEntry[] | null,
+  summaries?: readonly ResultSummary[] | null
 ): CompareColumn[] {
   return monthsBetween(range.start, range.end).map((month) => {
     const start = `${month}-01` < range.start ? range.start : `${month}-01`;
@@ -37,7 +38,7 @@ export function monthlyColumns(
       key: month,
       label: `${MONTH_SHORT[Number(m) - 1]}/${y.slice(2)}`,
       range: { start, end },
-      statement: buildDRE(transactions, accounts, { start, end }, journalEntries),
+      statement: buildDRE(transactions, accounts, { start, end }, journalEntries, summaries),
     };
   });
 }

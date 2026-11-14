@@ -38,7 +38,7 @@ export function monthEnd(month: string): string {
 }
 
 /** Hash de 53 bits (cyrb53) em hexadecimal: compara configurações sem guardá-las inteiras. */
-function hash(text: string): string {
+export function hash(text: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0; i < text.length; i++) {

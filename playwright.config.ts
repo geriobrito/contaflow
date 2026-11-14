@@ -34,7 +34,7 @@ export default defineConfig({
       use: browser,
     },
     // Comparação de imagens (npm run test:visual): fica fora do `test:e2e` porque as referências
-    // valem para a máquina que as gerou.
+    // valem para o sistema que as gerou (win32 local; linux no job "visual" do CI).
     {
       name: 'visual',
       testMatch: /visual\.spec\.ts$/,

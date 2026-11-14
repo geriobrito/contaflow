@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankAccount, BankTransaction, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, JournalEntry, OpeningBalances, OrgSettings, PeriodLock } from '@/types/firestore';
 import type { DateRange } from '@/lib/data/repository';
-import { getAccounts, getLatestTransactionDate, getRepository, getTransactions } from '@/lib/services/data-service';
+import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
+import { loadResultWindow, type ResultWindow } from '@/lib/services/result-loader';
 import { buildDRE, type DREStatement } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange } from '@/lib/dre/compare';
 import { checkAccountingConsistency } from '@/lib/dre/consistency';
@@ -15,14 +16,16 @@ import { reportError } from '@/lib/monitoring';
 
 export type DREView = 'simple' | 'monthly' | 'yoy';
 
+const EMPTY_WINDOW: ResultWindow = { transactions: [], summaries: [], rebuilt: [] };
+
 /**
  * DRE de uma empresa no período: lançamentos do exercício até o fim do período, lançamentos
  * manuais, e o necessário para a conferência contábil e as comparações (mês a mês, ano
- * anterior). Qualquer falha de carga torna a DRE indisponível: nunca se exibe um resultado
- * calculado sobre dados incompletos.
+ * anterior). Competências fechadas vêm resumidas (src/lib/dre/summaries.ts), sem reler os
+ * lançamentos delas. Qualquer falha de carga torna a DRE indisponível: nunca se exibe um
+ * resultado calculado sobre dados incompletos.
  */
 export function useDREData(clientId: string | undefined, range: DateRange, jumpTo: (date: string) => void, view: DREView) {
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -47,7 +50,7 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
     };
   }, [clientId, jumpTo]);
 
-  // Competências fechadas (selo de DRE definitiva), dados do escritório e contas bancárias/abertura (consistência contábil).
+  // Competências fechadas (selo de DRE definitiva e resumos), dados do escritório e contas bancárias/abertura (consistência contábil).
   const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [org, setOrg] = useState<OrgSettings | null>(null);
   const [banks, setBanks] = useState<BankAccount[]>([]);
@@ -90,21 +93,23 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
     return { total: months.length, closed };
   }, [locks, range]);
 
-  // 2) Busca no banco os lançamentos do exercício até a data final selecionada.
+  const aux = auxState && auxState.id === clientId ? auxState : null;
+  const auxReady = Boolean(aux) && !aux?.error;
+
+  // 2) Lançamentos do exercício até a data final (meses fechados resumidos).
   const ready = Boolean(clientId) && positionedFor === clientId;
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<{ key: string; data: ResultWindow } | null>(null);
   const periodKey = `${clientId}|${range.start}|${range.end}`;
   useEffect(() => {
-    if (!clientId || !ready) return;
+    if (!clientId || !ready || !auxReady) return;
     let active = true;
     const exerciseStart = `${range.end.slice(0, 4)}-01-01`;
     const fetchStart = range.start < exerciseStart ? range.start : exerciseStart;
-    getTransactions(clientId, { start: fetchStart, end: range.end })
-      .then((txs) => {
+    loadResultWindow({ clientId, range: { start: fetchStart, end: range.end }, accounts, banks, locks })
+      .then((data) => {
         if (!active) return;
-        setTransactions(txs);
+        setLoaded({ key: `${clientId}|${range.start}|${range.end}`, data });
         setLoadError(null);
-        setLoadedKey(`${clientId}|${range.start}|${range.end}`);
       })
       .catch((e: unknown) => {
         reportError(e, { area: 'dre', op: 'carregar lançamentos' });
@@ -113,31 +118,39 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
     return () => {
       active = false;
     };
-  }, [clientId, ready, range]);
+  }, [clientId, ready, auxReady, range, accounts, banks, locks]);
+  const current = loaded?.data ?? EMPTY_WINDOW;
 
   // 3) DRE comparativa: contra o mesmo período do ano anterior (só lido quando pedido).
   const prevRange = useMemo(() => previousYearRange(range), [range]);
-  const [prevTxs, setPrevTxs] = useState<{ key: string; list: BankTransaction[] } | null>(null);
+  const [prevLoaded, setPrevLoaded] = useState<{ key: string; data: ResultWindow } | null>(null);
   const prevKey = `${clientId}|${prevRange.start}|${prevRange.end}`;
+  const loadPrevWindow = useCallback(
+    () => (clientId ? loadResultWindow({ clientId, range: prevRange, accounts, banks, locks }) : Promise.resolve(EMPTY_WINDOW)),
+    [clientId, prevRange, accounts, banks, locks]
+  );
   useEffect(() => {
-    if (!clientId || !ready || view !== 'yoy') return;
+    if (!clientId || !ready || !auxReady || view !== 'yoy') return;
     let active = true;
-    getTransactions(clientId, prevRange)
-      .then((list) => active && setPrevTxs({ key: `${clientId}|${prevRange.start}|${prevRange.end}`, list }))
+    loadPrevWindow()
+      .then((data) => active && setPrevLoaded({ key: `${clientId}|${prevRange.start}|${prevRange.end}`, data }))
       .catch((e: unknown) => active && setLoadError(`Falha ao carregar o ano anterior (${describeError(e)}).`));
     return () => {
       active = false;
     };
-  }, [clientId, ready, view, prevRange]);
+  }, [clientId, ready, auxReady, view, prevRange, loadPrevWindow]);
 
-  const dre = useMemo(() => buildDRE(transactions, accounts, range, journalEntries), [transactions, accounts, range, journalEntries]);
+  const dre = useMemo(
+    () => buildDRE(current.transactions, accounts, range, journalEntries, current.summaries),
+    [current, accounts, range, journalEntries]
+  );
   const months = useMemo(
-    () => (view === 'monthly' ? monthlyColumns(transactions, accounts, range, journalEntries) : []),
-    [view, transactions, accounts, range, journalEntries]
+    () => (view === 'monthly' ? monthlyColumns(current.transactions, accounts, range, journalEntries, current.summaries) : []),
+    [view, current, accounts, range, journalEntries]
   );
   const prevDre = useMemo(
-    () => (prevTxs?.key === prevKey ? buildDRE(prevTxs.list, accounts, prevRange, journalEntries) : null),
-    [prevTxs, prevKey, accounts, prevRange, journalEntries]
+    () => (prevLoaded?.key === prevKey ? buildDRE(prevLoaded.data.transactions, accounts, prevRange, journalEntries, prevLoaded.data.summaries) : null),
+    [prevLoaded, prevKey, accounts, prevRange, journalEntries]
   );
 
   /**
@@ -146,28 +159,37 @@ export function useDREData(clientId: string | undefined, range: DateRange, jumpT
    */
   const loadPrevious = useCallback(async (): Promise<DREStatement | null> => {
     if (!clientId) return null;
-    const statement = prevDre ?? buildDRE(await getTransactions(clientId, prevRange), accounts, prevRange, journalEntries);
+    let statement = prevDre;
+    if (!statement) {
+      const data = await loadPrevWindow();
+      statement = buildDRE(data.transactions, accounts, prevRange, journalEntries, data.summaries);
+    }
     const empty = Object.values(statement.sections).every((sec) => sec.lines.length === 0);
     return empty ? null : statement;
-  }, [clientId, prevDre, prevRange, accounts, journalEntries]);
+  }, [clientId, prevDre, loadPrevWindow, prevRange, accounts, journalEntries]);
 
   const consistency = useMemo(() => {
-    if (!clientId || accounts.length === 0 || !ready) return null;
-    return checkAccountingConsistency({ transactions, accounts, banks, date: range.end, openings, journalEntries });
-  }, [clientId, accounts, ready, transactions, banks, range.end, openings, journalEntries]);
+    if (!clientId || accounts.length === 0 || !ready || !loaded) return null;
+    return checkAccountingConsistency({
+      transactions: current.transactions,
+      accounts,
+      banks,
+      date: range.end,
+      openings,
+      journalEntries,
+      summaries: current.summaries,
+    });
+  }, [clientId, accounts, ready, loaded, current, banks, range.end, openings, journalEntries]);
 
-  const aux = auxState && auxState.id === clientId ? auxState : null;
-  const auxReady = Boolean(aux) && !aux?.error;
   const opening = useMemo(
     () => (auxReady && ready && accounts.length > 0 ? openingStatus(openings, accounts, banks) : null),
     [auxReady, ready, openings, accounts, banks]
   );
   const blockingError = loadError ?? aux?.error ?? null;
   const failed = Boolean(blockingError);
-  const isLoading = Boolean(clientId) && !failed && (loadedKey !== periodKey || !auxReady);
+  const isLoading = Boolean(clientId) && !failed && (loaded?.key !== periodKey || !auxReady);
   const profit = dre.netResult >= 0;
   const hasData = !failed && dre.reconciledCount > 0;
   const tone: DRETone = !hasData || isLoading ? 'neutral' : profit ? 'profit' : 'loss';
-
   return { dre, months, prevDre, prevRange, loadPrevious, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone };
 }

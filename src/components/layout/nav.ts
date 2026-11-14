@@ -4,6 +4,7 @@ import {
   BookOpen,
   BookText,
   Building2,
+  CalendarClock,
   Car,
   ClipboardList,
   FilePenLine,
@@ -38,6 +39,12 @@ export const NAV_SECTIONS: readonly { title: string; items: readonly NavItem[] }
     title: 'Rotina',
     items: [
       { href: '/painel', label: 'Painel', icon: LayoutDashboard, keywords: 'inicio dashboard carteira resumo' },
+      {
+        href: '/agenda',
+        label: 'Agenda e Honorários',
+        icon: CalendarClock,
+        keywords: 'obrigacoes prazos vencimentos calendario das pgdas dctfweb esocial reinf fgts defis dasn ecd ecf honorarios mensalidade reajuste cobranca recebimento',
+      },
       { href: '/', label: 'Conciliação', icon: ArrowLeftRight, keywords: 'extrato ofx classificar lancamentos bancarios' },
       { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion, keywords: 'perguntas link respostas' },
       { href: '/contas', label: 'Contas e Extratos', icon: Wallet, keywords: 'bancos saldo inicial importacoes' },

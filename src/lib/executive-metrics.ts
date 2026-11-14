@@ -1,4 +1,4 @@
-import type { BankTransaction, ChartAccount, JournalEntry } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, JournalEntry, ResultSummary } from '@/types/firestore';
 import { buildDRE, type DateRange } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange, variation } from '@/lib/dre/compare';
 
@@ -71,13 +71,21 @@ function isDepreciationOrAmortization(code: string, name: string): boolean {
  * Calcula a janela de 12 meses até a data de referência (ou o último lançamento disponível)
  * e consolida os indicadores executivos (Faturamento, Margem Líquida, EBITDA, Composição de Gastos).
  */
+/** Intervalo lido pela visão executiva: os 12 meses até a referência e os 12 anteriores (comparação). */
+export function executiveLoadRange(referenceDate: string): DateRange {
+  const refMonth = referenceDate.slice(0, 7);
+  return { start: `${shiftMonths(refMonth, -23)}-01`, end: lastDayOfMonth(refMonth) };
+}
+
 export function buildExecutiveSummary(params: {
   transactions: readonly BankTransaction[];
   accounts: readonly ChartAccount[];
   journalEntries?: readonly JournalEntry[] | null;
+  /** Resumos de competências fechadas no lugar dos lançamentos delas (src/lib/dre/summaries.ts). */
+  summaries?: readonly ResultSummary[] | null;
   referenceDate?: string;
 }): ExecutiveSummary {
-  const { transactions, accounts, journalEntries, referenceDate } = params;
+  const { transactions, accounts, journalEntries, summaries, referenceDate } = params;
 
   let refMonth = referenceDate ? referenceDate.slice(0, 7) : '';
   if (!refMonth) {
@@ -99,11 +107,11 @@ export function buildExecutiveSummary(params: {
     end: lastDayOfMonth(refMonth),
   };
 
-  const consolidated = buildDRE(transactions, accounts, range, journalEntries);
+  const consolidated = buildDRE(transactions, accounts, range, journalEntries, summaries);
   const prevRange = previousYearRange(range);
-  const previousConsolidated = buildDRE(transactions, accounts, prevRange, journalEntries);
+  const previousConsolidated = buildDRE(transactions, accounts, prevRange, journalEntries, summaries);
 
-  const cols = monthlyColumns(transactions, accounts, range, journalEntries);
+  const cols = monthlyColumns(transactions, accounts, range, journalEntries, summaries);
   const monthly: ExecutiveMonthlyBreakdown[] = cols.map((col) => {
     const s = col.statement;
     const finExp = s.sections.FINANCIAL_EXPENSES.total;

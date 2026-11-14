@@ -19,8 +19,12 @@ import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
 import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
 import { ExecutiveDashboard } from '@/components/painel/ExecutiveDashboard';
-import { buildExecutiveSummary, type ExecutiveSummary } from '@/lib/executive-metrics';
+import { buildExecutiveSummary, executiveLoadRange, type ExecutiveSummary } from '@/lib/executive-metrics';
+import { loadResultWindow } from '@/lib/services/result-loader';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
+import { useOfficeAgenda } from '@/hooks/agenda/useOfficeAgenda';
+import { WeekAgenda } from '@/components/painel/WeekAgenda';
+import { todayISO } from '@/lib/business-days';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
@@ -131,6 +135,7 @@ export default function PainelPage() {
     }
   };
   const portfolio = usePortfolio(clients, view === 'carteira');
+  const office = useOfficeAgenda(clients, view === 'carteira');
 
   useEffect(() => {
     // O detalhe (razão do período aberto) só é lido na aba da empresa.
@@ -185,10 +190,29 @@ export default function PainelPage() {
     if (!clientId || view !== 'gerencial') return;
     let active = true;
     const repo = getRepository();
-    Promise.all([repo.listAccounts(clientId), repo.listTransactions(clientId), repo.listJournalEntries(clientId)])
-      .then(([accounts, transactions, journalEntries]) => {
+    // Só os 24 meses da comparação, e os meses fechados pelos resumos da DRE (sem reler o histórico inteiro).
+    Promise.all([
+      repo.listAccounts(clientId),
+      repo.listBankAccounts(clientId),
+      repo.listPeriodLocks(clientId),
+      repo.listJournalEntries(clientId),
+      repo.latestTransactionDate(clientId),
+    ])
+      .then(async ([accounts, banks, locks, journalEntries, latest]) => {
+        const latestJournal = journalEntries.reduce((max, j) => (j.date > max ? j.date : max), '');
+        const referenceDate = [latest ?? '', latestJournal].reduce((a, b) => (b > a ? b : a), '') || new Date().toISOString().slice(0, 10);
+        const window = await loadResultWindow({ clientId, range: executiveLoadRange(referenceDate), accounts, banks, locks });
+        return { accounts, journalEntries, referenceDate, window };
+      })
+      .then(({ accounts, journalEntries, referenceDate, window }) => {
         if (!active) return;
-        const summary = buildExecutiveSummary({ transactions, accounts, journalEntries });
+        const summary = buildExecutiveSummary({
+          transactions: window.transactions,
+          summaries: window.summaries,
+          accounts,
+          journalEntries,
+          referenceDate,
+        });
         setExecData({ id: clientId, summary });
         setError(null);
       })
@@ -238,6 +262,7 @@ export default function PainelPage() {
       <main className={PAGE}>
         <PageHeader title="Painel" description="Ponto de partida do dia: o que falta fazer em cada empresa da carteira." actions={viewSwitch} />
         {readMeter}
+        {office.data && <WeekAgenda clients={office.clients} data={office.data} today={todayISO()} />}
         <PortfolioView
           clients={clients}
           entries={portfolio.entries}

@@ -54,6 +54,9 @@ rules_version = '2';
 //      `bank_accounts` e estrutura de `chart_of_accounts`) carimbam `lockSeq = seq` e só
 //      podem mudar seus campos protegidos quando `count == 0` ou `lockSeq == seq`. Contas
 //      compartilhadas legadas (`clientId == 'global'`) têm estrutura fixa.
+//  18. result_summaries (resumos da DRE por competência fechada) é cache, como period_snapshots.
+//      fee_registers (honorários) e obligation_checks (agenda de obrigações) são controles do
+//      escritório, um documento por empresa (id = clientId), com listas de tamanho limitado.
 //
 // Limite: cada lote pode consultar até 20 documentos distintos nas regras (perfil,
 // cliente e um fechamento por competência). O app agrupa os lotes por competência.
@@ -774,6 +777,60 @@ service cloud.firestore {
         && docId == request.resource.data.clientId + '_' + request.resource.data.month;
       allow update: if isMine(resource.data)
         && unchanged('orgId') && unchanged('clientId') && unchanged('month');
+    }
+
+    // ── Resumos da DRE de competências fechadas (cache, como period_snapshots) ──
+    // O app confere fechamento, contagem de lançamentos e plano antes de usar (src/lib/dre/summaries.ts).
+    match /result_summaries/{docId} {
+      allow read, delete: if isMine(resource.data);
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && request.resource.data.month is string
+        && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$')
+        && docId == request.resource.data.clientId + '_' + request.resource.data.month
+        && request.resource.data.lines is list
+        && request.resource.data.postings is list;
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId') && unchanged('month')
+        && request.resource.data.lines is list
+        && request.resource.data.postings is list;
+    }
+
+    // ── Gestão do escritório (um documento por empresa, id = clientId) ──
+    // Honorários (src/lib/fees.ts) e agenda de obrigações (src/lib/obligations.ts): controles
+    // do escritório, fora da contabilidade do cliente. Listas com teto para o documento não crescer sem fim.
+    function validFees(d) {
+      return d.dueDay is int && d.dueDay >= 1 && d.dueDay <= 31
+        && d.rates is list && d.rates.size() >= 1 && d.rates.size() <= 120
+        && d.payments is list && d.payments.size() <= 600;
+    }
+    match /fee_registers/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && validFees(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && validFees(request.resource.data);
+    }
+
+    function validObligations(d) {
+      return d.enabled is list && d.enabled.size() <= 50
+        && d.disabled is list && d.disabled.size() <= 50
+        && d.done is list && d.done.size() <= 1500;
+    }
+    match /obligation_checks/{docId} {
+      allow read: if hasProfile() && (resource == null ? clientInMyOrg({'clientId': docId}) : isMine(resource.data));
+      allow delete: if isMine(resource.data) && isAdmin();
+      allow create: if isMine(request.resource.data)
+        && clientInMyOrg(request.resource.data)
+        && docId == request.resource.data.clientId
+        && validObligations(request.resource.data);
+      allow update: if isMine(resource.data)
+        && unchanged('orgId') && unchanged('clientId')
+        && validObligations(request.resource.data);
     }
 
     // ── Trilha de auditoria (somente inclusão) ───────────────────────────

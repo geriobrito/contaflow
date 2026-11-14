@@ -1,4 +1,4 @@
-import type { AccountType, BankTransaction, ChartAccount, DREGroup, JournalEntry } from '@/types/firestore';
+import type { AccountType, BankTransaction, ChartAccount, DREGroup, JournalEntry, ResultSummary } from '@/types/firestore';
 
 /* =========================================================================
    Grupos (NBC TG 1002)
@@ -74,6 +74,12 @@ export interface DREStatement {
   awaitingApproval: number;
 }
 
+/** Último dia (YYYY-MM-DD) da competência YYYY-MM. */
+function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
 export interface DateRange {
   start: string; // YYYY-MM-DD
   end: string; // YYYY-MM-DD
@@ -85,12 +91,17 @@ export interface DateRange {
  * Sinal: o extrato traz créditos positivos e débitos negativos. Em grupos credores
  * (receitas) o valor entra como está; em grupos devedores (deduções, custos, despesas)
  * entra invertido. Assim, um estorno lançado numa conta de despesa reduz a despesa.
+ *
+ * `summaries` são resumos de competências fechadas (src/lib/dre/summaries.ts) no lugar dos
+ * lançamentos bancários desses meses: só entram os de meses inteiros dentro do intervalo, e
+ * `transactions` não deve trazer os lançamentos dos meses resumidos.
  */
 export function buildDRE(
   transactions: readonly BankTransaction[],
   accounts: readonly ChartAccount[],
   range: DateRange,
-  journalEntries?: readonly JournalEntry[] | null
+  journalEntries?: readonly JournalEntry[] | null,
+  summaries?: readonly ResultSummary[] | null
 ): DREStatement {
   const byId = new Map(accounts.map((a) => [a.id, a] as const));
   const buckets = new Map<DRESectionKey, Map<string, DREAccountLine>>();
@@ -126,6 +137,24 @@ export function buildDRE(
       buckets.set(key, bucket);
     }
     if (counted) reconciledCount++;
+  }
+
+  // Competências fechadas resumidas: as mesmas partidas, já somadas por conta.
+  for (const sm of summaries ?? []) {
+    if (`${sm.month}-01` < range.start || lastDayOfMonth(sm.month) > range.end) continue;
+    reconciledCount += sm.reconciledCount;
+    awaitingApproval += sm.awaitingApproval;
+    for (const l of sm.lines) {
+      const acc = byId.get(l.accountId);
+      const key = acc ? resolveDREGroup(acc) : null;
+      if (!acc || !key) continue;
+      const bucket = buckets.get(key) ?? new Map<string, DREAccountLine>();
+      const line = bucket.get(acc.id) ?? { accountId: acc.id, code: acc.code, name: acc.name, value: 0, count: 0 };
+      line.value += CREDIT_NATURE.has(key) ? l.amount : -l.amount;
+      line.count += l.count;
+      bucket.set(acc.id, line);
+      buckets.set(key, bucket);
+    }
   }
 
   // Lançamentos manuais de fechamento (partidas dobradas avulsas)

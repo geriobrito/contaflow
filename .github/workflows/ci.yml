@@ -4,6 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Execução manual (Actions > CI > Run workflow): com "atualizar telas", regrava as referências
+  # Linux dos testes visuais e as entrega como artefato, para conferir e commitar.
+  workflow_dispatch:
+    inputs:
+      update_visual:
+        description: Regravar as referências Linux dos testes visuais
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -73,6 +81,53 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+  visual:
+    name: Telas (comparação de imagens, Linux)
+    # Imagem oficial do Playwright na mesma versão do projeto: fontes e renderização fixas, então as
+    # referências *-linux.png valem para qualquer execução do CI (as *-win32.png são da máquina local).
+    # Referência que ainda não existe é gravada e entregue como artefato, com aviso, sem reprovar.
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Comparar as telas com as referências
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+          UPDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.update_visual && 'all' || 'missing' }}
+        run: npx playwright test --project=visual --update-snapshots="$UPDATE"
+      - name: Referências novas ou regravadas
+        id: novas
+        if: always()
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          changed=$(git status --porcelain -- e2e/visual.spec.ts-snapshots | wc -l)
+          echo "quantidade=$changed" >> "$GITHUB_OUTPUT"
+          if [ "$changed" -gt 0 ]; then
+            echo "::warning title=Referências visuais gravadas::$changed imagem(ns) de referência Linux nova(s) ou regravada(s). Baixe o artefato visual-snapshots, confira e commite em e2e/visual.spec.ts-snapshots/."
+          fi
+      - name: Guardar as referências gravadas
+        if: always() && steps.novas.outputs.quantidade != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-snapshots
+          path: e2e/visual.spec.ts-snapshots/*-linux.png
+          retention-days: 14
+      - name: Guardar o relatório em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-report
           path: |
             playwright-report
             test-results

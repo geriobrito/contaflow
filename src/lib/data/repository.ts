@@ -10,6 +10,7 @@ import type {
   ClientDaybookInfo,
   ClosingChecklist,
   ExplanatoryNotes,
+  FeeRegister,
   FinancingRegister,
   FixedAssetRegister,
   ImportBatch,
@@ -22,11 +23,13 @@ import type {
   JournalCounter,
   JournalEntry,
   LockState,
+  ObligationChecks,
   OpeningBalances,
   OrgSettings,
   PeriodLock,
   PeriodSnapshot,
   ReconciliationStatus,
+  ResultSummary,
 } from '@/types/firestore';
 import type { Actor } from '@/lib/audit';
 import { RegisterConflictError } from '@/lib/utils/errors';
@@ -145,6 +148,8 @@ export interface LocalClientRestorePayload {
   payrollRegister: PayrollRegister | null;
   closingChecklists: readonly ClosingChecklist[];
   explanatoryNotes: readonly ExplanatoryNotes[];
+  feeRegister?: FeeRegister | null;
+  obligationChecks?: ObligationChecks | null;
   audit: readonly AuditEntry[];
   restoreAudit: AuditEntry;
 }
@@ -249,6 +254,22 @@ export interface DataRepository {
   /* Saldos consolidados de competências fechadas (cache de leitura; ver src/lib/snapshots.ts) */
   listPeriodSnapshots(clientId: string): Promise<PeriodSnapshot[]>;
   savePeriodSnapshot(snapshot: PeriodSnapshot): Promise<void>;
+
+  /* Resumos da DRE de competências fechadas (cache de leitura; ver src/lib/dre/summaries.ts) */
+  /** Resumos da empresa com competência entre `fromMonth` e `toMonth` (YYYY-MM, inclusive). */
+  listResultSummaries(clientId: string, fromMonth: string, toMonth: string): Promise<ResultSummary[]>;
+  /** Grava (substitui) os resumos. */
+  saveResultSummaries(summaries: readonly ResultSummary[]): Promise<void>;
+
+  /* Honorários (um documento por empresa, id = clientId; src/lib/fees.ts) */
+  /** Honorários de todas as empresas do escritório (carteira). */
+  listFeeRegisters(): Promise<FeeRegister[]>;
+  saveFeeRegister(register: FeeRegister): Promise<void>;
+
+  /* Agenda de obrigações (um documento por empresa, id = clientId; src/lib/obligations.ts) */
+  /** Agenda de todas as empresas do escritório (carteira). */
+  listObligationChecks(): Promise<ObligationChecks[]>;
+  saveObligationChecks(checks: ObligationChecks): Promise<void>;
 
   /* Auditoria */
   listAudit(clientId: string, options?: { transactionId?: string; limit?: number }): Promise<AuditEntry[]>;

@@ -8,6 +8,8 @@ import type {
   ClientRequest,
   ClosingChecklist,
   ExplanatoryNotes,
+  FeeRegister,
+  ObligationChecks,
   FinancingRegister,
   InvestmentRegister,
   StockControl,
@@ -71,6 +73,10 @@ export interface ClientBackup {
   closingChecklists?: ClosingChecklist[];
   /** Notas explicativas por exercício (presente a partir da versão 2). */
   explanatoryNotes?: ExplanatoryNotes[];
+  /** Honorários do escritório com a empresa (ausente em backups anteriores a eles). */
+  feeRegister?: FeeRegister | null;
+  /** Agenda de obrigações: escolhas e o que já foi cumprido (ausente em backups anteriores a ela). */
+  obligationChecks?: ObligationChecks | null;
   /** Mais recentes primeiro. */
   audit: AuditEntry[];
   /** A trilha tem mais registros do que o teto do backup: os mais antigos ficaram de fora. */
@@ -105,6 +111,8 @@ export async function buildClientBackup(
     payrollRegister,
     closingChecklists,
     explanatoryNotes,
+    feeRegisters,
+    obligationChecks,
     audit,
   ] = await Promise.all([
     repo.listAccounts(id),
@@ -127,6 +135,8 @@ export async function buildClientBackup(
     repo.getPayrollRegister(id),
     repo.listClosingChecklists(id),
     repo.listExplanatoryNotes(id),
+    repo.listFeeRegisters(),
+    repo.listObligationChecks(),
     repo.listAudit(id, { limit: BACKUP_AUDIT_LIMIT }),
   ]);
   return {
@@ -154,6 +164,8 @@ export async function buildClientBackup(
     payrollRegister,
     closingChecklists,
     explanatoryNotes,
+    feeRegister: feeRegisters.find((f) => f.clientId === id) ?? null,
+    obligationChecks: obligationChecks.find((o) => o.clientId === id) ?? null,
     audit,
     auditTruncated: audit.length >= BACKUP_AUDIT_LIMIT,
   };

@@ -9,7 +9,7 @@ import type { BalanceSheet, BalanceSheetLine } from '@/lib/ledger';
  * cadastros de banco incompletos e quem assina.
  */
 
-export type StatementView = 'bs' | 'tb' | 'dlpa' | 'dmpl' | 'dfc';
+export type StatementView = 'bs' | 'tb' | 'dlpa' | 'dmpl' | 'dfc' | 'analise';
 
 interface Range {
   start: string;

@@ -1,24 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, CheckCheck, Landmark } from 'lucide-react';
-import type { BankAccount, BankTransaction, ChartAccount, FinancingContract, InvoiceSummary, RuleMatchType } from '@/types/firestore';
-import type { InvoiceMatch } from '@/lib/nfe/match';
-import { getAccounts, getLatestTransactionDate, getRepository } from '@/lib/services/data-service';
+import { AlertTriangle } from 'lucide-react';
+import type { RuleMatchType } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
-import { useMonthRoutines } from '@/hooks/imobilizado/useMonthRoutines';
 import { useReconciliation } from '@/hooks/useReconciliation';
 import { useBulkSelection } from '@/hooks/reconciliation/useBulkSelection';
 import { useClassificationFlow } from '@/hooks/reconciliation/useClassificationFlow';
 import { useImportFlow } from '@/hooks/reconciliation/useImportFlow';
 import { useInvoiceMatches } from '@/hooks/reconciliation/useInvoiceMatches';
 import { useAccountSuggestions } from '@/hooks/reconciliation/useAccountSuggestions';
+import { useConciliationSetup } from '@/hooks/reconciliation/useConciliationSetup';
+import { useInvoiceInspector } from '@/hooks/reconciliation/useInvoiceInspector';
+import { useMonthRoutineNotice } from '@/hooks/reconciliation/useMonthRoutineNotice';
 import { usePagination } from '@/hooks/usePagination';
 import { useTableKeyboard } from '@/hooks/useTableKeyboard';
-import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
-import { PAGE, SEGMENT_PILL, SearchField, SegmentedControl, SURFACE, segmentClass } from '@/components/ui/primitives';
-import { useSlidingIndicator } from '@/components/ui/useSlidingIndicator';
+import { PeriodPicker } from '@/components/ui/PeriodPicker';
+import { PAGE, SURFACE } from '@/components/ui/primitives';
 import { DuplicateImportModal } from '@/components/ui/DuplicateImportModal';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { CSVImportModal, FileDropOverlay, ImportButton, ImportEmptyState, ImportFeedback, useStatementFiles } from '@/components/conciliacao/StatementImport';
@@ -30,6 +29,7 @@ import { TransferPanel } from '@/components/conciliacao/TransferPanel';
 import { MetricsSummary } from '@/components/conciliacao/MetricsSummary';
 import { ImportSummary } from '@/components/conciliacao/ImportSummary';
 import { TransactionTable } from '@/components/conciliacao/TransactionTable';
+import { TransactionListToolbar, type ListView } from '@/components/conciliacao/TransactionListToolbar';
 import { BulkActionBar } from '@/components/conciliacao/BulkActionBar';
 import { BulkClassifyModal } from '@/components/conciliacao/BulkClassifyModal';
 import { BulkAskClientModal } from '@/components/conciliacao/BulkAskClientModal';
@@ -40,167 +40,46 @@ import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
-import { approvableIds, bankFilterOptions, bankNamesByKey, filterByBank, mainSplitAccountId, parseConciliationLink, payeeCandidates, upsertBank, visibleTransactions, type StatusFilter } from '@/lib/reconciliation-list';
+import { approvableIds, bankFilterOptions, bankNamesByKey, filterByBank, mainSplitAccountId, payeeCandidates, visibleTransactions, type StatusFilter } from '@/lib/reconciliation-list';
 import { TableSkeleton } from '@/components/ui/Skeleton';
-import { reportError } from '@/lib/monitoring';
 
 /** Linhas por página na tabela de lançamentos. */
 const PAGE_SIZE = 50;
 
-type Filter = StatusFilter;
-
-const loadFailure = (what: string, e: unknown): string => {
-  reportError(e, { area: 'conciliacao', op: `carregar ${what}` });
-  return `Não foi possível carregar ${what} (${e instanceof Error && e.message ? e.message : 'erro desconhecido'}). Recarregue a página para tentar de novo.`;
-};
-
-const FILTERS: { value: Filter; label: string }[] = [
-  { value: 'ALL', label: 'Todos' },
-  { value: 'PENDING', label: 'Pendentes' },
-  { value: 'AUTO_CLASSIFIED', label: 'Auto' },
-  { value: 'RECONCILED', label: 'Conciliados' },
-];
-
 /**
  * Conciliação bancária. A tela só compõe: os dados e as gravações vêm de `useReconciliation`,
- * e cada fluxo de interação tem o seu hook em src/hooks/reconciliation/ — importação de
- * extratos (`useImportFlow`), classificação (`useClassificationFlow`) e seleção em lote
- * (`useBulkSelection`).
+ * os cadastros e o período de `useConciliationSetup`, e cada fluxo de interação tem o seu hook
+ * em src/hooks/reconciliation/ — importação de extratos (`useImportFlow`), classificação
+ * (`useClassificationFlow`), seleção em lote (`useBulkSelection`) e rotinas do mês
+ * (`useMonthRoutineNotice`).
  */
 export default function ConciliacaoPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id ?? null;
 
-  const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-  const [filter, setFilter] = useState<Filter>('ALL');
+  const [filter, setFilter] = useState<StatusFilter>('ALL');
   const [bankFilter, setBankFilter] = useState<string>('ALL');
   const [lastBankClientId, setLastBankClientId] = useState<string | null>(clientId);
   if (lastBankClientId !== clientId) {
     setLastBankClientId(clientId);
     setBankFilter('ALL');
   }
-  const { containerRef: filterTabsRef, indicatorRef: filterPillRef } = useSlidingIndicator<HTMLDivElement>(filter);
   const [searchQuery, setSearchQuery] = useState('');
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useToast();
-  // Falha ao carregar os cadastros da empresa: sem eles a tela pareceria apenas vazia.
-  const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
+  const [statementsKey, setStatementsKey] = useState(0);
 
-  // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
-  // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
-  const period = usePeriod('month');
-  const { jumpTo, setMode } = period;
-  const [positionedFor, setPositionedFor] = useState<string | null>(null);
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-
-    getLatestTransactionDate(clientId)
-      .then((latest) => {
-        if (!active) return;
-        // Links do painel abrem o mês e os filtros pedidos.
-        const link = parseConciliationLink(window.location.search);
-        if (link.bank) setBankFilter(link.bank);
-        if (link.month) {
-          setMode('month');
-          jumpTo(`${link.month}-01`);
-          if (link.filter) setFilter(link.filter);
-        } else if (latest) jumpTo(latest);
-        setPositionedFor(clientId);
-      })
-      .catch((e) => {
-        reportError(e, { area: 'conciliacao', op: 'localizar período' });
-        if (active) setPositionedFor(clientId);
-      });
-    return () => {
-      active = false;
-    };
-  }, [clientId, jumpTo, setMode]);
-  const range = clientId && positionedFor === clientId ? period.range : null;
+  const setup = useConciliationSetup(clientId, statementsKey, (link) => {
+    if (link.bank) setBankFilter(link.bank);
+    if (link.filter) setFilter(link.filter);
+  });
+  const { period, range, selectedMonth, accounts, banks } = setup;
+  const { jumpTo } = period;
 
   const recon = useReconciliation({ clientId, accounts, range });
   const { transactions, rules, metrics, isLoading, isSaving, error, locks, lockedMonths, closeMonth, reopenMonth, loadAudit } = recon;
-  const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
-  // Rotinas do mês (depreciação e apropriação das despesas antecipadas): enquanto faltarem, a competência não fecha.
-  const monthRoutines = useMonthRoutines(clientId ?? undefined, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)));
-  const routines = monthRoutines.routines;
-  const routineLabel = (pending: readonly string[]) =>
-    pending.length > 1
-      ? 'Lançar rotinas do mês'
-      : pending[0] === 'prepaid'
-        ? 'Lançar apropriação'
-        : pending[0] === 'financing'
-          ? 'Lançar juros'
-          : pending[0] === 'investment'
-            ? 'Lançar rendimento'
-            : pending[0] === 'stock'
-              ? 'Lançar CMV'
-              : 'Lançar depreciação';
-  const depreciationNotice = routines
-    ? routines.problems.length
-      ? {
-          message: monthRoutines.error ?? routines.problems.join(' '),
-          actionLabel: routines.pending.length ? (routines.updates ? 'Atualizar lançamentos' : routineLabel(routines.pending)) : null,
-          blocking: true,
-          links: routines.inputs,
-          busy: monthRoutines.busy,
-          onPost: () => {
-            void monthRoutines.post().then((message) => message && setToast(message));
-          },
-        }
-      : routines.warnings.length
-        ? { message: routines.warnings.join(' '), actionLabel: null, blocking: false, busy: false, onPost: () => undefined, links: routines.inputs }
-        : null
-    : null;
-  const [statementsKey, setStatementsKey] = useState(0);
-
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    getAccounts(clientId)
-      .then((list) => active && setAccounts(list))
-      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('o plano de contas', e) }));
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-
-  // Parcelamentos pós-fixados (Selic): o pagamento acima da parcela-base é sugerido como parcela + juros.
-  const [floatingContracts, setFloatingContracts] = useState<{ id: string; list: FinancingContract[] } | null>(null);
-  // Contas das aplicações financeiras: a entrada nelas é resgate (bruto × líquido com IR e IOF).
-  const [investmentAccounts, setInvestmentAccounts] = useState<{ id: string; list: string[] } | null>(null);
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    getRepository()
-      .getFinancingContracts(clientId)
-      .then((r) => active && setFloatingContracts({ id: clientId, list: (r?.contracts ?? []).filter((c) => c.interestMode === 'FLOATING') }))
-      .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar parcelamentos' }));
-    getRepository()
-      .getInvestments(clientId)
-      .then((r) => active && setInvestmentAccounts({ id: clientId, list: (r?.accounts ?? []).map((a) => a.ledgerAccountId) }))
-      .catch((e: unknown) => reportError(e, { area: 'conciliacao', op: 'carregar aplicações' }));
-    return () => {
-      active = false;
-    };
-  }, [clientId]);
-
-  // Contas bancárias e cartões (importação, filtro e nomes nas transferências); recarrega após cada importação.
-  const [banks, setBanks] = useState<BankAccount[]>([]);
-  useEffect(() => {
-    if (!clientId) return;
-    let active = true;
-    getRepository()
-      .listBankAccounts(clientId)
-      .then((b) => active && setBanks(b))
-      .catch((e: unknown) => active && setLoadError({ id: clientId, message: loadFailure('as contas bancárias', e) }));
-    return () => {
-      active = false;
-    };
-  }, [clientId, statementsKey]);
-
-  const handleBankAccountUpdated = (updated: BankAccount) => setBanks((prev) => upsertBank(prev, updated));
+  const depreciationNotice = useMonthRoutineNotice(clientId, selectedMonth, Boolean(selectedMonth && lockedMonths.has(selectedMonth)), setToast);
 
   // Históricos de importações antigas com acentuação quebrada: a correção fica em Contas e Extratos.
   const hasBrokenText = useMemo(() => transactions.some((t) => hasMojibake(t.memo)), [transactions]);
@@ -219,19 +98,14 @@ export default function ConciliacaoPage() {
     reconcileTransfers: recon.reconcileTransfers,
     askClient: recon.askClient,
     undoChange: recon.undoChange,
-    onAccountCreated: (account) => setAccounts((prev) => [...prev, account]),
+    onAccountCreated: setup.addAccount,
     notify: (message, action) => setToast(action ? { message, action } : message),
   });
   const { selected } = flow;
 
   // Notas fiscais importadas: casam com os lançamentos e sugerem a conta (src/lib/nfe/match.ts).
   const invoices = useInvoiceMatches({ clientId, range, transactions, accounts });
-  const invoiceHints = useMemo(() => {
-    const map = new Map<string, 'match' | 'linked'>();
-    for (const id of invoices.linked.keys()) map.set(id, 'linked');
-    for (const id of invoices.matches.keys()) map.set(id, 'match');
-    return map;
-  }, [invoices.matches, invoices.linked]);
+  const inspector = useInvoiceInspector(invoices);
   const confirmClassification = async (accountId: string, learnRule: boolean, pattern: string, matchType: RuleMatchType, invoiceId?: string) => {
     const txId = selected?.id;
     const saved = await flow.handleConfirm(accountId, learnRule, pattern, matchType);
@@ -252,7 +126,7 @@ export default function ConciliacaoPage() {
   const visible = useMemo(() => visibleTransactions(byBank, filter, searchQuery), [byBank, filter, searchQuery]);
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu (em Web Worker para volumes altos).
-  const [view, setView] = useState<'list' | 'payee'>('list');
+  const [view, setView] = useState<ListView>('list');
   const payeePool = useMemo(() => payeeCandidates(byBank, lockedMonths), [byBank, lockedMonths]);
   const payeeGroups = usePayeeGroupsWorker(payeePool);
   const memoPool = useMemo(() => transactions.map((t) => t.memo), [transactions]);
@@ -288,7 +162,7 @@ export default function ConciliacaoPage() {
     accounts,
     transactions,
     selected,
-    invoiceAccountId: selected && selected.status !== 'RECONCILED' ? invoices.matches.get(selected.id)?.suggestedAccountId : null,
+    invoiceAccountId: selected ? inspector.matchFor(selected)?.suggestedAccountId : null,
     group: flow.groupSheet,
     bulk: bulk.showBulkClassify ? bulk.selectedTransactions : null,
   });
@@ -310,23 +184,11 @@ export default function ConciliacaoPage() {
   const statementFiles = useStatementFiles({ onParsedBatch: importFlow.handleOFXParsedBatch, isSaving });
   const statements = useStatementBatches(clientId, statementsKey);
   const [statementsOpen, setStatementsOpen] = useState(false);
-  const [inspectingInvoice, setInspectingInvoice] = useState<{
-    invoice: InvoiceSummary;
-    match?: InvoiceMatch | null;
-    transaction?: BankTransaction | null;
-  } | null>(null);
-
-  const openInvoiceForTransaction = (t: BankTransaction) => {
-    const match = t.status === 'RECONCILED' ? null : invoices.matches.get(t.id);
-    const linked = invoices.linked.get(t.id);
-    const inv = match?.invoice ?? linked ?? null;
-    if (inv) setInspectingInvoice({ invoice: inv, match, transaction: t });
-  };
 
   // Atalhos de teclado para conciliação rápida (suspensos enquanto houver um diálogo aberto).
   const isAnyModalOpen = Boolean(
     selected ||
-      inspectingInvoice ||
+      inspector.inspecting ||
       flow.groupSheet ||
       duplicate ||
       bulk.showBulkClassify ||
@@ -340,7 +202,7 @@ export default function ConciliacaoPage() {
     disabled: isAnyModalOpen,
     onOpenClassify: (t) => flow.openTransaction(t, 'single'),
     onOpenSplit: (t) => flow.openTransaction(t, 'split'),
-    onOpenInvoice: openInvoiceForTransaction,
+    onOpenInvoice: inspector.openFor,
     onToggleSelect: (id) => bulk.toggleSelect(id),
     onToggleSelectAll: () => bulk.toggleSelectAllPage(),
     onApprove: flow.approveOne,
@@ -388,11 +250,11 @@ export default function ConciliacaoPage() {
         bankAccounts={banks}
         accounts={accounts}
         clientId={clientId || ''}
-        onBankAccountUpdated={handleBankAccountUpdated}
+        onBankAccountUpdated={setup.updateBank}
       />
-      {loadError && loadError.id === clientId && (
+      {setup.loadError && (
         <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
-          {loadError.message}
+          {setup.loadError}
         </p>
       )}
 
@@ -453,93 +315,23 @@ export default function ConciliacaoPage() {
 
       {/* Lançamentos */}
       <section ref={tableRef} className={`${SURFACE} rounded-[22px] overflow-hidden scroll-mt-6`}>
-        <div className="flex flex-wrap items-center gap-3 justify-between px-5 py-4 border-b border-black/4 dark:border-white/6">
-          <div className="flex flex-wrap items-center gap-3">
-            <SegmentedControl
-              ariaLabel="Visão dos lançamentos"
-              value={view}
-              onChange={setView}
-              options={[
-                { value: 'list', label: 'Lista' },
-                { value: 'payee', label: 'Por favorecido' },
-              ]}
-            />
-            <div
-              ref={filterTabsRef}
-              role="tablist"
-              className={`${view === 'list' ? 'inline-flex' : 'hidden'} relative p-0.5 rounded-xl bg-black/4 dark:bg-white/6 self-start`}
-            >
-              <span ref={filterPillRef} aria-hidden className={SEGMENT_PILL} />
-              {FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === f.value}
-                  data-active={filter === f.value}
-                  onClick={() => setFilter(f.value)}
-                  className={segmentClass(filter === f.value)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            {(bankOptions.length > 1 || bankFilter !== 'ALL') && (
-              <div className="relative inline-flex items-center">
-                <Landmark className="w-3.5 h-3.5 text-stone-400 absolute left-3 pointer-events-none" />
-                <select
-                  aria-label="Filtrar por conta bancária ou cartão"
-                  value={bankFilter}
-                  onChange={(e) => setBankFilter(e.target.value)}
-                  className="h-9 pl-8 pr-7 rounded-xl bg-black/4 dark:bg-white/6 text-[13px] font-medium text-stone-700 dark:text-stone-200 border border-transparent focus:border-accent/40 outline-none cursor-pointer transition-colors"
-                >
-                  <option value="ALL">Todas as contas ({transactions.length})</option>
-                  {bankOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label} ({opt.count})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {view === 'list' && (
-              <div className="flex items-center gap-1.5">
-                <SearchField
-                  inputRef={searchInputRef}
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder="Buscar histórico, valor, conta ou fitid (pressione /)"
-                  className="w-80"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeyboardHelp(true)}
-                  title="Atalhos de teclado (?)"
-                  aria-label="Atalhos de teclado"
-                  className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/3 dark:bg-white/5 hover:bg-black/6 transition-colors"
-                >
-                  <kbd className="font-mono text-[12px] font-semibold">?</kbd>
-                </button>
-              </div>
-            )}
-
-            {approvable.size > 0 && (
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvable : undefined)}
-                className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
-              >
-                <CheckCheck className="w-4 h-4" strokeWidth={2} />
-                Aprovar todos os auto-classificados
-                <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvable.size}</span>
-              </button>
-            )}
-          </div>
-        </div>
+        <TransactionListToolbar
+          view={view}
+          onViewChange={setView}
+          filter={filter}
+          onFilterChange={setFilter}
+          bankFilter={bankFilter}
+          onBankFilterChange={setBankFilter}
+          bankOptions={bankOptions}
+          totalCount={transactions.length}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          searchInputRef={searchInputRef}
+          onShowHelp={() => setShowKeyboardHelp(true)}
+          approvableCount={approvable.size}
+          isSaving={isSaving}
+          onApproveAll={() => void flow.handleApproveAll(bankFilter !== 'ALL' ? approvable : undefined)}
+        />
 
         {view === 'payee' && !isLoading ? (
           <PayeeGroupList groups={payeeGroups} onOpen={flow.openGroup} />
@@ -564,8 +356,8 @@ export default function ConciliacaoPage() {
             pageCount={pageCount}
             onGoToPage={goToPage}
             bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNames : undefined}
-            invoiceHints={invoiceHints}
-            onOpenInvoice={openInvoiceForTransaction}
+            invoiceHints={inspector.hints}
+            onOpenInvoice={inspector.openFor}
           />
         )}
       </section>
@@ -585,32 +377,26 @@ export default function ConciliacaoPage() {
           lockedMonthLabel={isMonthLocked(selected.date, lockedMonths) ? formatMonth(monthOf(selected.date)) : null}
           loadAudit={() => loadAudit(selected.id)}
           onAskClient={flow.handleAskClient}
-          invoiceMatch={selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id)}
+          invoiceMatch={inspector.matchFor(selected)}
           linkedInvoice={invoices.linked.get(selected.id)}
           suggestions={suggestions.forSelected}
           regime={currentClient?.regime}
-          floatingContracts={floatingContracts?.id === clientId ? floatingContracts.list : undefined}
-          investmentAccountIds={investmentAccounts?.id === clientId ? investmentAccounts.list : undefined}
+          floatingContracts={setup.floatingContracts}
+          investmentAccountIds={setup.investmentAccountIds}
           initialMode={flow.sheetInitialMode}
-          onViewInvoice={(inv) =>
-            setInspectingInvoice({
-              invoice: inv,
-              match: selected.status === 'RECONCILED' ? null : invoices.matches.get(selected.id),
-              transaction: selected,
-            })
-          }
+          onViewInvoice={(inv) => inspector.show({ invoice: inv, match: inspector.matchFor(selected), transaction: selected })}
         />
       )}
 
-      {inspectingInvoice && (
+      {inspector.inspecting && (
         <InvoiceDetailDrawer
-          invoice={inspectingInvoice.invoice}
-          match={inspectingInvoice.match}
-          transaction={inspectingInvoice.transaction}
+          invoice={inspector.inspecting.invoice}
+          match={inspector.inspecting.match}
+          transaction={inspector.inspecting.transaction}
           accounts={accounts}
-          onClose={() => setInspectingInvoice(null)}
+          onClose={inspector.close}
           onClassifyWithSuggestion={(tx, accId, invId) => {
-            setInspectingInvoice(null);
+            inspector.close();
             void (async () => {
               try {
                 const { undo: plan } = await recon.classifyTransaction(tx.id, accId);
@@ -622,7 +408,7 @@ export default function ConciliacaoPage() {
             })();
           }}
           onOpenSplit={(tx) => {
-            setInspectingInvoice(null);
+            inspector.close();
             flow.openTransaction(tx, 'split');
           }}
         />

@@ -19,7 +19,7 @@
 - **Teste de Arquivo Único**: `npx vitest run <caminho-do-arquivo>` (ex: `npx vitest run src/lib/ledger.test.ts`)
 - **Testes de Regras Firestore**: `npm run test:rules` (emulador Firestore, requer Java 21+)
 - **Testes E2E**: `npm run test:e2e` (Playwright, modo local; `PLAYWRIGHT_CHANNEL=chrome` usa o Chrome instalado)
-- **Testes Visuais**: `npm run test:visual` (compara capturas das telas principais, temas claro e escuro, com `e2e/visual.spec.ts-snapshots/`); após mudança visual desejada, `npm run test:visual:update`
+- **Testes Visuais**: `npm run test:visual` (compara capturas das telas principais, temas claro e escuro, com `e2e/visual.spec.ts-snapshots/`); após mudança visual desejada, `npm run test:visual:update`. Referências `*-win32.png` são locais; as `*-linux.png` são do job `visual` do CI (imagem `mcr.microsoft.com/playwright:v1.64.0-noble`), regravadas pela execução manual do workflow (artefato `visual-snapshots`)
 - **Deploy Firestore**: `npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>`
 - **Limpar Firestore Emulador**: `npm run clean:firestore`
 
@@ -29,7 +29,9 @@
 - `src/contexts/`: Estado global de autenticação e seleção de cliente (`AuthContext.tsx`, `ClientContext.tsx`)
 - `src/hooks/`: Hooks de negócio e orquestração sem acoplamento direto de DB: carga e gravações de cada tela por domínio (`reconciliation/`, `contas/`, `regras/`, `lancamentos/`, `dre/`, `useLedgerData.ts`), `useReconciliation.ts`, `useTableKeyboard.ts`
 - `src/lib/`: Core de domínio e infraestrutura:
-  - `src/lib/data/`: Abstração de persistência (`repository.ts`, `firestore-repository.ts`, `local-repository.ts`)
+  - `src/lib/data/`: Abstração de persistência (`repository.ts`, `firestore-repository.ts`, `local-repository.ts`); as duas implementações são montadas por domínio em `data/firestore/` e `data/local/` (mesmos nomes de arquivo nos dois). Mudou um, mude o outro: `tests/rules/repository-contract.test.ts` roda a mesma bateria contra ambos
+  - `src/lib/dre/summaries.ts` + `src/lib/services/result-loader.ts`: resumos da DRE de competências fechadas (`result_summaries`), lidos no lugar dos lançamentos desses meses
+  - `src/lib/financial-indicators.ts`, `src/lib/obligations.ts` (+ `business-days.ts`), `src/lib/fees.ts`: análise das demonstrações, agenda de obrigações e honorários (`/agenda`)
   - `src/lib/services/`: Fachada de dados (`data-service.ts`) alternando Firestore vs Local Storage
   - `src/lib/ofx/`: Parser e decodificação UTF-8/Windows-1252 de arquivos OFX
   - `src/lib/chart/`: Modelo de plano de contas do CFC (NBC TG 1002, Anexo 11; arquivo `itg1000.ts` por legado)

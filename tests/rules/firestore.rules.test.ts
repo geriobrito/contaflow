@@ -1943,3 +1943,84 @@ describe('controle de estoque', () => {
     });
   });
 });
+
+describe('gestão do escritório e resumos da DRE', () => {
+  const fees = (overrides: Record<string, unknown> = {}) => ({
+    id: 'cA',
+    orgId: ORG_A,
+    clientId: 'cA',
+    dueDay: 10,
+    rates: [{ fromMonth: '2025-01', amount: 800 }],
+    payments: [],
+    updatedAt: 'T',
+    ...overrides,
+  });
+  const checks = (overrides: Record<string, unknown> = {}) => ({ id: 'cA', orgId: ORG_A, clientId: 'cA', enabled: [], disabled: [], done: [], updatedAt: 'T', ...overrides });
+  const summary = (overrides: Record<string, unknown> = {}) => ({
+    id: 'cA_2025-03',
+    orgId: ORG_A,
+    clientId: 'cA',
+    month: '2025-03',
+    lockedAt: 'L',
+    txCount: 1,
+    configKey: 'k',
+    lines: [],
+    reconciledCount: 0,
+    awaitingApproval: 0,
+    pendingCount: 1,
+    postings: [],
+    createdAt: 'T',
+    ...overrides,
+  });
+
+  it('honorários: só o próprio escritório, id = empresa, valores e dia válidos', async () => {
+    const db = asUser('alice');
+    await assertSucceeds(getDoc(doc(db, 'fee_registers/cA'))); // ainda não existe: lê o vazio
+    await assertFails(setDoc(doc(db, 'fee_registers/outro'), fees()));
+    await assertFails(setDoc(doc(db, 'fee_registers/cA'), fees({ dueDay: 0 })));
+    await assertFails(setDoc(doc(db, 'fee_registers/cA'), fees({ rates: [] })));
+    await assertSucceeds(setDoc(doc(db, 'fee_registers/cA'), fees()));
+    await assertFails(updateDoc(doc(db, 'fee_registers/cA'), { clientId: 'cB' }));
+    await assertFails(getDoc(doc(asUser('bob'), 'fee_registers/cA')));
+    await assertFails(setDoc(doc(asUser('bob'), 'fee_registers/cB'), fees({ id: 'cB', clientId: 'cB' })));
+    await assertFails(deleteDoc(doc(asUser('carol'), 'fee_registers/cA'))); // operadora não apaga
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    expect((await repo.listFeeRegisters()).map((f) => f.clientId)).toEqual(['cA']);
+  });
+
+  it('agenda de obrigações: listas com teto e isolamento', async () => {
+    const db = asUser('alice');
+    await assertSucceeds(setDoc(doc(db, 'obligation_checks/cA'), checks({ done: [{ key: 'DAS|2025-01', doneAt: 'T' }] })));
+    await assertFails(setDoc(doc(db, 'obligation_checks/cA'), checks({ enabled: Array.from({ length: 51 }, (_, i) => `X${i}`) })));
+    await assertFails(setDoc(doc(db, 'obligation_checks/cA'), checks({ done: 'tudo' })));
+    await assertFails(getDoc(doc(asUser('bob'), 'obligation_checks/cA')));
+    const carol = createFirestoreRepository(asUser('carol'), () => ORG_A);
+    expect((await carol.listObligationChecks()).map((c) => c.done.length)).toEqual([1]);
+  });
+
+  it('resumos da DRE: id pela competência e isolamento', async () => {
+    const db = asUser('alice');
+    await assertFails(setDoc(doc(db, 'result_summaries/cA_2025-04'), summary()));
+    await assertFails(setDoc(doc(db, 'result_summaries/cA_2025-3'), summary({ id: 'cA_2025-3', month: '2025-3' })));
+    await assertSucceeds(setDoc(doc(db, 'result_summaries/cA_2025-03'), summary()));
+    await assertFails(updateDoc(doc(db, 'result_summaries/cA_2025-03'), { month: '2025-04' }));
+    await assertFails(getDoc(doc(asUser('bob'), 'result_summaries/cA_2025-03')));
+    await assertFails(setDoc(doc(asUser('bob'), 'result_summaries/cA_2025-05'), summary({ id: 'cA_2025-05', month: '2025-05', orgId: ORG_B })));
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    expect((await repo.listResultSummaries('cA', '2025-01', '2025-12')).map((s) => s.month)).toEqual(['2025-03']);
+  });
+
+  it('DRE por resumos sob as regras: monta, grava e reaproveita no mês fechado', async () => {
+    const db = asUser('alice');
+    const repo = createFirestoreRepository(db, () => ORG_A);
+    await closeMonth(db, lockOf('2025-03'));
+    const locks = await repo.listPeriodLocks('cA');
+    const args = { clientId: 'cA', range: { start: '2025-03-01', end: '2025-03-31' }, accounts: [], banks: [], locks };
+    const { loadResultWindow } = await import('@/lib/services/result-loader');
+    const first = await loadResultWindow(args, repo);
+    expect(first.rebuilt).toEqual(['2025-03']);
+    const second = await loadResultWindow(args, repo);
+    expect(second.summaries.map((s) => s.month)).toEqual(['2025-03']);
+    expect(second.transactions).toEqual([]);
+  });
+});

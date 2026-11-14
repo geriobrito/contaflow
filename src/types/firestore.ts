@@ -22,3 +22,4 @@ export type * from './firestore/invoices';
 export type * from './firestore/audit';
 export type * from './firestore/journal';
 export type * from './firestore/controls';
+export type * from './firestore/office';

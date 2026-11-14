@@ -21,6 +21,8 @@ import { DLPAStatement } from '@/components/balanco/DLPAStatement';
 import { DMPLStatement } from '@/components/balanco/DMPLStatement';
 import { CashFlowStatement } from '@/components/balanco/CashFlowStatement';
 import { YearClosingPanel } from '@/components/balanco/YearClosingPanel';
+import { FinancialAnalysis } from '@/components/balanco/FinancialAnalysis';
+import { useFinancialAnalysis } from '@/hooks/balanco/useFinancialAnalysis';
 import { TrialBalanceTable } from '@/components/balanco/TrialBalanceTable';
 import { StatementChecks } from '@/components/ui/StatementChecks';
 import { describeTransitory } from '@/lib/opening-transitory';
@@ -37,6 +39,7 @@ const TITLE: Record<View, string> = {
   dlpa: 'Lucros ou prejuízos acumulados',
   dmpl: 'Mutações do patrimônio líquido',
   dfc: 'Fluxos de caixa',
+  analise: 'Análise das demonstrações',
 };
 
 const EMPTY_LOCKS: PeriodLock[] = [];
@@ -195,6 +198,21 @@ export default function BalancoPage() {
     [txs, banks, accounts, range, static_?.openings, journalEntries]
   );
 
+  // Análise (índices): só calculada com a aba aberta; a DRE do exercício anterior é lida nela.
+  const analysisState = useFinancialAnalysis({
+    enabled: view === 'analise' && !loading,
+    clientId,
+    date: range.end,
+    accounts,
+    banks,
+    locks: static_?.locks ?? EMPTY_LOCKS,
+    journalEntries,
+    transactions: txs?.list ?? null,
+    balanceSheet: bs,
+    previousBalanceSheet: bsPrev,
+  });
+  const analysis = analysisState.analysis;
+
   const hasData = postings.length > 0;
   const signatories = () => statementSignatories(currentClient, static_?.org);
   const signature = useSignatureReminder(static_?.org);
@@ -210,6 +228,13 @@ export default function BalancoPage() {
         const file = generateCashFlowPdf({ client: currentClient, statement: cashFlow, detail: cashFlowDetail, issuedAt: new Date(), signatories: signatories() });
         downloadBlob(file.blob, file.fileName);
         signature.remind();
+        return;
+      }
+      if (view === 'analise') {
+        if (!analysis) return;
+        const { generateAnalysisPdf } = await import('@/lib/export/analysis-export');
+        const file = generateAnalysisPdf({ client: currentClient, analysis, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
         return;
       }
       if (view === 'dlpa') {
@@ -262,6 +287,13 @@ export default function BalancoPage() {
         signature.remind();
         return;
       }
+      if (view === 'analise') {
+        if (!analysis) return;
+        const { generateAnalysisExcel } = await import('@/lib/export/analysis-export');
+        const file = await generateAnalysisExcel({ client: currentClient, analysis, issuedAt: new Date(), signatories: signatories() });
+        downloadBlob(file.blob, file.fileName);
+        return;
+      }
       if (view === 'dlpa') {
         const { generateDLPAExcel } = await import('@/lib/export/dlpa-export');
         const file = await generateDLPAExcel({ client: currentClient, dlpa, issuedAt: new Date(), signatories: signatories() });
@@ -308,6 +340,10 @@ export default function BalancoPage() {
               De <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.start)}</span> a{' '}
               <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, pelo método direto. Para o exercício, escolha Ano no período.
             </>
+          ) : view === 'analise' ? (
+            <>
+              Liquidez, endividamento e rentabilidade em <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>, com o fim do exercício anterior ao lado.
+            </>
           ) : view === 'dlpa' ? (
             <>
               Exercício de {year} até <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatDateBR(range.end)}</span>: saldo inicial, resultado, distribuições e
@@ -326,7 +362,7 @@ export default function BalancoPage() {
           <div role="group" aria-label="Exportar relatório contábil" className="flex items-center gap-2">
             <button
               type="button"
-              disabled={!hasData || generatingPdf || exporting}
+              disabled={!hasData || generatingPdf || exporting || (view === 'analise' && !analysis)}
               onClick={() => (view === 'bs' && transitoryIssue?.level === 'block' ? setPdfBlocked(true) : void exportPdf())}
               className={BUTTON.primary}
               title={`Gerar PDF oficial: ${TITLE[view]}`}
@@ -336,11 +372,13 @@ export default function BalancoPage() {
             </button>
             <button
               type="button"
-              disabled={!hasData || exporting || generatingPdf}
+              disabled={!hasData || exporting || generatingPdf || (view === 'analise' && !analysis)}
               onClick={() => void exportExcel()}
               className={BUTTON.secondary}
               title={
-                view === 'dlpa'
+                view === 'analise'
+                  ? 'Exportar os índices em planilha Excel (.xlsx)'
+                  : view === 'dlpa'
                   ? 'Exportar a DLPA em planilha Excel (.xlsx)'
                   : view === 'dmpl'
                     ? 'Exportar a DMPL em planilha Excel (.xlsx)'
@@ -377,6 +415,7 @@ export default function BalancoPage() {
               { value: 'dlpa', label: 'DLPA' },
               { value: 'dmpl', label: 'DMPL' },
               { value: 'dfc', label: 'DFC' },
+              { value: 'analise', label: 'Análise' },
             ]}
           />
           <PeriodPicker period={period} />
@@ -419,6 +458,16 @@ export default function BalancoPage() {
         <section className={`${SURFACE} rounded-[22px]`}>
           <EmptyState title="Sem movimento até esta data" description="Importe extratos e concilie lançamentos para gerar o balanço e o balancete." />
         </section>
+      ) : view === 'analise' ? (
+        analysisState.error ? (
+          <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{analysisState.error}</p>
+        ) : analysis ? (
+          <FinancialAnalysis analysis={analysis} />
+        ) : (
+          <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+            <StatementSkeleton rows={10} label="Calculando os índices…" />
+          </section>
+        )
       ) : view === 'dfc' ? (
         cashFlow && <CashFlowStatement statement={cashFlow} detail={cashFlowDetail} onDetailChange={setCashFlowDetail} />
       ) : view === 'dlpa' || view === 'dmpl' ? (
