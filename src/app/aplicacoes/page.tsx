@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, Landmark, Pencil, PiggyBank, Plus, Trash2 } from 'lucide-react';
 import type { InvestmentAccount } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';

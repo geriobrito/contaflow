@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import { Car, Pencil, Plus, Trash2, Undo2 } from 'lucide-react';
 import type { FixedAsset } from '@/types/firestore';
 import type { FixedAssetContext } from '@/lib/services/fixed-asset-service';
@@ -12,6 +11,18 @@ import { BUTTON, ConfirmButton, EmptyState, SURFACE } from '@/components/ui/prim
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 const NUM = 'px-3 py-3 text-right font-mono tabular-nums whitespace-nowrap';
+
+export interface FixedAssetsTableProps {
+  ctx: FixedAssetContext | null;
+  assets: readonly FixedAsset[];
+  month: string;
+  busy: boolean;
+  onCreate: () => void;
+  onEdit: (asset: FixedAsset) => void;
+  onDispose: (asset: FixedAsset) => void;
+  onUndoDisposal: (asset: FixedAsset) => void;
+  onDelete: (asset: FixedAsset) => void;
+}
 
 /** Bens da empresa na posição do fim de `month`: custo, cota, acumulada e valor líquido. */
 export function FixedAssetsTable({
@@ -24,17 +35,7 @@ export function FixedAssetsTable({
   onDispose,
   onUndoDisposal,
   onDelete,
-}: {
-  ctx: FixedAssetContext | null;
-  assets: readonly FixedAsset[];
-  month: string;
-  busy: boolean;
-  onCreate: () => void;
-  onEdit: (asset: FixedAsset) => void;
-  onDispose: (asset: FixedAsset) => void;
-  onUndoDisposal: (asset: FixedAsset) => void;
-  onDelete: (asset: FixedAsset) => void;
-}) {
+}: FixedAssetsTableProps) {
   const sorted = [...assets].sort((a, b) => a.accountCode.localeCompare(b.accountCode, undefined, { numeric: true }) || a.inUseDate.localeCompare(b.inUseDate));
   const rows = ctx
     ? sorted.map((a) => ({ asset: a, pos: assetPositionAt(a, month, ctx.implantationMonth), quota: postedQuotaCents(a, month, ctx.implantationMonth) }))

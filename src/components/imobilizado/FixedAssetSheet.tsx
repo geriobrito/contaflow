@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import type { CompanyPorte, FixedAsset, FixedAssetUse } from '@/types/firestore';
 import type { FixedAssetContext } from '@/lib/services/fixed-asset-service';
@@ -25,6 +25,17 @@ import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primit
 const moneyText = (v: number | undefined) => (v ? String(v).replace('.', ',') : '');
 const newAssetId = () => `fa_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
+export interface FixedAssetSheetProps {
+  asset: FixedAsset | null;
+  ctx: FixedAssetContext;
+  /** Porte da empresa: no intangível da microentidade, o prazo máximo é de 5 anos. */
+  porte?: CompanyPorte;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (asset: FixedAsset) => Promise<boolean>;
+}
+
 /** Cadastro ou edição de um bem: conta, uso, datas, composição do custo, taxa e, se preciso, a depreciação já lançada. */
 export function FixedAssetSheet({
   asset,
@@ -34,16 +45,7 @@ export function FixedAssetSheet({
   error,
   onClose,
   onSave,
-}: {
-  asset: FixedAsset | null;
-  ctx: FixedAssetContext;
-  /** Porte da empresa: no intangível da microentidade, o prazo máximo é de 5 anos. */
-  porte?: CompanyPorte;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSave: (asset: FixedAsset) => Promise<boolean>;
-}) {
+}: FixedAssetSheetProps) {
   const accounts = useMemo(() => assetAccounts(ctx.accounts), [ctx.accounts]);
   const frozen = asset !== null && isAssetFrozen(asset, ctx.lockedMonths, ctx.implantationMonth);
 

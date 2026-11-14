@@ -151,5 +151,22 @@ export function withReadCache(
     reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
     closeYear: writing(repo.closeYear, lockStates),
     deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets, prepaid, financing, investments, stock, payroll),
+    ...(repo.restoreLocalClientData
+      ? {
+          restoreLocalClientData: writing(
+            repo.restoreLocalClientData,
+            accounts,
+            banks,
+            locks,
+            lockStates,
+            fixedAssets,
+            prepaid,
+            financing,
+            investments,
+            stock,
+            payroll
+          ),
+        }
+      : {}),
   };
 }

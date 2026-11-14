@@ -1,7 +1,6 @@
 'use client';
 
 import { Th } from '@/components/ui/Table';
-import React from 'react';
 import { Table } from 'lucide-react';
 import type { previewCSV } from '@/lib/csv/parser';
 

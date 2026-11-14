@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import type { ChartAccount, FinancingContract, FinancingKind, InterestMode } from '@/types/firestore';
 import type { FinancingContext } from '@/lib/services/financing-service';
@@ -45,6 +45,16 @@ const PRINCIPAL_LABEL: Record<FinancingKind, string> = {
 
 type AccountKey = 'counterpart' | 'shortTerm' | 'longTerm' | 'chargesShort' | 'chargesLong' | 'upfrontExpense' | 'interestExpense';
 
+export interface FinancingSheetProps {
+  clientId: string;
+  contract: FinancingContract | null;
+  ctx: FinancingContext;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (contract: FinancingContract, alreadyRecognized: boolean) => Promise<boolean>;
+}
+
 /** Cadastro ou edição de um empréstimo, financiamento ou parcelamento. */
 export function FinancingSheet({
   clientId,
@@ -54,15 +64,7 @@ export function FinancingSheet({
   error,
   onClose,
   onSave,
-}: {
-  clientId: string;
-  contract: FinancingContract | null;
-  ctx: FinancingContext;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSave: (contract: FinancingContract, alreadyRecognized: boolean) => Promise<boolean>;
-}) {
+}: FinancingSheetProps) {
   const frozen = contract !== null && contractMonths(contract, ctx.implantationMonth).some((m) => ctx.lockedMonths.has(m));
   const [kind, setKind] = useState<FinancingKind>(contract?.kind ?? 'FINANCING');
   const [description, setDescription] = useState(contract?.description ?? '');

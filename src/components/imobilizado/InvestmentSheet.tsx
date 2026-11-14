@@ -1,12 +1,23 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { InvestmentAccount } from '@/types/firestore';
 import type { InvestmentContext } from '@/lib/services/investment-service';
 import { INVESTMENT_DEFAULT_CODE, investmentLedgerAccounts } from '@/lib/investments';
 import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 const newInvestmentId = () => `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+
+export interface InvestmentSheetProps {
+  investment: InvestmentAccount | null;
+  ctx: InvestmentContext;
+  /** Competência em tela: a sugestão de início para uma aplicação nova. */
+  month: string;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (investment: InvestmentAccount) => Promise<boolean>;
+}
 
 /** Cadastro ou edição de uma aplicação: nome, conta do plano, primeira competência e encerramento. */
 export function InvestmentSheet({
@@ -17,16 +28,7 @@ export function InvestmentSheet({
   error,
   onClose,
   onSave,
-}: {
-  investment: InvestmentAccount | null;
-  ctx: InvestmentContext;
-  /** Competência em tela: a sugestão de início para uma aplicação nova. */
-  month: string;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSave: (investment: InvestmentAccount) => Promise<boolean>;
-}) {
+}: InvestmentSheetProps) {
   const accounts = useMemo(() => investmentLedgerAccounts(ctx.accounts), [ctx.accounts]);
   const [description, setDescription] = useState(investment?.description ?? '');
   const [ledgerAccountId, setLedgerAccountId] = useState(investment?.ledgerAccountId ?? accounts.find((a) => a.code === INVESTMENT_DEFAULT_CODE)?.id ?? '');

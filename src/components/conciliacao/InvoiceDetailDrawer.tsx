@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, Copy, FileText, Layers, ReceiptText, Split, Tag, X } from 'lucide-react';
 import type { BankTransaction, ChartAccount, InvoiceSummary } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';

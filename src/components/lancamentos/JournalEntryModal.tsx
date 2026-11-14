@@ -132,7 +132,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     setTemplateId(null);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.SubmitEvent) => {
     e.preventDefault();
     // Mesma validação aplicada pelos repositórios e pelas regras do Firestore.
     const built = buildJournalEntry(

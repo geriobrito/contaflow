@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { Calendar, CreditCard, DollarSign, FileText, HelpCircle, type LucideIcon } from 'lucide-react';
 import type { CSVColumnMapping } from '@/lib/csv/parser';
 import { FIELD_LABEL, INPUT_COMPACT } from '@/components/ui/primitives';

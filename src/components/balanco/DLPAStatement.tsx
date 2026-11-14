@@ -1,4 +1,3 @@
-import React from 'react';
 import type { DLPA } from '@/lib/year-closing';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { SURFACE } from '@/components/ui/primitives';

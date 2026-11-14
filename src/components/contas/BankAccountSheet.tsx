@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Lock, Plus } from 'lucide-react';
 import type { BankAccount, BankAccountKind } from '@/types/firestore';
@@ -15,6 +15,14 @@ import { BUTTON, Field, INPUT, SegmentedControl, Sheet, INPUT_MONEY } from '@/co
 
 const LIABILITY_TYPES = new Set(['LIABILITY']);
 
+export interface BankAccountSheetProps {
+  clientId: string;
+  bank: BankAccount | null;
+  data: ContasData;
+  onClose: () => void;
+  onSaved: (message: string) => Promise<void>;
+}
+
 /** Cadastro ou edição de uma conta bancária ou cartão de crédito: tipo, nome, conta contábil vinculada e saldo inicial. */
 export function BankAccountSheet({
   clientId,
@@ -22,13 +30,7 @@ export function BankAccountSheet({
   data,
   onClose,
   onSaved,
-}: {
-  clientId: string;
-  bank: BankAccount | null;
-  data: ContasData;
-  onClose: () => void;
-  onSaved: (message: string) => Promise<void>;
-}) {
+}: BankAccountSheetProps) {
   const [kind, setKind] = useState<BankAccountKind>(bank?.kind ?? 'BANK');
   const [nickname, setNickname] = useState(bank?.nickname ?? '');
   const [ledgerId, setLedgerId] = useState(bank?.ledgerAccountId ?? '');

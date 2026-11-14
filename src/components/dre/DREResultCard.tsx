@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import type { DREStatement } from '@/lib/dre/build';
 import { formatCurrency } from '@/lib/utils/formatters';

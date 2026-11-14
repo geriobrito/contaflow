@@ -33,7 +33,12 @@ export function useToast(durationMs = 3200, actionDurationMs = 8000): [ToastStat
   return [toast, show];
 }
 
-export function Toast({ toast, onDismiss }: { toast: ToastState | ToastData | null; onDismiss?: () => void }) {
+export interface ToastProps {
+  toast: ToastState | ToastData | null;
+  onDismiss?: () => void;
+}
+
+export function Toast({ toast, onDismiss }: ToastProps) {
   const action = toast?.action;
 
   useEffect(() => {

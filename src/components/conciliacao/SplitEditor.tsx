@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';

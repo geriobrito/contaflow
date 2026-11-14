@@ -1,12 +1,17 @@
 'use client';
 
-import React from 'react';
 import { Type } from 'lucide-react';
 import type { TextRepairPlan } from '@/lib/text-repair';
 import { BUTTON, SURFACE } from '@/components/ui/primitives';
 
+export interface TextRepairCardProps {
+  plan: TextRepairPlan;
+  busy: boolean;
+  onRepair: () => void;
+}
+
 /** Aviso de históricos e regras com acentuação quebrada (importações antigas) e o botão que os corrige. */
-export function TextRepairCard({ plan, busy, onRepair }: { plan: TextRepairPlan; busy: boolean; onRepair: () => void }) {
+export function TextRepairCard({ plan, busy, onRepair }: TextRepairCardProps) {
   return (
     <section className={`${SURFACE} rounded-[22px] p-5 space-y-3 border-amber-200/70 dark:border-amber-500/25`} aria-label="Correção de acentuação">
       <div className="flex flex-wrap items-start gap-3">

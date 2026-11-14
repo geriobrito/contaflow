@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, Pencil, Trash2, Wand2, X } from 'lucide-react';
 import type { ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { MATCH_TYPE_LABEL, normalizePattern, ruleKey, type RuleConflict } from '@/lib/reconciliation';
@@ -12,7 +12,13 @@ import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
 /** Tipos oferecidos na interface (REGEX existente continua funcionando e sendo exibido). */
 const MATCH_OPTIONS: readonly RuleMatchType[] = ['CONTAINS', 'STARTS_WITH', 'EXACT'];
 
-export function MatchTypeSelect({ value, onChange, className = '' }: { value: RuleMatchType; onChange: (v: RuleMatchType) => void; className?: string }) {
+export interface MatchTypeSelectProps {
+  value: RuleMatchType;
+  onChange: (v: RuleMatchType) => void;
+  className?: string;
+}
+
+export function MatchTypeSelect({ value, onChange, className = '' }: MatchTypeSelectProps) {
   return (
     <select
       value={value}

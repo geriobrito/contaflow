@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { ArrowRight, Lock, LockOpen } from 'lucide-react';
 import type { AuditEntry } from '@/types/firestore';
 import { AUDIT_LABEL, describeSnapshot } from '@/lib/audit';

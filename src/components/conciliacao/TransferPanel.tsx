@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ArrowLeftRight, ArrowRight, ChevronDown } from 'lucide-react';
 import type { BankAccount } from '@/types/firestore';
 import type { TransferPair } from '@/lib/transfers';

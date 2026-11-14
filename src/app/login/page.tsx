@@ -167,7 +167,7 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   /** Segunda etapa: código de 6 dígitos do aplicativo autenticador. */
-  const handleCode = async (e: React.FormEvent) => {
+  const handleCode = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (code.length !== 6) {
       setErrorMessage('Informe os 6 dígitos do aplicativo autenticador.');
@@ -212,7 +212,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setErrorMessage('Informe e-mail e senha.');

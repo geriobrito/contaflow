@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ClientCompany, OrgSettings } from '@/types/firestore';
 import { accountingStandard } from '@/lib/accounting-standard';
 

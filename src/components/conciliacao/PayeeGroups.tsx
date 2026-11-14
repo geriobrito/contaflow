@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import type { BankTransaction, ChartAccount, RuleMatchType } from '@/types/firestore';
 import type { ClassifyOptions } from '@/hooks/useReconciliation';

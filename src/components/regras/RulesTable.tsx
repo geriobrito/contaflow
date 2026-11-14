@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
 import type { RuleConflict } from '@/lib/reconciliation';
 import type { RuleListRow } from '@/hooks/regras/useRulesData';

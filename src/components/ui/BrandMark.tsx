@@ -1,4 +1,3 @@
-import React from 'react';
 
 const SIZES = {
   sm: { box: 'w-6 h-6 rounded-[8px]', glyph: 'w-[15px] h-[15px]' },

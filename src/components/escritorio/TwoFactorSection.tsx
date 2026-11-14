@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useReducer, useState } from 'react';
+import { useReducer, useState } from 'react';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { TotpSecret } from 'firebase/auth';
 import { useAuth } from '@/contexts/AuthContext';

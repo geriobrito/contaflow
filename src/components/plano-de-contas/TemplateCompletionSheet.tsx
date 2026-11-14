@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ChartAccount } from '@/types/firestore';
 import { withMissingParents } from '@/lib/chart/itg1000';
 import { BUTTON, Sheet } from '@/components/ui/primitives';

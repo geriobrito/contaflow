@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { CostComposition, ExecutiveMonthlyBreakdown } from '@/lib/executive-metrics';
 import { formatCurrency } from '@/lib/utils/formatters';
 

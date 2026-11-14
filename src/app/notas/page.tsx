@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSignature, FileText, Loader2, RotateCcw } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useExplanatoryNotes } from '@/hooks/notas/useExplanatoryNotes';

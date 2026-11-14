@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { AlertCircle, Check, ChevronRight, CircleDashed, Lock, LockOpen, RotateCw } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
 import type { PortfolioEntry } from '@/hooks/painel/usePortfolio';

@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleDashed, FileText } from 'lucide-react';
 import type { BalanceCheck, ImportBatch } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
@@ -87,8 +87,14 @@ export function useStatementBatches(clientId: string | null, refreshKey: number)
 
 export type StatementSummary = ReturnType<typeof useStatementBatches>;
 
+export interface StatementChipProps {
+  summary: StatementSummary;
+  open: boolean;
+  onToggle: () => void;
+}
+
 /** Atalho compacto ("2 extratos · sem alertas") que abre os detalhes. */
-export function StatementChip({ summary, open, onToggle }: { summary: StatementSummary; open: boolean; onToggle: () => void }) {
+export function StatementChip({ summary, open, onToggle }: StatementChipProps) {
   const { withAccount, gaps, mismatches, alerts, error } = summary;
   if (error) return <p role="alert" className="text-[12px] text-rose-600 dark:text-rose-300">Extratos: {error}</p>;
   if (withAccount.length === 0) return null;

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { ImportBatch } from '@/types/firestore';
 import { deleteImportBatch, previewBatchDeletion, type BatchDeletionPreview } from '@/lib/services/accounting-service';
@@ -10,18 +10,20 @@ import { formatDateBR } from '@/lib/utils/formatters';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { Field, INPUT, Sheet } from '@/components/ui/primitives';
 
+export interface DeleteBatchSheetProps {
+  batch: ImportBatch;
+  lockedMonths: ReadonlySet<string>;
+  onClose: () => void;
+  onDeleted: (message: string) => Promise<void>;
+}
+
 /** Exclusão de um extrato importado: mostra o que será removido e pede confirmação em dois toques. */
 export function DeleteBatchSheet({
   batch,
   lockedMonths,
   onClose,
   onDeleted,
-}: {
-  batch: ImportBatch;
-  lockedMonths: ReadonlySet<string>;
-  onClose: () => void;
-  onDeleted: (message: string) => Promise<void>;
-}) {
+}: DeleteBatchSheetProps) {
   const [preview, setPreview] = useState<BatchDeletionPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState('');

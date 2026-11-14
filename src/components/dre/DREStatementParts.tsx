@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext } from 'react';
+import { createContext, useContext } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { DREAccountLine } from '@/lib/dre/build';
 import { AccountingAmount } from '@/components/ui/Amount';

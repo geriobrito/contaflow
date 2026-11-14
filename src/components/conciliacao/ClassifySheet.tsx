@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftRight, Lock, MessageCircleQuestion, ReceiptText, X } from 'lucide-react';
 import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, FinancingContract, InvoiceSummary, RuleMatchType, TaxRegime } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';

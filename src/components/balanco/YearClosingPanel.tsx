@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Lock, Unlock } from 'lucide-react';
 import type { YearClosingState } from '@/lib/year-closing';
 import { describeResult } from '@/lib/year-closing';

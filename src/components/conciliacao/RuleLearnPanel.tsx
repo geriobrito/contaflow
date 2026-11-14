@@ -97,6 +97,13 @@ export function RuleLearnPanel({
   );
 }
 
+export interface TermWarningProps {
+  assessment: TermAssessment;
+  acknowledged: boolean;
+  onAcknowledged: (v: boolean) => void;
+  className?: string;
+}
+
 /**
  * Aviso de termo genérico (vermelho, exige "Criar mesmo assim") ou amplo (âmbar). Não mostra nada
  * quando o termo é específico.
@@ -106,12 +113,7 @@ export function TermWarning({
   acknowledged,
   onAcknowledged,
   className = 'mt-3',
-}: {
-  assessment: TermAssessment;
-  acknowledged: boolean;
-  onAcknowledged: (v: boolean) => void;
-  className?: string;
-}) {
+}: TermWarningProps) {
   if (assessment.level === 'ok') return null;
   const generic = assessment.level === 'generic';
   return (

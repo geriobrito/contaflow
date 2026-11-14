@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import type { JournalEntry } from '@/types/firestore';
 import type { RepeatCandidate } from '@/lib/journal';

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Loader2, MessageCircleQuestion, X } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
 import { BUTTON, INPUT, FIELD_LABEL } from '@/components/ui/primitives';

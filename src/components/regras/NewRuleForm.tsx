@@ -44,7 +44,7 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
   const newKey = `${newType}|${newTerm}`;
   const newBlocked = newAssessment?.level === 'generic' && newAckKey !== newKey;
 
-  const handleAdd = async (e: React.FormEvent) => {
+  const handleAdd = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!clientId) return;
     const pattern = normalizePattern(newPattern);

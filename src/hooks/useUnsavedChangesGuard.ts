@@ -30,8 +30,6 @@ export function useUnsavedChangesGuard(dirty: boolean) {
     if (!dirty) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      // Navegadores mais antigos só mostram o aviso com returnValue preenchido.
-      e.returnValue = '';
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);

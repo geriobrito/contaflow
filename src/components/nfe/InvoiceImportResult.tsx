@@ -4,8 +4,13 @@ import Link from 'next/link';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import type { InvoiceImportOutcome } from '@/hooks/nfe/useInvoices';
 
+export interface InvoiceImportResultProps {
+  outcome: InvoiceImportOutcome;
+  onClose: () => void;
+}
+
 /** Resumo da última importação: quantas notas entraram, canceladas e arquivos recusados. */
-export function InvoiceImportResult({ outcome, onClose }: { outcome: InvoiceImportOutcome; onClose: () => void }) {
+export function InvoiceImportResult({ outcome, onClose }: InvoiceImportResultProps) {
   const parts = [
     outcome.purchases ? `${outcome.purchases} de compra` : null,
     outcome.sales ? `${outcome.sales} de venda` : null,

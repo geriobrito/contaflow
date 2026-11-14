@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import type { OrgSettings } from '@/types/firestore';
 import { Toast, useToast } from '@/components/ui/Toast';
 

@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { Bookmark, Calculator, CheckCircle2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { SURFACE } from '@/components/ui/primitives';

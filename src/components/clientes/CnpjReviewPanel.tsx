@@ -11,8 +11,14 @@ import { BUTTON } from '@/components/ui/primitives';
 const shown = (c: FieldChange, value: string) =>
   !value ? '(vazio)' : c.field === 'regime' ? regimeLabel(value as TaxRegime) : c.field === 'porte' ? PORTE_LABEL[value as CompanyPorte] : value;
 
+export interface CnpjReviewPanelProps {
+  pending: PendingLookup;
+  onAccept: () => void;
+  onDismiss: () => void;
+}
+
 /** Pergunta antes de usar a resposta da Receita: CNPJ de outra empresa ou lista do que vai mudar. */
-export function CnpjReviewPanel({ pending, onAccept, onDismiss }: { pending: PendingLookup; onAccept: () => void; onDismiss: () => void }) {
+export function CnpjReviewPanel({ pending, onAccept, onDismiss }: CnpjReviewPanelProps) {
   const { review, inactiveStatus } = pending;
   const otherCompany = review.kind === 'other-company' || review.otherCompany;
 

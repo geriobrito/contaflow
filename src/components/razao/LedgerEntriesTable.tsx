@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BookOpen, Search } from 'lucide-react';
 import type { DateRange } from '@/lib/data/repository';
 import type { AccountLedger } from '@/lib/ledger';

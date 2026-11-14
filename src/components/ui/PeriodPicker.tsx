@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { periodRange, type DateRange, type PeriodMode } from '@/lib/dre/build';
 import { SegmentedControl } from '@/components/ui/primitives';

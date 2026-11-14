@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { FixedAsset, FixedAssetDisposalReason } from '@/types/firestore';
 import type { DisposalInput, FixedAssetContext } from '@/lib/services/fixed-asset-service';
 import { accumulatedAtDisposalCents, assetCostCents, DISPOSAL_REASON_LABEL, disposalLockProblem, isIntangibleCode } from '@/lib/fixed-assets';
@@ -13,6 +13,15 @@ import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primit
  * Baixa do bem por venda, perda ou sucata: mostra o lançamento antes de gravar. Na venda, a
  * receita (pelo valor da nota) entra junto, contra o crédito a receber do comprador.
  */
+export interface DisposeAssetSheetProps {
+  asset: FixedAsset;
+  ctx: FixedAssetContext;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onDispose: (disposal: DisposalInput) => Promise<boolean>;
+}
+
 export function DisposeAssetSheet({
   asset,
   ctx,
@@ -20,14 +29,7 @@ export function DisposeAssetSheet({
   error,
   onClose,
   onDispose,
-}: {
-  asset: FixedAsset;
-  ctx: FixedAssetContext;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onDispose: (disposal: DisposalInput) => Promise<boolean>;
-}) {
+}: DisposeAssetSheetProps) {
   const [date, setDate] = useState('');
   const [reason, setReason] = useState<FixedAssetDisposalReason>('SALE');
   const [note, setNote] = useState('');

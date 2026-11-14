@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { deleteRule, saveRule } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';

@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import type { DREStatement } from '@/lib/dre/build';
 import { compareRows, variation, type CompareRow } from '@/lib/dre/compare';
 import { AccountingAmount } from '@/components/ui/Amount';

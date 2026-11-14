@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import type { DateRange } from '@/lib/data/repository';
 import type { AccountLedger } from '@/lib/ledger';

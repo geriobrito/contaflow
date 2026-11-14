@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ReconciliationStatus } from '@/types/firestore';
 
 const STATUS_BADGE: Record<ReconciliationStatus, { label: string; dot: string; className: string }> = {

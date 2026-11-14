@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertCircle, Calculator, Filter, Lock, Plus, Repeat, Search, Unlock } from 'lucide-react';
 import type { JournalEntry } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';

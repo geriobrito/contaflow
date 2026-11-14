@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import { BookOpen } from 'lucide-react';
 import type { TrialBalance } from '@/lib/ledger';
 import { formatCurrency } from '@/lib/utils/formatters';

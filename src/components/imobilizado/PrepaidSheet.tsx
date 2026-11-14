@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Lock } from 'lucide-react';
 import type { ChartAccount, FixedAssetUse, PrepaidExpense, PrepaidKind } from '@/types/firestore';
 import type { PrepaidContext } from '@/lib/services/prepaid-service';
@@ -30,6 +30,16 @@ function options(clientId: string, accounts: readonly ChartAccount[], test: (a: 
   return [...own, ...model].sort(byCode);
 }
 
+export interface PrepaidSheetProps {
+  clientId: string;
+  item: PrepaidExpense | null;
+  ctx: PrepaidContext;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (item: PrepaidExpense, alreadyRecognized: boolean) => Promise<boolean>;
+}
+
 /** Cadastro ou edição de um seguro ou outra despesa antecipada. */
 export function PrepaidSheet({
   clientId,
@@ -39,15 +49,7 @@ export function PrepaidSheet({
   error,
   onClose,
   onSave,
-}: {
-  clientId: string;
-  item: PrepaidExpense | null;
-  ctx: PrepaidContext;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSave: (item: PrepaidExpense, alreadyRecognized: boolean) => Promise<boolean>;
-}) {
+}: PrepaidSheetProps) {
   const frozen = item !== null && lockedPrepaidMonths(item, ctx.lockedMonths, ctx.implantationMonth).length > 0;
   const [kind, setKind] = useState<PrepaidKind>(item?.kind ?? 'INSURANCE');
   const [description, setDescription] = useState(item?.description ?? '');

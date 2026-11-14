@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { DREStatement as DREData } from '@/lib/dre/build';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
 import { Amount, GrossRevenueContext, Pct, Row, Section } from '@/components/dre/DREStatementParts';

@@ -277,15 +277,17 @@ export function SearchField({ value, onChange, placeholder = 'Buscar', className
    Switch iOS (51×31, knob 27, verde #34C759) sobre checkbox nativo
    ========================================================================= */
 
+export interface IOSSwitchProps {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  id?: string;
+}
+
 export function IOSSwitch({
   checked,
   onChange,
   id,
-}: {
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  id?: string;
-}) {
+}: IOSSwitchProps) {
   return (
     <span className="relative inline-flex shrink-0 w-[51px] h-[31px]">
       <input

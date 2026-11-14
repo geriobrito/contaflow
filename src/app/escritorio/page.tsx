@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Check, CheckCircle2, XCircle } from 'lucide-react';
 import type { OrgSettings } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';

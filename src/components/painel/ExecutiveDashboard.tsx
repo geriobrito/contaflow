@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import Link from 'next/link';
 import { ArrowDownRight, ArrowUpRight, Printer, TrendingUp } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';

@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { CheckSquare, MessageCircleQuestion, ArrowLeftRight, X, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils/formatters';
 

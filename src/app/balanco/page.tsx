@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen, FileSpreadsheet, FileText, Loader2, Printer } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';

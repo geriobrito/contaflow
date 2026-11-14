@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AuditAction, AuditEntry } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';

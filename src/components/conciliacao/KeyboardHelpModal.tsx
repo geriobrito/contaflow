@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import { X } from 'lucide-react';
 import { BUTTON } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';

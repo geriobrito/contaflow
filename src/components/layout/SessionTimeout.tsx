@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { BUTTON } from '@/components/ui/primitives';

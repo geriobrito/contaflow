@@ -12,12 +12,7 @@ import { reportError } from '@/lib/monitoring';
 
 const newJournalId = () => `je_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-/**
- * Encerramento e reabertura do exercício de `year`. Todos os lançamentos do encerramento e o
- * registro de auditoria entram (ou saem) numa única gravação: uma queda de rede não deixa o
- * exercício pela metade. Depois de gravar, `onChanged` recarrega os dados da tela.
- */
-export function useYearClosing(args: {
+export interface UseYearClosingArgs {
   clientId: string | undefined;
   year: string;
   /** Partidas do exercício sem o encerramento dele (ver `withoutClosingOf`). */
@@ -28,7 +23,14 @@ export function useYearClosing(args: {
   monthsWithData: Iterable<string>;
   implantation: string | null;
   onChanged: () => void;
-}) {
+}
+
+/**
+ * Encerramento e reabertura do exercício de `year`. Todos os lançamentos do encerramento e o
+ * registro de auditoria entram (ou saem) numa única gravação: uma queda de rede não deixa o
+ * exercício pela metade. Depois de gravar, `onChanged` recarrega os dados da tela.
+ */
+export function useYearClosing(args: UseYearClosingArgs) {
   const { clientId, year, postings, accounts, journalEntries, locks, monthsWithData, implantation, onChanged } = args;
   const [busy, setBusy] = useState<'close' | 'reopen' | null>(null);
 

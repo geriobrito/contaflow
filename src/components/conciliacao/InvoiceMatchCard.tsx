@@ -132,8 +132,13 @@ export function InvoiceMatchCard({
   );
 }
 
+export interface LinkedInvoiceNoteProps {
+  invoice: InvoiceSummary;
+  onViewDetails?: () => void;
+}
+
 /** Aviso da nota já vinculada a um lançamento conciliado. */
-export function LinkedInvoiceNote({ invoice, onViewDetails }: { invoice: InvoiceSummary; onViewDetails?: () => void }) {
+export function LinkedInvoiceNote({ invoice, onViewDetails }: LinkedInvoiceNoteProps) {
   return (
     <p className="flex items-start justify-between gap-2 rounded-2xl border border-line px-3.5 py-2.5 text-[12px] text-stone-600 dark:text-stone-300">
       <span className="flex items-start gap-2">

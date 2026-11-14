@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Loader2, Upload } from 'lucide-react';
 import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
 import type { OFXParseResult } from '@/lib/ofx/types';
@@ -310,6 +310,14 @@ export function ImportEmptyState({ files, hasAnyTransaction }: { files: Statemen
   );
 }
 
+export interface CSVImportModalProps {
+  files: StatementFiles;
+  bankAccounts: readonly BankAccount[];
+  accounts: readonly ChartAccount[];
+  clientId: string;
+  onBankAccountUpdated?: (bank: BankAccount) => void;
+}
+
 /** Mapeamento das colunas dos CSV na fila. */
 export function CSVImportModal({
   files,
@@ -317,13 +325,7 @@ export function CSVImportModal({
   accounts,
   clientId,
   onBankAccountUpdated,
-}: {
-  files: StatementFiles;
-  bankAccounts: readonly BankAccount[];
-  accounts: readonly ChartAccount[];
-  clientId: string;
-  onBankAccountUpdated?: (bank: BankAccount) => void;
-}) {
+}: CSVImportModalProps) {
   if (files.csvQueue.length === 0) return null;
   return (
     <CSVMappingModal

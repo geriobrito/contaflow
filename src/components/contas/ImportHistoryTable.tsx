@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import type { ImportBatch } from '@/types/firestore';
 import type { ContasData } from '@/hooks/contas/useContasData';
@@ -10,8 +9,13 @@ import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
 
+export interface ImportHistoryTableProps {
+  current: ContasData | null;
+  onDelete?: (batch: ImportBatch) => void;
+}
+
 /** Extratos importados, do mais recente ao mais antigo, com a conferência de saldo e a exclusão. */
-export function ImportHistoryTable({ current, onDelete }: { current: ContasData | null; onDelete?: (batch: ImportBatch) => void }) {
+export function ImportHistoryTable({ current, onDelete }: ImportHistoryTableProps) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
       <div className="px-5 py-4 border-b border-black/4 dark:border-white/6">

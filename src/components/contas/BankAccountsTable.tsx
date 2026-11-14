@@ -1,7 +1,6 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import { AlertTriangle, CheckCircle2, CreditCard, Link2, Pencil, Plus, Wallet } from 'lucide-react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
 import type { ContasData } from '@/hooks/contas/useContasData';

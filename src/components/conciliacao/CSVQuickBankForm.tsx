@@ -1,6 +1,5 @@
 'use client';
 
-import React from 'react';
 import type { BankAccountKind, ChartAccount } from '@/types/firestore';
 import { BUTTON, INPUT } from '@/components/ui/primitives';
 

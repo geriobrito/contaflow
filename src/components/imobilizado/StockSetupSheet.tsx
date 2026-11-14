@@ -1,12 +1,22 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { StockControl, StockCountFrequency } from '@/types/firestore';
 import type { StockContext } from '@/lib/services/stock-service';
 import { COST_DEFAULT_CODE, costAccounts, STOCK_DEFAULT_CODE, STOCK_FREQUENCY_LABEL, stockAccounts } from '@/lib/stock';
 import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 /** Configuração do controle de estoque: contas do estoque e do custo, início e frequência do relatório. */
+export interface StockSetupSheetProps {
+  clientId: string;
+  ctx: StockContext;
+  month: string;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onSave: (control: StockControl) => Promise<boolean>;
+}
+
 export function StockSetupSheet({
   clientId,
   ctx,
@@ -15,15 +25,7 @@ export function StockSetupSheet({
   error,
   onClose,
   onSave,
-}: {
-  clientId: string;
-  ctx: StockContext;
-  month: string;
-  busy: boolean;
-  error: string | null;
-  onClose: () => void;
-  onSave: (control: StockControl) => Promise<boolean>;
-}) {
+}: StockSetupSheetProps) {
   const current = ctx.control;
   const stocks = useMemo(() => stockAccounts(ctx.accounts), [ctx.accounts]);
   const costs = useMemo(() => costAccounts(ctx.accounts), [ctx.accounts]);

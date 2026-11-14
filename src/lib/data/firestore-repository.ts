@@ -67,7 +67,7 @@ import {
   nextLockStateOnYearClose,
   prepareProtectedSave,
 } from '@/lib/lock-guard';
-import { isPermissionDenied, isRegisterConflictError, rethrowPermissionDenied } from '@/lib/utils/errors';
+import { isRegisterConflictError, rethrowPermissionDenied } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 
 export const COL = {
@@ -334,7 +334,7 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
             return createdOrReplaced;
           });
         } catch (err) {
-          if (isRegisterConflictError(err) || isPermissionDenied(err) || !counterRef) throw err;
+          if (isRegisterConflictError(err) || !counterRef) throw err;
           const current = await getDoc(counterRef);
           const now = current.exists() ? Number(current.data().last) || 0 : null;
           if (now === seenCounter || attempt >= JOURNAL_NUMBER_ATTEMPTS) throw err;
@@ -378,7 +378,6 @@ export function createFirestoreRepository(db: Firestore, getOrgId: () => string)
           return entry;
         });
       } catch (err) {
-        if (isPermissionDenied(err)) throw err;
         // Se outro usuário avançou o contador entre a leitura e a gravação, as regras recusam
         // o número repetido (em vez de a transação repetir sozinha). Só nesse caso tenta de
         // novo; qualquer outra recusa (ex.: competência fechada) sobe ao chamador.

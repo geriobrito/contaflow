@@ -1,5 +1,4 @@
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React from 'react';
 import type { DMPL } from '@/lib/dmpl';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { SURFACE } from '@/components/ui/primitives';
