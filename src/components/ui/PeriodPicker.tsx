@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import { periodRange, type DateRange, type PeriodMode } from '@/lib/dre/build';
 import { SegmentedControl } from '@/components/ui/primitives';
 
@@ -51,8 +51,14 @@ export function usePeriod(initialMode: PeriodMode): PeriodState {
   return { mode, year, month, quarter, range, label, setMode, setYear, setMonth, setQuarter, jumpTo };
 }
 
-/** Controle de período no estilo iOS: tipo (Mês/Trimestre/Ano), ano e mês/trimestre. */
-export function PeriodPicker({ period, className = '' }: { period: PeriodState; className?: string }) {
+const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'] as const;
+
+/**
+ * Controle de período no estilo iOS: tipo (Mês/Trimestre/Ano), ano e mês/trimestre. Com
+ * `lockedMonths` (competências AAAA-MM fechadas), os meses fechados do ano levam um cadeado:
+ * dá para ver de relance até onde o ano está entregue e qual é o próximo mês a trabalhar.
+ */
+export function PeriodPicker({ period, className = '', lockedMonths }: { period: PeriodState; className?: string; lockedMonths?: ReadonlySet<string> }) {
   const { mode, year, month, quarter, setMode, setYear, setMonth, setQuarter } = period;
   const stepper =
     'w-8 h-8 rounded-full flex items-center justify-center text-stone-500 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all duration-150';
@@ -84,7 +90,21 @@ export function PeriodPicker({ period, className = '' }: { period: PeriodState; 
             ariaLabel="Mês"
             value={String(month)}
             onChange={(v) => setMonth(Number(v))}
-            options={MONTHS.map((m, i) => ({ value: String(i + 1), label: m }))}
+            options={MONTHS.map((m, i) => {
+              const closed = lockedMonths?.has(`${year}-${String(i + 1).padStart(2, '0')}`) ?? false;
+              return {
+                value: String(i + 1),
+                title: closed ? `${MONTH_NAMES[i]} de ${year}: competência fechada` : undefined,
+                label: closed ? (
+                  <span className="inline-flex items-center gap-1">
+                    {m}
+                    <Lock aria-hidden className="w-2.5 h-2.5 opacity-60" strokeWidth={2.25} />
+                  </span>
+                ) : (
+                  m
+                ),
+              };
+            })}
           />
         </div>
       )}

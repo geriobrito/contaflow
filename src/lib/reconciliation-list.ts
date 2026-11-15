@@ -101,3 +101,49 @@ export function parseConciliationLink(search: string): ConciliationLink {
     ...(conta ? { bank: conta } : {}),
   };
 }
+
+/* =========================================================================
+   Fila de trabalho: contagem por situação e ordenação da lista
+   ========================================================================= */
+
+/** Quantos lançamentos há em cada situação (as abas da lista mostram a fila de trabalho). */
+export function statusCounts(transactions: readonly BankTransaction[]): Record<StatusFilter, number> {
+  const counts: Record<StatusFilter, number> = { ALL: transactions.length, PENDING: 0, AUTO_CLASSIFIED: 0, RECONCILED: 0 };
+  for (const t of transactions) counts[t.status]++;
+  return counts;
+}
+
+export type SortKey = 'date' | 'memo' | 'amount';
+export interface ListSort {
+  key: SortKey;
+  dir: 'asc' | 'desc';
+}
+
+/**
+ * Próxima ordenação ao clicar no título de uma coluna: a primeira vez no sentido mais útil
+ * (datas e valores do maior para o menor, histórico de A a Z), a segunda inverte e a terceira
+ * volta à ordem do extrato (`null`).
+ */
+export function nextSort(current: ListSort | null, key: SortKey): ListSort | null {
+  const first = key === 'memo' ? 'asc' : 'desc';
+  if (current?.key !== key) return { key, dir: first };
+  return current.dir === first ? { key, dir: first === 'asc' ? 'desc' : 'asc' } : null;
+}
+
+/**
+ * Lista ordenada pela coluna escolhida; `null` mantém a ordem em que os lançamentos chegaram.
+ * O valor ordena pelo tamanho (maior saída ou entrada primeiro), que é como se procura um
+ * lançamento "grande"; o histórico, sem diferenciar maiúsculas e acentos.
+ */
+export function sortTransactions(transactions: readonly BankTransaction[], sort: ListSort | null): readonly BankTransaction[] {
+  if (!sort) return transactions;
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  const compare: (a: BankTransaction, b: BankTransaction) => number =
+    sort.key === 'date'
+      ? (a, b) => a.date.localeCompare(b.date)
+      : sort.key === 'amount'
+        ? (a, b) => Math.abs(a.amount) - Math.abs(b.amount)
+        : (a, b) => a.memo.localeCompare(b.memo, 'pt-BR', { sensitivity: 'base', numeric: true });
+  // Empate mantém a ordem original (a ordenação do JavaScript é estável).
+  return [...transactions].sort((a, b) => sign * compare(a, b));
+}

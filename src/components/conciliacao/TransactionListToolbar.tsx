@@ -24,6 +24,7 @@ export function TransactionListToolbar({
   bankFilter,
   onBankFilterChange,
   bankOptions,
+  counts,
   totalCount,
   searchQuery,
   onSearchChange,
@@ -40,6 +41,8 @@ export function TransactionListToolbar({
   bankFilter: string;
   onBankFilterChange: (b: string) => void;
   bankOptions: readonly { value: string; label: string; count: number }[];
+  /** Lançamentos em cada situação (na conta filtrada): a fila de trabalho à vista nas abas. */
+  counts: Record<StatusFilter, number>;
   totalCount: number;
   searchQuery: string;
   onSearchChange: (q: string) => void;
@@ -72,9 +75,10 @@ export function TransactionListToolbar({
               aria-selected={filter === f.value}
               data-active={filter === f.value}
               onClick={() => onFilterChange(f.value)}
-              className={segmentClass(filter === f.value)}
+              className={`${segmentClass(filter === f.value)} inline-flex items-center gap-1.5`}
             >
               {f.label}
+              <span className={`font-mono tabular-nums text-[11px] font-normal ${filter === f.value ? 'text-stone-500 dark:text-stone-300' : 'text-stone-400 dark:text-stone-500'}`}>{counts[f.value]}</span>
             </button>
           ))}
         </div>
@@ -105,13 +109,13 @@ export function TransactionListToolbar({
               inputRef={searchInputRef}
               value={searchQuery}
               onChange={onSearchChange}
-              placeholder="Buscar histórico, valor, conta ou fitid (pressione /)"
-              className="w-80"
+              placeholder="Buscar histórico, valor ou conta"
+              className="w-72"
             />
             <button
               type="button"
               onClick={onShowHelp}
-              title="Atalhos de teclado (?)"
+              title="Atalhos de teclado (?). A tecla / leva à busca."
               aria-label="Atalhos de teclado"
               className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/3 dark:bg-white/5 hover:bg-black/6 dark:hover:bg-white/9 transition-colors"
             >
@@ -125,10 +129,12 @@ export function TransactionListToolbar({
             type="button"
             disabled={isSaving}
             onClick={onApproveAll}
-            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
+            title="Aprovar todos os auto-classificados"
+            aria-label={`Aprovar todos os auto-classificados (${approvableCount})`}
+            className="inline-flex items-center justify-center gap-2 h-9 px-4 rounded-full bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 text-[13px] font-medium tracking-tight whitespace-nowrap disabled:opacity-30 active:scale-[0.98] transition-all duration-150"
           >
             <CheckCheck className="w-4 h-4" strokeWidth={2} />
-            Aprovar todos os auto-classificados
+            Aprovar todos
             <span className="font-mono tabular-nums text-[12px] px-1.5 rounded-full bg-white/20 dark:bg-black/10">{approvableCount}</span>
           </button>
         )}

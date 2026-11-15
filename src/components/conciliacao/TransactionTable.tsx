@@ -1,9 +1,10 @@
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React from 'react';
-import { ArrowLeftRight, ChevronDown, Lock, MessageCircleQuestion, Pencil, ReceiptText, Split } from 'lucide-react';
+import { ArrowDown, ArrowLeftRight, ArrowUp, Check, ChevronDown, ChevronsUpDown, Lock, MessageCircleQuestion, Pencil, ReceiptText, Split } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
 import { StatusBadge } from '@/components/conciliacao/StatusBadge';
 import { isMonthLocked } from '@/lib/periods';
+import type { ListSort, SortKey } from '@/lib/reconciliation-list';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 
 interface TransactionTableProps {
@@ -31,6 +32,33 @@ interface TransactionTableProps {
   invoiceHints?: ReadonlyMap<string, 'match' | 'linked'>;
   /** Abre a pré-visualização lado a lado (Split View) da nota fiscal associada ao lançamento. */
   onOpenInvoice?: (transaction: BankTransaction) => void;
+  /** Ordenação em uso (null: ordem do extrato) e o clique no título de uma coluna. */
+  sort?: ListSort | null;
+  onSort?: (key: SortKey) => void;
+  /** Aprova a classificação automática da linha, sem abrir a ficha (some sem a função). */
+  onApprove?: (transaction: BankTransaction) => void;
+  /** Há uma gravação em andamento: a aprovação na linha espera. */
+  busy?: boolean;
+}
+
+const SORT_LABEL: Record<SortKey, string> = { date: 'data', memo: 'descrição', amount: 'valor' };
+
+/** Título de coluna que ordena a lista: o primeiro clique ordena, o segundo inverte, o terceiro volta à ordem do extrato. */
+function SortHeader({ column, sort, onSort, align, children }: { column: SortKey; sort: ListSort | null; onSort?: (key: SortKey) => void; align?: 'right'; children: React.ReactNode }) {
+  if (!onSort) return <>{children}</>;
+  const active = sort?.key === column;
+  const Icon = !active ? ChevronsUpDown : sort.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      title={active ? (sort.dir === 'asc' ? `Ordenado por ${SORT_LABEL[column]}, crescente` : `Ordenado por ${SORT_LABEL[column]}, decrescente`) : `Ordenar por ${SORT_LABEL[column]}`}
+      className={`group/sort inline-flex items-center gap-1 uppercase tracking-[inherit] font-semibold hover:text-stone-800 dark:hover:text-stone-100 transition-colors ${align === 'right' ? 'flex-row-reverse' : ''} ${active ? 'text-stone-800 dark:text-stone-100' : ''}`}
+    >
+      {children}
+      <Icon aria-hidden className={`w-3 h-3 ${active ? 'text-accent-ink' : 'opacity-0 group-hover/sort:opacity-60 group-focus-visible/sort:opacity-60'} transition-opacity`} strokeWidth={2.25} />
+    </button>
+  );
 }
 
 /** Tabela de lançamentos da conciliação: seleção, status, detalhe do rateio e paginação. */
@@ -52,9 +80,14 @@ export function TransactionTable({
   bankNamesByKey,
   invoiceHints,
   onOpenInvoice,
+  sort = null,
+  onSort,
+  onApprove,
+  busy = false,
 }: TransactionTableProps) {
   const allSelected = rows.length > 0 && rows.every((t) => selectedIds.has(t.id));
   const someSelected = rows.some((t) => selectedIds.has(t.id));
+  const ariaSort = (column: SortKey) => (sort?.key === column ? (sort.dir === 'asc' ? ('ascending' as const) : ('descending' as const)) : undefined);
 
   return (
     <div className="overflow-x-auto">
@@ -73,11 +106,23 @@ export function TransactionTable({
                 className="rounded border-stone-300 dark:border-stone-600 text-accent-ink focus:ring-accent cursor-pointer"
               />
             </Th>
-            <Th scope="col" className="w-24">Data</Th>
-            <Th scope="col">Descrição</Th>
+            <Th scope="col" className="w-24" aria-sort={ariaSort('date')}>
+              <SortHeader column="date" sort={sort} onSort={onSort}>
+                Data
+              </SortHeader>
+            </Th>
+            <Th scope="col" aria-sort={ariaSort('memo')}>
+              <SortHeader column="memo" sort={sort} onSort={onSort}>
+                Descrição
+              </SortHeader>
+            </Th>
             <Th scope="col">Conta</Th>
             <Th scope="col" className="w-28">Status</Th>
-            <Th scope="col" align="right" edge="end" className="w-36">Valor</Th>
+            <Th scope="col" align="right" edge="end" className="w-36" aria-sort={ariaSort('amount')}>
+              <SortHeader column="amount" sort={sort} onSort={onSort} align="right">
+                Valor
+              </SortHeader>
+            </Th>
           </tr>
         </thead>
         <tbody>
@@ -86,6 +131,8 @@ export function TransactionTable({
             const isExpanded = expanded.has(t.id);
             const isSelected = selectedIds.has(t.id);
             const isFocused = focusedIndex === idx;
+            // Classificação automática com conta, em competência aberta: dá para aprovar aqui mesmo.
+            const canApprove = Boolean(onApprove && t.status === 'AUTO_CLASSIFIED' && t.accountId && !isMonthLocked(t.date, lockedMonths));
             const splitBadge = splitCount > 0 && (
               <button
                 type="button"
@@ -97,7 +144,7 @@ export function TransactionTable({
                 aria-expanded={isExpanded}
                 aria-controls={`split-${t.id}`}
                 title={t.splits?.map((sp) => `${sp.accountCode ?? ''} ${sp.accountName ?? ''}: ${formatCurrency(sp.amount)}`).join('\n')}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 hover:bg-violet-100 active:scale-[0.97] transition-all duration-150"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/50 hover:bg-violet-100 dark:hover:bg-violet-900/50 active:scale-[0.97] transition-all duration-150"
               >
                 <Split className="w-3 h-3" strokeWidth={2} />
                 Rateado em {splitCount} contas
@@ -194,7 +241,24 @@ export function TransactionTable({
                         <MessageCircleQuestion aria-label="Aguardando resposta do cliente" className="w-3.5 h-3.5 text-amber-600 dark:text-amber-300" />
                       )}
                       {isMonthLocked(t.date, lockedMonths) && <Lock aria-label="Competência fechada" className="w-3 h-3 text-stone-400" />}
-                      {t.status !== 'PENDING' && (
+                      {canApprove && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApprove?.(t);
+                          }}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          title="Aprovar esta classificação (A)"
+                          aria-label={`Aprovar a classificação de ${t.memo}`}
+                          className="inline-flex items-center gap-1 h-6 pl-1.5 pr-2 rounded-full border border-accent/30 bg-surface text-[11px] font-medium text-accent-ink hover:bg-accent hover:text-white hover:border-accent disabled:opacity-40 active:scale-[0.96] transition-all duration-150"
+                        >
+                          <Check className="w-3 h-3" strokeWidth={2.5} />
+                          Aprovar
+                        </button>
+                      )}
+                      {t.status !== 'PENDING' && !canApprove && (
                         <Pencil
                           aria-hidden
                           className="w-3.5 h-3.5 text-stone-400 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity"

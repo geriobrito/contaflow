@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Loader2, Upload } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, SearchX, Upload } from 'lucide-react';
 import { parseOFXFile, parseOFXString } from '@/lib/ofx/parser';
 import type { OFXParseResult } from '@/lib/ofx/types';
 import type { BankAccount, ChartAccount } from '@/types/firestore';
@@ -279,22 +279,46 @@ export function FileDropOverlay({ files, disabled = false }: { files: StatementF
 }
 
 /** Tabela vazia: convite a importar, com o extrato modelo para experimentar. */
-export function ImportEmptyState({ files, hasAnyTransaction }: { files: StatementFiles; hasAnyTransaction: boolean }) {
+/** Por que a lista está vazia: sem resultado na busca, fila zerada na situação filtrada, ou filtro sem lançamentos. */
+function emptyListMessage(filter: string | undefined, query: string): { title: string; text: string; done: boolean } {
+  if (query.trim()) return { title: 'Nada encontrado', text: `Nenhum lançamento com “${query.trim()}” neste período e filtro.`, done: false };
+  if (filter === 'PENDING') return { title: 'Nenhum pendente', text: 'Todos os lançamentos deste período já têm conta.', done: true };
+  if (filter === 'AUTO_CLASSIFIED') return { title: 'Nada para aprovar', text: 'Não há classificação automática esperando a sua conferência.', done: true };
+  return { title: 'Nada por aqui', text: 'Nenhum lançamento neste filtro.', done: false };
+}
+
+export function ImportEmptyState({
+  files,
+  hasAnyTransaction,
+  filter,
+  query = '',
+  onClear,
+}: {
+  files: StatementFiles;
+  hasAnyTransaction: boolean;
+  /** Situação filtrada e busca em uso, para explicar a lista vazia. */
+  filter?: string;
+  query?: string;
+  /** Volta a mostrar todos os lançamentos (limpa filtro e busca). */
+  onClear?: () => void;
+}) {
+  const empty = hasAnyTransaction ? emptyListMessage(filter, query) : null;
   return (
     <div className="px-6 py-14 flex flex-col items-center text-center gap-4">
-      <span className="w-14 h-14 rounded-2xl bg-surface border border-line shadow-card text-accent-ink -rotate-3 flex items-center justify-center">
-        <Upload className="w-6 h-6 rotate-3" strokeWidth={1.6} />
+      <span className={`w-14 h-14 rounded-2xl bg-surface border border-line shadow-card -rotate-3 flex items-center justify-center ${empty?.done ? 'text-emerald-600 dark:text-emerald-400' : 'text-accent-ink'}`}>
+        {empty?.done ? <CheckCircle2 className="w-6 h-6 rotate-3" strokeWidth={1.6} /> : empty ? <SearchX className="w-6 h-6 rotate-3" strokeWidth={1.6} /> : <Upload className="w-6 h-6 rotate-3" strokeWidth={1.6} />}
       </span>
       <div>
-        <p className="font-serif text-[21px] leading-snug font-medium text-stone-900 dark:text-stone-100">
-          {hasAnyTransaction ? 'Nada por aqui' : 'Nenhum lançamento ainda'}
-        </p>
+        <p className="font-serif text-[21px] leading-snug font-medium text-stone-900 dark:text-stone-100">{empty ? empty.title : 'Nenhum lançamento ainda'}</p>
         <p className="mt-1.5 text-[13.5px] leading-relaxed text-stone-500 dark:text-stone-400 max-w-md">
-          {hasAnyTransaction
-            ? 'Nenhum lançamento neste filtro ou busca.'
-            : 'Importe um extrato OFX, CSV ou fatura de cartão: use o botão abaixo ou arraste os arquivos para a página.'}
+          {empty ? empty.text : 'Importe um extrato OFX, CSV ou fatura de cartão: use o botão abaixo ou arraste os arquivos para a página.'}
         </p>
       </div>
+      {empty && onClear && (
+        <button type="button" onClick={onClear} className={`${BUTTON.secondary} h-9`}>
+          Mostrar todos os lançamentos
+        </button>
+      )}
       {!hasAnyTransaction && (
         <div className="flex items-center gap-2">
           <button type="button" onClick={files.openPicker} disabled={files.busy} className={`${BUTTON.primary} h-10 px-4`}>

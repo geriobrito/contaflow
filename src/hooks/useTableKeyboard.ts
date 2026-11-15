@@ -56,6 +56,9 @@ export function useTableKeyboard<T>({
     if (disabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Tecla já tratada por quem estava com o foco (Enter na linha alcançada com Tab, um botão dela):
+      // sem isto o atalho abriria também a linha marcada pelas setas, que pode ser outra.
+      if (e.defaultPrevented) return;
       // Combinações com Ctrl/⌘/Alt são de outros atalhos (ex.: Ctrl+K abre a busca rápida, não sobe a linha).
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 

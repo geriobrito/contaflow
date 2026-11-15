@@ -40,7 +40,20 @@ import type { SplitDraft } from '@/lib/splits';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
 import { hasMojibake } from '@/lib/ofx/encoding';
 import { findTransferPairs } from '@/lib/transfers';
-import { approvableIds, bankFilterOptions, bankNamesByKey, filterByBank, mainSplitAccountId, payeeCandidates, visibleTransactions, type StatusFilter } from '@/lib/reconciliation-list';
+import {
+  approvableIds,
+  bankFilterOptions,
+  bankNamesByKey,
+  filterByBank,
+  mainSplitAccountId,
+  nextSort,
+  payeeCandidates,
+  sortTransactions,
+  statusCounts,
+  visibleTransactions,
+  type ListSort,
+  type StatusFilter,
+} from '@/lib/reconciliation-list';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 /** Linhas por página na tabela de lançamentos. */
@@ -65,6 +78,8 @@ export default function ConciliacaoPage() {
     setBankFilter('ALL');
   }
   const [searchQuery, setSearchQuery] = useState('');
+  // Ordenação pela coluna clicada; null mantém a ordem do extrato.
+  const [sort, setSort] = useState<ListSort | null>(null);
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [toast, setToast] = useToast();
@@ -123,7 +138,8 @@ export default function ConciliacaoPage() {
   const bankNames = useMemo(() => bankNamesByKey(banks), [banks]);
   const bankOptions = useMemo(() => bankFilterOptions(banks, transactions), [banks, transactions]);
   const byBank = useMemo(() => filterByBank(transactions, bankFilter), [transactions, bankFilter]);
-  const visible = useMemo(() => visibleTransactions(byBank, filter, searchQuery), [byBank, filter, searchQuery]);
+  const counts = useMemo(() => statusCounts(byBank), [byBank]);
+  const visible = useMemo(() => sortTransactions(visibleTransactions(byBank, filter, searchQuery), sort), [byBank, filter, searchQuery, sort]);
 
   // Visão por favorecido: pendentes de competência aberta, agrupados por quem pagou/recebeu (em Web Worker para volumes altos).
   const [view, setView] = useState<ListView>('list');
@@ -135,7 +151,7 @@ export default function ConciliacaoPage() {
   const { currentPage, pageCount, rows: pageRows, setPage } = usePagination(
     visible,
     PAGE_SIZE,
-    `${clientId}|${filter}|${bankFilter}|${searchQuery}|${range?.start}|${range?.end}`
+    `${clientId}|${filter}|${bankFilter}|${searchQuery}|${range?.start}|${range?.end}|${sort?.key}|${sort?.dir}`
   );
   const tableRef = useRef<HTMLElement>(null);
   const goToPage = (next: number) => {
@@ -259,7 +275,7 @@ export default function ConciliacaoPage() {
       )}
 
       <div className="space-y-2">
-        <PeriodPicker period={period} />
+        <PeriodPicker period={period} lockedMonths={lockedMonths} />
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         {clientId && range ? (
           <MonthCloseBar
@@ -267,6 +283,8 @@ export default function ConciliacaoPage() {
             range={range}
             locks={locks}
             openItems={metrics.pending + metrics.autoClassified}
+            hasTransactions={metrics.total > 0}
+            onGoToMonth={(m) => jumpTo(`${m}-01`)}
             busy={isSaving}
             depreciation={depreciationNotice}
             onClose={async (m) => {
@@ -287,7 +305,16 @@ export default function ConciliacaoPage() {
 
       {statementsOpen && <StatementDetails summary={statements} />}
 
-      <MetricsSummary metrics={metrics} periodLabel={period.label} />
+      {/* A fila do período: clicar numa situação filtra a lista (e volta à visão em lista). */}
+      <MetricsSummary
+        metrics={metrics}
+        periodLabel={period.label}
+        filter={view === 'list' ? filter : undefined}
+        onFilter={(f) => {
+          setView('list');
+          setFilter(f);
+        }}
+      />
 
       {duplicate && (
         <DuplicateImportModal
@@ -323,6 +350,7 @@ export default function ConciliacaoPage() {
           bankFilter={bankFilter}
           onBankFilterChange={setBankFilter}
           bankOptions={bankOptions}
+          counts={counts}
           totalCount={transactions.length}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
@@ -338,7 +366,16 @@ export default function ConciliacaoPage() {
         ) : isLoading ? (
           <TableSkeleton rows={6} label="Carregando lançamentos…" />
         ) : visible.length === 0 ? (
-          <ImportEmptyState files={statementFiles} hasAnyTransaction={transactions.length > 0} />
+          <ImportEmptyState
+            files={statementFiles}
+            hasAnyTransaction={transactions.length > 0}
+            filter={filter}
+            query={searchQuery}
+            onClear={() => {
+              setFilter('ALL');
+              setSearchQuery('');
+            }}
+          />
         ) : (
           <TransactionTable
             rows={pageRows}
@@ -358,6 +395,10 @@ export default function ConciliacaoPage() {
             bankNamesByKey={bankFilter === 'ALL' && bankOptions.length > 1 ? bankNames : undefined}
             invoiceHints={inspector.hints}
             onOpenInvoice={inspector.openFor}
+            sort={sort}
+            onSort={(key) => setSort((current) => nextSort(current, key))}
+            onApprove={(t) => void flow.approveOne(t)}
+            busy={isSaving}
           />
         )}
       </section>

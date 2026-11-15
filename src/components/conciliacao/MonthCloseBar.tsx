@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Landmark, Lock, LockOpen } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Landmark, Lock, LockOpen } from 'lucide-react';
 import type { PeriodLock } from '@/types/firestore';
 import { formatMonth, monthsBetween } from '@/lib/periods';
+import { shiftMonth } from '@/lib/business-days';
 import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { INPUT_COMPACT } from '@/components/ui/primitives';
 
@@ -18,6 +19,10 @@ interface MonthCloseBarProps {
   busy: boolean;
   onClose: (month: string) => Promise<void>;
   onReopen: (month: string, reason: string) => Promise<void>;
+  /** Há lançamentos na competência (sem eles não há o que dar como pronto). */
+  hasTransactions?: boolean;
+  /** Leva à competência informada: com o mês fechado, a barra oferece o seguinte. */
+  onGoToMonth?: (month: string) => void;
   /**
    * Depreciação do imobilizado que falta lançar (ou atualizar) na competência: enquanto houver,
    * o fechamento fica bloqueado e a barra oferece o lançamento.
@@ -37,7 +42,7 @@ interface MonthCloseBarProps {
  * Fechamento de competência: trava o mês entregue ao cliente. Fechar exige dois toques
  * (com aviso de pendências); reabrir exige motivo — ambos vão para a trilha de auditoria.
  */
-export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, onReopen, depreciation }: MonthCloseBarProps) {
+export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, onReopen, hasTransactions = false, onGoToMonth, depreciation }: MonthCloseBarProps) {
   const [armed, setArmed] = useState(false);
   const [reopening, setReopening] = useState(false);
   const [reason, setReason] = useState('');
@@ -80,13 +85,25 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
           por {lock.lockedByEmail ?? lock.lockedByUid} em <span className="font-mono tabular-nums">{formatDateTime(lock.lockedAt)}</span>
         </span>
         {!reopening ? (
-          <button
-            type="button"
-            onClick={() => setReopening(true)}
-            className="rounded-xl px-3 py-1.5 text-[12px] font-medium text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.97] transition-all duration-150"
-          >
-            Reabrir competência
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setReopening(true)}
+              className="rounded-xl px-3 py-1.5 text-[12px] font-medium text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:scale-[0.97] transition-all duration-150"
+            >
+              Reabrir competência
+            </button>
+            {onGoToMonth && (
+              <button
+                type="button"
+                onClick={() => onGoToMonth(shiftMonth(month, 1))}
+                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-medium text-accent-ink hover:bg-accent/8 active:scale-[0.97] transition-all duration-150"
+              >
+                Ir para {formatMonth(shiftMonth(month, 1)).split(' de ')[0]}
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </>
         ) : (
           <form
             className="flex flex-wrap items-center gap-2 animate-fade-in"
@@ -119,11 +136,20 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
     );
   }
 
+  // Tudo conciliado e nenhuma rotina travando: o fechamento vira a ação em destaque da tela.
+  const ready = hasTransactions && openItems === 0 && !depreciation?.blocking;
+
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      <span className="inline-flex items-center gap-1.5 text-[12px] text-stone-500">
-        <LockOpen className="w-3 h-3" /> {formatMonth(month)} aberta
-      </span>
+      {ready ? (
+        <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-emerald-700 dark:text-emerald-400">
+          <CheckCircle2 className="w-3.5 h-3.5" /> {formatMonth(month)}: tudo conciliado
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1.5 text-[12px] text-stone-500">
+          <LockOpen className="w-3 h-3" /> {formatMonth(month)} aberta
+        </span>
+      )}
       {depreciation && (
         <span role="status" className="inline-flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1 text-[12px] text-amber-900 dark:text-amber-200">
           <Landmark className="w-3 h-3 shrink-0" />
@@ -152,7 +178,7 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
       <button
         type="button"
         disabled={busy || Boolean(depreciation?.blocking)}
-        title={depreciation?.blocking ? 'Lance a depreciação do mês antes de fechar' : undefined}
+        title={depreciation?.blocking ? 'Resolva o aviso das rotinas do mês antes de fechar' : undefined}
         onClick={() => {
           if (armed) {
             setArmed(false);
@@ -160,7 +186,11 @@ export function MonthCloseBar({ month, range, locks, openItems, busy, onClose, o
           } else setArmed(true);
         }}
         className={`rounded-xl px-3 py-1.5 text-[12px] font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
-          armed ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 animate-pop-in' : 'text-stone-700 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8'
+          armed
+            ? 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 animate-pop-in'
+            : ready
+              ? 'bg-linear-to-b from-[#C4623A] to-accent text-white shadow-accent hover:from-[#B85930] hover:to-accent-hover'
+              : 'text-stone-700 dark:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8'
         }`}
       >
         {armed

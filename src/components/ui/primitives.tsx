@@ -179,7 +179,8 @@ export function StatCard({ label, value, caption, icon: Icon, tone = 'neutral', 
 interface SegmentedControlProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
-  options: readonly { value: T; label: string }[];
+  /** `label` pode trazer uma marca ao lado do texto (ex.: cadeado no mês fechado); `title` é a dica da opção. */
+  options: readonly { value: T; label: React.ReactNode; title?: string }[];
   ariaLabel: string;
   disabled?: boolean;
 }
@@ -224,6 +225,7 @@ export function SegmentedControl<T extends string>({
             disabled={disabled}
             aria-checked={active}
             data-active={active}
+            title={o.title}
             onClick={() => !disabled && onChange(o.value)}
             className={segmentClass(active)}
           >

@@ -6,8 +6,11 @@ import {
   bankNamesByKey,
   filterByBank,
   mainSplitAccountId,
+  nextSort,
   parseConciliationLink,
   payeeCandidates,
+  sortTransactions,
+  statusCounts,
   UNLINKED_BANK,
   upsertBank,
   visibleTransactions,
@@ -115,5 +118,46 @@ describe('links do painel', () => {
     expect(parseConciliationLink('?filtro=AUTO_CLASSIFIED')).toEqual({});
     expect(parseConciliationLink('?mes=2025-03&filtro=RECONCILED')).toEqual({ month: '2025-03' });
     expect(parseConciliationLink('')).toEqual({});
+  });
+});
+
+describe('fila de trabalho: contagem por situação e ordenação', () => {
+  const list = [
+    tx({ id: 'a', date: '2025-03-10', amount: -50, memo: 'Padaria', status: 'PENDING' }),
+    tx({ id: 'b', date: '2025-03-02', amount: 900, memo: 'água mineral', status: 'AUTO_CLASSIFIED' }),
+    tx({ id: 'c', date: '2025-03-20', amount: -300, memo: 'Aluguel', status: 'RECONCILED' }),
+    tx({ id: 'd', date: '2025-03-10', amount: 50, memo: 'padaria', status: 'PENDING' }),
+  ];
+  const ids = (rows: readonly BankTransaction[]) => rows.map((t) => t.id).join('');
+
+  it('conta os lançamentos de cada situação', () => {
+    expect(statusCounts(list)).toEqual({ ALL: 4, PENDING: 2, AUTO_CLASSIFIED: 1, RECONCILED: 1 });
+    expect(statusCounts([])).toEqual({ ALL: 0, PENDING: 0, AUTO_CLASSIFIED: 0, RECONCILED: 0 });
+  });
+
+  it('sem ordenação mantém a ordem do extrato (a mesma lista)', () => {
+    expect(sortTransactions(list, null)).toBe(list);
+  });
+
+  it('ordena por data, por tamanho do valor e pelo histórico sem diferenciar acento e caixa', () => {
+    // Empate (mesma data) mantém a ordem original: a antes de d.
+    expect(ids(sortTransactions(list, { key: 'date', dir: 'desc' }))).toBe('cadb');
+    expect(ids(sortTransactions(list, { key: 'date', dir: 'asc' }))).toBe('badc');
+    // Valor pelo tamanho: a maior entrada e a maior saída sobem juntas.
+    expect(ids(sortTransactions(list, { key: 'amount', dir: 'desc' }))).toBe('bcad');
+    // "água" vem antes de "Aluguel" e "Padaria" empata com "padaria".
+    expect(ids(sortTransactions(list, { key: 'memo', dir: 'asc' }))).toBe('bcad');
+    // Não altera a lista recebida.
+    expect(ids(list)).toBe('abcd');
+  });
+
+  it('clicar no título da coluna: sentido mais útil, inverte e volta à ordem do extrato', () => {
+    const first = nextSort(null, 'amount');
+    expect(first).toEqual({ key: 'amount', dir: 'desc' });
+    const second = nextSort(first, 'amount');
+    expect(second).toEqual({ key: 'amount', dir: 'asc' });
+    expect(nextSort(second, 'amount')).toBeNull();
+    // Histórico começa de A a Z; trocar de coluna recomeça o ciclo.
+    expect(nextSort(first, 'memo')).toEqual({ key: 'memo', dir: 'asc' });
   });
 });
