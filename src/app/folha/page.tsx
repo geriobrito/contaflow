@@ -1,12 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  CheckCircle2,
-  Download,
-  FileSpreadsheet,
-  Lock,
-} from 'lucide-react';
+import { AlertTriangle, Banknote, Download, FileSpreadsheet, Landmark, ReceiptText, Wallet } from 'lucide-react';
 import type { BankTransaction } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -14,28 +9,39 @@ import {
   buildPayrollJournalDraft,
   calculateNetPayroll,
   matchBankTransactionsWithPayroll,
+  payrollRoutineStatus,
+  payrollYearOverview,
   prevMonthOf,
   resolvePayrollMapping,
   type PayrollInput,
   type PayrollObligationMatch,
 } from '@/lib/payroll';
-import {
-  deletePayrollMonth,
-  loadPayrollContext,
-  reconcilePayrollBankTransaction,
-  savePayrollMonth,
-  type PayrollContext,
-} from '@/lib/services/payroll-service';
+import { deletePayrollMonth, loadPayrollContext, reconcilePayrollBankTransaction, savePayrollMonth, type PayrollContext } from '@/lib/services/payroll-service';
 import { generatePayrollExcel, generatePayrollPdf } from '@/lib/export/payroll-export';
 import { PayrollForm } from '@/components/folha/PayrollForm';
+import { PayrollMonthNav } from '@/components/folha/PayrollMonthNav';
 import { PayrollReconciliationPanel } from '@/components/folha/PayrollReconciliationPanel';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { todayISO } from '@/lib/business-days';
 import { formatMonth } from '@/lib/periods';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
-import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
-import { TableSkeleton } from '@/components/ui/Skeleton';
-import { todayISO } from '@/lib/business-days';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { BUTTON, EmptyState, PAGE, PageHeader, StatCard, SURFACE, type StatTone } from '@/components/ui/primitives';
+import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { Toast, useToast } from '@/components/ui/Toast';
+
+const MONTH_SHAPE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Competência inicial: a do endereço (`?mes=AAAA-MM`, atalho das rotinas do mês) ou o mês corrente. */
+function initialMonth(): string {
+  if (typeof window !== 'undefined') {
+    const fromUrl = new URLSearchParams(window.location.search).get('mes');
+    if (fromUrl && MONTH_SHAPE.test(fromUrl)) return fromUrl;
+  }
+  return todayISO().slice(0, 7);
+}
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
@@ -51,34 +57,29 @@ export default function FolhaPagamentoPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
 
-  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
+  const [month, setMonthState] = useState(initialMonth);
   const [loadedState, setLoadedState] = useState<{ key: string; value: PayrollContext } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast(3600);
+  // Valores digitados e ainda não contabilizados: trocar de competência ou sair pede confirmação.
+  const [dirty, setDirty] = useState(false);
+  const [pendingMonth, setPendingMonth] = useState<string | null>(null);
+  const leave = useUnsavedChangesGuard(dirty);
 
   const stateKey = `${clientId ?? ''}|${month}|${reloadCount}`;
   const ctx = loadedState?.key === stateKey ? loadedState.value : null;
   const loading = Boolean(clientId && !ctx && !error);
+  const today = todayISO();
 
-  // Suporta abertura via `?mes=AAAA-MM` (ex.: atalho das Rotinas do Mês).
-  useEffect(() => {
-    let active = true;
-    void Promise.resolve().then(() => {
-      const m = new URLSearchParams(window.location.search).get('mes');
-      if (active && m && /^\d{4}-\d{2}$/.test(m)) setMonth(m);
-    });
-    return () => {
-      active = false;
-    };
+  /** Troca a competência e a deixa no endereço, para recarregar ou voltar na mesma. */
+  const setMonth = useCallback((next: string) => {
+    setMonthState(next);
+    setError(null);
+    window.history.replaceState(null, '', `?mes=${next}`);
   }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(t);
-  }, [toast]);
+  const requestMonth = (next: string) => (dirty ? setPendingMonth(next) : setMonth(next));
 
   const reload = useCallback(() => setReloadCount((c) => c + 1), []);
 
@@ -102,39 +103,38 @@ export default function FolhaPagamentoPage() {
     };
   }, [clientId, month, reloadCount]);
 
-  const existingSummary = useMemo(
-    () => ctx?.register?.summaries.find((s) => s.month === month) ?? null,
-    [ctx, month]
-  );
+  const existingSummary = useMemo(() => ctx?.register?.summaries.find((s) => s.month === month) ?? null, [ctx, month]);
 
   const previousSummary = useMemo(() => {
     if (!ctx?.register?.summaries.length) return null;
     const prev = prevMonthOf(month);
     return (
       ctx.register.summaries.find((s) => s.month === prev) ??
-      [...ctx.register.summaries]
-        .filter((s) => s.month < month)
-        .sort((a, b) => b.month.localeCompare(a.month))[0] ??
+      [...ctx.register.summaries].filter((s) => s.month < month).sort((a, b) => b.month.localeCompare(a.month))[0] ??
       null
     );
   }, [ctx, month]);
 
   const locked = Boolean(ctx?.lockedMonths.has(month));
+  const year = Number(month.slice(0, 4));
 
-  const mapping = useMemo(
-    () => resolvePayrollMapping(ctx?.register?.defaultMapping, existingSummary?.mappedAccounts),
-    [ctx, existingSummary]
-  );
+  const mapping = useMemo(() => resolvePayrollMapping(ctx?.register?.defaultMapping, existingSummary?.mappedAccounts), [ctx, existingSummary]);
+
+  const overview = useMemo(() => payrollYearOverview(ctx?.register, year, ctx?.lockedMonths ?? new Set(), today), [ctx, year, today]);
 
   const obligations = useMemo(() => {
     if (!existingSummary || !ctx) return [];
-    return matchBankTransactionsWithPayroll(existingSummary, ctx.windowTransactions, ctx.accounts, mapping);
-  }, [existingSummary, ctx, mapping]);
+    return matchBankTransactionsWithPayroll(existingSummary, ctx.windowTransactions, ctx.accounts, mapping, { priorBalances: ctx.priorBalances, today });
+  }, [existingSummary, ctx, mapping, today]);
 
-  const calc = useMemo(
-    () => (existingSummary ? calculateNetPayroll(existingSummary) : null),
-    [existingSummary]
-  );
+  const calc = useMemo(() => (existingSummary ? calculateNetPayroll(existingSummary) : null), [existingSummary]);
+
+  // O lançamento do Diário ainda confere com o resumo gravado? (plano alterado, lançamento apagado…)
+  const entryStatus = useMemo(() => {
+    if (!ctx || !existingSummary) return null;
+    return payrollRoutineStatus({ register: ctx.register, month, accounts: ctx.accounts, existing: ctx.monthEntries.find((e) => e.payrollMonth === month) });
+  }, [ctx, existingSummary, month]);
+  const needsRepost = !locked && entryStatus?.kind === 'PENDING';
 
   const handleSave = async (input: PayrollInput) => {
     if (!clientId || !ctx) return;
@@ -143,7 +143,7 @@ export default function FolhaPagamentoPage() {
     try {
       await savePayrollMonth(clientId, input, ctx, user?.uid ?? 'local');
       reload();
-      setToast(`Provisão da folha de ${formatMonth(month)} contabilizada com sucesso.`);
+      setToast(`Folha de ${formatMonth(month)} contabilizada no Diário.`);
     } catch (err) {
       reportError(err, { area: 'folha', op: 'salvar' });
       setError(err instanceof Error ? err.message : 'Erro ao contabilizar a folha de pagamento.');
@@ -153,6 +153,7 @@ export default function FolhaPagamentoPage() {
     }
   };
 
+  /** Falha sobe para o diálogo de confirmação, que mostra a mensagem e deixa tentar de novo. */
   const handleDelete = async () => {
     if (!clientId || !ctx) return;
     setSaving(true);
@@ -160,11 +161,11 @@ export default function FolhaPagamentoPage() {
     try {
       await deletePayrollMonth(clientId, month, ctx);
       reload();
-      setToast(`Folha de pagamento de ${formatMonth(month)} excluída.`);
+      setToast(`Folha de ${formatMonth(month)} excluída.`);
     } catch (err) {
       reportError(err, { area: 'folha', op: 'excluir' });
-      setError(err instanceof Error ? err.message : 'Erro ao excluir a folha de pagamento.');
       if (isRegisterConflictError(err)) reload();
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -174,244 +175,174 @@ export default function FolhaPagamentoPage() {
     if (!clientId || !ctx) return;
     setError(null);
     try {
-      await reconcilePayrollBankTransaction({
-        clientId,
-        transaction: tx,
-        obligation,
-        ctx,
-      });
+      await reconcilePayrollBankTransaction({ clientId, transaction: tx, obligation, ctx });
       reload();
-      setToast(`Pagamento conciliado em ${obligation.accountCode} (${obligation.label}).`);
+      setToast(`Pagamento conciliado em ${obligation.accountCode} ${obligation.accountName}.`);
     } catch (err) {
       reportError(err, { area: 'folha', op: 'conciliar' });
       setError(err instanceof Error ? err.message : 'Erro ao conciliar o lançamento bancário.');
     }
   };
 
-  const signatories = useMemo(
-    () => ({
-      legalRepresentative: {
-        name: currentClient?.legalRepresentativeName,
-        cpf: currentClient?.legalRepresentativeCpf,
-      },
-    }),
-    [currentClient]
-  );
-
-  const handleExportPdf = () => {
-    if (!currentClient || !existingSummary || !ctx) return;
-    try {
-      const entry =
-        ctx.monthEntries.find((e) => e.payrollMonth === month) ??
-        buildPayrollJournalDraft(existingSummary, ctx.accounts, mapping);
-      const { blob, fileName } = generatePayrollPdf({
-        client: currentClient,
-        summary: existingSummary,
-        journalLines: entry.lines,
-        obligations,
-        signatories,
-      });
-      downloadBlob(blob, fileName);
-    } catch (err) {
-      reportError(err, { area: 'folha', op: 'exportar-pdf' });
-      setToast(err instanceof Error ? err.message : 'Não foi possível exportar o PDF.');
-    }
+  const exportArgs = () => {
+    if (!currentClient || !existingSummary || !ctx) return null;
+    const entry = ctx.monthEntries.find((e) => e.payrollMonth === month) ?? buildPayrollJournalDraft(existingSummary, ctx.accounts, mapping);
+    return {
+      client: currentClient,
+      summary: existingSummary,
+      journalLines: entry.lines,
+      obligations,
+      signatories: { legalRepresentative: { name: currentClient.legalRepresentativeName, cpf: currentClient.legalRepresentativeCpf } },
+    };
   };
 
-  const handleExportExcel = async () => {
-    if (!currentClient || !existingSummary || !ctx) return;
+  const handleExport = async (kind: 'pdf' | 'excel') => {
     try {
-      const entry =
-        ctx.monthEntries.find((e) => e.payrollMonth === month) ??
-        buildPayrollJournalDraft(existingSummary, ctx.accounts, mapping);
-      const { blob, fileName } = await generatePayrollExcel({
-        client: currentClient,
-        summary: existingSummary,
-        journalLines: entry.lines,
-        obligations,
-        signatories,
-      });
+      const args = exportArgs();
+      if (!args) return;
+      const { blob, fileName } = kind === 'pdf' ? generatePayrollPdf(args) : await generatePayrollExcel(args);
       downloadBlob(blob, fileName);
     } catch (err) {
-      reportError(err, { area: 'folha', op: 'exportar-excel' });
-      setToast(err instanceof Error ? err.message : 'Não foi possível exportar a planilha Excel.');
+      reportError(err, { area: 'folha', op: kind === 'pdf' ? 'exportar-pdf' : 'exportar-excel' });
+      setError(err instanceof Error ? err.message : kind === 'pdf' ? 'Não foi possível exportar o PDF.' : 'Não foi possível exportar a planilha.');
     }
   };
 
   if (!currentClient) {
     return (
       <main className={PAGE}>
-        <EmptyState
-          title="Selecione uma empresa"
-          description="Escolha um cliente na barra lateral para gerenciar a provisão e a conciliação da folha de pagamento."
-        />
+        <PageHeader title="Folha de Pagamento" />
+        <section className={`${SURFACE} rounded-[22px]`}>
+          <EmptyState title="Selecione uma empresa" description="Escolha um cliente na barra lateral para lançar a folha e conferir os pagamentos no extrato." />
+        </section>
       </main>
     );
   }
 
-  const settledCount = obligations.filter((o) => o.status === 'SETTLED').length;
+  // Situação dos pagamentos, para o cartão de resumo.
+  const settled = obligations.filter((o) => o.status === 'SETTLED').length;
+  const overdue = obligations.filter((o) => o.overdue);
+  const openAmount = obligations.reduce((s, o) => s + o.remaining, 0);
+  const nextDue = obligations
+    .filter((o) => o.remaining > 0 && o.dueDate && !o.overdue)
+    .map((o) => o.dueDate as string)
+    .sort()[0];
+  const paymentsTone: StatTone = obligations.length === 0 ? 'neutral' : overdue.length > 0 ? 'alert' : settled === obligations.length ? 'good' : 'warn';
+  const paymentsCaption =
+    overdue.length > 0
+      ? `${overdue.length} vencida(s) · falta ${formatCurrency(openAmount)}`
+      : settled === obligations.length
+        ? 'tudo quitado no extrato'
+        : nextDue
+          ? `falta ${formatCurrency(openAmount)} · próximo vencimento ${formatDateBR(nextDue).slice(0, 5)}`
+          : `falta ${formatCurrency(openAmount)}`;
 
   return (
     <main className={PAGE}>
       <PageHeader
         eyebrow={currentClient.tradeName || currentClient.name}
-        title="Folha de Pagamento e Pró-Labore"
-        description="Contabilize o resumo mensal de salários, pró-labore, INSS, FGTS, IRRF e provisões de férias/13º pelo regime de competência e concilie os pagamentos no extrato bancário."
+        title="Folha de Pagamento"
+        description="Lance o resumo da folha e do pró-labore de cada competência e acompanhe o pagamento dos líquidos e das guias no extrato."
         actions={
-          <div className="flex flex-wrap items-center gap-2.5">
-            <label className="flex items-center gap-2 text-[12px] text-stone-500">
-              Competência
-              <input
-                type="month"
-                value={month}
-                onChange={(e) => e.target.value && setMonth(e.target.value)}
-                className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`}
-              />
-            </label>
-            {existingSummary && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleExportPdf}
-                  className={BUTTON.secondary}
-                  title="Exportar Espelho Contábil da Folha em PDF"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportExcel}
-                  className={BUTTON.secondary}
-                  title="Exportar Espelho Contábil da Folha em Excel"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  Excel
-                </button>
-              </>
-            )}
-          </div>
+          existingSummary && (
+            <>
+              <button type="button" onClick={() => void handleExport('pdf')} className={BUTTON.secondary} title="Espelho contábil da folha em PDF">
+                <Download className="w-3.5 h-3.5" />
+                PDF
+              </button>
+              <button type="button" onClick={() => void handleExport('excel')} className={BUTTON.secondary} title="Espelho contábil da folha em Excel">
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                Excel
+              </button>
+            </>
+          )
         }
       />
 
+      <PayrollMonthNav month={month} overview={overview} onChange={requestMonth} />
+
       {error && (
-        <div role="alert" className="rounded-2xl border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/10 px-4 py-3 text-[13px] text-rose-700 dark:text-rose-300">
-          {error}
+        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-rose-200/70 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 px-4 py-3 text-[13px] text-rose-700 dark:text-rose-300">
+          <AlertTriangle className="w-4 h-4 mt-px shrink-0" />
+          <span>{error}</span>
         </div>
       )}
 
-      {toast && (
-        <div className="rounded-2xl border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/10 px-4 py-2.5 text-[13px] text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300 shrink-0" />
-          <span>{toast}</span>
-        </div>
-      )}
-
-      {/* Barra rápida de competências já contabilizadas */}
-      {ctx && ctx.register && ctx.register.summaries.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11.5px] font-medium text-stone-500 mr-1">Competências lançadas:</span>
-          {[...ctx.register.summaries]
-            .sort((a, b) => b.month.localeCompare(a.month))
-            .slice(0, 12)
-            .map((s) => {
-              const active = s.month === month;
-              const isLocked = ctx.lockedMonths.has(s.month);
-              return (
-                <button
-                  key={s.month}
-                  type="button"
-                  onClick={() => setMonth(s.month)}
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11.5px] font-mono transition ${
-                    active
-                      ? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 font-semibold'
-                      : 'bg-surface border border-line text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-white/8'
-                  }`}
-                >
-                  {isLocked && <Lock className="w-3 h-3 opacity-70" />}
-                  {formatMonth(s.month)}
-                </button>
-              );
-            })}
-        </div>
-      )}
-
-      {/* Cards de Resumo da Competência */}
-      {calc && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
-              Proventos Brutos ({formatMonth(month)})
-            </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
-              {formatCurrency(calc.totalGross)}
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-stone-500">
-              Salários: {formatCurrency(calc.grossSalaries)} · Pró-labore: {formatCurrency(calc.grossProLabore)}
-            </p>
-          </div>
-          <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
-              Líquido a Pagar
-            </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
-              {formatCurrency(calc.totalNetPayable)}
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-stone-500">
-              Retenções em folha: {formatCurrency(calc.totalRetentions)}
-            </p>
-          </div>
-          <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
-              Guias a Recolher (INSS / FGTS / IRRF)
-            </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-stone-900 dark:text-stone-100">
-              {formatCurrency(calc.totalTaxesPayable)}
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-stone-500">
-              INSS: {formatCurrency(calc.totalInssPayable)} · FGTS: {formatCurrency(calc.fgts)}
-            </p>
-          </div>
-          <div className={`${SURFACE} rounded-2xl p-4`}>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
-              Conciliação no Extrato
-            </p>
-            <p className="mt-1 text-[18px] font-semibold font-mono tabular-nums text-emerald-700 dark:text-emerald-300">
-              {settledCount} / {obligations.length} obrigações
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-stone-500">
-              Custo total c/ provisões: {formatCurrency(calc.totalExpense)}
-            </p>
-          </div>
+      {entryStatus?.kind === 'BLOCKED' && (
+        <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-amber-50/70 dark:bg-amber-500/10 px-4 py-3 text-[13px] text-amber-900 dark:text-amber-200">
+          <AlertTriangle className="w-4 h-4 mt-px shrink-0" />
+          <span>{entryStatus.problem}</span>
         </div>
       )}
 
       {loading || !ctx ? (
-        <TableSkeleton rows={5} label="Carregando folha de pagamento e conciliação bancária…" />
+        !error && (
+          <>
+            <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[112px] rounded-[20px]" label="Carregando a folha de pagamento…" />
+            <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
+              <TableSkeleton rows={6} />
+            </section>
+          </>
+        )
       ) : (
-        <div className="space-y-6">
+        <>
+          {calc && (
+            <section aria-label={`Resumo da folha de ${formatMonth(month)}`} className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard icon={ReceiptText} label="Custo total da folha" value={formatCurrency(calc.totalExpense)} caption={`proventos de ${formatCurrency(calc.totalGross)}`} />
+              <StatCard icon={Wallet} label="Líquido a pagar" value={formatCurrency(calc.totalNetPayable)} caption={`retenções de ${formatCurrency(calc.totalRetentions)}`} />
+              <StatCard icon={Banknote} label="Guias a recolher" value={formatCurrency(calc.totalTaxesPayable)} caption={`INSS ${formatCurrency(calc.totalInssPayable)} · FGTS ${formatCurrency(calc.fgts)}`} />
+              <StatCard icon={Landmark} label="Pagamentos no extrato" value={`${settled}/${obligations.length}`} tone={paymentsTone} caption={paymentsCaption} />
+            </section>
+          )}
+
           <PayrollForm
             key={`${clientId}_${month}_${existingSummary?.updatedAt ?? 'new'}`}
+            clientId={currentClient.id}
             month={month}
             accounts={ctx.accounts}
+            mapping={mapping}
             existingSummary={existingSummary}
             previousSummary={previousSummary}
             locked={locked}
             saving={saving}
+            needsRepost={needsRepost}
             onSave={handleSave}
             onDelete={handleDelete}
             onNotify={setToast}
+            onDirtyChange={setDirty}
           />
 
-          {existingSummary && (
-            <PayrollReconciliationPanel
-              month={month}
-              obligations={obligations}
-              onReconcile={handleReconcile}
-            />
-          )}
-        </div>
+          {existingSummary && <PayrollReconciliationPanel month={month} obligations={obligations} onReconcile={handleReconcile} />}
+        </>
       )}
+
+      {pendingMonth && (
+        <ConfirmDialog
+          title="Trocar de competência sem contabilizar?"
+          description={`Os valores digitados em ${formatMonth(month)} ainda não foram contabilizados e vão ser descartados.`}
+          confirmLabel={`Ir para ${formatMonth(pendingMonth)}`}
+          cancelLabel="Continuar editando"
+          destructive
+          onConfirm={() => {
+            setMonth(pendingMonth);
+            setPendingMonth(null);
+          }}
+          onCancel={() => setPendingMonth(null)}
+        />
+      )}
+      {leave.pending && (
+        <ConfirmDialog
+          title="Sair sem contabilizar?"
+          description="Os valores da folha digitados nesta tela ainda não foram contabilizados e vão ser descartados."
+          confirmLabel="Sair sem contabilizar"
+          cancelLabel="Continuar editando"
+          destructive
+          onConfirm={leave.confirm}
+          onCancel={leave.cancel}
+        />
+      )}
+
+      <Toast toast={toast} />
     </main>
   );
 }

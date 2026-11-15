@@ -8,6 +8,7 @@ import type {
   PayrollSummary,
 } from '@/types/firestore';
 import type { JournalEntryDraft } from '@/lib/data/repository';
+import { addCalendarDays, dayOfMonth, nationalHolidays, shiftToBusinessDay } from '@/lib/business-days';
 import { lastDayOf } from '@/lib/fixed-assets';
 import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
@@ -447,13 +448,35 @@ export interface PayrollObligationMatch {
   accountName: string;
   /** Valor provisionado na folha da competência. */
   provisioned: number;
-  /** Soma dos pagamentos já classificados nesta conta na janela de pagamento. */
+  /** Pagamentos da janela atribuídos a esta competência (depois de quitado o saldo mais antigo da conta). */
   paid: number;
   /** Saldo pendente de pagamento/conciliação. */
   remaining: number;
   status: 'SETTLED' | 'PARTIAL' | 'PENDING';
+  /** Pagamentos da janela que baixaram (no todo ou em parte) a obrigação desta competência. */
   reconciledTransactions: BankTransaction[];
   candidates: PayrollCandidateTransaction[];
+  /** Vencimento legal (YYYY-MM-DD); null quando não há prazo em lei (pró-labore). */
+  dueDate: string | null;
+  /** Há saldo em aberto e o vencimento já passou. */
+  overdue: boolean;
+  /** Saldo credor da conta no início da competência: obrigações de competências anteriores ainda não pagas. */
+  priorBalance: number;
+  /** Quanto desse saldo anterior continua em aberto depois dos pagamentos da janela. */
+  priorRemaining: number;
+  /** Pagamentos da janela consumidos por inteiro pelo saldo anterior (quitaram competências passadas). */
+  priorTransactions: BankTransaction[];
+}
+
+export interface PayrollMatchOptions {
+  /**
+   * Saldo credor (a pagar) de cada conta, por id, no início da competência. Os pagamentos quitam
+   * primeiro esse saldo mais antigo; só o que sobra baixa a obrigação da competência. Sem ele, todo
+   * pagamento da janela conta para a competência.
+   */
+  priorBalances?: ReadonlyMap<string, number>;
+  /** Data de hoje (YYYY-MM-DD), para marcar o que está vencido. */
+  today?: string;
 }
 
 /** Próxima competência (YYYY-MM). */
@@ -483,15 +506,48 @@ function matchesKeyword(memo: string, key: PayrollObligationKey): boolean {
 }
 
 /**
+ * Quinto dia útil do mês para pagamento de salários (CLT, art. 459, § 1º): o sábado conta como
+ * dia útil; domingos e feriados nacionais, não.
+ */
+export function fifthWorkingDay(month: string): string {
+  let date = `${month}-01`;
+  for (let counted = 0; ; date = addCalendarDays(date, 1)) {
+    const [y, m, d] = date.split('-').map(Number);
+    const sunday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() === 0;
+    if (!sunday && !nationalHolidays(y).has(date) && ++counted === 5) return date;
+  }
+}
+
+/**
+ * Vencimento da obrigação gerada pela folha da competência `month`:
+ *   - salários: 5º dia útil do mês seguinte;
+ *   - INSS e IRRF (DARF da DCTFWeb) e FGTS Digital: dia 20 do mês seguinte, antecipado se não for
+ *     dia útil (as mesmas regras da Agenda, src/lib/obligations.ts);
+ *   - pró-labore: sem prazo em lei.
+ */
+export function payrollDueDate(key: PayrollObligationKey, month: string): string | null {
+  const next = nextMonthOf(month);
+  if (key === 'proLabore') return null;
+  if (key === 'salaries') return fifthWorkingDay(next);
+  return shiftToBusinessDay(dayOfMonth(next, 20), 'previous');
+}
+
+/**
  * Cruza as obrigações geradas pela folha da competência (`summary.month`) com os débitos do
  * extrato bancário ocorridos na própria competência ou no mês seguinte (ex.: folha de 10/2025
  * paga em 10/2025 ou até 30/11/2025).
+ *
+ * Os pagamentos baixam a conta por ordem de antiguidade: com `options.priorBalances`, o que a conta
+ * já devia antes da competência (a guia do mês anterior, paga dentro deste) é quitado primeiro, e só
+ * o que sobra conta para esta competência. Sem isso, a guia de janeiro paga em fevereiro apareceria
+ * também como pagamento da folha de fevereiro.
  */
 export function matchBankTransactionsWithPayroll(
   summary: PayrollSummary | PayrollInput,
   transactions: readonly BankTransaction[],
   accounts: readonly ChartAccount[],
-  mapping: PayrollAccountMapping = DEFAULT_PAYROLL_MAPPING
+  mapping: PayrollAccountMapping = DEFAULT_PAYROLL_MAPPING,
+  options: PayrollMatchOptions = {}
 ): PayrollObligationMatch[] {
   const calc = calculateNetPayroll(summary);
   const byCode = new Map(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => [a.code, a] as const));
@@ -517,26 +573,43 @@ export function matchBankTransactionsWithPayroll(
   for (const spec of specs) {
     if (spec.amount <= 0) continue;
     const acc = byCode.get(spec.code);
-    const reconciledTransactions: BankTransaction[] = [];
-    let paidCents = 0;
 
+    // Débitos da janela já classificados nesta conta, do mais antigo para o mais novo.
+    const payments: { tx: BankTransaction; cents: number }[] = [];
     for (const tx of debitsInWindow) {
       if (tx.status === 'PENDING') continue;
       if (tx.isSplit && tx.splits?.length) {
         const splitMatch = tx.splits.filter((s) => (acc && s.accountId === acc.id) || s.accountCode === spec.code);
-        if (splitMatch.length > 0) {
-          reconciledTransactions.push(tx);
-          for (const s of splitMatch) paidCents += toCents(Math.abs(s.amount));
-        }
+        if (splitMatch.length > 0) payments.push({ tx, cents: splitMatch.reduce((s, x) => s + toCents(Math.abs(x.amount)), 0) });
         continue;
       }
       if ((acc && tx.accountId === acc.id) || tx.accountCode === spec.code) {
+        payments.push({ tx, cents: toCents(Math.abs(tx.amount)) });
+      }
+    }
+    payments.sort((a, b) => a.tx.date.localeCompare(b.tx.date));
+
+    // Quitação por antiguidade: primeiro o saldo anterior da conta, depois a competência.
+    const provisionedCents = toCents(spec.amount);
+    const priorCents = Math.max(0, toCents((acc && options.priorBalances?.get(acc.id)) || 0));
+    let priorOpenCents = priorCents;
+    let paidCents = 0;
+    const reconciledTransactions: BankTransaction[] = [];
+    const priorTransactions: BankTransaction[] = [];
+    const accountedIds = new Set<string>();
+    for (const { tx, cents } of payments) {
+      accountedIds.add(tx.id);
+      const toPrior = Math.min(priorOpenCents, cents);
+      priorOpenCents -= toPrior;
+      const toCompetence = Math.min(cents - toPrior, provisionedCents - paidCents);
+      if (toCompetence > 0) {
+        paidCents += toCompetence;
         reconciledTransactions.push(tx);
-        paidCents += toCents(Math.abs(tx.amount));
+      } else if (toPrior > 0) {
+        priorTransactions.push(tx);
       }
     }
 
-    const provisionedCents = toCents(spec.amount);
     const remainingCents = Math.max(0, provisionedCents - paidCents);
     const remaining = fromCents(remainingCents);
     const paid = fromCents(paidCents);
@@ -546,13 +619,13 @@ export function matchBankTransactionsWithPayroll(
 
     const candidates: PayrollCandidateTransaction[] = [];
     if (remainingCents > 0) {
-      const reconciledIds = new Set(reconciledTransactions.map((t) => t.id));
       for (const tx of debitsInWindow) {
-        if (reconciledIds.has(tx.id)) continue;
+        if (accountedIds.has(tx.id)) continue;
         // Só sugere lançamentos ainda pendentes ou auto-classificados em outra conta.
         if (tx.status === 'RECONCILED') continue;
         const txCents = toCents(Math.abs(tx.amount));
-        const exactAmount = txCents === remainingCents || txCents === provisionedCents;
+        // Valor da competência ou do saldo anterior ainda aberto (a guia do mês passado, paga neste).
+        const exactAmount = txCents === remainingCents || txCents === provisionedCents || (priorOpenCents > 0 && txCents === priorOpenCents);
         const hasKeyword = matchesKeyword(tx.memo, spec.key);
 
         if (exactAmount && hasKeyword) {
@@ -570,6 +643,7 @@ export function matchBankTransactionsWithPayroll(
       );
     }
 
+    const dueDate = payrollDueDate(spec.key, summary.month);
     out.push({
       key: spec.key,
       label: spec.label,
@@ -582,10 +656,56 @@ export function matchBankTransactionsWithPayroll(
       status,
       reconciledTransactions,
       candidates,
+      dueDate,
+      overdue: remainingCents > 0 && dueDate !== null && options.today !== undefined && options.today > dueDate,
+      priorBalance: fromCents(priorCents),
+      priorRemaining: fromCents(priorOpenCents),
+      priorTransactions,
     });
   }
 
   return out;
+}
+
+/* =========================================================================
+   Visão do ano (navegação entre competências)
+   ========================================================================= */
+
+/**
+ * Situação da folha em cada competência:
+ *   - LOCKED: lançada, em competência fechada;
+ *   - POSTED: lançada, em competência aberta;
+ *   - MISSING: sem folha, embora a empresa já tivesse folha antes e o mês já tenha começado;
+ *   - EMPTY: sem folha e sem nada a cobrar (antes da primeira folha, ou mês futuro).
+ */
+export type PayrollMonthState = 'LOCKED' | 'POSTED' | 'MISSING' | 'EMPTY';
+
+export interface PayrollMonthStatus {
+  month: string;
+  state: PayrollMonthState;
+  /** Custo total da folha lançada (proventos, encargos e provisões); 0 sem folha. */
+  totalExpense: number;
+}
+
+/** As 12 competências do ano, com a situação da folha em cada uma. */
+export function payrollYearOverview(
+  register: Pick<PayrollRegister, 'summaries'> | null | undefined,
+  year: number,
+  lockedMonths: ReadonlySet<string>,
+  today: string
+): PayrollMonthStatus[] {
+  const byMonth = new Map((register?.summaries ?? []).map((s) => [s.month, s] as const));
+  const first = [...byMonth.keys()].sort()[0];
+  const currentMonth = today.slice(0, 7);
+  return Array.from({ length: 12 }, (_, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+    const summary = byMonth.get(month);
+    if (summary) {
+      return { month, state: lockedMonths.has(month) ? ('LOCKED' as const) : ('POSTED' as const), totalExpense: calculateNetPayroll(summary).totalExpense };
+    }
+    const missing = first !== undefined && month > first && month <= currentMonth;
+    return { month, state: missing ? ('MISSING' as const) : ('EMPTY' as const), totalExpense: 0 };
+  });
 }
 
 /* =========================================================================

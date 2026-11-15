@@ -8,6 +8,10 @@ import type {
 } from '@/types/firestore';
 import type { DataRepository, FixedAssetJournalChange, RegisterSaveOptions } from '@/lib/data/repository';
 import { getRepository } from '@/lib/services/data-service';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
+import { buildPostings } from '@/lib/ledger';
+import { toCents, fromCents } from '@/lib/money';
+import { addCalendarDays } from '@/lib/business-days';
 import { getActor, peekActor } from '@/lib/data/scope';
 import { classifyAction, journalAudit, newAuditId, transactionAudit } from '@/lib/audit';
 import { implantationDate, implantationProblem } from '@/lib/opening';
@@ -39,6 +43,18 @@ export interface PayrollContext {
   implantation: string | null;
   monthEntries: JournalEntry[];
   windowTransactions: BankTransaction[];
+  /**
+   * Saldo credor (a pagar) de cada conta, por id, no início da competência: o que já se devia
+   * antes dela. Os pagamentos da janela quitam primeiro esse saldo (ver `matchBankTransactionsWithPayroll`).
+   */
+  priorBalances: Map<string, number>;
+}
+
+/** Saldo credor de cada conta em `until` (positivo = a pagar), a partir das partidas do razão. */
+function creditBalances(postings: readonly { accountId: string; value: number }[]): Map<string, number> {
+  const cents = new Map<string, number>();
+  for (const p of postings) cents.set(p.accountId, (cents.get(p.accountId) ?? 0) - toCents(p.value));
+  return new Map([...cents].map(([id, c]) => [id, fromCents(c)] as const));
 }
 
 export async function loadPayrollContext(
@@ -48,15 +64,20 @@ export async function loadPayrollContext(
 ): Promise<PayrollContext> {
   const windowStart = `${month}-01`;
   const windowEnd = lastDayOf(nextMonthOf(month));
-  const [register, accounts, locks, openings, banks, monthEntries, windowTransactions] = await Promise.all([
+  const [register, accounts, locks, openings, banks, journalEntries] = await Promise.all([
     repo.getPayrollRegister(clientId),
     repo.listAccounts(clientId),
     repo.listPeriodLocks(clientId),
     repo.getOpeningBalances(clientId),
     repo.listBankAccounts(clientId),
-    repo.listJournalEntries(clientId, { start: `${month}-01`, end: lastDayOf(month) }),
-    repo.listTransactions(clientId, { start: windowStart, end: windowEnd }),
+    // Todos os lançamentos manuais (são poucos): o saldo anterior das contas a pagar depende deles.
+    repo.listJournalEntries(clientId),
   ]);
+  // Lançamentos da janela um a um; o que veio antes chega consolidado das competências fechadas.
+  const ledger = await loadLedgerWindow({ clientId, accounts, banks, locks, from: windowStart, until: windowEnd }, repo);
+  const priorBalances = creditBalances(
+    buildPostings(ledger.transactions, banks, accounts, addCalendarDays(windowStart, -1), openings, journalEntries, ledger.carry)
+  );
   const implantation = implantationDate(openings, banks);
   return {
     register,
@@ -64,8 +85,9 @@ export async function loadPayrollContext(
     lockedMonths: new Set(locks.map((l) => l.month)),
     implantationMonth: implantation ? monthOf(implantation) : null,
     implantation,
-    monthEntries,
-    windowTransactions,
+    monthEntries: journalEntries.filter((e) => e.date >= windowStart && e.date <= lastDayOf(month)),
+    windowTransactions: ledger.transactions.filter((t) => t.date >= windowStart && t.date <= windowEnd),
+    priorBalances,
   };
 }
 

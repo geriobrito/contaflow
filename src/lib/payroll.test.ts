@@ -4,12 +4,15 @@ import {
   buildPayrollSummary,
   calculateNetPayroll,
   DEFAULT_PAYROLL_MAPPING,
+  fifthWorkingDay,
   matchBankTransactionsWithPayroll,
   missingPayrollCodes,
   parsePayrollText,
   payrollCloseProblem,
+  payrollDueDate,
   payrollProblem,
   payrollRoutineStatus,
+  payrollYearOverview,
 } from '@/lib/payroll';
 import { journalTotals } from '@/lib/journal';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
@@ -282,5 +285,101 @@ describe('payroll — importação rápida via texto/CSV e rotina mensal', () =>
     const status = payrollRoutineStatus({ register, month: '2025-10', accounts });
     expect(status).toEqual({ kind: 'MISSING', previousMonth: '2025-09' });
     expect(payrollCloseProblem(status!, '2025-10')).toContain('10/2025');
+  });
+});
+
+describe('payroll — quitação por antiguidade, vencimentos e visão do ano', () => {
+  const accounts = makeAccounts();
+  // Pró-labore fixo: todo mês a mesma guia de INSS (330,00), paga no dia 20 do mês seguinte.
+  const february = buildPayrollSummary('c1', { month: '2026-02', grossProLabore: 3000, inssProLabore: 330 }, ['je_2'], '2026-02-28T10:00:00Z');
+  const inssId = accounts.find((a) => a.code === DEFAULT_PAYROLL_MAPPING.inssPayableCode)!.id;
+  const paidInss = (id: string, date: string) =>
+    makeTx({ id, date, amount: -330, memo: 'DARF PREVIDENCIARIO', status: 'RECONCILED', accountId: inssId, accountCode: '2.1.1.03', accountName: 'INSS a Recolher' });
+  const inssOf = (txs: BankTransaction[], prior?: number) =>
+    matchBankTransactionsWithPayroll(february, txs, accounts, DEFAULT_PAYROLL_MAPPING, {
+      ...(prior !== undefined ? { priorBalances: new Map([[inssId, prior]]) } : {}),
+      today: '2026-03-25',
+    }).find((m) => m.key === 'inss')!;
+
+  it('a guia de janeiro paga em fevereiro não quita a folha de fevereiro', () => {
+    const januaryGuide = paidInss('tx_jan', '2026-02-20');
+
+    // Sem o saldo anterior da conta, o pagamento contaria para fevereiro.
+    expect(inssOf([januaryGuide]).status).toBe('SETTLED');
+
+    // Com ele (a conta devia 330,00 de janeiro), o pagamento baixa janeiro e fevereiro segue em aberto.
+    const open = inssOf([januaryGuide], 330);
+    expect(open.status).toBe('PENDING');
+    expect(open.paid).toBe(0);
+    expect(open.remaining).toBe(330);
+    expect(open.reconciledTransactions).toHaveLength(0);
+    expect(open.priorTransactions.map((t) => t.id)).toEqual(['tx_jan']);
+    expect(open.priorBalance).toBe(330);
+    expect(open.priorRemaining).toBe(0);
+    expect(open.overdue).toBe(true); // venceu em 20/03 e hoje é 25/03
+
+    // A guia de fevereiro, paga em março, é a que quita a competência.
+    const settled = inssOf([januaryGuide, paidInss('tx_fev', '2026-03-20')], 330);
+    expect(settled.status).toBe('SETTLED');
+    expect(settled.paid).toBe(330);
+    expect(settled.reconciledTransactions.map((t) => t.id)).toEqual(['tx_fev']);
+    expect(settled.overdue).toBe(false);
+  });
+
+  it('pagamento maior que o saldo anterior baixa o resto na competência; saldo anterior em aberto fica à vista', () => {
+    // A conta devia 100,00 de antes: dos 330,00 pagos, 230,00 contam para fevereiro.
+    const partial = inssOf([paidInss('tx_a', '2026-03-10')], 100);
+    expect(partial.status).toBe('PARTIAL');
+    expect(partial.paid).toBe(230);
+    expect(partial.remaining).toBe(100);
+    expect(partial.reconciledTransactions.map((t) => t.id)).toEqual(['tx_a']);
+
+    // Devia 1.000,00 e só entrou um pagamento de 330,00: ainda restam 670,00 de competências anteriores.
+    const arrears = inssOf([paidInss('tx_b', '2026-03-10')], 1000);
+    expect(arrears.paid).toBe(0);
+    expect(arrears.priorRemaining).toBe(670);
+
+    // Saldo devedor (adiantamento) não vira dívida negativa.
+    expect(inssOf([], -50).priorBalance).toBe(0);
+  });
+
+  it('sugere o débito pendente que tem o valor do saldo anterior em aberto', () => {
+    const pending = makeTx({ id: 'tx_p', date: '2026-02-20', amount: -500, memo: 'DEB AUTORIZADO RFB' });
+    expect(inssOf([pending], 500).candidates.map((c) => [c.transaction.id, c.matchReason])).toEqual([['tx_p', 'EXACT_AMOUNT']]);
+    expect(inssOf([pending]).candidates).toHaveLength(0);
+  });
+
+  it('vencimentos: salários no 5º dia útil (sábado conta), guias no dia 20 antecipado, pró-labore sem prazo', () => {
+    // Março/2026: dia 1º é domingo; úteis 2, 3, 4, 5 e 6 (sexta).
+    expect(fifthWorkingDay('2026-03')).toBe('2026-03-06');
+    // Maio/2026: 1º é feriado (sexta); sábado 2 conta, domingo 3 não: 2, 4, 5, 6 e 7.
+    expect(fifthWorkingDay('2026-05')).toBe('2026-05-07');
+    expect(payrollDueDate('salaries', '2026-02')).toBe('2026-03-06');
+    expect(payrollDueDate('inss', '2026-02')).toBe('2026-03-20');
+    expect(payrollDueDate('fgts', '2026-02')).toBe('2026-03-20');
+    // Competência 05/2026: dia 20/06/2026 é sábado, antecipa para sexta, 19.
+    expect(payrollDueDate('irrf', '2026-05')).toBe('2026-06-19');
+    expect(payrollDueDate('proLabore', '2026-02')).toBeNull();
+  });
+
+  it('visão do ano: lançada, fechada, faltando e vazia', () => {
+    const register: PayrollRegister = {
+      id: 'c1',
+      clientId: 'c1',
+      updatedAt: '',
+      summaries: [
+        buildPayrollSummary('c1', { month: '2026-02', grossProLabore: 3000 }, ['a'], ''),
+        buildPayrollSummary('c1', { month: '2026-04', grossProLabore: 3000, fgts: 100 }, ['b'], ''),
+      ],
+    };
+    const overview = payrollYearOverview(register, 2026, new Set(['2026-02']), '2026-05-10');
+    expect(overview).toHaveLength(12);
+    expect(overview.map((m) => m.state)).toEqual(['EMPTY', 'LOCKED', 'MISSING', 'POSTED', 'MISSING', 'EMPTY', 'EMPTY', 'EMPTY', 'EMPTY', 'EMPTY', 'EMPTY', 'EMPTY']);
+    expect(overview[3].totalExpense).toBe(3100);
+
+    // Sem nenhuma folha, nada é cobrado.
+    expect(payrollYearOverview(null, 2026, new Set(), '2026-05-10').every((m) => m.state === 'EMPTY')).toBe(true);
+    // Ano anterior à primeira folha: nada faltando.
+    expect(payrollYearOverview(register, 2025, new Set(), '2026-05-10').every((m) => m.state === 'EMPTY')).toBe(true);
   });
 });

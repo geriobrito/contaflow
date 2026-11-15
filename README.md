@@ -128,6 +128,17 @@ Cada tela compõe: a carga de dados e as gravações ficam num hook do domínio 
 - **CMV mensal** (`stockMonth`), no último dia: o lançamento leva o saldo contábil do estoque (sem o CMV do próprio mês) ao estoque final informado — D custo / C estoque quando o contábil é maior (compras lançadas no estoque) ou D estoque / C custo quando é menor (compras lançadas direto no custo). Nos dois casos, CMV = estoque inicial + compras − estoque final.
 - **Rotinas do mês**: estoque final informado e não lançado trava o fechamento; estoque não informado só avisa (há cliente que manda por trimestre), assim como lucros distribuídos (2.3.3.03) num mês sem CMV.
 
+### Folha de pagamento e pró-labore
+
+| Coleção | Conteúdo | Regras |
+| --- | --- | --- |
+| `payroll_registers` | Resumo da folha de cada competência (um documento por cliente): salários, pró-labore, retenções, encargos e provisões, com o lançamento gerado no Diário. | Isolado por escritório. Gravações auditadas (`PAYROLL_SAVE`), com controle de concorrência (`version`). |
+
+- **Tela** Rotina do mês › Folha de Pagamento (`/folha`, `src/lib/payroll.ts`). O resumo é informado em três blocos (empregados, sócios e empresa); a provisão entra no Diário no último dia do mês. O ano aparece inteiro, com a competência lançada, fechada ou sem folha.
+- **Pagamentos no extrato** (`matchBankTransactionsWithPayroll`): cada obrigação (líquidos, INSS, FGTS, IRRF) é cruzada com os débitos da competência e do mês seguinte classificados na conta a pagar. Os pagamentos quitam por antiguidade: o saldo que a conta já devia no início da competência (`PayrollContext.priorBalances`, calculado do razão com os consolidados das competências fechadas) é baixado primeiro. Assim a guia de janeiro paga em fevereiro não aparece como pagamento da folha de fevereiro.
+- **Vencimentos** (`payrollDueDate`): salários no 5º dia útil do mês seguinte (o sábado conta); INSS, IRRF e FGTS no dia 20, antecipado, como na Agenda; pró-labore sem prazo. Obrigação em aberto depois do vencimento aparece como vencida.
+- **Rotinas do mês**: empresa que já teve folha e está sem a da competência não fecha o mês (`payrollCloseProblem`).
+
 ### Fechamento do exercício (checklist)
 
 | Coleção | Conteúdo | Regras |
