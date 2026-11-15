@@ -1,4 +1,4 @@
-import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
+import type { BankTransaction, ClientCompany, ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 
 /** Tamanho máximo de uma resposta do cliente (o mesmo do campo de texto do link e de firestore.rules). */
 export const MAX_ANSWER_LENGTH = 2000;
@@ -140,4 +140,208 @@ export function latestAnswers(requests: readonly ClientRequest[]): Map<string, C
     });
   }
   return out;
+}
+
+/* =========================================================================
+   Fila de trabalho por situação e dias de espera
+   ========================================================================= */
+
+/** Situação de cada pendência na fila do escritório. */
+export type PendingQueryStage = 'ANSWERED' | 'WAITING' | 'NOT_SENT';
+
+export type PendingQueryFilter = 'ALL' | PendingQueryStage;
+
+export interface PendingQueryCounts {
+  all: number;
+  answered: number;
+  waiting: number;
+  notSent: number;
+}
+
+export interface PendingQueryGroup {
+  stage: PendingQueryStage;
+  title: string;
+  subtitle: string;
+  items: BankTransaction[];
+}
+
+/** Situação da pendência: respondida, aguardando em link aberto ou ainda não enviada. */
+export function queryStage(
+  transactionId: string,
+  answers: ReadonlyMap<string, ClientRequestAnswer>,
+  inOpenLink: ReadonlySet<string>
+): PendingQueryStage {
+  if (answers.has(transactionId)) return 'ANSWERED';
+  if (inOpenLink.has(transactionId)) return 'WAITING';
+  return 'NOT_SENT';
+}
+
+/** Contagem em cada situação da fila de pendências. */
+export function pendingQueryCounts(
+  queries: readonly BankTransaction[],
+  answers: ReadonlyMap<string, ClientRequestAnswer>,
+  inOpenLink: ReadonlySet<string>
+): PendingQueryCounts {
+  let answered = 0;
+  let waiting = 0;
+  let notSent = 0;
+  for (const q of queries) {
+    const stage = queryStage(q.id, answers, inOpenLink);
+    if (stage === 'ANSWERED') answered += 1;
+    else if (stage === 'WAITING') waiting += 1;
+    else notSent += 1;
+  }
+  return { all: queries.length, answered, waiting, notSent };
+}
+
+/**
+ * Data de envio (`createdAt` do link aberto mais antigo que inclui o lançamento) para cada
+ * pendência que está aguardando resposta do cliente.
+ */
+export function sentAtByTransaction(openRequests: readonly Pick<ClientRequest, 'createdAt' | 'items'>[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const req of openRequests) {
+    for (const item of req.items) {
+      const prev = map.get(item.transactionId);
+      if (!prev || req.createdAt < prev) {
+        map.set(item.transactionId, req.createdAt);
+      }
+    }
+  }
+  return map;
+}
+
+/** Dias corridos de espera desde `sentAtIso` até `nowMs` (0 quando enviado hoje ou data inválida). */
+export function waitingDays(sentAtIso: string, nowMs: number): number {
+  const sentMs = Date.parse(sentAtIso);
+  if (!Number.isFinite(sentMs) || nowMs <= sentMs) return 0;
+  return Math.floor((nowMs - sentMs) / 86_400_000);
+}
+
+/** Rótulo amigável para os dias de espera de uma pergunta enviada. */
+export function formatWaitingDays(days: number): string {
+  if (days <= 0) return 'enviado hoje';
+  if (days === 1) return 'há 1 dia';
+  return `há ${days} dias`;
+}
+
+/**
+ * Agrupa as pendências na ordem de trabalho:
+ * 1. Respondidas (prontas para classificar) — novas respostas primeiro;
+ * 2. Aguardando o cliente — as enviadas há mais tempo primeiro;
+ * 3. Ainda não enviadas — por data do lançamento (mais recentes primeiro).
+ */
+export function groupPendingQueries(params: {
+  queries: readonly BankTransaction[];
+  answers: ReadonlyMap<string, ClientRequestAnswer>;
+  inOpenLink: ReadonlySet<string>;
+  sentAtMap: ReadonlyMap<string, string>;
+  newlyAnsweredIds?: ReadonlySet<string>;
+  filter?: PendingQueryFilter;
+}): PendingQueryGroup[] {
+  const { queries, answers, inOpenLink, sentAtMap, newlyAnsweredIds, filter = 'ALL' } = params;
+  const answered: BankTransaction[] = [];
+  const waiting: BankTransaction[] = [];
+  const notSent: BankTransaction[] = [];
+
+  for (const q of queries) {
+    const stage = queryStage(q.id, answers, inOpenLink);
+    if (stage === 'ANSWERED') answered.push(q);
+    else if (stage === 'WAITING') waiting.push(q);
+    else notSent.push(q);
+  }
+
+  answered.sort((a, b) => {
+    const aNew = newlyAnsweredIds?.has(a.id) ? 0 : 1;
+    const bNew = newlyAnsweredIds?.has(b.id) ? 0 : 1;
+    if (aNew !== bNew) return aNew - bNew;
+    const aTime = answers.get(a.id)?.answeredAt ?? '';
+    const bTime = answers.get(b.id)?.answeredAt ?? '';
+    return bTime.localeCompare(aTime) || b.date.localeCompare(a.date);
+  });
+
+  waiting.sort((a, b) => {
+    const aSent = sentAtMap.get(a.id) ?? a.clientQuery?.askedAt ?? '';
+    const bSent = sentAtMap.get(b.id) ?? b.clientQuery?.askedAt ?? '';
+    return aSent.localeCompare(bSent) || b.date.localeCompare(a.date);
+  });
+
+  notSent.sort((a, b) => b.date.localeCompare(a.date));
+
+  const allGroups: PendingQueryGroup[] = [
+    {
+      stage: 'ANSWERED',
+      title: 'Respondidas · prontas para classificar',
+      subtitle: 'O cliente já justificou estes lançamentos; confira a resposta e classifique.',
+      items: answered,
+    },
+    {
+      stage: 'WAITING',
+      title: 'Aguardando o cliente',
+      subtitle: 'Enviadas em link aberto · ordenadas da mais antiga para a mais recente.',
+      items: waiting,
+    },
+    {
+      stage: 'NOT_SENT',
+      title: 'Ainda não enviadas',
+      subtitle: 'Fora de qualquer link aberto · gere um novo link ou reative um anterior.',
+      items: notSent,
+    },
+  ];
+
+  return allGroups.filter((g) => g.items.length > 0 && (filter === 'ALL' || g.stage === filter));
+}
+
+/* =========================================================================
+   Cobrança e envio por WhatsApp / E-mail
+   ========================================================================= */
+
+/**
+ * Normaliza um telefone brasileiro para o formato do WhatsApp (`55` + DDD + número, só dígitos).
+ * Devolve `null` se não houver dígitos suficientes.
+ */
+export function normalizeWhatsAppPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '').replace(/^0+/, '');
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) return digits;
+  return null;
+}
+
+/** Telefone do cliente para WhatsApp: usa `phone` principal ou `registration.phone2` como reserva. */
+export function clientWhatsAppPhone(client?: Pick<ClientCompany, 'phone' | 'registration'> | null): string | null {
+  return normalizeWhatsAppPhone(client?.phone) ?? normalizeWhatsAppPhone(client?.registration?.phone2);
+}
+
+/** Endereço `https://wa.me/...` com destinatário (quando a empresa tem telefone) e texto preenchido. */
+export function whatsAppLink(text: string, phone?: string | null): string {
+  const normalized = normalizeWhatsAppPhone(phone);
+  return normalized
+    ? `https://wa.me/${normalized}?text=${encodeURIComponent(text)}`
+    : `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
+/** Mensagem padrão para enviar o link de pendências ao cliente. */
+export function buildShareMessage(
+  request: Pick<ClientRequest, 'clientName' | 'expiresAtMs' | 'items'>,
+  url: string
+): string {
+  const validUntil = new Date(request.expiresAtMs).toLocaleDateString('pt-BR');
+  return `Olá! Precisamos de algumas informações sobre lançamentos da ${request.clientName}. Responda por este link (válido até ${validUntil}): ${url}`;
+}
+
+/** Mensagem de cobrança indicando quantas perguntas ainda faltam responder no link aberto. */
+export function buildReminderMessage(
+  request: Pick<ClientRequest, 'clientName' | 'expiresAtMs' | 'items' | 'answers'>,
+  url: string
+): string {
+  const total = request.items.length;
+  const done = answeredCount(request);
+  const missing = Math.max(0, total - done);
+  const validUntil = new Date(request.expiresAtMs).toLocaleDateString('pt-BR');
+  if (missing === 0) return buildShareMessage(request, url);
+  if (done > 0) {
+    return `Olá! Obrigado pelas respostas já enviadas. Ainda falta(m) ${missing} de ${total} pergunta(s) sobre lançamentos da ${request.clientName}. Você pode completar pelo mesmo link (válido até ${validUntil}): ${url}`;
+  }
+  return `Olá! Ainda aguardamos a resposta de ${missing} pergunta(s) sobre lançamentos da ${request.clientName} para fecharmos a contabilidade. Responda por este link (válido até ${validUntil}): ${url}`;
 }

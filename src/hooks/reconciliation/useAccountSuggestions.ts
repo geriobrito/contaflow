@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { BankTransaction, ChartAccount } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
 import { directionOf, suggestAccounts, type AccountSuggestion } from '@/lib/account-suggestions';
 import { loadRecentAccounts } from '@/lib/recent-accounts';
 import { payeeKey, type PayeeGroup } from '@/lib/payee';
@@ -14,6 +14,8 @@ interface AccountSuggestionsParams {
   /** Lançamento aberto no Classificar e a conta da nota fiscal casada com ele. */
   selected: BankTransaction | null;
   invoiceAccountId?: string | null;
+  /** Regras aprendidas da empresa (apoio ao favorecido quando o extrato inteiro não está carregado). */
+  rules?: readonly ClassificationRule[];
   /** Grupo aberto em Por favorecido. */
   group: PayeeGroup | null;
   /** Lançamentos marcados para a classificação em lote (só com o modal aberto). */
@@ -26,7 +28,7 @@ const NONE: readonly AccountSuggestion[] = [];
  * Contas sugeridas para cada seletor da Conciliação (único, por favorecido e em lote). As recentes
  * são relidas do navegador cada vez que um seletor abre.
  */
-export function useAccountSuggestions({ clientId, accounts, transactions, selected, invoiceAccountId, group, bulk }: AccountSuggestionsParams) {
+export function useAccountSuggestions({ clientId, accounts, transactions, selected, invoiceAccountId, rules, group, bulk }: AccountSuggestionsParams) {
   const forSelected = useMemo(
     () =>
       selected
@@ -38,9 +40,10 @@ export function useAccountSuggestions({ clientId, accounts, transactions, select
             excludeIds: new Set([selected.id]),
             invoiceAccountId,
             recent: loadRecentAccounts(clientId),
+            rules,
           })
         : NONE,
-    [selected, accounts, transactions, invoiceAccountId, clientId]
+    [selected, accounts, transactions, invoiceAccountId, rules, clientId]
   );
 
   const forGroup = useMemo(

@@ -125,6 +125,12 @@ export interface UseReconciliationParams {
   accounts: readonly ChartAccount[];
   /** Período consultado no banco; `null` aguarda a definição do período (não carrega nada). */
   range: DateRange | null;
+  /**
+   * Lançamentos já carregados pela tela (ex.: `listOpenQueries` em Pendências). Quando
+   * informado, o hook usa essa lista e busca no banco apenas regras e fechamentos, sem ler
+   * o extrato inteiro do intervalo de datas.
+   */
+  prefetchedTransactions?: readonly BankTransaction[];
 }
 
 /**

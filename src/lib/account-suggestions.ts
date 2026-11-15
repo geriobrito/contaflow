@@ -1,4 +1,4 @@
-import type { AccountType, BankTransaction, ChartAccount } from '@/types/firestore';
+import type { AccountType, BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
 import { extractPayee, payeeKey, type FlowDirection } from '@/lib/payee';
 
 /**
@@ -64,6 +64,8 @@ export interface SuggestAccountsInput {
   invoiceAccountId?: string | null;
   /** Últimas contas escolhidas nesta empresa (mais recente primeiro). */
   recent?: readonly string[];
+  /** Regras aprendidas da empresa (usadas quando o histórico completo do mês não está carregado, ex.: Pendências). */
+  rules?: readonly ClassificationRule[];
   limit?: number;
 }
 
@@ -79,6 +81,7 @@ export function suggestAccounts({
   excludeIds,
   invoiceAccountId,
   recent = [],
+  rules = [],
   limit = 5,
 }: SuggestAccountsInput): AccountSuggestion[] {
   const usable = new Set(accounts.filter((a) => a.nature === 'ANALYTIC').map((a) => a.id));
@@ -97,7 +100,14 @@ export function suggestAccounts({
   const classified = history.filter((t) => t.status !== 'PENDING' && !excludeIds?.has(t.id) && (!direction || directionOf(t.amount) === direction));
   if (memo) {
     const key = payeeKey(memo);
-    add(byUse(classified.filter((t) => payeeKey(t.memo) === key)), `usada antes com ${shorten(extractPayee(memo) ?? memo)}`, 2);
+    const fromHistory = byUse(classified.filter((t) => payeeKey(t.memo) === key));
+    const fromRules = rules
+      .filter((r) => {
+        const rk = payeeKey(r.pattern);
+        return rk.length >= 3 && (rk === key || key.includes(rk));
+      })
+      .map((r) => r.accountId);
+    add([...fromHistory, ...fromRules], `usada antes com ${shorten(extractPayee(memo) ?? memo)}`, 2);
   }
   add(recent, 'usada recentemente', 2);
   add(byUse(classified), 'mais usada no período');

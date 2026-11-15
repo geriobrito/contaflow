@@ -2,15 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
   answerAt,
   answeredCount,
+  buildReminderMessage,
+  buildShareMessage,
+  clientWhatsAppPhone,
+  formatWaitingDays,
+  groupPendingQueries,
   hasUnreadAnswers,
   latestAnswers,
   MAX_ANSWER_LENGTH,
+  normalizeWhatsAppPhone,
+  pendingQueryCounts,
+  queryStage,
   requestLink,
+  sentAtByTransaction,
   tokenFromLocation,
   unreadSummaryByClient,
   unreadTransactionIds,
+  waitingDays,
+  whatsAppLink,
 } from '@/lib/client-requests';
-import type { ClientRequest } from '@/types/firestore';
+import type { BankTransaction, ClientRequest } from '@/types/firestore';
 
 const request = (overrides: Partial<ClientRequest> = {}): ClientRequest => ({
   id: 't'.repeat(32),
@@ -109,5 +120,98 @@ describe('respostas do cliente', () => {
     const summary = unreadSummaryByClient([secondReply, otherClient]);
     expect(summary.get('c1')).toBe(1);
     expect(summary.get('c2')).toBe(2);
+  });
+
+  it('separa a fila nas três situações na ordem correta e calcula dias de espera', () => {
+    const tx = (id: string, date: string): BankTransaction => ({
+      id,
+      clientId: 'c1',
+      fitid: id,
+      date,
+      amount: -100,
+      type: 'DEBIT',
+      memo: `Lançamento ${id}`,
+      status: 'PENDING',
+      clientQuery: { question: `O que é ${id}?`, status: 'OPEN', askedAt: `${date}T10:00:00.000Z`, askedByUid: 'u1' },
+      createdAt: `${date}T10:00:00.000Z`,
+    });
+
+    const queries = [tx('nao-enviada', '2025-03-18'), tx('aguardando-recente', '2025-03-15'), tx('respondida', '2025-03-10'), tx('aguardando-antiga', '2025-03-05')];
+    const openLinks = [
+      request({
+        id: 'l1'.padEnd(32, '0'),
+        createdAt: '2025-03-06T12:00:00.000Z',
+        items: [{ transactionId: 'aguardando-antiga', date: '2025-03-05', memo: 'A', amount: -100, question: 'Q1' }],
+      }),
+      request({
+        id: 'l2'.padEnd(32, '0'),
+        createdAt: '2025-03-16T12:00:00.000Z',
+        items: [
+          { transactionId: 'aguardando-recente', date: '2025-03-15', memo: 'B', amount: -100, question: 'Q2' },
+          { transactionId: 'respondida', date: '2025-03-10', memo: 'C', amount: -100, question: 'Q3' },
+        ],
+        answers: [{ text: '' }, { text: 'Compra de material', answeredAt: '2025-03-17T08:00:00.000Z' }],
+      }),
+    ];
+
+    const answers = latestAnswers(openLinks);
+    const inOpenLink = new Set(openLinks.flatMap((r) => r.items.map((i) => i.transactionId)));
+    const sentAtMap = sentAtByTransaction(openLinks);
+
+    expect(queryStage('respondida', answers, inOpenLink)).toBe('ANSWERED');
+    expect(queryStage('aguardando-antiga', answers, inOpenLink)).toBe('WAITING');
+    expect(queryStage('nao-enviada', answers, inOpenLink)).toBe('NOT_SENT');
+
+    expect(pendingQueryCounts(queries, answers, inOpenLink)).toEqual({
+      all: 4,
+      answered: 1,
+      waiting: 2,
+      notSent: 1,
+    });
+
+    const groups = groupPendingQueries({ queries, answers, inOpenLink, sentAtMap });
+    expect(groups.map((g) => g.stage)).toEqual(['ANSWERED', 'WAITING', 'NOT_SENT']);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['respondida']);
+    // Aguardando: a enviada há mais tempo vem primeiro
+    expect(groups[1].items.map((i) => i.id)).toEqual(['aguardando-antiga', 'aguardando-recente']);
+    expect(groups[2].items.map((i) => i.id)).toEqual(['nao-enviada']);
+
+    const filtered = groupPendingQueries({ queries, answers, inOpenLink, sentAtMap, filter: 'WAITING' });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].stage).toBe('WAITING');
+
+    const nowMs = Date.parse('2025-03-18T12:00:00.000Z');
+    const daysOld = waitingDays(sentAtMap.get('aguardando-antiga')!, nowMs);
+    expect(daysOld).toBe(12);
+    expect(formatWaitingDays(daysOld)).toBe('há 12 dias');
+    expect(formatWaitingDays(1)).toBe('há 1 dia');
+    expect(formatWaitingDays(0)).toBe('enviado hoje');
+  });
+
+  it('normaliza telefone do WhatsApp e monta mensagens de envio e de cobrança', () => {
+    expect(normalizeWhatsAppPhone('(81) 99988-7766')).toBe('5581999887766');
+    expect(normalizeWhatsAppPhone('81 3322-1100')).toBe('558133221100');
+    expect(normalizeWhatsAppPhone('+55 (11) 98888-7777')).toBe('5511988887777');
+    expect(normalizeWhatsAppPhone('123')).toBeNull();
+    expect(clientWhatsAppPhone({ phone: '', registration: { phone2: '(81) 98877-6655' } })).toBe('5581988776655');
+
+    expect(whatsAppLink('Olá', '(81) 99988-7766')).toBe('https://wa.me/5581999887766?text=Ol%C3%A1');
+    expect(whatsAppLink('Olá', undefined)).toBe('https://wa.me/?text=Ol%C3%A1');
+
+    const r = request({
+      clientName: 'Padaria Aurora',
+      expiresAtMs: Date.UTC(2025, 3, 15, 12, 0, 0),
+      answers: [{ text: 'Respondida' }, { text: '' }],
+    });
+    const share = buildShareMessage(r, 'https://app.exemplo/responder#t=abc');
+    expect(share).toContain('Padaria Aurora');
+    expect(share).toContain('https://app.exemplo/responder#t=abc');
+
+    const reminderPartial = buildReminderMessage(r, 'https://app.exemplo/responder#t=abc');
+    expect(reminderPartial).toContain('Ainda falta(m) 1 de 2 pergunta(s)');
+    expect(reminderPartial).toContain('https://app.exemplo/responder#t=abc');
+
+    const reminderNone = buildReminderMessage(request({ clientName: 'Padaria Aurora', expiresAtMs: Date.UTC(2025, 3, 15, 12, 0, 0) }), 'https://app.exemplo/responder#t=abc');
+    expect(reminderNone).toContain('Ainda aguardamos a resposta de 2 pergunta(s)');
   });
 });

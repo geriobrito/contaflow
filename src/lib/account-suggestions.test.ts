@@ -95,4 +95,19 @@ describe('contas sugeridas', () => {
     const s = suggestAccounts({ memo: 'Pix enviado - POSTO', direction: 'OUT', accounts, history: [split] });
     expect(s.slice(0, 2).map((x) => x.accountId).sort()).toEqual(['cmv', 'telefone']);
   });
+
+  it('usa as regras aprendidas para sugerir o mesmo favorecido quando o extrato do mês não está carregado', () => {
+    const s = suggestAccounts({
+      memo: 'Pix enviado - ENERGISA DISTRIBUIDORA',
+      direction: 'OUT',
+      accounts,
+      history: [],
+      rules: [{ id: 'r1', clientId: 'c', pattern: 'ENERGISA DISTRIBUIDORA', accountId: 'energia', createdAt: '', updatedAt: '' }],
+      recent: ['aluguel'],
+    });
+    expect(s).toEqual([
+      { accountId: 'energia', reason: 'usada antes com ENERGISA DISTRIBUIDORA' },
+      { accountId: 'aluguel', reason: 'usada recentemente' },
+    ]);
+  });
 });

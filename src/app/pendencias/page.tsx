@@ -1,79 +1,41 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Check,
-  ChevronDown,
-  Copy,
-  Link2,
-  Mail,
-  MessageCircle,
-  MessageCircleQuestion,
-  RotateCcw,
-  Sparkles,
-} from 'lucide-react';
+import { AlertCircle, Link2 } from 'lucide-react';
 import type { BankTransaction, ChartAccount, ClientRequest, OrgSettings, RuleMatchType } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useClient } from '@/contexts/ClientContext';
 import { useReconciliation } from '@/hooks/useReconciliation';
-import { closeClientRequest, createClientRequest, renewClientRequest, requestLink } from '@/lib/services/accounting-service';
+import { useInvoiceMatches } from '@/hooks/reconciliation/useInvoiceMatches';
+import { useInvoiceInspector } from '@/hooks/reconciliation/useInvoiceInspector';
+import { useAccountSuggestions } from '@/hooks/reconciliation/useAccountSuggestions';
+import { closeClientRequest, createClientRequest, renewClientRequest } from '@/lib/services/accounting-service';
 import {
   answeredCount,
+  groupPendingQueries,
   hasUnreadAnswers,
   latestAnswers,
   latestResponseAt,
   MAX_REQUEST_ITEMS,
   notifyRequestsUpdated,
+  type PendingQueryFilter,
+  pendingQueryCounts,
+  sentAtByTransaction,
   unreadTransactionIds,
 } from '@/lib/client-requests';
+import { mainSplitAccountId } from '@/lib/reconciliation-list';
+import { rememberRecentAccounts } from '@/lib/recent-accounts';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
-import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
-import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
+import { reportError } from '@/lib/monitoring';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
-import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
-import { TableSkeleton } from '@/components/ui/Skeleton';
+import { InvoiceDetailDrawer } from '@/components/conciliacao/InvoiceDetailDrawer';
+import { ClientRequestLinks } from '@/components/pendencias/ClientRequestLinks';
+import { PendingQueriesList } from '@/components/pendencias/PendingQueriesList';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { BUTTON, PAGE, PageHeader } from '@/components/ui/primitives';
 import { Toast, useToast } from '@/components/ui/Toast';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
-const RENEW_SOON_MS = 7 * 86_400_000;
-
-function ShareLink({ request, email }: { request: ClientRequest; email?: string }) {
-  const [copied, setCopied] = useState(false);
-  const url = requestLink(window.location.origin, request.id);
-  const text = `Olá! Precisamos de algumas informações sobre lançamentos da ${request.clientName}. Responda por este link (válido até ${new Date(request.expiresAtMs).toLocaleDateString('pt-BR')}): ${url}`;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <input
-        readOnly
-        value={url}
-        aria-label="Link para o cliente"
-        onFocus={(e) => e.currentTarget.select()}
-        className="flex-1 min-w-[240px] h-9 px-3 rounded-xl bg-black/4 dark:bg-white/6 font-mono text-[12px] text-stone-600 dark:text-stone-300"
-      />
-      <button
-        type="button"
-        onClick={() => {
-          void navigator.clipboard?.writeText(url).then(() => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          });
-        }}
-        className={`${BUTTON.secondary} h-9`}
-      >
-        {copied ? <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-300" /> : <Copy className="w-4 h-4" />} {copied ? 'Copiado' : 'Copiar'}
-      </button>
-      <a href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" className={`${BUTTON.secondary} h-9`}>
-        <MessageCircle className="w-4 h-4" /> WhatsApp
-      </a>
-      <a
-        href={`mailto:${email ?? ''}?subject=${encodeURIComponent(`Informações sobre lançamentos · ${request.clientName}`)}&body=${encodeURIComponent(text)}`}
-        className={`${BUTTON.secondary} h-9`}
-      >
-        <Mail className="w-4 h-4" /> E-mail
-      </a>
-    </div>
-  );
-}
 
 export default function PendenciasPage() {
   const { currentClient } = useClient();
@@ -87,9 +49,11 @@ export default function PendenciasPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
+  const [closingRequest, setClosingRequest] = useState<ClientRequest | null>(null);
+  const [filter, setFilter] = useState<PendingQueryFilter>('ALL');
   const [toast, setToast] = useToast(3600);
   const [selected, setSelected] = useState<BankTransaction | null>(null);
-  /** Instante da última carga (validade dos links), fora do render. */
+  /** Instante da última carga (validade dos links e dias de espera), fora do render. */
   const [nowMs, setNowMs] = useState(0);
 
   const load = useCallback(async (id: string) => {
@@ -118,7 +82,7 @@ export default function PendenciasPage() {
       void repo
         .markClientRequestsSeen(markPayload)
         .then(() => notifyRequestsUpdated())
-        .catch(() => undefined);
+        .catch((e: unknown) => reportError(e, { area: 'pendencias', op: 'marcar respostas como lidas', level: 'warning' }));
     }
 
     setQueries(q);
@@ -135,34 +99,83 @@ export default function PendenciasPage() {
     let active = true;
     Promise.resolve()
       .then(() => (active ? load(clientId) : undefined))
-      .catch((e: unknown) => active && setError(describe(e)));
+      .catch((e: unknown) => {
+        if (!active) return;
+        reportError(e, { area: 'pendencias', op: 'carregar pendências' });
+        setError(`Não foi possível carregar as pendências (${describe(e)}).`);
+      });
     return () => {
       active = false;
     };
   }, [clientId, load]);
 
+  // Usa os lançamentos já trazidos por `listOpenQueries` sem ler meses inteiros de extrato no Firestore.
+  const recon = useReconciliation({
+    clientId: loadedFor === clientId ? clientId : null,
+    accounts,
+    range: null,
+    prefetchedTransactions: queries,
+  });
+  const { rules, lockedMonths, classifyTransaction, resolveClientQuery, askClient, loadAudit, isSaving, isLoading: isLoadingRecon } = recon;
 
-  // O hook de conciliação cobre o intervalo das perguntas: classificar e concluir daqui.
-  const range = useMemo(() => {
+  // Janela de datas das pendências apenas para buscar resumos de notas fiscais correspondentes.
+  const invoiceRange = useMemo(() => {
     if (!queries.length) return null;
     const dates = queries.map((q) => q.date).sort();
     return { start: dates[0], end: dates[dates.length - 1] };
   }, [queries]);
-  const recon = useReconciliation({ clientId: loadedFor === clientId ? clientId : null, accounts, range });
-  const { rules, lockedMonths, classifyTransaction, resolveClientQuery, loadAudit, isSaving } = recon;
+  const invoices = useInvoiceMatches({
+    clientId: loadedFor === clientId ? clientId : null,
+    range: invoiceRange,
+    transactions: recon.transactions,
+    accounts,
+  });
+  const inspector = useInvoiceInspector(invoices);
+
+  const loaded = recon.transactions;
+  const loadedTxIds = useMemo(() => new Set(loaded.map((t) => t.id)), [loaded]);
+  const memoPool = useMemo(() => loaded.map((t) => t.memo), [loaded]);
+  const selectedLoaded = selected ? (loaded.find((t) => t.id === selected.id) ?? null) : null;
+
+  const suggestions = useAccountSuggestions({
+    clientId,
+    accounts,
+    transactions: loaded,
+    selected: selectedLoaded,
+    invoiceAccountId: selectedLoaded ? inspector.matchFor(selectedLoaded)?.suggestedAccountId : null,
+    rules,
+    group: null,
+    bulk: null,
+  });
 
   const answers = useMemo(() => latestAnswers(requests), [requests]);
-  const openRequests = requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs);
-  const inactiveRequests = requests.filter((r) => r.status === 'CLOSED' || r.expiresAtMs <= nowMs);
-  const inOpenLink = new Set(openRequests.flatMap((r) => r.items.map((i) => i.transactionId)));
-  const notSent = queries.filter((q) => !inOpenLink.has(q.id));
+  const openRequests = useMemo(() => requests.filter((r) => r.status === 'OPEN' && r.expiresAtMs > nowMs), [requests, nowMs]);
+  const inactiveRequests = useMemo(() => requests.filter((r) => r.status === 'CLOSED' || r.expiresAtMs <= nowMs), [requests, nowMs]);
+  const inOpenLink = useMemo(() => new Set(openRequests.flatMap((r) => r.items.map((i) => i.transactionId))), [openRequests]);
+  const sentAtMap = useMemo(() => sentAtByTransaction(openRequests), [openRequests]);
+  const counts = useMemo(() => pendingQueryCounts(queries, answers, inOpenLink), [queries, answers, inOpenLink]);
+  const groups = useMemo(
+    () =>
+      groupPendingQueries({
+        queries,
+        answers,
+        inOpenLink,
+        sentAtMap,
+        newlyAnsweredIds,
+        filter,
+      }),
+    [queries, answers, inOpenLink, sentAtMap, newlyAnsweredIds, filter]
+  );
+
+  const notSent = useMemo(() => queries.filter((q) => !inOpenLink.has(q.id)), [queries, inOpenLink]);
   // O link leva até MAX_REQUEST_ITEMS perguntas: as ainda não enviadas entram primeiro.
-  const toSend = [...notSent, ...queries.filter((q) => inOpenLink.has(q.id))];
+  const toSend = useMemo(() => [...notSent, ...queries.filter((q) => inOpenLink.has(q.id))], [notSent, queries, inOpenLink]);
   const sendCount = Math.min(toSend.length, MAX_REQUEST_ITEMS);
 
   const generate = async () => {
     if (!currentClient) return;
     setBusy(true);
+    setError(null);
     try {
       const req = await createClientRequest(currentClient, toSend, org?.officeName);
       setRequests((prev) => [req, ...prev]);
@@ -174,20 +187,26 @@ export default function PendenciasPage() {
           : 'Link criado · envie ao cliente'
       );
     } catch (e) {
-      setError(describe(e));
+      reportError(e, { area: 'pendencias', op: 'gerar link' });
+      setError(`Não foi possível gerar o link (${describe(e)}).`);
     } finally {
       setBusy(false);
     }
   };
 
-  const close = async (req: ClientRequest) => {
+  const confirmCloseRequest = async () => {
+    if (!closingRequest) return;
+    setError(null);
     try {
-      const closed = await closeClientRequest(req);
-      setRequests((prev) => prev.map((r) => (r.id === req.id ? closed : r)));
+      const closed = await closeClientRequest(closingRequest);
+      setRequests((prev) => prev.map((r) => (r.id === closingRequest.id ? closed : r)));
+      setClosingRequest(null);
       notifyRequestsUpdated();
       setToast('Link encerrado');
     } catch (e) {
-      setError(describe(e));
+      reportError(e, { area: 'pendencias', op: 'encerrar link' });
+      setError(`Não foi possível encerrar o link (${describe(e)}).`);
+      throw e;
     }
   };
 
@@ -205,27 +224,52 @@ export default function PendenciasPage() {
           : `Validade prorrogada até ${new Date(renewed.expiresAtMs).toLocaleDateString('pt-BR')}`
       );
     } catch (e) {
-      setError(describe(e));
+      reportError(e, { area: 'pendencias', op: 'renovar link' });
+      setError(`Não foi possível renovar o link (${describe(e)}).`);
     } finally {
       setRenewingId(null);
     }
   };
 
   const resolve = async (id: string, message = 'Pendência concluída') => {
-    await resolveClientQuery(id);
-    setQueries((prev) => prev.filter((q) => q.id !== id));
-    setNewlyAnsweredIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-    setToast(message);
+    try {
+      await resolveClientQuery(id);
+      setQueries((prev) => prev.filter((q) => q.id !== id));
+      setNewlyAnsweredIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setToast(message);
+    } catch (e) {
+      reportError(e, { area: 'pendencias', op: 'concluir pendência' });
+      setError(`Não foi possível concluir a pendência (${describe(e)}).`);
+    }
   };
 
-  const loaded = recon.transactions;
-  const memoPool = useMemo(() => recon.transactions.map((t) => t.memo), [recon.transactions]);
-  const selectedLoaded = selected ? (loaded.find((t) => t.id === selected.id) ?? null) : null;
+  const handleEditQuestion = async (txId: string, question: string) => {
+    const trimmed = question.trim();
+    try {
+      await askClient(txId, trimmed);
+      if (!trimmed) {
+        setQueries((prev) => prev.filter((q) => q.id !== txId));
+        setSelected(null);
+        setToast('Pergunta removida');
+      } else {
+        setQueries((prev) =>
+          prev.map((q) =>
+            q.id === txId && q.clientQuery ? { ...q, clientQuery: { ...q.clientQuery, question: trimmed } } : q
+          )
+        );
+        setToast('Pergunta atualizada');
+      }
+    } catch (e) {
+      reportError(e, { area: 'pendencias', op: 'editar pergunta' });
+    }
+  };
+
+  const activeError = error ?? recon.error;
 
   return (
     <main className={PAGE}>
@@ -239,188 +283,73 @@ export default function PendenciasPage() {
           </button>
         }
       />
+
       {queries.length > MAX_REQUEST_ITEMS && notSent.length > 0 && (
         <p className="text-[13px] text-amber-700 dark:text-amber-400">
           Cada link leva até {MAX_REQUEST_ITEMS} perguntas. {notSent.length} de {queries.length} ainda não estão em nenhum link aberto: gere outro
           link para as restantes.
         </p>
       )}
-      {(error || recon.error) && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error ?? recon.error}</p>}
 
-      {openRequests.length > 0 && (
-        <section className={`${SURFACE} rounded-[22px] p-5 space-y-4`}>
-          <h2 className="text-[15px] font-semibold tracking-tight">Links abertos</h2>
-          {openRequests.map((r) => {
-            const done = answeredCount(r);
-            const nearExpiry = r.expiresAtMs - nowMs <= RENEW_SOON_MS;
-            return (
-              <div key={r.id} className="space-y-2 pb-3 last:pb-0 border-b last:border-b-0 border-black/4 dark:border-white/5">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-stone-500">
-                  <span>
-                    Criado em {formatDateTime(r.createdAt)} · {r.items.length} pergunta(s) · {done} respondida(s)
-                    {r.respondedAt && ` · última resposta ${formatDateTime(r.respondedAt)}`} · válido até{' '}
-                    <span className={nearExpiry ? 'font-medium text-amber-700 dark:text-amber-400' : ''}>
-                      {new Date(r.expiresAtMs).toLocaleDateString('pt-BR')}
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-3">
-                    {nearExpiry && (
-                      <button
-                        type="button"
-                        disabled={renewingId === r.id}
-                        onClick={() => void renew(r)}
-                        className="inline-flex items-center gap-1 font-medium text-accent-ink hover:underline disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        {renewingId === r.id ? 'Renovando…' : 'Renovar +30 dias'}
-                      </button>
-                    )}
-                    <button type="button" onClick={() => void close(r)} className="text-rose-600 dark:text-rose-300 hover:underline">
-                      Encerrar link
-                    </button>
-                  </span>
-                </div>
-                <ShareLink request={r} email={currentClient?.email} />
-              </div>
-            );
-          })}
-        </section>
+      {activeError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-2xl border border-rose-200/70 bg-rose-50/90 dark:bg-rose-950/30 dark:border-rose-500/30 px-4 py-3 text-[13px] text-rose-700 dark:text-rose-300"
+        >
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{activeError}</span>
+        </div>
       )}
 
-      <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-        {loadedFor !== clientId ? (
-          <TableSkeleton rows={5} label="Carregando pendências…" />
-        ) : queries.length === 0 ? (
-          <EmptyState
-            title="Nenhuma pendência em aberto"
-            description="Na Conciliação, abra um lançamento e use “Perguntar ao cliente” para incluí-lo aqui."
-          />
-        ) : (
-          <ul className="divide-y divide-black/4 dark:divide-white/5">
-            {queries.map((q) => {
-              const answer = answers.get(q.id);
-              const isNewAnswer = newlyAnsweredIds.has(q.id);
-              const locked = isMonthLocked(q.date, lockedMonths);
-              return (
-                <li key={q.id} className="px-5 py-4 space-y-2">
-                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                    <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{formatDateBR(q.date)}</span>
-                    <span className="flex-1 min-w-0 text-[14px] font-medium tracking-tight truncate" title={q.memo}>
-                      {q.memo}
-                    </span>
-                    <span className="font-mono tabular-nums text-[14px]">{formatCurrency(q.amount)}</span>
-                  </div>
-                  <p className="flex items-start gap-2 text-[13px] text-stone-600 dark:text-stone-300">
-                    <MessageCircleQuestion className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" /> {q.clientQuery?.question}
-                  </p>
-                  {answer ? (
-                    <div
-                      className={`ml-6 rounded-2xl px-4 py-3 space-y-2 border ${
-                        isNewAnswer
-                          ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700/60'
-                          : 'bg-emerald-50/70 dark:bg-emerald-950/20 border-emerald-200/60 dark:border-emerald-500/25'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-emerald-700 dark:text-emerald-400">
-                          Resposta do cliente{answer.answeredAt && ` · ${formatDateTime(answer.answeredAt)}`}
-                        </p>
-                        {isNewAnswer && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-semibold tracking-tight">
-                            <Sparkles className="w-2.5 h-2.5" />
-                            Nova resposta
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[14px] text-stone-800 dark:text-stone-100 whitespace-pre-wrap wrap-break-word">{answer.text}</p>
-                    </div>
-                  ) : (
-                    <p className="ml-6 text-[12px] text-stone-500 dark:text-stone-400">
-                      {inOpenLink.has(q.id) ? 'Enviado ao cliente · aguardando resposta' : 'Ainda não enviado em link ativo · gere ou reative um link'}
-                    </p>
-                  )}
-                  <div className="ml-6 flex flex-wrap gap-2">
-                    {locked ? (
-                      <span className="text-[12px] text-stone-500">Competência de {formatMonth(monthOf(q.date))} fechada</span>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          disabled={isSaving || !loaded.some((t) => t.id === q.id)}
-                          onClick={() => setSelected(q)}
-                          className={`${BUTTON.primary} h-8`}
-                        >
-                          Classificar e concluir
-                        </button>
-                        <button type="button" disabled={isSaving} onClick={() => void resolve(q.id)} className={`${BUTTON.ghost} h-8`}>
-                          Concluir sem classificar
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      <ClientRequestLinks
+        openRequests={openRequests}
+        inactiveRequests={inactiveRequests}
+        hasOpenQueries={queries.length > 0}
+        client={currentClient}
+        nowMs={nowMs}
+        renewingId={renewingId}
+        onRenew={(r) => void renew(r)}
+        onRequestClose={(r) => setClosingRequest(r)}
+        onNotify={setToast}
+      />
 
-      {inactiveRequests.length > 0 && (
-        <details
-          open={openRequests.length === 0 && queries.length > 0}
-          className={`${SURFACE} group rounded-[22px] overflow-hidden`}
-        >
-          <summary className="flex items-center justify-between gap-3 px-5 py-3.5 cursor-pointer select-none text-[13px] font-medium text-stone-600 dark:text-stone-300 hover:bg-black/2 dark:hover:bg-white/3">
-            <span>
-              Links vencidos ou encerrados ({inactiveRequests.length}) · Reative para manter o mesmo endereço já enviado no WhatsApp
-            </span>
-            <ChevronDown className="w-4 h-4 text-stone-400 transition-transform duration-200 group-open:rotate-180" />
-          </summary>
-          <div className="divide-y divide-black/4 dark:divide-white/5 border-t border-black/4 dark:border-white/5">
-            {inactiveRequests.map((r) => {
-              const done = answeredCount(r);
-              const isExpiredOnly = r.status === 'OPEN' && r.expiresAtMs <= nowMs;
-              return (
-                <div key={r.id} className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 text-[12px]">
-                  <div className="space-y-0.5 min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10.5px] font-medium ${
-                          isExpiredOnly
-                            ? 'bg-amber-50 text-amber-800 border border-amber-200/70 dark:border-amber-500/25 dark:bg-amber-950/30 dark:text-amber-300'
-                            : 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-400'
-                        }`}
-                      >
-                        {isExpiredOnly ? 'Vencido' : 'Encerrado'}
-                      </span>
-                      <span className="text-stone-700 dark:text-stone-300 font-medium">
-                        Criado em {formatDateTime(r.createdAt)}
-                      </span>
-                      <span className="text-stone-400">
-                        · {r.items.length} pergunta(s) · {done} respondida(s)
-                      </span>
-                    </div>
-                    <p className="text-stone-400">
-                      {isExpiredOnly
-                        ? `Expirou em ${new Date(r.expiresAtMs).toLocaleDateString('pt-BR')}`
-                        : 'Encerrado manualmente pelo escritório'}
-                      {r.respondedAt && ` · última resposta em ${formatDateTime(r.respondedAt)}`}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={renewingId === r.id}
-                    onClick={() => void renew(r)}
-                    className={`${BUTTON.secondary} h-8 shrink-0`}
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    {renewingId === r.id ? 'Reativando…' : 'Reativar por +30 dias (mesmo link)'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </details>
+      <PendingQueriesList
+        loading={loadedFor !== clientId}
+        totalQueries={queries.length}
+        counts={counts}
+        filter={filter}
+        onFilterChange={setFilter}
+        groups={groups}
+        answers={answers}
+        newlyAnsweredIds={newlyAnsweredIds}
+        sentAtMap={sentAtMap}
+        lockedMonths={lockedMonths}
+        nowMs={nowMs}
+        isSaving={isSaving}
+        isLoadingRecon={isLoadingRecon}
+        loadedTxIds={loadedTxIds}
+        invoiceHints={invoices.matches.size > 0 || invoices.linked.size > 0 ? inspector.hints : undefined}
+        onSelectClassify={(q) => setSelected(q)}
+        onResolveWithoutClassifying={(id) => void resolve(id)}
+        onEditQuestion={handleEditQuestion}
+        onOpenInvoice={inspector.openFor}
+      />
+
+      {closingRequest && (
+        <ConfirmDialog
+          title="Encerrar link de pendências?"
+          description={(() => {
+            const done = answeredCount(closingRequest);
+            const missing = Math.max(0, closingRequest.items.length - done);
+            return missing > 0
+              ? `Ainda falta(m) ${missing} de ${closingRequest.items.length} pergunta(s) sem resposta neste link. Ao encerrar, o cliente não conseguirá mais enviar respostas por este endereço (você poderá reativá-lo depois se precisar).`
+              : 'O cliente não conseguirá mais acessar ou complementar respostas por este endereço. Você poderá reativar o link depois se precisar.';
+          })()}
+          confirmLabel="Encerrar link"
+          destructive
+          onCancel={() => setClosingRequest(null)}
+          onConfirm={() => confirmCloseRequest()}
+        />
       )}
 
       {selectedLoaded && (
@@ -430,22 +359,27 @@ export default function PendenciasPage() {
           accounts={accounts}
           isSaving={isSaving}
           onClose={() => setSelected(null)}
-          onConfirm={async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType) => {
+          onConfirm={async (accountId: string, learnRule: boolean, customPattern: string, matchType: RuleMatchType, invoiceId?: string) => {
             try {
               await classifyTransaction(selectedLoaded.id, accountId, {
                 learnRule,
                 customPattern: customPattern.trim() || undefined,
                 matchType,
               });
+              rememberRecentAccounts(clientId, [accountId]);
+              if (invoiceId) await invoices.link(selectedLoaded.id, invoiceId, accountId);
               await resolve(selectedLoaded.id, 'Classificado e pendência concluída');
               setSelected(null);
             } catch {
               /* erro exposto pelo hook */
             }
           }}
-          onSplit={async (drafts) => {
+          onSplit={async (drafts, invoiceId?: string) => {
             try {
               await recon.splitTransaction(selectedLoaded.id, drafts);
+              const mainAccountId = mainSplitAccountId(drafts);
+              rememberRecentAccounts(clientId, drafts.map((d) => d.accountId));
+              if (invoiceId && mainAccountId) await invoices.link(selectedLoaded.id, invoiceId, mainAccountId);
               await resolve(selectedLoaded.id, 'Rateado e pendência concluída');
               setSelected(null);
             } catch {
@@ -460,14 +394,49 @@ export default function PendenciasPage() {
               /* erro exposto pelo hook */
             }
           }}
+          onAskClient={async (qText) => {
+            await handleEditQuestion(selectedLoaded.id, qText);
+          }}
           rules={rules}
           memoPool={memoPool}
+          invoiceMatch={inspector.matchFor(selectedLoaded)}
+          linkedInvoice={invoices.linked.get(selectedLoaded.id)}
+          suggestions={suggestions.forSelected}
+          regime={currentClient?.regime}
           lockedMonthLabel={isMonthLocked(selectedLoaded.date, lockedMonths) ? formatMonth(monthOf(selectedLoaded.date)) : null}
           loadAudit={() => loadAudit(selectedLoaded.id)}
+          onViewInvoice={(inv) => inspector.show({ invoice: inv, match: inspector.matchFor(selectedLoaded), transaction: selectedLoaded })}
         />
       )}
 
-      <Toast toast={toast} />
+      {inspector.inspecting && (
+        <InvoiceDetailDrawer
+          invoice={inspector.inspecting.invoice}
+          match={inspector.inspecting.match}
+          transaction={inspector.inspecting.transaction}
+          accounts={accounts}
+          onClose={inspector.close}
+          onClassifyWithSuggestion={(tx, accId, invId) => {
+            inspector.close();
+            void (async () => {
+              try {
+                await classifyTransaction(tx.id, accId);
+                rememberRecentAccounts(clientId, [accId]);
+                await invoices.link(tx.id, invId, accId);
+                await resolve(tx.id, 'Classificado pela nota fiscal e pendência concluída');
+              } catch {
+                /* erro exposto pelo hook */
+              }
+            })();
+          }}
+          onOpenSplit={(tx) => {
+            inspector.close();
+            setSelected(tx);
+          }}
+        />
+      )}
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </main>
   );
 }

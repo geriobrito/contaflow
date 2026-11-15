@@ -51,8 +51,13 @@ export interface UseReconciliationReturn extends StatementImportActions, Classif
  *   - `usePeriodClosing`: fechar e reabrir competência.
  * As telas continuam consumindo tudo por aqui.
  */
-export function useReconciliation({ clientId, accounts, range }: UseReconciliationParams): UseReconciliationReturn {
-  const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+export function useReconciliation({ clientId, accounts, range, prefetchedTransactions }: UseReconciliationParams): UseReconciliationReturn {
+  const [transactions, setTransactions] = useState<BankTransaction[]>(() => (prefetchedTransactions ? [...prefetchedTransactions] : []));
+  const [prevPrefetched, setPrevPrefetched] = useState<readonly BankTransaction[] | undefined>(prefetchedTransactions);
+  if (prefetchedTransactions !== prevPrefetched) {
+    setPrevPrefetched(prefetchedTransactions);
+    setTransactions(prefetchedTransactions ? [...prefetchedTransactions] : []);
+  }
   const [rules, setRules] = useState<ClassificationRule[]>([]);
   const [locks, setLocks] = useState<PeriodLock[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,10 +68,11 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
   const lockedMonths = useMemo(() => new Set(locks.map((l) => l.month)), [locks]);
   const rangeStart = range?.start;
   const rangeEnd = range?.end;
+  const hasPrefetched = prefetchedTransactions !== undefined;
 
   const reload = useCallback(async (): Promise<void> => {
-    if (!clientId || !rangeStart || !rangeEnd) {
-      setTransactions([]);
+    if (!clientId || (!hasPrefetched && (!rangeStart || !rangeEnd))) {
+      if (!hasPrefetched) setTransactions([]);
       setRules([]);
       setLocks([]);
       return;
@@ -75,21 +81,30 @@ export function useReconciliation({ clientId, accounts, range }: UseReconciliati
     setError(null);
     try {
       const repo = getRepository();
-      const [loadedRules, loadedTxs, loadedLocks] = await Promise.all([
-        repo.listRules(clientId),
-        repo.listTransactions(clientId, { start: rangeStart, end: rangeEnd }),
-        repo.listPeriodLocks(clientId),
-      ]);
-      setRules(loadedRules);
-      setTransactions(loadedTxs);
-      setLocks(loadedLocks);
+      if (hasPrefetched) {
+        const [loadedRules, loadedLocks] = await Promise.all([
+          repo.listRules(clientId),
+          repo.listPeriodLocks(clientId),
+        ]);
+        setRules(loadedRules);
+        setLocks(loadedLocks);
+      } else {
+        const [loadedRules, loadedTxs, loadedLocks] = await Promise.all([
+          repo.listRules(clientId),
+          repo.listTransactions(clientId, { start: rangeStart!, end: rangeEnd! }),
+          repo.listPeriodLocks(clientId),
+        ]);
+        setRules(loadedRules);
+        setTransactions(loadedTxs);
+        setLocks(loadedLocks);
+      }
     } catch (e) {
       reportError(e, { area: 'conciliacao', op: 'carregar' });
       setError(`Não foi possível carregar os lançamentos (${describeError(e)}).`);
     } finally {
       setIsLoading(false);
     }
-  }, [clientId, rangeStart, rangeEnd]);
+  }, [clientId, hasPrefetched, rangeStart, rangeEnd]);
 
   // Recarrega ao trocar cliente ou período (adiado um microtask para não setar estado no corpo do effect).
   useEffect(() => {
