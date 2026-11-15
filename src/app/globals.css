@@ -45,12 +45,6 @@
   --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(28, 25, 23, 0.22), 0 6px 14px -6px rgba(28, 25, 23, 0.32);
   --shadow-accent: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(124, 52, 24, 0.3), 0 8px 18px -8px rgba(181, 85, 47, 0.55);
 
-  --color-apple-bg: #F5F5F7;
-  --color-apple-surface: rgba(255, 255, 255, 0.75);
-  --color-apple-border: rgba(0, 0, 0, 0.08);
-  --color-apple-subtext: #86868B;
-  --color-apple-label: #1D1D1F;
-
   --animate-fade-in: fade-in 180ms ease-out both;
   /*
    * Animações com transform usam `backwards`, não `both`: com o preenchimento "forwards" a animação
@@ -99,17 +93,8 @@
 :root {
   --background: #F6F4EE;
   --foreground: #1d1d1f;
-  --card-bg: rgba(255, 255, 255, 0.85);
-  --card-border: rgba(0, 0, 0, 0.06);
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --accent: #B5552F;
-  --accent-hover: #9E4826;
-  --success: #34c759;
-  --warning: #ff9f0a;
-  --danger: #ff3b30;
-  --neutral-subtle: #86868b;
-  --neutral-surface: #f5f5f7;
+  /* Sombra que avisa que há mais conteúdo acima/abaixo numa área rolável (.scroll-shadows). */
+  --scroll-shadow: rgba(28, 25, 23, 0.1);
   color-scheme: light;
 }
 
@@ -126,18 +111,8 @@
     --shadow-raised: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 34px -14px rgba(0, 0, 0, 0.7);
     --shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 32px 80px -24px rgba(0, 0, 0, 0.85);
     --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
-    --card-bg: rgba(28, 28, 30, 0.8);
-    --card-border: rgba(255, 255, 255, 0.1);
-    --glass-bg: rgba(28, 28, 30, 0.75);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --accent: #E08A6B;
-    --accent-hover: #E89A7E;
     --color-accent-ink: #E08A6B;
-    --success: #30d158;
-    --warning: #ffd60a;
-    --danger: #ff453a;
-    --neutral-subtle: #a1a1a6;
-    --neutral-surface: #161617;
+    --scroll-shadow: rgba(0, 0, 0, 0.5);
     /* Barras de rolagem, datas e outros controles nativos no tom escuro. */
     color-scheme: dark;
   }
@@ -166,6 +141,35 @@
   .skeleton {
     animation: none !important;
     background-image: none;
+  }
+}
+
+/* Barra de progresso sem fim (abertura do sistema): um traço em terracota que atravessa o trilho. */
+.loading-bar {
+  position: relative;
+  height: 3px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: var(--color-line-strong);
+}
+.loading-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  animation: loading-bar 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes loading-bar {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::after {
+    animation: none !important;
+    width: 100%;
+    opacity: 0.45;
   }
 }
 
@@ -224,6 +228,19 @@ body {
 /* Pautas de livro contábil (login, estados vazios): linhas horizontais que esmaecem para baixo. */
 .ledger-lines {
   background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--color-line) 31px, var(--color-line) 32px);
+}
+
+/*
+ * Área rolável que avisa quando há mais conteúdo (menu lateral em telas baixas): uma sombra no
+ * topo e no pé, coberta pela cor da superfície quando a rolagem chega àquela ponta. Só CSS: as
+ * coberturas rolam com o conteúdo (`local`) e as sombras ficam presas à moldura (`scroll`).
+ */
+.scroll-shadows {
+  background:
+    linear-gradient(var(--color-surface) 40%, transparent) center top / 100% 28px no-repeat local,
+    linear-gradient(transparent, var(--color-surface) 60%) center bottom / 100% 28px no-repeat local,
+    linear-gradient(var(--scroll-shadow), transparent) center top / 100% 9px no-repeat scroll,
+    linear-gradient(transparent, var(--scroll-shadow)) center bottom / 100% 9px no-repeat scroll;
 }
 
 /* Scrollbar refinada estilo macOS/iOS */

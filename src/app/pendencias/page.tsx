@@ -32,6 +32,7 @@ import { formatDateTime } from '@/components/conciliacao/AuditTimeline';
 import { ClassifySheet } from '@/components/conciliacao/ClassifySheet';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Toast, useToast } from '@/components/ui/Toast';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 const RENEW_SOON_MS = 7 * 86_400_000;
@@ -86,7 +87,7 @@ export default function PendenciasPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [renewingId, setRenewingId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast(3600);
   const [selected, setSelected] = useState<BankTransaction | null>(null);
   /** Instante da última carga (validade dos links), fora do render. */
   const [nowMs, setNowMs] = useState(0);
@@ -140,11 +141,6 @@ export default function PendenciasPage() {
     };
   }, [clientId, load]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3600);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   // O hook de conciliação cobre o intervalo das perguntas: classificar e concluir daqui.
   const range = useMemo(() => {
@@ -471,14 +467,7 @@ export default function PendenciasPage() {
         />
       )}
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in"
-        >
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

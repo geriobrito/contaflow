@@ -13,8 +13,9 @@ import {
 import { pendingFinancingMonths } from '@/lib/financing';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => todayISO().slice(0, 7);
 
 /**
  * Contratos de empréstimo, financiamento e parcelamento de uma empresa, e as gravações: cadastrar

@@ -18,8 +18,9 @@ import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => todayISO().slice(0, 7);
 
 /**
  * Cadastro do imobilizado de uma empresa, com o plano, os fechamentos e a implantação, e as

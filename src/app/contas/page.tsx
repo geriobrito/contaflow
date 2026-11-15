@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -11,6 +11,7 @@ import { DeleteBatchSheet } from '@/components/contas/DeleteBatchSheet';
 import { ImportHistoryTable } from '@/components/contas/ImportHistoryTable';
 import { TextRepairCard } from '@/components/contas/TextRepairCard';
 import { PAGE, PageHeader } from '@/components/ui/primitives';
+import { Toast, useToast } from '@/components/ui/Toast';
 
 /**
  * Contas e extratos. A tela só compõe: os dados e as gravações vêm de `useContasData`, e cada
@@ -23,13 +24,8 @@ export default function ContasPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<BankAccount | null>(null);
   const [deleting, setDeleting] = useState<ImportBatch | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   /** Depois de uma gravação feita num dos painéis: fecha-o, avisa e recarrega. */
   const refresh = async (message: string) => {
@@ -99,11 +95,7 @@ export default function ContasPage() {
       )}
       {deleting && <DeleteBatchSheet key={deleting.id} batch={deleting} lockedMonths={lockedMonths} onClose={() => setDeleting(null)} onDeleted={refresh} />}
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in">
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

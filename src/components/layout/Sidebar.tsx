@@ -278,7 +278,7 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
       </div>
 
       {/* Navegação: o destaque da página atual desliza até a próxima, entre as seções também */}
-      <nav ref={navRef} className="relative flex-1 mt-2 px-2.5 pb-2 overflow-y-auto">
+      <nav ref={navRef} aria-label="Navegação principal" className="scroll-shadows relative flex-1 mt-2 px-2.5 pb-1.5 overflow-y-auto">
         <span
           ref={navPillRef}
           aria-hidden
@@ -286,26 +286,26 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
         />
         {NAV_SECTIONS.map((section, s) => (
           <div key={section.title} role="group" aria-label={section.title} className="space-y-px">
-            {collapsed ? (
+            {collapsed || section.hideTitle ? (
               s > 0 && <div aria-hidden className="mx-3 my-1.5 border-t border-line" />
             ) : (
-              <p className={`flex items-center gap-2 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500 dark:text-stone-500 ${s > 0 ? 'pt-2.5' : 'pt-1'}`}>
+              <p className={`flex items-center gap-2 px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-stone-500 dark:text-stone-500 ${s > 0 ? 'pt-2' : 'pt-1'}`}>
                 {section.title}
                 <span aria-hidden className="flex-1 border-t border-line" />
               </p>
             )}
-            {section.items.map(({ href, label, icon: Icon }) => {
+            {section.items.map(({ href, label, icon: Icon }, i) => {
               const active = href === activeHref;
               const unreadBadge = href === '/pendencias' ? currentUnreadCount : 0;
+              // Na rotina do mês cada tela é um passo: o número mostra a sequência.
+              const step = section.ordered ? i + 1 : null;
               return (
                 <Link
                   key={href}
                   href={href}
                   title={
                     collapsed
-                      ? unreadBadge > 0
-                        ? `${label} (${unreadBadge} nova${unreadBadge > 1 ? 's' : ''})`
-                        : label
+                      ? `${step ? `${step}. ` : ''}${label}${unreadBadge > 0 ? ` (${unreadBadge} nova${unreadBadge > 1 ? 's' : ''})` : ''}`
                       : undefined
                   }
                   aria-current={active ? 'page' : undefined}
@@ -329,6 +329,16 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
                       className="ml-auto px-1.5 py-0.5 min-w-[18px] text-center rounded-full bg-emerald-600 text-white font-mono tabular-nums text-[10.5px] font-semibold leading-none"
                     >
                       {unreadBadge}
+                    </span>
+                  )}
+                  {!collapsed && step !== null && unreadBadge === 0 && (
+                    <span
+                      aria-hidden
+                      className={`ml-auto w-4 text-center font-mono tabular-nums text-[10px] leading-none transition-colors duration-150 ${
+                        active ? 'text-accent-ink' : 'text-stone-400/80 dark:text-stone-500 group-hover:text-stone-500 dark:group-hover:text-stone-400'
+                      }`}
+                    >
+                      {step}
                     </span>
                   )}
                   {collapsed && unreadBadge > 0 && (
@@ -393,33 +403,37 @@ function SidebarBody({ collapsed, headerAction }: SidebarBodyProps) {
    Sidebar (fixa/colapsável)
    ========================================================================= */
 
-export function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+/** Preferência de colapso gravada: '1' recolhida, '0' aberta, null se o usuário ainda não escolheu. */
+function storedCollapse(): string | null {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY);
+  } catch {
+    return null; // armazenamento indisponível
+  }
+}
 
-  // Restaura a preferência de colapso. Sem preferência gravada, a barra acompanha a largura da
-  // janela: recolhida abaixo de 1280px (notebook pequeno, janela dividida), aberta acima disso.
+/**
+ * Estado inicial da barra: a preferência gravada ou, sem ela, a largura da janela (recolhida abaixo
+ * de 1280px). Lido já na montagem, para a barra não abrir e fechar a cada carregamento. A barra só
+ * monta no navegador, depois da checagem de login (ProtectedRoute); no servidor vale "aberta".
+ */
+function initialCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  const stored = storedCollapse();
+  if (stored === '1' || stored === '0') return stored === '1';
+  return typeof window.matchMedia === 'function' && window.matchMedia(NARROW_QUERY).matches;
+}
+
+export function Sidebar() {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
+
+  // Sem preferência gravada, a barra acompanha a largura da janela (notebook pequeno, janela dividida).
   useEffect(() => {
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem(COLLAPSE_KEY);
-    } catch {
-      /* armazenamento indisponível */
-    }
-    if (stored === '1' || stored === '0') {
-      if (stored === '1') queueMicrotask(() => setCollapsed(true));
-      return;
-    }
+    if (typeof window.matchMedia !== 'function') return;
     const narrow = window.matchMedia(NARROW_QUERY);
     const follow = () => {
-      let chosen = false;
-      try {
-        chosen = localStorage.getItem(COLLAPSE_KEY) !== null;
-      } catch {
-        /* armazenamento indisponível */
-      }
-      if (!chosen) setCollapsed(narrow.matches);
+      if (storedCollapse() === null) setCollapsed(narrow.matches);
     };
-    queueMicrotask(follow);
     narrow.addEventListener('change', follow);
     return () => narrow.removeEventListener('change', follow);
   }, []);
@@ -449,6 +463,8 @@ export function Sidebar() {
               type="button"
               onClick={toggleCollapsed}
               aria-label={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+              aria-expanded={!collapsed}
+              title={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
               className="p-1.5 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-stone-900/6 dark:hover:bg-white/8 transition-all duration-150 active:scale-[0.94]"
             >
               {collapsed ? (

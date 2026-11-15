@@ -16,7 +16,7 @@ import { ModalPortal } from '@/components/ui/ModalPortal';
 export const SHORTCUT_LABEL = 'Ctrl+K';
 const OPEN_EVENT = 'contaflow-command-palette';
 
-/** Abre a busca rápida de qualquer lugar (botão do menu, barra do celular). */
+/** Abre a busca rápida de qualquer lugar (o campo "Buscar…" do menu). */
 export function openCommandPalette(): void {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }

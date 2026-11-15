@@ -113,7 +113,7 @@ export function TransactionListToolbar({
               onClick={onShowHelp}
               title="Atalhos de teclado (?)"
               aria-label="Atalhos de teclado"
-              className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/3 dark:bg-white/5 hover:bg-black/6 transition-colors"
+              className="inline-flex shrink-0 items-center justify-center w-10 h-10 rounded-xl text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 bg-black/3 dark:bg-white/5 hover:bg-black/6 dark:hover:bg-white/9 transition-colors"
             >
               <kbd className="font-mono text-[12px] font-semibold">?</kbd>
             </button>

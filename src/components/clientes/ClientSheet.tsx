@@ -20,6 +20,7 @@ import { PORTES, REGIMES } from '@/components/clientes/options';
 import { ClientAddressFields } from '@/components/clientes/ClientAddressFields';
 import { ClientPartnersFields } from '@/components/clientes/ClientPartnersFields';
 import { ClientRegistrationFields, DateBRInput } from '@/components/clientes/ClientRegistrationFields';
+import { todayISO } from '@/lib/business-days';
 
 interface ClientSheetProps {
   /** Empresa em edição, ou null para cadastrar uma nova. */
@@ -72,7 +73,7 @@ export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
   const emailError = email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ? 'E-mail inválido.' : null;
   const cpfDigits = cleanDigits(repCpf);
   const cpfError = cpfDigits && !(cpfDigits.length === 11 && isValidCPF(cpfDigits)) ? 'CPF inválido.' : null;
-  const sinceError = clientSinceBad ? 'Data inválida: use DD/MM/AAAA.' : clientSince && clientSince > new Date().toISOString().slice(0, 10) ? 'A data não pode ser futura.' : null;
+  const sinceError = clientSinceBad ? 'Data inválida: use DD/MM/AAAA.' : clientSince && clientSince > todayISO() ? 'A data não pode ser futura.' : null;
   const valid = Boolean(name.trim()) && (cnpjValid || cnpjUnchanged) && !emailError && !cpfError && !sinceError;
 
   /** Endereço vindo de fora (CNPJ ou CEP): leva junto o Município/UF dos termos, se ainda vazio. */

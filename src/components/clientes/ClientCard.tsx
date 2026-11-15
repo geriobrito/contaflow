@@ -74,7 +74,7 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
           type="button"
           onClick={onEdit}
           aria-label={`Editar ${client.name}`}
-          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 active:scale-[0.94] transition-all duration-150"
+          className="w-8 h-8 -mr-1 -mt-1 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all duration-150"
         >
           <Pencil className="w-3.5 h-3.5" />
         </button>
@@ -124,7 +124,7 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
             onClick={onBackup}
             aria-label={`Baixar backup de ${label}`}
             title="Baixar backup (JSON) com todos os dados da empresa"
-            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 hover:bg-black/5 dark:hover:bg-white/8 disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
           >
             <Download className={`w-3.5 h-3.5 ${backingUp ? 'animate-pulse' : ''}`} />
           </button>

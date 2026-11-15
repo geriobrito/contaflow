@@ -1,6 +1,7 @@
 import type { BankTransaction, ChartAccount, JournalEntry, ResultSummary } from '@/types/firestore';
 import { buildDRE, type DateRange } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange, variation } from '@/lib/dre/compare';
+import { todayISO } from '@/lib/business-days';
 
 export interface ExecutiveMonthlyBreakdown {
   month: string; // YYYY-MM
@@ -98,7 +99,7 @@ export function buildExecutiveSummary(params: {
         if (j.date > latest) latest = j.date;
       }
     }
-    refMonth = latest ? latest.slice(0, 7) : new Date().toISOString().slice(0, 7);
+    refMonth = latest ? latest.slice(0, 7) : todayISO().slice(0, 7);
   }
 
   const startMonth = shiftMonths(refMonth, -11);

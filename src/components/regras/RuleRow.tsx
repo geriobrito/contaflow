@@ -124,7 +124,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
         ) : (
           <div className="min-w-0 space-y-1">
             <span className="block text-[10px] uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">{MATCH_TYPE_LABEL[rule.matchType ?? 'CONTAINS']}</span>
-            <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
+            <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 dark:border-white/6 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>
             {assessment.level !== 'ok' && (
@@ -200,7 +200,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={cancel}
                 aria-label="Cancelar edição"
-                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/5 active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all duration-150"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -211,7 +211,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={() => setEditing(true)}
                 aria-label={`Editar termo ${rule.pattern}`}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
               >
                 <Pencil className="w-3.5 h-3.5" />
               </button>

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import { Geist, Geist_Mono, Newsreader } from 'next/font/google';
 import './globals.css';
@@ -6,6 +6,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ClientProvider } from '@/contexts/ClientContext';
 import { AppShell } from '@/components/layout/AppShell';
+import { PageTitle } from '@/components/layout/PageTitle';
 import { SessionTimeout } from '@/components/layout/SessionTimeout';
 import { THEME_SCRIPT } from '@/lib/theme';
 
@@ -25,10 +26,21 @@ const newsreader = Newsreader({
   style: ['normal', 'italic'],
 });
 
+// Sem `title` aqui: o título da aba vem do <PageTitle />, com o nome de cada tela.
 export const metadata: Metadata = {
-  title: 'ContaFlow - Automação Contábil & Conciliação Inteligente de OFX',
+  applicationName: 'ContaFlow',
   description:
     'Software contábil interno com leitura automática de extratos bancários OFX, conciliação contábil com aprendizado contínuo e geração de DRE.',
+  // Ferramenta interna do escritório: nenhuma tela entra em buscadores.
+  robots: { index: false, follow: false },
+};
+
+/** Cor da moldura do navegador (e da janela do aplicativo instalado) acompanhando o tema. */
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#F6F4EE' },
+    { media: '(prefers-color-scheme: dark)', color: '#131211' },
+  ],
 };
 
 export default async function RootLayout({
@@ -48,6 +60,7 @@ export default async function RootLayout({
     >
       <head>
         <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <PageTitle />
       </head>
       <body className="min-h-full bg-canvas text-stone-900 dark:text-stone-100">
         <AuthProvider>

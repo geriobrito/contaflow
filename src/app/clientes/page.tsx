@@ -101,7 +101,7 @@ export default function ClientesPage() {
       {isLoading ? (
         <CardsSkeleton count={3} className={GRID} label="Carregando clientes…" />
       ) : visible.length === 0 ? (
-        <div className="rounded-[22px] border border-dashed border-black/10">
+        <div className="rounded-[22px] border border-dashed border-black/10 dark:border-white/12">
           <EmptyState
             title={clients.length === 0 ? 'Nenhum cliente cadastrado' : 'Nenhum cliente encontrado'}
             description={clients.length === 0 ? 'Cadastre a primeira empresa para começar.' : `Nada corresponde a “${search}”.`}

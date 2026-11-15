@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ChevronDown, ChevronRight, HandCoins, Landmark, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { FinancingContract } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,8 @@ import { fromCents } from '@/lib/money';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { todayISO } from '@/lib/business-days';
 
 const NUM = 'px-3 py-2.5 text-right font-mono tabular-nums whitespace-nowrap';
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
@@ -28,16 +30,11 @@ export default function FinanciamentosPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
   const data = useFinancingContracts(clientId, user?.uid);
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const [editing, setEditing] = useState<FinancingContract | 'new' | null>(null);
   const [open, setOpen] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const done = (ok: boolean, message: string) => {
     if (ok) setToast(message);
@@ -129,9 +126,9 @@ export default function FinanciamentosPage() {
                   const expanded = open === c.id;
                   return (
                     <React.Fragment key={c.id}>
-                      <tr className="border-b border-black/4 text-[13px]">
+                      <tr className="border-b border-black/4 dark:border-white/6 text-[13px]">
                         <td className="pl-3 py-3 text-center">
-                          <button type="button" onClick={() => setOpen(expanded ? null : c.id)} aria-label={expanded ? 'Recolher parcelas' : `Ver parcelas de ${c.description}`} className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5">
+                          <button type="button" onClick={() => setOpen(expanded ? null : c.id)} aria-label={expanded ? 'Recolher parcelas' : `Ver parcelas de ${c.description}`} className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5 dark:hover:bg-white/8">
                             {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                           </button>
                         </td>
@@ -150,7 +147,7 @@ export default function FinanciamentosPage() {
                         <td className={NUM}>{formatCurrency(fromCents(pos.longPayments - pos.longInterest))}</td>
                         <td className={NUM}>{formatCurrency(fromCents(pos.balance))}</td>
                         <td className="pl-3 pr-5 py-3 text-right whitespace-nowrap">
-                          <button type="button" onClick={() => setEditing(c)} aria-label={`Editar ${c.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 active:scale-[0.94] transition-all">
+                          <button type="button" onClick={() => setEditing(c)} aria-label={`Editar ${c.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all">
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           {!frozen && (
@@ -159,7 +156,7 @@ export default function FinanciamentosPage() {
                         </td>
                       </tr>
                       {expanded && (
-                        <tr className="border-b border-black/4 bg-black/2 dark:bg-white/2">
+                        <tr className="border-b border-black/4 dark:border-white/6 bg-black/2 dark:bg-white/2">
                           <td colSpan={7} className="px-5 py-3">
                             <table aria-label={`Parcelas de ${c.description}`} className="w-full text-left text-[12px]">
                               <thead>
@@ -174,7 +171,7 @@ export default function FinanciamentosPage() {
                               </thead>
                               <tbody>
                                 {installmentSchedule(c).map((r) => (
-                                  <tr key={r.n} className="border-t border-black/4">
+                                  <tr key={r.n} className="border-t border-black/4 dark:border-white/6">
                                     <td className="py-1.5 font-mono tabular-nums">
                                       {r.n}/{c.installments}
                                     </td>
@@ -212,11 +209,7 @@ export default function FinanciamentosPage() {
         />
       )}
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in">
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

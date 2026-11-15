@@ -15,8 +15,9 @@ import {
 import { missingBalanceMonths } from '@/lib/investments';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => todayISO().slice(0, 7);
 
 /**
  * Aplicações financeiras de uma empresa e a situação do rendimento na competência escolhida:

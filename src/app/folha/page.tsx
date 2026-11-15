@@ -35,6 +35,7 @@ import { isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 import { BUTTON, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { todayISO } from '@/lib/business-days';
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
@@ -50,7 +51,7 @@ export default function FolhaPagamentoPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
 
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const [loadedState, setLoadedState] = useState<{ key: string; value: PayrollContext } | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
   const [saving, setSaving] = useState(false);

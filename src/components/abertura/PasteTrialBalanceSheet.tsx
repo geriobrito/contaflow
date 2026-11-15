@@ -156,7 +156,7 @@ export function PasteTrialBalanceSheet({ accounts, banks, onApply, onClose }: Pa
                   onClick={() => update(r.line, { status: 'ignored', reason: 'Retirada por você.' })}
                   aria-label={`Deixar de fora ${r.name || `a linha ${r.line}`}`}
                   title="Deixar de fora"
-                  className="w-7 h-7 shrink-0 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5"
+                  className="w-7 h-7 shrink-0 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5 dark:hover:bg-white/8"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>

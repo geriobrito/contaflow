@@ -42,7 +42,7 @@ export function ImportHistoryTable({ current, onDelete }: ImportHistoryTableProp
               {[...current.batches]
                 .sort((a, b) => b.importedAt.localeCompare(a.importedAt))
                 .map((b) => (
-                  <tr key={b.id} className="border-b border-black/4 last:border-0 text-[13px]">
+                  <tr key={b.id} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-2.5 font-mono tabular-nums text-[12px] text-stone-500 whitespace-nowrap">{formatDateTime(b.importedAt)}</td>
                     <td className="px-3 py-2.5 max-w-[240px] truncate" title={b.fileName}>{b.fileName}</td>
                     <td className="px-3 py-2.5 text-[12px] text-stone-500">

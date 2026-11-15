@@ -6,8 +6,9 @@ import { loadMonthStock, loadStockContext, postMonthStock, saveStockControl, sav
 import { missingCountMonths } from '@/lib/stock';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => todayISO().slice(0, 7);
 
 /**
  * Controle de estoque de uma empresa e a situação do CMV na competência escolhida: configurar,

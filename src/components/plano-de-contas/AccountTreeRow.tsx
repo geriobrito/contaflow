@@ -40,7 +40,7 @@ export function AccountTreeRow({ node, expanded, onToggle, onEdit, onDelete, isA
           aria-label={hasChildren ? (open ? `Recolher ${account.name}` : `Expandir ${account.name}`) : undefined}
           tabIndex={hasChildren ? 0 : -1}
           className={`w-6 h-6 shrink-0 rounded-md flex items-center justify-center text-stone-400 ${
-            hasChildren ? 'hover:bg-black/5 active:scale-[0.92] transition-all duration-150' : 'invisible'
+            hasChildren ? 'hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.92] transition-all duration-150' : 'invisible'
           }`}
         >
           <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-90' : ''}`} />

@@ -26,6 +26,7 @@
 # Mapa de Arquitetura
 - `src/app/`: Entrypoints e rotas Next.js App Router (`layout.tsx`, `page.tsx`, `painel/`, `dre/`, `balanco/`, `regras/`, etc.)
 - `src/components/`: Componentes UI reutilizáveis por domínio (`conciliacao/`, `dre/`, `balanco/`, `lancamentos/`, `layout/`, `ui/`)
+  - `src/components/layout/nav.ts`: fonte única do menu (ordem, seções, busca rápida e título da aba). A ordem segue o trabalho: Início, Rotina do mês (passos numerados, na sequência em que são feitos), Demonstrações e Cadastros (ordem de implantação). Tela nova entra aqui, na posição do fluxo
 - `src/contexts/`: Estado global de autenticação e seleção de cliente (`AuthContext.tsx`, `ClientContext.tsx`)
 - `src/hooks/`: Hooks de negócio e orquestração sem acoplamento direto de DB: carga e gravações de cada tela por domínio (`reconciliation/`, `contas/`, `regras/`, `lancamentos/`, `dre/`, `useLedgerData.ts`), `useReconciliation.ts`, `useTableKeyboard.ts`
 - `src/lib/`: Core de domínio e infraestrutura:
@@ -48,6 +49,9 @@
 - **Contábil**: Partidas dobradas estritas (banco x conta contrapartida/rateio), modelo de plano de contas do CFC; norma das demonstrações pelo porte do cliente (NBC TG 1002 microentidade / NBC TG 1001 pequena empresa).
 - **Nomenclatura**: Componentes em PascalCase (`*.tsx`), utilitários/serviços em kebab-case (`*.ts`), hooks em camelCase (`use*.ts`).
 - **Tratamento de Erros**: Falha explícita na UI em operações negadas pelo backend/regras de validação.
+- **Datas**: "hoje" e "mês atual" sempre por `todayISO()` (`src/lib/business-days.ts`, data local); nunca `new Date().toISOString()`, que é UTC e vira o dia às 21h de Brasília.
+- **Avisos (toast)**: `useToast` + `<Toast />` de `src/components/ui/Toast.tsx`; sem marcação própria por tela.
+- **Tema escuro**: fio ou realce em preto translúcido (`border-black/N`, `hover:bg-black/N`) sempre com o par `dark:` (ou os tokens `border-line` / `border-line-strong`).
 
 # Diretrizes de Economia de Tokens (Regras de Comportamento)
 - Não explique conceitos básicos; entregue apenas o código ou a solução direta.

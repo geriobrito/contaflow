@@ -247,7 +247,7 @@ export function TransactionTable({
               type="button"
               onClick={() => onGoToPage(currentPage - 1)}
               disabled={currentPage === 0}
-              className="h-8 px-3 rounded-full hover:bg-black/5 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+              className="h-8 px-3 rounded-full hover:bg-black/5 dark:hover:bg-white/8 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
             >
               Anterior
             </button>
@@ -258,7 +258,7 @@ export function TransactionTable({
               type="button"
               onClick={() => onGoToPage(currentPage + 1)}
               disabled={currentPage >= pageCount - 1}
-              className="h-8 px-3 rounded-full hover:bg-black/5 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
+              className="h-8 px-3 rounded-full hover:bg-black/5 dark:hover:bg-white/8 disabled:opacity-30 active:scale-[0.97] transition-all duration-150"
             >
               Próxima
             </button>

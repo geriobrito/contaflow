@@ -122,7 +122,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                   type="button"
                   onClick={onClose}
                   disabled={busy}
-                  className="rounded-xl py-2.5 px-5 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 disabled:opacity-40 transition-all active:scale-[0.98]"
+                  className="rounded-xl py-2.5 px-5 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 dark:hover:bg-white/11 disabled:opacity-40 transition-all active:scale-[0.98]"
                 >
                   Entendi
                 </button>
@@ -143,7 +143,7 @@ export function DuplicateImportModal({ info, busy = false, onClose, onImportNew,
                 type="button"
                 onClick={onClose}
                 disabled={busy}
-                className="flex-1 rounded-xl py-2.5 px-4 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 disabled:opacity-40 transition-all active:scale-[0.98]"
+                className="flex-1 rounded-xl py-2.5 px-4 font-medium text-stone-700 dark:text-stone-200 bg-black/5 dark:bg-white/8 hover:bg-black/8 dark:hover:bg-white/11 disabled:opacity-40 transition-all active:scale-[0.98]"
               >
                 Cancelar
               </button>

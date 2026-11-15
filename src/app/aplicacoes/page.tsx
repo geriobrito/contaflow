@@ -15,6 +15,8 @@ import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { BUTTON, ConfirmButton, EmptyState, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { todayISO } from '@/lib/business-days';
 
 const NUM = 'px-3 py-2.5 text-right font-mono tabular-nums whitespace-nowrap';
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
@@ -29,11 +31,11 @@ export default function AplicacoesPage() {
   const { user } = useAuth();
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const data = useInvestments(clientId, user?.uid, month);
   const [editing, setEditing] = useState<InvestmentAccount | 'new' | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
   // Link da barra de fechamento: `?mes=AAAA-MM` abre a competência pedida.
   useEffect(() => {
@@ -47,11 +49,6 @@ export default function AplicacoesPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const done = (ok: boolean, message: string) => {
     if (ok) setToast(message);
@@ -152,7 +149,7 @@ export default function AplicacoesPage() {
                 {data.investments.map((inv) => {
                   const active = isActiveIn(inv, month);
                   return (
-                    <tr key={inv.id} className="border-b border-black/4 last:border-0 text-[13px]">
+                    <tr key={inv.id} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-3">
                         <p className="font-medium text-stone-900 dark:text-stone-100">{inv.description}</p>
                         <p className="text-[11px] text-stone-500 dark:text-stone-400">
@@ -184,7 +181,7 @@ export default function AplicacoesPage() {
                         )}
                       </td>
                       <td className="pl-3 pr-5 py-3 text-right whitespace-nowrap">
-                        <button type="button" onClick={() => setEditing(inv)} aria-label={`Editar ${inv.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 active:scale-[0.94] transition-all">
+                        <button type="button" onClick={() => setEditing(inv)} aria-label={`Editar ${inv.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all">
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <ConfirmButton ariaLabel={`Excluir ${inv.description}`} label={<Trash2 className="w-3.5 h-3.5" />} confirmLabel="Excluir" onConfirm={() => void data.remove(inv).then((ok) => done(ok, 'Aplicação excluída'))} />
@@ -230,7 +227,7 @@ export default function AplicacoesPage() {
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.ledgerAccountId} className="border-b border-black/4 last:border-0 text-[13px]">
+                      <tr key={r.ledgerAccountId} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
                         <td className="pl-5 pr-3 py-2.5">{r.label}</td>
                         <td className={NUM}>{formatCurrency(fromCents(r.informedCents))}</td>
                         <td className={NUM}>{formatCurrency(fromCents(r.ledgerCents))}</td>
@@ -258,11 +255,7 @@ export default function AplicacoesPage() {
         />
       )}
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in">
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

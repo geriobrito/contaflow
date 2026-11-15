@@ -14,7 +14,7 @@ import { buildDashboard, type Alert, type MonthState, type MonthStatus } from '@
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BalanceCheckBadge } from '@/components/conciliacao/StatementPanel';
-import { CardHeader, EmptyState, PAGE, PageHeader, SegmentedControl, StatCard, SURFACE } from '@/components/ui/primitives';
+import { BUTTON, CardHeader, EmptyState, PAGE, PageHeader, SegmentedControl, StatCard, SURFACE } from '@/components/ui/primitives';
 import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
 import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
@@ -82,7 +82,7 @@ const STATE_STYLE: Record<MonthState, { box: string; text: string; label: string
   LOCKED: { box: 'bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900 border-transparent', text: 'text-white/70 dark:text-stone-600', label: 'Fechado' },
   READY: { box: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200/70 dark:border-emerald-500/25', text: 'text-emerald-700 dark:text-emerald-400', label: 'Pronto p/ fechar' },
   OPEN: { box: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200/70 dark:border-amber-500/25', text: 'text-amber-700 dark:text-amber-400', label: 'Em aberto' },
-  EMPTY: { box: 'bg-black/3 dark:bg-white/4 border-dashed border-black/10', text: 'text-stone-400', label: 'Sem movimento' },
+  EMPTY: { box: 'bg-black/3 dark:bg-white/4 border-dashed border-black/10 dark:border-white/12', text: 'text-stone-400', label: 'Sem movimento' },
 };
 
 function MonthCard({ m }: { m: MonthStatus }) {
@@ -175,7 +175,7 @@ export default function PainelPage() {
           openings,
           journalEntries,
           payrollMonths: payroll?.summaries.map((s) => s.month),
-          today: new Date().toISOString().slice(0, 10),
+          today: todayISO(),
           nowMs: Date.now(),
         });
         setError(null);
@@ -200,7 +200,7 @@ export default function PainelPage() {
     ])
       .then(async ([accounts, banks, locks, journalEntries, latest]) => {
         const latestJournal = journalEntries.reduce((max, j) => (j.date > max ? j.date : max), '');
-        const referenceDate = [latest ?? '', latestJournal].reduce((a, b) => (b > a ? b : a), '') || new Date().toISOString().slice(0, 10);
+        const referenceDate = [latest ?? '', latestJournal].reduce((a, b) => (b > a ? b : a), '') || todayISO();
         const window = await loadResultWindow({ clientId, range: executiveLoadRange(referenceDate), accounts, banks, locks });
         return { accounts, journalEntries, referenceDate, window };
       })
@@ -240,7 +240,7 @@ export default function PainelPage() {
       <main className={PAGE}>
         <PageHeader title="Painel" />
         <section className={`${SURFACE} rounded-[22px]`}>
-          <EmptyState title="Nenhuma empresa cadastrada" description="Cadastre a primeira empresa para acompanhar pendências, meses e extratos." action={<Link href="/clientes" className="text-accent-ink text-[14px] font-medium">Cadastrar empresa</Link>} />
+          <EmptyState title="Nenhuma empresa cadastrada" description="Cadastre a primeira empresa para acompanhar pendências, meses e extratos." action={<Link href="/clientes" className={BUTTON.primary}>Cadastrar empresa</Link>} />
         </section>
       </main>
     );
@@ -318,7 +318,7 @@ export default function PainelPage() {
         actions={viewSwitch}
       />
       {readMeter}
-      {error &&<p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar o painel: {error}</p>}
+      {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar o painel: {error}</p>}
       {!dash ? (
         !error && (
           <>
@@ -441,7 +441,7 @@ export default function PainelPage() {
                     {dash.accounts.map((a) => {
                       const lastBatch = ready!.batches.filter((b) => b.accountKey === a.accountKey).sort((x, y) => (y.endDate ?? '').localeCompare(x.endDate ?? ''))[0];
                       return (
-                        <tr key={a.accountKey} className="border-b border-black/4 last:border-0 text-[13px] align-top">
+                        <tr key={a.accountKey} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px] align-top">
                           <td className="pl-5 pr-3 py-3">
                             <p className="font-medium">{a.nickname}</p>
                             <p className="font-mono text-[11px] text-stone-500 dark:text-stone-400">{a.accountKey}</p>

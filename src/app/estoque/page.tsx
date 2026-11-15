@@ -13,6 +13,8 @@ import { parseMoneyInput } from '@/lib/opening';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_COMPACT, INPUT_MONEY } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { todayISO } from '@/lib/business-days';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 const moneyText = (v: number | undefined) => (v === undefined ? '' : v.toFixed(2).replace('.', ','));
@@ -25,11 +27,11 @@ export default function EstoquePage() {
   const { user } = useAuth();
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const data = useStockControl(clientId, user?.uid, month);
   const [setup, setSetup] = useState(false);
   const [draft, setDraft] = useState<{ key: string; amount: string; source: string } | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
   // Link da barra de fechamento: `?mes=AAAA-MM` abre a competência pedida.
   useEffect(() => {
@@ -43,11 +45,6 @@ export default function EstoquePage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const control = data.control;
   const ctx = data.ctx;
@@ -237,11 +234,7 @@ export default function EstoquePage() {
         />
       )}
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in">
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

@@ -33,7 +33,7 @@ export function TrialBalanceTable({
 
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden print:rounded-none print:border-0 print:shadow-none print:bg-transparent print:p-0`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/4 print:hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2.5 border-b border-black/4 dark:border-white/6 print:hidden">
         <span className="text-[12px] text-stone-500 dark:text-stone-400 flex items-center gap-1.5">
           <BookOpen className="w-3.5 h-3.5 text-stone-400" />
           Clique em qualquer conta para abrir a ficha do Livro Razão
@@ -52,7 +52,7 @@ export function TrialBalanceTable({
         </div>
       </div>
       {tbStage && (
-        <p className="px-5 py-2 border-b border-black/4 text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
+        <p className="px-5 py-2 border-b border-black/4 dark:border-white/6 text-[12px] text-stone-600 dark:text-stone-300 print:px-1.5 print:text-[9px]">
           Balancete {tbStage.toLowerCase()}.
         </p>
       )}
@@ -73,7 +73,7 @@ export function TrialBalanceTable({
               <tr
                 key={r.accountId}
                 onClick={() => onSelectAccount(r.accountId)}
-                className={`border-b border-black/3 print:border-black/6 last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/3 dark:hover:bg-white/4 transition-colors group ${
+                className={`border-b border-black/3 dark:border-white/5 print:border-black/6 last:border-0 text-[13px] print:text-[9.5px] print:leading-tight print:break-inside-avoid cursor-pointer hover:bg-black/3 dark:hover:bg-white/4 transition-colors group ${
                   r.synthetic
                     ? 'font-medium text-stone-900 dark:text-stone-100 print:font-semibold print:text-black'
                     : 'text-stone-600 dark:text-stone-400 print:text-stone-800'
@@ -104,7 +104,7 @@ export function TrialBalanceTable({
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-black/8 print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
+            <tr className="border-t border-black/8 dark:border-white/10 print:border-t-2 print:border-b-2 print:border-black text-[13px] print:text-[10px] font-semibold print:break-inside-avoid">
               <td className="pl-5 pr-3 py-2.5 print:pl-1.5 print:pr-1 print:py-1.5" />
               <td className="px-3 py-2.5 print:px-1.5 print:py-1.5">Totais (contas analíticas)</td>
               <td className="px-3 py-2.5 print:px-1 print:py-1.5 text-right font-mono tabular-nums">{dc(tb.totals.previous)}</td>

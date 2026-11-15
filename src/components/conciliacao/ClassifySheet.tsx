@@ -279,7 +279,7 @@ export function ClassifySheet({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/8 text-stone-500 flex items-center justify-center hover:bg-black/8 active:scale-[0.94] transition-all duration-150"
+            className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/8 text-stone-500 flex items-center justify-center hover:bg-black/8 dark:hover:bg-white/11 active:scale-[0.94] transition-all duration-150"
           >
             <X className="w-3.5 h-3.5" strokeWidth={2.25} />
           </button>
@@ -295,7 +295,7 @@ export function ClassifySheet({
           </div>
 
           {locked && (
-            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/4 dark:bg-white/6 border border-black/6 text-[12px] text-stone-600 dark:text-stone-300">
+            <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/4 dark:bg-white/6 border border-black/6 dark:border-white/8 text-[12px] text-stone-600 dark:text-stone-300">
               <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>
                 A competência de <b>{lockedMonthLabel}</b> está fechada. Para alterar este lançamento, reabra a competência em

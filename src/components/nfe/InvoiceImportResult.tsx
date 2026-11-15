@@ -34,7 +34,7 @@ export function InvoiceImportResult({ outcome, onClose }: InvoiceImportResultPro
             </>
           )}
         </p>
-        <button type="button" onClick={onClose} aria-label="Fechar resultado" className="w-6 h-6 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/5">
+        <button type="button" onClick={onClose} aria-label="Fechar resultado" className="w-6 h-6 rounded-full flex items-center justify-center text-stone-400 hover:bg-black/5 dark:hover:bg-white/8">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>

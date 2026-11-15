@@ -20,6 +20,7 @@ import { BUTTON, INPUT, INPUT_COMPACT, FIELD_LABEL } from '@/components/ui/primi
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
 interface JournalEntryModalProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   initialEntry,
   accounts,
   clientId,
-  defaultDate = new Date().toISOString().slice(0, 10),
+  defaultDate = todayISO(),
   isMonthLocked,
 }) => {
   const [date, setDate] = useState<string>(initialEntry?.date ?? defaultDate);

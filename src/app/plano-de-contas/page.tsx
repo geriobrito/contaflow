@@ -85,7 +85,7 @@ export default function PlanoDeContasPage() {
       />
 
       {notice && (
-        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/6 text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
+        <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/6 dark:border-white/8 text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">
           {notice}
           <button type="button" onClick={() => setNotice(null)} className="text-accent-ink font-medium">
             OK

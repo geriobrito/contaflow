@@ -123,7 +123,7 @@ export default function ResponderPage() {
 
             <ol className="space-y-4">
               {request.items.map((item, idx) => (
-                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 shadow-card p-5 space-y-3">
+                <li key={item.transactionId} className="rounded-3xl bg-white/90 dark:bg-stone-900/80 border border-black/6 dark:border-white/8 shadow-card p-5 space-y-3">
                   <div className="flex items-baseline justify-between gap-4">
                     <span className="text-[12px] font-medium text-stone-500 dark:text-stone-400">
                       {idx + 1} de {request.items.length} · <span className="font-mono tabular-nums">{formatDateBR(item.date)}</span>
@@ -142,7 +142,7 @@ export default function ResponderPage() {
                     maxLength={MAX_ANSWER_LENGTH}
                     placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
                     aria-label={`Resposta ${idx + 1}`}
-                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 text-[15px] outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-60"
+                    className="w-full px-3.5 py-3 rounded-xl bg-white dark:bg-stone-800 border border-black/8 dark:border-white/10 text-[15px] outline-none focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)] disabled:opacity-60"
                   />
                 </li>
               ))}

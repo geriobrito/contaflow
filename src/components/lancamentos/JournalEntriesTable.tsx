@@ -57,7 +57,7 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                         type="button"
                         onClick={() => setExpandedId(isExpanded ? null : entry.id)}
                         aria-label={isExpanded ? 'Recolher partidas' : 'Expandir partidas'}
-                        className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5 transition-colors"
+                        className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-stone-700 hover:bg-black/5 dark:hover:bg-white/8 transition-colors"
                       >
                         {isExpanded ? (
                           <ChevronDown className="w-4 h-4" />

@@ -87,7 +87,7 @@ export function FixedAssetsTable({
                 const gone = pos.costCents === 0 && Boolean(a.disposal);
                 const frozen = isAssetFrozen(a, ctx.lockedMonths, ctx.implantationMonth);
                 return (
-                  <tr key={a.id} className={`border-b border-black/4 last:border-0 text-[13px] ${gone ? 'text-stone-400' : ''}`}>
+                  <tr key={a.id} className={`border-b border-black/4 dark:border-white/6 last:border-0 text-[13px] ${gone ? 'text-stone-400' : ''}`}>
                     <td className="pl-5 pr-3 py-3">
                       <p className="font-medium text-stone-900 dark:text-stone-100">{a.description}</p>
                       <p className="text-[11px] text-stone-500 dark:text-stone-400">
@@ -110,16 +110,16 @@ export function FixedAssetsTable({
                     <td className={NUM}>{gone ? '—' : formatCurrency(fromCents(pos.accumulatedCents))}</td>
                     <td className={NUM}>{gone ? '—' : formatCurrency(fromCents(pos.netCents))}</td>
                     <td className="pl-3 pr-5 py-3 text-right whitespace-nowrap">
-                      <button type="button" onClick={() => onEdit(a)} aria-label={`Editar ${a.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 active:scale-[0.94] transition-all">
+                      <button type="button" onClick={() => onEdit(a)} aria-label={`Editar ${a.description}`} className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
                       {a.disposal ? (
-                        <button type="button" disabled={busy} onClick={() => onUndoDisposal(a)} aria-label={`Desfazer a baixa de ${a.description}`} title="Desfazer a baixa" className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 active:scale-[0.94] transition-all">
+                        <button type="button" disabled={busy} onClick={() => onUndoDisposal(a)} aria-label={`Desfazer a baixa de ${a.description}`} title="Desfazer a baixa" className="w-8 h-8 rounded-full inline-flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.94] transition-all">
                           <Undo2 className="w-3.5 h-3.5" />
                         </button>
                       ) : (
                         <>
-                          <button type="button" disabled={busy} onClick={() => onDispose(a)} className="h-8 px-2.5 rounded-full text-[12px] font-medium text-stone-500 hover:text-stone-800 hover:bg-black/5 active:scale-[0.97] transition-all">
+                          <button type="button" disabled={busy} onClick={() => onDispose(a)} className="h-8 px-2.5 rounded-full text-[12px] font-medium text-stone-500 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 active:scale-[0.97] transition-all">
                             Baixar
                           </button>
                           {!frozen && <ConfirmButton ariaLabel={`Excluir ${a.description}`} label={<Trash2 className="w-3.5 h-3.5" />} confirmLabel="Excluir" onConfirm={() => onDelete(a)} />}
@@ -131,7 +131,7 @@ export function FixedAssetsTable({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t border-black/8 text-[13px] font-semibold">
+              <tr className="border-t border-black/8 dark:border-white/10 text-[13px] font-semibold">
                 <td className="pl-5 pr-3 py-3" colSpan={2}>
                   Total
                 </td>

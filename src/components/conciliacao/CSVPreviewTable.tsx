@@ -33,7 +33,7 @@ export function CSVPreviewTable({ preview, hasHeader, onHasHeaderChange }: CSVPr
         <div className="overflow-x-auto max-h-44">
           <table className="w-full text-left text-[12px] border-collapse font-mono">
             <thead>
-              <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/6 text-stone-600">
+              <tr className="bg-stone-100/70 dark:bg-stone-800/70 border-b border-black/6 dark:border-white/8 text-stone-600">
                 {preview.headers.map((h, i) => (
                   <Th key={i} className="py-2 px-3 whitespace-nowrap">
                     <span className="text-[10px] text-stone-500 dark:text-stone-400 block font-normal">Col {i + 1}</span>

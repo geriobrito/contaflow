@@ -744,7 +744,7 @@ export function payrollCloseProblem(status: PayrollRoutineStatus, month: string)
     case 'OK':
       return null;
     case 'MISSING':
-      return `Informe ou repita a folha de pagamento de ${comp} (Rotina › Folha de Pagamento) antes de fechar a competência.`;
+      return `Informe ou repita a folha de pagamento de ${comp} (Rotina do mês › Folha de Pagamento) antes de fechar a competência.`;
     case 'PENDING':
       return status.existing
         ? `Atualize o lançamento da folha de pagamento de ${comp} antes de fechar.`

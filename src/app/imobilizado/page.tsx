@@ -1,7 +1,7 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Landmark, Scale } from 'lucide-react';
 import type { FixedAsset } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,8 @@ import { ControlsTabs } from '@/components/imobilizado/ControlsTabs';
 import { formatMonth } from '@/lib/periods';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { BUTTON, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
+import { Toast, useToast } from '@/components/ui/Toast';
+import { todayISO } from '@/lib/business-days';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 
@@ -27,16 +29,11 @@ export default function ImobilizadoPage() {
   const clientId = currentClient?.id;
   const data = useFixedAssets(clientId, user?.uid, currentClient?.porte);
   const reconciliation = useFixedAssetReconciliation(clientId, data.ctx);
-  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
   const [editing, setEditing] = useState<FixedAsset | 'new' | null>(null);
   const [disposing, setDisposing] = useState<FixedAsset | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useToast();
 
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   const done = (ok: boolean, message: string) => {
     if (ok) {
@@ -158,7 +155,7 @@ export default function ImobilizadoPage() {
                 </thead>
                 <tbody>
                   {reconciliation.result.rows.map((r) => (
-                    <tr key={r.accountId} className="border-b border-black/4 last:border-0 text-[13px]">
+                    <tr key={r.accountId} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
                       <td className="pl-5 pr-3 py-2.5">
                         <span className="font-mono text-[12px] text-stone-500 dark:text-stone-400">{r.accountCode}</span> {r.accountName}
                       </td>
@@ -200,11 +197,7 @@ export default function ImobilizadoPage() {
         />
       )}
 
-      {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-full bg-stone-900/90 text-white text-[13px] shadow-[0_8px_24px_rgba(0,0,0,0.18)] backdrop-blur-xl animate-sheet-in">
-          {toast}
-        </div>
-      )}
+      <Toast toast={toast} />
     </main>
   );
 }

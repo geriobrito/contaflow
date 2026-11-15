@@ -13,8 +13,9 @@ import {
 import { pendingAppropriationMonths } from '@/lib/prepaid-expenses';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
+import { todayISO } from '@/lib/business-days';
 
-const currentMonth = () => new Date().toISOString().slice(0, 7);
+const currentMonth = () => todayISO().slice(0, 7);
 
 /**
  * Despesas antecipadas de uma empresa (seguros, assinaturas…), com o plano, os fechamentos, a

@@ -156,7 +156,7 @@ export function StatementDetails({ summary }: { summary: StatementSummary }) {
               </thead>
               <tbody>
                 {withAccount.map((b) => (
-                  <tr key={b.id} className="border-b border-black/4 last:border-0 text-[13px]">
+                  <tr key={b.id} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
                     <td className="pl-5 pr-3 py-2.5">
                       <span className="font-mono text-[12px] text-stone-700 dark:text-stone-300">{b.accountKey}</span>
                       {b.bankName && <span className="block text-[11px] text-stone-500 dark:text-stone-400">{b.bankName}</span>}

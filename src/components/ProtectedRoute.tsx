@@ -29,20 +29,13 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
 
   if (isPublic) return <>{children}</>;
 
-  // Spinner refinado no padrão Apple enquanto checa autenticação
+  // Enquanto a sessão é conferida: a marca e uma barra de progresso discreta.
   if (loading) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-canvas">
-        <div className="flex flex-col items-center gap-4 animate-in fade-in duration-300">
-          <BrandMark size="lg" className="animate-pulse" />
-          {/* iOS circular activity spinner */}
-          <div className="relative w-6 h-6">
-            <div className="w-6 h-6 rounded-full border-2 border-line-strong border-t-accent animate-spin" />
-          </div>
-          <span className="text-xs font-medium text-stone-500 dark:text-stone-400">
-            Carregando ContaFlow...
-          </span>
-        </div>
+      <div role="status" aria-live="polite" className="min-h-screen w-full flex flex-col items-center justify-center gap-5 bg-canvas animate-fade-in">
+        <BrandMark size="xl" />
+        <div aria-hidden className="loading-bar w-28" />
+        <span className="text-[12.5px] font-medium text-stone-500 dark:text-stone-400">Abrindo o ContaFlow…</span>
       </div>
     );
   }

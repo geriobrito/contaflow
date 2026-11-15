@@ -62,7 +62,7 @@ function Side({
   const rows = previous ? comparativeLines(lines, previous.lines) : lines.map((l) => ({ ...l, previous: 0 }));
   return (
     <div className="print-avoid-break">
-      <div className="flex items-baseline justify-between gap-3 px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5">
+      <div className="flex items-baseline justify-between gap-3 px-5 py-3 bg-black/3 dark:bg-white/4 border-b border-black/5 dark:border-white/7">
         <h3 className="flex-1 text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-600 dark:text-stone-300">{title}</h3>
         <AccountingAmount value={total} className="text-[13px] font-semibold" />
         {previous && <AccountingAmount value={previous.total} className="w-32 text-right text-[13px] font-semibold text-stone-400" />}
@@ -395,7 +395,7 @@ export default function BalancoPage() {
               onClick={() => window.print()}
               aria-label="Imprimir"
               title="Imprimir"
-              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/5"
+              className="w-9 h-9 rounded-full inline-flex items-center justify-center text-stone-500 hover:bg-black/5 dark:hover:bg-white/8"
             >
               <Printer className="w-4 h-4" strokeWidth={1.75} />
             </button>
@@ -503,7 +503,7 @@ export default function BalancoPage() {
               previous={bsPrev && { lines: sectionLines(bsPrev.equity, EQUITY_GROUP_CODE), total: bsPrev.totalEquity }}
               onSelectAccount={setDrawerAccountId}
             />
-            <div className="flex items-baseline justify-between gap-3 px-5 py-3 border-t border-black/8 text-[13px] font-semibold">
+            <div className="flex items-baseline justify-between gap-3 px-5 py-3 border-t border-black/8 dark:border-white/10 text-[13px] font-semibold">
               <span className="flex-1">Total do passivo e do PL</span>
               <AccountingAmount value={bs.totalLiabilities + bs.totalEquity} />
               {bsPrev && <AccountingAmount value={bsPrev.totalLiabilities + bsPrev.totalEquity} className="w-32 text-right text-stone-400" />}
