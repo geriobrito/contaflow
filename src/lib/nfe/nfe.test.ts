@@ -1,9 +1,13 @@
+import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import type { BankTransaction, InvoiceSummary } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import { parseNFeXml } from '@/lib/nfe/parser';
 import { paymentStateOf, planInvoiceImport } from '@/lib/nfe/import';
 import { cfopAccountCode, matchInvoices, nameOverlap, partyEvidence } from '@/lib/nfe/match';
+import { filterInvoices, invoiceDueInfo, invoicePeriodSummary, invoiceStateCounts, nextInvoiceSort, sortInvoices } from '@/lib/nfe/list';
+import { extractXmlFromZip } from '@/lib/nfe/zip';
+import { compareBillingWithRevenue, findNumberingGaps, formatGapRange } from '@/lib/nfe/checks';
 
 const CLIENT = { id: 'c', cnpj: '11.222.333/0001-81' };
 const CLIENT_DOC = '11222333000181';
@@ -461,5 +465,257 @@ describe('CFOP e situação de pagamento', () => {
     expect(paymentStateOf({ ...base, links: [{ transactionId: 'a', amount: 40, accountId: 'x', linkedAt: '' }] })).toBe('PARTIAL');
     expect(paymentStateOf({ ...base, links: [{ transactionId: 'a', amount: 100, accountId: 'x', linkedAt: '' }] })).toBe('SETTLED');
     expect(paymentStateOf({ ...base, status: 'CANCELLED' })).toBe('CANCELLED');
+  });
+});
+
+/* ───────────────────────── Fila, vencimentos e ordenação ───────────────────────── */
+
+describe('fila de trabalho, vencimentos e ordenação', () => {
+  it('identifica próximo vencimento, parcela vencida e competência para conciliação', () => {
+    const inv = invoice({
+      issueDate: '2025-03-05',
+      total: 1500,
+      installments: [
+        { number: '1', dueDate: '2025-04-05', amount: 500 },
+        { number: '2', dueDate: '2025-05-05', amount: 500 },
+        { number: '3', dueDate: '2025-06-05', amount: 500 },
+      ],
+    });
+    // Em 10/04/2025, a 1ª parcela (05/04) está vencida.
+    const dueOpen = invoiceDueInfo(inv, '2025-04-10');
+    expect(dueOpen).toMatchObject({
+      state: 'OPEN',
+      nextDueDate: '2025-04-05',
+      isOverdue: true,
+      openAmount: 1500,
+      conciliationMonth: '2025-04',
+    });
+    expect(dueOpen.installments.map((i) => i.status)).toEqual(['OVERDUE', 'UPCOMING', 'UPCOMING']);
+
+    // Quitada a 1ª parcela, o próximo vencimento passa a ser 05/05 (a vencer).
+    const partial = { ...inv, links: [{ transactionId: 'tx1', amount: 500, accountId: acc('3.2.1.01'), linkedAt: 'T' }] };
+    const duePartial = invoiceDueInfo(partial, '2025-04-10');
+    expect(duePartial).toMatchObject({
+      state: 'PARTIAL',
+      nextDueDate: '2025-05-05',
+      isOverdue: false,
+      openAmount: 1000,
+      conciliationMonth: '2025-05',
+    });
+    expect(duePartial.installments.map((i) => i.status)).toEqual(['SETTLED', 'UPCOMING', 'UPCOMING']);
+  });
+
+  it('resume o período, conta por situação, filtra e ordena', () => {
+    const list: InvoiceSummary[] = [
+      invoice({ id: 'c_1', key: 'k1', number: '10', issueDate: '2025-03-10', direction: 'PURCHASE', counterpartyName: 'Beta', total: 200, installments: [{ dueDate: '2025-03-15', amount: 200 }] }),
+      invoice({ id: 'c_2', key: 'k2', number: '11', issueDate: '2025-03-12', direction: 'SALE', counterpartyName: 'Alfa', total: 800, links: [{ transactionId: 't1', amount: 800, accountId: acc('3.1.1.02'), linkedAt: 'T' }] }),
+      invoice({ id: 'c_3', key: 'k3', number: '12', issueDate: '2025-03-14', direction: 'SALE', counterpartyName: 'Gama', total: 300, status: 'CANCELLED' }),
+    ];
+
+    expect(invoiceStateCounts(list)).toEqual({ ALL: 3, OPEN: 1, PARTIAL: 0, SETTLED: 1, CANCELLED: 1 });
+    expect(invoicePeriodSummary(list, '2025-03-20')).toEqual({
+      totalCount: 3,
+      authorizedCount: 2,
+      cancelledCount: 1,
+      purchasesTotal: 200,
+      purchasesCount: 1,
+      salesTotal: 800,
+      salesCount: 1,
+      openCount: 1,
+      partialCount: 0,
+      openAmount: 200,
+      overdueCount: 1,
+    });
+
+    expect(filterInvoices(list, 'OPEN', '').map((i) => i.number)).toEqual(['10']);
+    expect(filterInvoices(list, 'ALL', 'alfa').map((i) => i.number)).toEqual(['11']);
+
+    const s1 = nextInvoiceSort(null, 'partner');
+    expect(s1).toEqual({ key: 'partner', dir: 'asc' });
+    expect(sortInvoices(list, s1).map((i) => i.counterpartyName)).toEqual(['Alfa', 'Beta', 'Gama']);
+    const s2 = nextInvoiceSort(s1, 'partner');
+    expect(s2).toEqual({ key: 'partner', dir: 'desc' });
+    expect(nextInvoiceSort(s2, 'partner')).toBeNull();
+  });
+});
+
+/* ───────────────────────── Leitura de .zip no navegador ───────────────────────── */
+
+/** Monta um arquivo .zip mínimo em memória para testes (métodos 0 = stored e 8 = deflate). */
+function buildTestZip(entries: { name: string; content: string; method?: 0 | 8; flags?: number }[]): ArrayBuffer {
+  const enc = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const e of entries) {
+    const nameBytes = enc.encode(e.name);
+    const rawData = enc.encode(e.content);
+    const method = e.method ?? 8;
+    const compData = method === 8 ? new Uint8Array(deflateRawSync(rawData)) : rawData;
+    const flags = e.flags ?? 0;
+
+    const local = new Uint8Array(30 + nameBytes.length + compData.length);
+    const lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, flags, true);
+    lv.setUint16(8, method, true);
+    lv.setUint32(18, compData.length, true);
+    lv.setUint32(22, rawData.length, true);
+    lv.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    local.set(compData, 30 + nameBytes.length);
+    localParts.push(local);
+
+    const central = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, flags, true);
+    cv.setUint16(10, method, true);
+    cv.setUint32(20, compData.length, true);
+    cv.setUint32(24, rawData.length, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, offset, true);
+    central.set(nameBytes, 46);
+    centralParts.push(central);
+
+    offset += local.length;
+  }
+
+  const centralSize = centralParts.reduce((s, p) => s + p.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, centralSize, true);
+  ev.setUint32(16, offset, true);
+
+  const total = offset + centralSize + 22;
+  const out = new Uint8Array(total);
+  let pos = 0;
+  for (const p of [...localParts, ...centralParts, eocd]) {
+    out.set(p, pos);
+    pos += p.length;
+  }
+  return out.buffer;
+}
+
+describe('extração de .zip no navegador', () => {
+  it('descomprime XMLs (stored e deflate), ignora pastas e metadados de sistema', async () => {
+    const zip = buildTestZip([
+      { name: 'notas/', content: '', method: 0 },
+      { name: '__MACOSX/._nota1.xml', content: 'lixo', method: 0 },
+      { name: 'notas/nota1.xml', content: nfeXml({ n: 1 }), method: 8 },
+      { name: 'notas/nota2.xml', content: nfeXml({ n: 2 }), method: 0 },
+      { name: 'notas/leia-me.txt', content: 'ignorar', method: 0 },
+    ]);
+    const res = await extractXmlFromZip(zip, 'lote-marco.zip');
+    expect(res.rejected).toEqual([]);
+    expect(res.files.map((f) => f.name)).toEqual(['lote-marco.zip/nota1.xml', 'lote-marco.zip/nota2.xml']);
+    const plan = planInvoiceImport(res.files, CLIENT, '2025-03-10T00:00:00Z');
+    expect(plan.invoices.map((i) => i.number)).toEqual(['1', '2']);
+  });
+
+  it('recusa .zip sem XML, corrompido ou protegido por senha', async () => {
+    const emptyZip = buildTestZip([{ name: 'relatorio.pdf', content: '%PDF', method: 0 }]);
+    expect((await extractXmlFromZip(emptyZip, 'vazio.zip')).rejected).toEqual([
+      { file: 'vazio.zip', reason: expect.stringMatching(/Nenhum arquivo \.xml/) },
+    ]);
+
+    const encryptedZip = buildTestZip([{ name: 'secreto.xml', content: '<xml/>', method: 0, flags: 1 }]);
+    expect((await extractXmlFromZip(encryptedZip, 'senha.zip')).rejected).toEqual([
+      { file: 'senha.zip/secreto.xml', reason: expect.stringMatching(/senha/) },
+    ]);
+
+    const corrupted = new TextEncoder().encode('nao-e-um-zip').buffer;
+    expect((await extractXmlFromZip(corrupted, 'ruim.zip')).rejected[0]?.file).toBe('ruim.zip');
+  });
+});
+
+/* ───────────────────────── Conferências do contador ───────────────────────── */
+
+describe('conferências do contador (furos de numeração e faturamento × receita)', () => {
+  it('detecta furos nas notas emitidas por série; canceladas e entrada própria na mesma série não geram falso furo', () => {
+    const saleKey = (n: number) => key(n, CLIENT_DOC);
+    const list: InvoiceSummary[] = [
+      invoice({ id: 's101', key: saleKey(101), number: '101', series: '1', direction: 'SALE' }),
+      // 102 falta!
+      invoice({ id: 's103', key: saleKey(103), number: '103', series: '1', direction: 'SALE', status: 'CANCELLED' }),
+      // 104 é nota de entrada própria (tpNF=0: PURCHASE, mas emitida pelo CNPJ do cliente): conta na sequência!
+      invoice({ id: 's104', key: saleKey(104), number: '104', series: '1', direction: 'PURCHASE' }),
+      // 105 e 106 faltam!
+      invoice({ id: 's107', key: saleKey(107), number: '107', series: '1', direction: 'SALE' }),
+      // Compra de fornecedor (outro CNPJ na chave) com número 500 não entra na sequência do cliente.
+      invoice({ id: 'p500', key: key(500, SUPPLIER_DOC), number: '500', series: '1', direction: 'PURCHASE' }),
+    ];
+
+    const gaps = findNumberingGaps(list, CLIENT.cnpj);
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({
+      label: 'NF-e série 1',
+      minNumber: 101,
+      maxNumber: 107,
+      missingCount: 3,
+      ranges: [
+        { from: 102, to: 102 },
+        { from: 105, to: 106 },
+      ],
+    });
+    expect(gaps[0].ranges.map(formatGapRange)).toEqual(['102', '105 a 106']);
+  });
+
+  it('compara faturamento pelas notas de venda (bruto na NFS-e) com a receita lançada na DRE', () => {
+    const revMerch = chart.find((a) => a.code === '3.1.1.02')!;
+    const revServ = chart.find((a) => a.code === '3.1.1.01')!;
+    const sales: InvoiceSummary[] = [
+      invoice({ id: 'v1', key: 'kv1', number: '1', direction: 'SALE', total: 2000, cfops: [{ cfop: '5102', amount: 2000 }], links: [{ transactionId: 't-v1', amount: 2000, accountId: revMerch.id, linkedAt: 'T' }] }),
+      // NFS-e com retenção: líquido 938,50, mas faturamento bruto (base do Simples) = 1.000,00.
+      invoice({ id: 'v2', key: 'kv2', number: '2', model: 'NFSE', series: '', direction: 'SALE', total: 938.5, altTotal: 1000, cfops: [] }),
+      // Venda de ativo imobilizado (CFOP 5551): fica fora do faturamento operacional.
+      invoice({ id: 'v3', key: 'kv3', number: '3', direction: 'SALE', total: 5000, cfops: [{ cfop: '5551', amount: 5000 }] }),
+    ];
+    const txs: BankTransaction[] = [
+      tx('2025-03-10', 2000, 'VENDA MERCADORIA', { status: 'RECONCILED', accountId: revMerch.id, accountCode: revMerch.code, accountName: revMerch.name }),
+      tx('2025-03-20', 938.5, 'PIX CLIENTE SERVICO', { status: 'PENDING' }),
+    ];
+
+    const comp = compareBillingWithRevenue({
+      invoices: sales,
+      transactions: txs,
+      accounts: chart,
+      range: { start: '2025-03-01', end: '2025-03-31' },
+    });
+    expect(comp).toMatchObject({
+      salesCount: 2,
+      invoicedGross: 3000,
+      invoicedNet: 2938.5,
+      launchedGross: 2000,
+      difference: 1000,
+      matches: false,
+      openSalesCount: 1,
+      openSalesTotal: 1000,
+      pendingCreditsCount: 1,
+      pendingCreditsTotal: 938.5,
+      fixedAssetSalesCount: 1,
+      fixedAssetSalesTotal: 5000,
+    });
+
+    // Conciliando o recebimento da NFS-e pelo bruto (ou lançando os 1000 na receita de serviços), fecha a conferência.
+    const txsReconciled: BankTransaction[] = [
+      txs[0],
+      tx('2025-03-20', 1000, 'SERVICO BRUTO', { status: 'RECONCILED', accountId: revServ.id, accountCode: revServ.code, accountName: revServ.name }),
+    ];
+    const matched = compareBillingWithRevenue({
+      invoices: sales,
+      transactions: txsReconciled,
+      accounts: chart,
+      range: { start: '2025-03-01', end: '2025-03-31' },
+    });
+    expect(matched.matches).toBe(true);
+    expect(matched.difference).toBe(0);
   });
 });

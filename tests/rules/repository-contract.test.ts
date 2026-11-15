@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc, type Firestore } from 'firebase/firestore';
-import type { BankTransaction, ChartAccount, ClientCompany, FeeRegister, JournalEntry, ObligationChecks, PeriodLock, ResultSummary, StockControl } from '@/types/firestore';
+import type { BankTransaction, ChartAccount, ClientCompany, FeeRegister, InvoiceSummary, JournalEntry, ObligationChecks, PeriodLock, ResultSummary, StockControl } from '@/types/firestore';
 import type { DataRepository, JournalEntryDraft } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
@@ -261,6 +261,35 @@ describe.each(IMPLEMENTATIONS)('contrato do repositório (%s)', (_mode, create) 
     expect((await repo.getExplanatoryNotes('c1', '2025'))?.id).toBe('c1_2025');
     expect(await repo.getExplanatoryNotes('c1', '2024')).toBeNull();
     expect((await repo.listExplanatoryNotes('c1')).map((n) => n.year)).toEqual(['2025']);
+  });
+
+  it('notas fiscais: chaves existentes, preservação de vínculos e cancelamento', async () => {
+    const k1 = '35250311444777000161550010000000011123456780';
+    const k2 = '35250311444777000161550010000000021123456780';
+    const inv = (key: string, number: string): InvoiceSummary => ({
+      id: `c1_${key}`,
+      clientId: 'c1',
+      key,
+      number,
+      series: '1',
+      model: '55',
+      issueDate: '2025-03-10',
+      direction: 'PURCHASE',
+      counterpartyDoc: '11444777000161',
+      counterpartyName: 'Fornecedor',
+      total: 500,
+      cfops: [{ cfop: '5102', amount: 500 }],
+      installments: [],
+      status: 'AUTHORIZED',
+      importedAt: 'T',
+    });
+    await repo.saveInvoices([inv(k1, '1')]);
+    expect([...(await repo.findExistingInvoiceKeys('c1', [k1, k2]))]).toEqual([k1]);
+    await repo.linkInvoice(`c1_${k1}`, { transactionId: 'c1_1', amount: 500, accountId: byCode('3.2.1.01').id, linkedAt: 'T' });
+    await repo.saveInvoices([inv(k1, '1')]); // reimportar preserva links
+    expect((await repo.listInvoices('c1'))[0].links).toHaveLength(1);
+    expect(await repo.cancelInvoices('c1', [k1, k2])).toBe(1);
+    expect((await repo.listInvoices('c1'))[0].status).toBe('CANCELLED');
   });
 
   it('exclusão da empresa apaga em cascata e preserva a auditoria', async () => {

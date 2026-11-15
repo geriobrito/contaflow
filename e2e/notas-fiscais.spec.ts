@@ -103,11 +103,18 @@ test('nota fiscal de compra sugere a conta do pagamento na conciliação', async
     await expect(boleto.getByRole('img', { name: 'Nota fiscal vinculada' })).toBeVisible();
   });
 
-  await test.step('a nota aparece como paga', async () => {
+  await test.step('a nota aparece como paga e abre a gaveta de detalhes com o lançamento vinculado', async () => {
     await page.goto('/nfe');
     await page.getByRole('button', { name: 'Ano anterior' }).click();
     await page.getByRole('radio', { name: 'Mar' }).click();
-    await expect(page.getByRole('row', { name: /ACME DISTRIBUIDORA/ })).toContainText('Paga');
+    await expect(page.getByRole('region', { name: 'Resumo das notas do período' })).toContainText('1.500,00');
+    const row = page.getByRole('row', { name: /ACME DISTRIBUIDORA/ });
+    await expect(row).toContainText('Paga');
+    await row.click();
+    const drawer = page.getByRole('dialog');
+    await expect(drawer.getByText('Lançamentos vinculados')).toBeVisible();
+    await expect(drawer.getByText(/PAGAMENTO DE BOLETO - ACME DISTRIBUIDORA/)).toBeVisible();
+    await drawer.getByRole('button', { name: 'Fechar' }).first().click();
     await page.screenshot({ path: 'test-results/nfe-lista.png', fullPage: true });
   });
 

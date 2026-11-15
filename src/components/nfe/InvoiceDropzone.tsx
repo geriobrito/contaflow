@@ -9,7 +9,7 @@ interface InvoiceDropzoneProps {
   onFiles: (files: File[]) => void;
 }
 
-/** Área para soltar ou escolher os XML das notas (vários de uma vez). */
+/** Área para soltar ou escolher os XML (ou pacotes .zip) das notas fiscais. */
 export function InvoiceDropzone({ busy, disabled, onFiles }: InvoiceDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -41,11 +41,11 @@ export function InvoiceDropzone({ busy, disabled, onFiles }: InvoiceDropzoneProp
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-[14px] font-medium tracking-tight text-stone-900 dark:text-stone-100">
-          {busy ? 'Lendo as notas…' : 'Solte aqui os XML das notas (compra e venda)'}
+          {busy ? 'Lendo as notas…' : 'Solte aqui os XML ou arquivos .zip das notas (compra e venda)'}
         </p>
         <p className="text-[12px] text-stone-500">
-          NF-e, NFC-e, NFS-e do padrão nacional, resumos da SEFAZ e eventos de cancelamento. O arquivo é lido neste navegador: só o
-          resumo (partes, valor, data, CFOP, parcelas e IBS/CBS) é gravado.
+          NF-e, NFC-e, NFS-e do padrão nacional, resumos da SEFAZ, eventos de cancelamento e pacotes .zip. Tudo é lido neste navegador:
+          só o resumo (partes, valor, data, CFOP, parcelas e IBS/CBS) é gravado.
         </p>
       </div>
       <button
@@ -60,7 +60,7 @@ export function InvoiceDropzone({ busy, disabled, onFiles }: InvoiceDropzoneProp
         ref={inputRef}
         type="file"
         multiple
-        accept=".xml,text/xml,application/xml"
+        accept=".xml,.zip,text/xml,application/xml,application/zip,application/x-zip-compressed"
         aria-label="Arquivos XML das notas fiscais"
         className="hidden"
         onChange={(e) => {

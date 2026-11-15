@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Copy, FileText, Layers, ReceiptText, Split, Tag, X } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowUpRight, Check, Copy, FileText, Layers, Link2, ReceiptText, Split, Tag, Trash2, X } from 'lucide-react';
 import type { BankTransaction, ChartAccount, InvoiceSummary } from '@/types/firestore';
 import type { InvoiceMatch } from '@/lib/nfe/match';
 import { invoiceKindLabel, paymentStateOf, type InvoicePaymentState } from '@/lib/nfe/import';
+import { invoiceDueInfo } from '@/lib/nfe/list';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
 import { retentionParts } from '@/lib/nfe/retentions';
+import { todayISO } from '@/lib/business-days';
+import { formatMonth } from '@/lib/periods';
 import { formatCNPJ, formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
@@ -41,28 +45,34 @@ export interface InvoiceDetailDrawerProps {
   invoice: InvoiceSummary | null;
   /** Dados do casamento com o lançamento bancário, quando aplicável. */
   match?: InvoiceMatch | null;
-  /** Lançamento bancário associado na linha em foco. */
+  /** Lançamento bancário associado na linha em foco (na Conciliação). */
   transaction?: BankTransaction | null;
+  /** Mapa de lançamentos bancários vinculados (id -> lançamento), quando aberto pelas Notas Fiscais. */
+  linkedTransactions?: ReadonlyMap<string, BankTransaction>;
   accounts: readonly ChartAccount[];
   onClose: () => void;
   /** Aplica diretamente a conta contábil sugerida pela nota ao lançamento. */
   onClassifyWithSuggestion?: (transaction: BankTransaction, accountId: string, invoiceId: string) => void;
   /** Abre o modal de classificação do lançamento diretamente na aba de rateio. */
   onOpenSplit?: (transaction: BankTransaction) => void;
+  /** Solicita a exclusão da nota (na tela de Notas Fiscais). */
+  onDelete?: (invoice: InvoiceSummary) => void;
 }
 
 /**
  * Pré-visualização Lado a Lado (Split View) da Nota Fiscal (NF-e / NFC-e / NFS-e).
- * Exibe os dados estruturados do DANFE/XML sem sair da tela de conciliação.
+ * Exibe os dados estruturados do DANFE/XML tanto na Conciliação quanto na tela de Notas Fiscais.
  */
 export function InvoiceDetailDrawer({
   invoice,
   match,
   transaction,
+  linkedTransactions,
   accounts,
   onClose,
   onClassifyWithSuggestion,
   onOpenSplit,
+  onDelete,
 }: InvoiceDetailDrawerProps) {
   const [copied, setCopied] = useState(false);
 
@@ -81,6 +91,7 @@ export function InvoiceDetailDrawer({
   if (!invoice) return null;
 
   const payState = paymentStateOf(invoice);
+  const due = invoiceDueInfo(invoice, todayISO());
   const stateBadge = STATE_BADGE[payState];
   const isNfse = invoice.model === NFSE_MODEL;
   const retentions = invoice.retentions ? retentionParts(invoice.retentions) : [];
@@ -88,6 +99,7 @@ export function InvoiceDetailDrawer({
   const suggestedAccount = match?.suggestedAccountId
     ? accounts.find((a) => a.id === match.suggestedAccountId)
     : undefined;
+  const links = invoice.links ?? [];
 
   const handleCopyKey = async () => {
     try {
@@ -132,6 +144,11 @@ export function InvoiceDetailDrawer({
               <span className={`inline-flex px-2.5 py-0.5 rounded-full border text-[11px] font-medium ${stateBadge.className}`}>
                 {stateBadge.label(invoice)}
               </span>
+              {due.isOverdue && (
+                <span className="inline-flex px-2 py-0.5 rounded-full border text-[11px] font-medium bg-rose-50 text-rose-700 border-rose-200/70 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50">
+                  Vencida
+                </span>
+              )}
             </div>
             <h2 id="invoice-drawer-title" className="text-[18px] font-semibold tracking-tight text-stone-900 dark:text-stone-100 truncate">
               {invoice.counterpartyName || (invoice.direction === 'SALE' ? 'Consumidor não identificado' : 'Parceiro comercial')}
@@ -196,7 +213,7 @@ export function InvoiceDetailDrawer({
             )}
           </section>
 
-          {/* Correspondência com o Lançamento Bancário */}
+          {/* Correspondência com o Lançamento Bancário (na Conciliação) */}
           {transaction && (
             <section
               aria-label="Correspondência com o extrato"
@@ -223,6 +240,59 @@ export function InvoiceDetailDrawer({
                   <span className="font-medium text-stone-800 dark:text-stone-200">{suggestedAccount.name}</span>
                 </p>
               )}
+            </section>
+          )}
+
+          {/* Lançamentos vinculados (quitados ou parciais) */}
+          {links.length > 0 && (
+            <section
+              aria-label="Lançamentos vinculados"
+              className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3"
+            >
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                Lançamentos vinculados ({links.length})
+              </h3>
+              <div className="divide-y divide-black/4 dark:divide-white/5 text-[13px]">
+                {links.map((link) => {
+                  const tx = linkedTransactions?.get(link.transactionId) ?? (transaction?.id === link.transactionId ? transaction : undefined);
+                  const acc = accounts.find((a) => a.id === link.accountId);
+                  const txMonth = (tx?.date ?? invoice.issueDate).slice(0, 7);
+                  return (
+                    <div key={link.transactionId} className="py-2.5 first:pt-0 last:pb-0 space-y-1">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-medium text-stone-900 dark:text-stone-100 truncate">
+                          {tx ? tx.memo : 'Lançamento no extrato'}
+                        </span>
+                        <span className="font-mono tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
+                          {formatCurrency(link.amount)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-stone-500 dark:text-stone-400">
+                        <span>
+                          {tx && <span className="font-mono tabular-nums">{formatDateBR(tx.date)} · </span>}
+                          {acc ? (
+                            <>
+                              <span className="font-mono tabular-nums">{acc.code}</span> {acc.name}
+                            </>
+                          ) : (
+                            'Conta classificada'
+                          )}
+                        </span>
+                        {!transaction && (
+                          <Link
+                            href={`/?mes=${txMonth}`}
+                            className="inline-flex items-center gap-0.5 font-medium text-accent-ink hover:underline"
+                          >
+                            <span>Ver na Conciliação</span>
+                            <ArrowUpRight className="w-3 h-3" />
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </section>
           )}
 
@@ -328,14 +398,14 @@ export function InvoiceDetailDrawer({
           )}
 
           {/* Duplicatas / Parcelas */}
-          {invoice.installments.length > 0 && (
+          {due.installments.length > 0 && (
             <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-stone-400" />
-                Parcelas / Duplicatas ({invoice.installments.length})
+                Parcelas / Duplicatas ({due.installments.length})
               </h3>
               <div className="divide-y divide-black/4 dark:divide-white/5 text-[13px]">
-                {invoice.installments.map((inst, i) => {
+                {due.installments.map(({ installment: inst, index: i, status }) => {
                   const isMatchedInstallment =
                     match?.installment &&
                     match.installment.dueDate === inst.dueDate &&
@@ -347,13 +417,23 @@ export function InvoiceDetailDrawer({
                         isMatchedInstallment ? 'font-semibold text-emerald-700 dark:text-emerald-400' : 'text-stone-700 dark:text-stone-300'
                       }`}
                     >
-                      <span>
-                        Parcela {inst.number || i + 1} · Venc. <span className="font-mono tabular-nums">{formatDateBR(inst.dueDate)}</span>
-                        {isMatchedInstallment && (
-                          <span className="ml-2 inline-block px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span>
+                          Parcela {inst.number || i + 1} · Venc. <span className="font-mono tabular-nums">{formatDateBR(inst.dueDate)}</span>
+                        </span>
+                        {isMatchedInstallment ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300">
                             Casada com este lançamento
                           </span>
-                        )}
+                        ) : status === 'SETTLED' && payState !== 'CANCELLED' ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                            Quitada
+                          </span>
+                        ) : status === 'OVERDUE' ? (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300">
+                            Vencida
+                          </span>
+                        ) : null}
                       </span>
                       <span className="font-mono tabular-nums">{formatCurrency(inst.amount)}</span>
                     </div>
@@ -384,6 +464,28 @@ export function InvoiceDetailDrawer({
               >
                 <Split className="w-3.5 h-3.5" />
                 <span>Abrir no rateio</span>
+              </button>
+            )}
+            {!transaction && (payState === 'OPEN' || payState === 'PARTIAL') && (
+              <Link
+                href={`/?mes=${due.conciliationMonth}&filtro=PENDING`}
+                className={`${BUTTON.primary} h-9 px-4 text-[13px]`}
+              >
+                <span>Ver na Conciliação ({formatMonth(due.conciliationMonth)})</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onDelete(invoice);
+                }}
+                className={`${BUTTON.ghost} h-9 px-3 text-[13px] text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Excluir nota</span>
               </button>
             )}
           </div>

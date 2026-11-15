@@ -14,6 +14,15 @@ export function invoiceMethods(ctx: LocalContext) {
         .map((i) => ({ ...i, status: i.status ?? 'AUTHORIZED' }))
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number, undefined, { numeric: true }));
     },
+    async findExistingInvoiceKeys(clientId, keys) {
+      await ready();
+      const wanted = new Set(keys);
+      return new Set(
+        read<InvoiceSummary>(LOCAL_KEYS.invoices)
+          .filter((i) => i.clientId === clientId && wanted.has(i.key))
+          .map((i) => i.key)
+      );
+    },
     async saveInvoices(invoices) {
       const stored = read<InvoiceSummary>(LOCAL_KEYS.invoices);
       const index = new Map(stored.map((s, i) => [s.id, i] as const));

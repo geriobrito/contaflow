@@ -9,19 +9,32 @@ export interface InvoiceImportResultProps {
   onClose: () => void;
 }
 
-/** Resumo da última importação: quantas notas entraram, canceladas e arquivos recusados. */
+/** Resumo da última importação: quantas notas novas entraram, já importadas, canceladas e arquivos recusados. */
 export function InvoiceImportResult({ outcome, onClose }: InvoiceImportResultProps) {
   const parts = [
     outcome.purchases ? `${outcome.purchases} de compra` : null,
     outcome.sales ? `${outcome.sales} de venda` : null,
   ].filter(Boolean);
 
+  const summaryText =
+    outcome.imported > 0
+      ? `${outcome.imported} nota(s) importada(s)${parts.length ? ` · ${parts.join(', ')}` : ''}${
+          outcome.alreadyImported > 0 ? ` (${outcome.alreadyImported} já importada(s) antes)` : ''
+        }.`
+      : outcome.alreadyImported > 0
+        ? `Nenhuma nota nova (${outcome.alreadyImported} já importada(s) antes).`
+        : 'Nenhuma nota importada.';
+
   return (
     <section role="status" aria-label="Resultado da importação" className="rounded-2xl border border-line bg-white/70 dark:bg-stone-900/60 px-4 py-3 text-[13px] space-y-2 animate-fade-in">
       <div className="flex items-start gap-2">
-        {outcome.imported > 0 ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />}
+        {outcome.imported > 0 || (outcome.alreadyImported > 0 && outcome.rejected.length === 0) ? (
+          <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-300" />
+        ) : (
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
+        )}
         <p className="flex-1 text-stone-700 dark:text-stone-200">
-          {outcome.imported > 0 ? `${outcome.imported} nota(s) importada(s)${parts.length ? ` · ${parts.join(', ')}` : ''}.` : 'Nenhuma nota importada.'}
+          {summaryText}
           {outcome.cancelled > 0 && ` ${outcome.cancelled} marcada(s) como cancelada(s).`}
           {outcome.imported > 0 && (
             <>

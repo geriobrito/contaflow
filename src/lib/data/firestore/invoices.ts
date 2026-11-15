@@ -1,8 +1,9 @@
 import { deleteDoc, doc, updateDoc, where, type QueryConstraint } from 'firebase/firestore';
+import type { InvoiceSummary } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 import { getDoc, getDocs } from '@/lib/data/counted-reads';
 import { invoiceId } from '@/lib/nfe/import';
-import { clean, COL, single, type FirestoreContext } from './shared';
+import { chunk, clean, COL, IN_LIMIT, single, type FirestoreContext } from './shared';
 
 /** Notas fiscais: só o resumo do XML. */
 export function invoiceMethods(ctx: FirestoreContext) {
@@ -16,6 +17,18 @@ export function invoiceMethods(ctx: FirestoreContext) {
       return snap.docs
         .map(invoiceFrom)
         .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number, undefined, { numeric: true }));
+    },
+    async findExistingInvoiceKeys(clientId, keys) {
+      const unique = [...new Set(keys.filter(Boolean))];
+      const existing = new Set<string>();
+      for (const group of chunk(unique, IN_LIMIT)) {
+        const snap = await getDocs(scoped(COL.invoices, where('clientId', '==', clientId), where('key', 'in', group)));
+        snap.docs.forEach((d) => {
+          const key = (d.data() as InvoiceSummary).key;
+          if (key) existing.add(key);
+        });
+      }
+      return existing;
     },
     async saveInvoices(invoices) {
       // Mescla, sem ler antes: os vínculos ficam como estão, e a situação só é gravada quando

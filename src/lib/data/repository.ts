@@ -308,6 +308,8 @@ export interface DataRepository {
   /* Notas fiscais: só o resumo do XML (src/lib/nfe), id `${clientId}_${chave}` */
   /** Notas da empresa, mais recentes primeiro; `range` limita pela data de emissão. */
   listInvoices(clientId: string, range?: DateRange): Promise<InvoiceSummary[]>;
+  /** Chaves de notas já cadastradas para a empresa dentre as informadas. */
+  findExistingInvoiceKeys(clientId: string, keys: readonly string[]): Promise<Set<string>>;
   /**
    * Grava os resumos (cria ou atualiza). Preserva os vínculos com o extrato e nunca desfaz um
    * cancelamento: reimportar a nota autorizada não muda a situação gravada.
