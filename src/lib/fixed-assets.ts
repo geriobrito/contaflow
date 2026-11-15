@@ -5,12 +5,14 @@ import type {
   FixedAssetDisposalReason,
   FixedAssetSale,
   FixedAssetUse,
+  InvoiceSummary,
   JournalEntry,
   JournalEntryLine,
 } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 import { MONTH_NAMES, monthOf } from '@/lib/periods';
 import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
+import { cfopAccountCode } from '@/lib/nfe/match';
 
 /**
  * Imobilizado e intangível: cadastro dos bens, cotas mensais de depreciação (linha reta,
@@ -748,4 +750,79 @@ export function classSummary(assets: readonly FixedAsset[], month: string, impla
       accumulated: fromCents(v.acc),
       net: fromCents(v.cost - v.acc),
     }));
+}
+
+/* =========================================================================
+   Cruzamento com Notas Fiscais (compra e venda de imobilizado)
+   ========================================================================= */
+
+const ASSET_PURCHASE_CFOP_TAILS = new Set(['406', '551', '552', '553', '554', '555']);
+const normalizeDocNumber = (value?: string): string => (value ?? '').replace(/\D+/g, '').replace(/^0+/, '');
+
+export interface UnregisteredAssetInvoice {
+  invoice: InvoiceSummary;
+  suggestedAccountCode: string;
+}
+
+/**
+ * Notas fiscais de compra autorizadas com CFOP de ativo imobilizado (final 551, 406, 552–555) que
+ * ainda não constam no cadastro de bens (nem pelo número da NF nem por data + valor).
+ */
+export function unregisteredAssetInvoices(
+  invoices: readonly InvoiceSummary[],
+  assets: readonly FixedAsset[]
+): UnregisteredAssetInvoice[] {
+  const docRefs = new Set(assets.map((a) => normalizeDocNumber(a.documentRef)).filter(Boolean));
+  const keys = new Set(assets.map((a) => a.invoiceKey).filter((k): k is string => Boolean(k)));
+  const out: UnregisteredAssetInvoice[] = [];
+
+  for (const inv of invoices) {
+    if (inv.direction !== 'PURCHASE' || inv.status === 'CANCELLED') continue;
+    const code = cfopAccountCode(inv);
+    const hasAssetCfop =
+      (code !== null && (code.startsWith(TANGIBLE_PREFIX) || code.startsWith(INTANGIBLE_PREFIX))) ||
+      inv.cfops.some((c) => c.cfop.length === 4 && ASSET_PURCHASE_CFOP_TAILS.has(c.cfop.slice(1)));
+    if (!hasAssetCfop) continue;
+
+    const num = normalizeDocNumber(inv.number);
+    const matchedByKey = Boolean(inv.key && keys.has(inv.key));
+    const matchedByDoc = Boolean(num && docRefs.has(num));
+    const matchedByDateAndValue = assets.some(
+      (a) => a.acquisitionDate === inv.issueDate && toCents(a.invoiceValue) === toCents(inv.total)
+    );
+    if (matchedByKey || matchedByDoc || matchedByDateAndValue) continue;
+
+    out.push({
+      invoice: inv,
+      suggestedAccountCode: code && (code.startsWith(TANGIBLE_PREFIX) || code.startsWith(INTANGIBLE_PREFIX)) ? code : '1.2.3.03',
+    });
+  }
+
+  return out.sort((a, b) => b.invoice.issueDate.localeCompare(a.invoice.issueDate) || b.invoice.number.localeCompare(a.invoice.number));
+}
+
+/**
+ * Notas fiscais de venda de ativo imobilizado (CFOP final 551 / conta 1.1.2.11) autorizadas e
+ * ainda não vinculadas a nenhuma baixa por venda no cadastro.
+ */
+export function unlinkedAssetSaleInvoices(
+  invoices: readonly InvoiceSummary[],
+  assets: readonly FixedAsset[]
+): InvoiceSummary[] {
+  const usedRefs = new Set(
+    assets
+      .map((a) => normalizeDocNumber(a.disposal?.sale?.invoiceRef))
+      .filter(Boolean)
+  );
+  return invoices
+    .filter((inv) => {
+      if (inv.direction !== 'SALE' || inv.status === 'CANCELLED') return false;
+      const isAssetSale =
+        cfopAccountCode(inv) === SALE_RECEIVABLE_CODE ||
+        inv.cfops.some((c) => c.cfop.length === 4 && c.cfop.slice(1) === '551');
+      if (!isAssetSale) return false;
+      const num = normalizeDocNumber(inv.number);
+      return !(num && usedRefs.has(num));
+    })
+    .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number));
 }

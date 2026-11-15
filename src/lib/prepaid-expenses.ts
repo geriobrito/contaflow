@@ -3,7 +3,7 @@ import { fromCents, toCents } from '@/lib/money';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { monthOf } from '@/lib/periods';
 import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
-import { lastDayOf, monthLabel, nextMonth, sameDepreciation } from '@/lib/fixed-assets';
+import { lastDayOf, monthLabel, nextMonth, sameDepreciation, type ReconciliationRow } from '@/lib/fixed-assets';
 
 /**
  * Despesas antecipadas (seguros, assinaturas e outros gastos pagos antes de consumidos):
@@ -329,5 +329,65 @@ export const useFromAsset = (asset: Pick<FixedAsset, 'use'> | undefined, fallbac
 export function prepaidBalancesByAccount(items: readonly PrepaidExpense[], month: string, implantationMonth: string | null): Map<string, number> {
   const out = new Map<string, number>();
   for (const item of items) out.set(item.assetAccountId, (out.get(item.assetAccountId) ?? 0) + prepaidBalanceAt(item, month, implantationMonth));
+  return out;
+}
+
+/**
+ * Cadastro × balancete no fim da competência: saldo a apropriar por conta do ativo (1.1.4.* ou
+ * contas usadas nas apólices), comparado ao saldo contábil natural.
+ */
+export function reconcilePrepaidWithLedger(args: {
+  items: readonly PrepaidExpense[];
+  month: string;
+  implantationMonth: string | null;
+  accounts: readonly ChartAccount[];
+  ledgerBalance: (accountId: string) => number;
+}): ReconciliationRow[] {
+  const { items, month, implantationMonth, accounts, ledgerBalance } = args;
+  const register = prepaidBalancesByAccount(items, month, implantationMonth);
+  const usedIds = new Set(items.map((i) => i.assetAccountId));
+  const relevant = accounts.filter(
+    (a) => a.nature === 'ANALYTIC' && (a.code.startsWith('1.1.4.') || usedIds.has(a.id))
+  );
+  return relevant
+    .map((a) => {
+      const reg = register.get(a.id) ?? 0;
+      const led = toCents(ledgerBalance(a.id));
+      return { accountId: a.id, accountCode: a.code, accountName: a.name, register: fromCents(reg), ledger: fromCents(led), difference: fromCents(led - reg) };
+    })
+    .filter((r) => r.register !== 0 || r.ledger !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode, undefined, { numeric: true }));
+}
+
+export interface DisposedInsuredAssetAlert {
+  item: PrepaidExpense;
+  asset: FixedAsset;
+  disposalDate: string;
+  endDate: string;
+  remainingCents: number;
+}
+
+/**
+ * Apólices com saldo a apropriar na competência cujo bem vinculado (`insuredAssetId`) já foi
+ * baixado antes do fim da vigência: alerta para revisar eventual endosso ou cancelamento do seguro.
+ */
+export function disposedInsuredAssetAlerts(
+  items: readonly PrepaidExpense[],
+  fixedAssets: readonly FixedAsset[],
+  month: string,
+  implantationMonth: string | null
+): DisposedInsuredAssetAlert[] {
+  const byId = new Map(fixedAssets.map((a) => [a.id, a] as const));
+  const out: DisposedInsuredAssetAlert[] = [];
+  for (const item of items) {
+    if (!item.insuredAssetId) continue;
+    const asset = byId.get(item.insuredAssetId);
+    if (!asset?.disposal) continue;
+    const endDate = prepaidEndDate(item);
+    if (asset.disposal.date >= endDate) continue;
+    const remainingCents = prepaidBalanceAt(item, month, implantationMonth);
+    if (remainingCents <= 0) continue;
+    out.push({ item, asset, disposalDate: asset.disposal.date, endDate, remainingCents });
+  }
   return out;
 }

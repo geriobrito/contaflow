@@ -3,6 +3,7 @@ import type { FinancingContract, JournalEntry } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import {
   addMonths,
+  checkMonthInstallmentPayments,
   contractPositionAt,
   expectedBalancesByAccount,
   financingCloseProblem,
@@ -16,6 +17,7 @@ import {
   installmentSchedule,
   pendingFinancingMonths,
   priceRate,
+  reconcileFinancingWithLedger,
   routineRows,
 } from '@/lib/financing';
 
@@ -206,5 +208,42 @@ describe('validação, trava e posição', () => {
     const expected = expectedBalancesByAccount([vehicle()], '2026-04');
     expect(expected.get(acc('2.1.4.02').id)).toBe(20 * 257415);
     expect(expected.get(acc('2.2.1.01').id)).toBe(15 * 257415);
+  });
+
+  it('conferência com o balancete e confronto das parcelas do mês com baixas no passivo', () => {
+    const ledger = new Map([
+      [acc('2.1.4.02').id, 21 * 2574.15], // parcela de abril ainda não baixada no extrato
+      [acc('2.2.1.01').id, 15 * 2574.15],
+    ]);
+    const rows = reconcileFinancingWithLedger({
+      contracts: [vehicle()],
+      month: '2026-04',
+      accounts: chart,
+      ledgerBalance: (id) => ledger.get(id) ?? 0,
+    });
+    const shortRow = rows.find((r) => r.accountCode === '2.1.4.02')!;
+    expect(shortRow.difference).toBe(2574.15);
+
+    const unpaid = checkMonthInstallmentPayments({
+      contracts: [vehicle()],
+      month: '2026-04',
+      monthDebitsCents: () => 0,
+    });
+    expect(unpaid).toEqual([
+      expect.objectContaining({
+        contractId: 'f1',
+        installmentNumber: 1,
+        expectedCents: 257415,
+        reconciledCents: 0,
+        differenceCents: -257415,
+      }),
+    ]);
+
+    const paid = checkMonthInstallmentPayments({
+      contracts: [vehicle()],
+      month: '2026-04',
+      monthDebitsCents: () => 257415,
+    });
+    expect(paid[0].differenceCents).toBe(0);
   });
 });

@@ -1,4 +1,4 @@
-import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, InvestmentRegister, LockState, PayrollRegister, PeriodLock, PrepaidRegister, StockControl } from '@/types/firestore';
+import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, InvestmentRegister, LockState, OpeningBalances, PayrollRegister, PeriodLock, PrepaidRegister, StockControl } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
@@ -55,6 +55,7 @@ export function withReadCache(
   const banks = listCache<BankAccount>(now, ttlMs);
   const locks = listCache<PeriodLock>(now, ttlMs);
   const lockStates = listCache<LockState>(now, ttlMs);
+  const openings = listCache<OpeningBalances>(now, ttlMs);
   const fixedAssets = listCache<FixedAssetRegister>(now, ttlMs);
   const prepaid = listCache<PrepaidRegister>(now, ttlMs);
   const financing = listCache<FinancingRegister>(now, ttlMs);
@@ -87,6 +88,14 @@ export function withReadCache(
         return s ? [s] : [];
       });
       return found ? { ...found, ...(found.lastEvent ? { lastEvent: { ...found.lastEvent } } : {}) } : null;
+    },
+
+    async getOpeningBalances(clientId) {
+      const [found] = await openings.get(key(clientId), async () => {
+        const r = await repo.getOpeningBalances(clientId);
+        return r ? [r] : [];
+      });
+      return found ? (structuredClone(found) as OpeningBalances) : null;
     },
 
     async getFixedAssets(clientId) {
@@ -146,11 +155,11 @@ export function withReadCache(
     insertAccounts: writing(repo.insertAccounts, accounts),
     saveChartSetup: writing(repo.saveChartSetup, accounts, banks),
     saveBankAccount: writing(repo.saveBankAccount, banks),
-    saveOpeningBalances: writing(repo.saveOpeningBalances, accounts, banks),
+    saveOpeningBalances: writing(repo.saveOpeningBalances, accounts, banks, openings),
     closePeriod: writing(repo.closePeriod, locks, lockStates),
     reopenPeriod: writing(repo.reopenPeriod, locks, lockStates),
     closeYear: writing(repo.closeYear, lockStates),
-    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, fixedAssets, prepaid, financing, investments, stock, payroll),
+    deleteClient: writing(repo.deleteClient, accounts, banks, locks, lockStates, openings, fixedAssets, prepaid, financing, investments, stock, payroll),
     ...(repo.restoreLocalClientData
       ? {
           restoreLocalClientData: writing(
@@ -159,6 +168,7 @@ export function withReadCache(
             banks,
             locks,
             lockStates,
+            openings,
             fixedAssets,
             prepaid,
             financing,

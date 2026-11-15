@@ -2,7 +2,7 @@ import type { ChartAccount, FinancingContract, FinancingKind, JournalEntry, Jour
 import { fromCents, toCents } from '@/lib/money';
 import { monthOf } from '@/lib/periods';
 import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
-import { lastDayOf, monthLabel, sameDepreciation } from '@/lib/fixed-assets';
+import { lastDayOf, monthLabel, sameDepreciation, type ReconciliationRow } from '@/lib/fixed-assets';
 import { formatCurrency } from '@/lib/utils/formatters';
 
 /**
@@ -513,4 +513,100 @@ export function floatingPaymentSplit(
   const base = toCents(contract.installmentAmount);
   if (paid <= base) return null;
   return { contract, principalCents: base, interestCents: paid - base };
+}
+
+const FINANCING_LIABILITY_PREFIXES = ['2.1.4.', '2.2.1.', '2.1.5.05', '2.2.2.01'] as const;
+
+/**
+ * Contratos × balancete no fim da competência: obrigações de curto/longo prazo e encargos a
+ * transcorrer por conta, comparados ao saldo contábil natural (obrigações credoras e
+ * retificadoras devedoras em valor positivo).
+ */
+export function reconcileFinancingWithLedger(args: {
+  contracts: readonly FinancingContract[];
+  month: string;
+  accounts: readonly ChartAccount[];
+  ledgerBalance: (accountId: string) => number;
+}): ReconciliationRow[] {
+  const { contracts, month, accounts, ledgerBalance } = args;
+  const expected = expectedBalancesByAccount(contracts, month);
+  const usedIds = new Set(
+    contracts.flatMap((c) => [c.shortTermAccountId, c.longTermAccountId, c.chargesShortAccountId, c.chargesLongAccountId].filter((id): id is string => Boolean(id)))
+  );
+  const relevant = accounts.filter(
+    (a) =>
+      a.nature === 'ANALYTIC' &&
+      (usedIds.has(a.id) || FINANCING_LIABILITY_PREFIXES.some((p) => a.code === p || a.code.startsWith(p)))
+  );
+  return relevant
+    .map((a) => {
+      const reg = expected.get(a.id) ?? 0;
+      const led = toCents(ledgerBalance(a.id));
+      return { accountId: a.id, accountCode: a.code, accountName: a.name, register: fromCents(reg), ledger: fromCents(led), difference: fromCents(led - reg) };
+    })
+    .filter((r) => r.register !== 0 || r.ledger !== 0)
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode, undefined, { numeric: true }));
+}
+
+export interface MonthInstallmentCheck {
+  contractId: string;
+  description: string;
+  lender?: string;
+  shortTermAccountId: string;
+  shortTermAccountCode: string;
+  installmentNumber: number;
+  installmentsTotal: number;
+  dueDate: string;
+  expectedCents: number;
+  /** Débitos lançados na conta de curto prazo na competência (pagamentos conciliados). */
+  reconciledCents: number;
+  differenceCents: number;
+}
+
+/**
+ * Confronta as parcelas que vencem na competência com os débitos (baixas de pagamento) lançados na
+ * conta de curto prazo no mesmo mês, alocando por ordem de vencimento quando mais de um contrato
+ * compartilha a mesma conta de passivo.
+ */
+export function checkMonthInstallmentPayments(args: {
+  contracts: readonly FinancingContract[];
+  month: string;
+  /** Soma dos débitos (pagamentos baixados) na conta analítica dentro da competência, em centavos. */
+  monthDebitsCents: (accountId: string) => number;
+}): MonthInstallmentCheck[] {
+  const { contracts, month, monthDebitsCents } = args;
+  const dueList = contracts
+    .flatMap((c) =>
+      installmentSchedule(c)
+        .filter((inst) => monthOf(inst.dueDate) === month)
+        .map((inst) => ({ c, inst }))
+    )
+    .sort((a, b) => a.inst.dueDate.localeCompare(b.inst.dueDate) || a.c.id.localeCompare(b.c.id));
+
+  const remainingByAccount = new Map<string, number>();
+  for (const { c } of dueList) {
+    if (!remainingByAccount.has(c.shortTermAccountId)) {
+      remainingByAccount.set(c.shortTermAccountId, Math.max(0, monthDebitsCents(c.shortTermAccountId)));
+    }
+  }
+
+  return dueList.map(({ c, inst }, idx) => {
+    const isLastForAccount = !dueList.slice(idx + 1).some((x) => x.c.shortTermAccountId === c.shortTermAccountId);
+    const available = remainingByAccount.get(c.shortTermAccountId) ?? 0;
+    const allocated = isLastForAccount ? available : Math.min(available, inst.payment);
+    remainingByAccount.set(c.shortTermAccountId, Math.max(0, available - allocated));
+    return {
+      contractId: c.id,
+      description: c.description,
+      ...(c.lender ? { lender: c.lender } : {}),
+      shortTermAccountId: c.shortTermAccountId,
+      shortTermAccountCode: c.shortTermAccountCode,
+      installmentNumber: inst.n,
+      installmentsTotal: c.installments,
+      dueDate: inst.dueDate,
+      expectedCents: inst.payment,
+      reconciledCents: allocated,
+      differenceCents: allocated - inst.payment,
+    };
+  });
 }

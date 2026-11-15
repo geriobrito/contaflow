@@ -13,7 +13,16 @@ import {
   undoFixedAssetDisposal,
   type FixedAssetContext,
 } from '@/lib/services/fixed-asset-service';
-import { lastDayOf, naturalAssetBalances, pendingDepreciationMonths, reconcileWithLedger, type ReconciliationRow } from '@/lib/fixed-assets';
+import {
+  lastDayOf,
+  naturalAssetBalances,
+  pendingDepreciationMonths,
+  reconcileWithLedger,
+  unlinkedAssetSaleInvoices,
+  unregisteredAssetInvoices,
+  type ReconciliationRow,
+  type UnregisteredAssetInvoice,
+} from '@/lib/fixed-assets';
 import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
 import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
@@ -36,8 +45,13 @@ export function useFixedAssets(clientId: string | undefined, authorUid: string |
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    Promise.all([loadFixedAssetContext(clientId), getRepository().listJournalEntries(clientId)])
-      .then(([context, entries]) => {
+    loadFixedAssetContext(clientId)
+      .then(async (context) => {
+        const list = context.register?.assets ?? [];
+        const start = context.implantationMonth ? `${context.implantationMonth}-01` : '0000-01-01';
+        const entries = list.length
+          ? await getRepository().listJournalEntries(clientId, { start, end: lastDayOf(currentMonth()) })
+          : [];
         if (!active) return;
         setCtx({ ...context, id: clientId, entries });
         setError(null);
@@ -123,7 +137,12 @@ export function useFixedAssets(clientId: string | undefined, authorUid: string |
  * competências fechadas) só quando pedida, porque custa leituras.
  */
 export function useFixedAssetReconciliation(clientId: string | undefined, ctx: FixedAssetContext | null) {
-  const [result, setResult] = useState<{ key: string; month: string; rows: ReconciliationRow[] } | null>(null);
+  const [result, setResult] = useState<{
+    key: string;
+    month: string;
+    rows: ReconciliationRow[];
+    unregisteredInvoices: UnregisteredAssetInvoice[];
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,8 +153,14 @@ export function useFixedAssetReconciliation(clientId: string | undefined, ctx: F
     try {
       const repo = getRepository();
       const date = lastDayOf(month);
-      const [banks, openings, journalEntries] = await Promise.all([repo.listBankAccounts(clientId), repo.getOpeningBalances(clientId), repo.listJournalEntries(clientId)]);
-      const window = await loadLedgerWindow({ clientId, accounts: ctx.accounts, banks, from: `${month.slice(0, 4)}-01-01`, until: date });
+      const yearStart = `${month.slice(0, 4)}-01-01`;
+      const [banks, openings, journalEntries, invoices] = await Promise.all([
+        repo.listBankAccounts(clientId),
+        repo.getOpeningBalances(clientId),
+        repo.listJournalEntries(clientId, { start: '0000-01-01', end: date }),
+        repo.listInvoices(clientId, { start: yearStart, end: date }),
+      ]);
+      const window = await loadLedgerWindow({ clientId, accounts: ctx.accounts, banks, from: yearStart, until: date });
       const postings = buildPostings(window.transactions, banks, ctx.accounts, date, openings, journalEntries, window.carry);
       const bs = buildBalanceSheet(postings, ctx.accounts, date);
       const balances = naturalAssetBalances(bs.assets, ctx.accounts);
@@ -146,7 +171,8 @@ export function useFixedAssetReconciliation(clientId: string | undefined, ctx: F
         accounts: ctx.accounts,
         ledgerBalance: (id) => balances.get(id) ?? 0,
       });
-      setResult({ key: clientId, month, rows });
+      const unregisteredInvoices = unregisteredAssetInvoices(invoices, ctx.register.assets);
+      setResult({ key: clientId, month, rows, unregisteredInvoices });
     } catch (e) {
       reportError(e, { area: 'imobilizado', op: 'conferir com o balancete' });
       setError(`Não foi possível conferir (${describeError(e)}).`);
@@ -156,4 +182,34 @@ export function useFixedAssetReconciliation(clientId: string | undefined, ctx: F
   };
 
   return { result: result?.key === clientId ? result : null, loading, error, check, clear: () => setResult(null) };
+}
+
+/**
+ * Busca sob demanda notas fiscais de compra/venda de imobilizado no ano da competência.
+ */
+export function useAssetInvoicesRadar(clientId: string | undefined, assets: readonly FixedAsset[]) {
+  const [state, setState] = useState<{ key: string; year: string; invoices: Awaited<ReturnType<ReturnType<typeof getRepository>['listInvoices']>> } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const scanYear = useCallback(
+    async (year: string) => {
+      if (!clientId) return;
+      setLoading(true);
+      try {
+        const invoices = await getRepository().listInvoices(clientId, { start: `${year}-01-01`, end: `${year}-12-31` });
+        setState({ key: `${clientId}|${year}`, year, invoices });
+      } catch (e) {
+        reportError(e, { area: 'imobilizado', op: 'buscar notas de imobilizado' });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [clientId]
+  );
+
+  const currentInvoices = useMemo(() => (state && clientId && state.key.startsWith(`${clientId}|`) ? state.invoices : null), [state, clientId]);
+  const unregistered = useMemo(() => (currentInvoices ? unregisteredAssetInvoices(currentInvoices, assets) : null), [currentInvoices, assets]);
+  const saleSuggestions = useMemo(() => (currentInvoices ? unlinkedAssetSaleInvoices(currentInvoices, assets) : []), [currentInvoices, assets]);
+
+  return { unregistered, saleSuggestions, scannedYear: state?.year ?? null, loading, scanYear };
 }

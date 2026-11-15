@@ -20,6 +20,8 @@ import {
   pendingDepreciationMonths,
   reconcileWithLedger,
   suggestPriorDepreciation,
+  unlinkedAssetSaleInvoices,
+  unregisteredAssetInvoices,
 } from '@/lib/fixed-assets';
 
 const chart = buildITG1000Chart('c');
@@ -261,5 +263,66 @@ describe('baixa, conciliação e quadro', () => {
   it('quadro por classe com as taxas', () => {
     const rows = classSummary([asset()], '2026-12', null, chart);
     expect(rows).toEqual([{ accountCode: '1.2.3.04', accountName: 'Veículos', rates: [20], cost: 72280, accumulated: 12046.7, net: 60233.3 }]);
+  });
+
+  it('radar de NF-e de compra de imobilizado não cadastrada e NF-e de venda não vinculada', () => {
+    const purchaseInvoices = [
+      {
+        id: 'n1',
+        clientId: 'c',
+        key: '1'.repeat(44),
+        model: '55',
+        series: '1',
+        number: '0004521',
+        issueDate: '2026-03-01',
+        direction: 'PURCHASE' as const,
+        status: 'AUTHORIZED' as const,
+        counterpartyName: 'Auto Sul Ltda',
+        counterpartyDoc: '11222333000181',
+        total: 72280,
+        cfops: [{ cfop: '5551', amount: 72280 }],
+        installments: [],
+        importedAt: '',
+      },
+      {
+        id: 'n2',
+        clientId: 'c',
+        key: '2'.repeat(44),
+        model: '55',
+        series: '1',
+        number: '000999',
+        issueDate: '2026-03-10',
+        direction: 'PURCHASE' as const,
+        status: 'AUTHORIZED' as const,
+        counterpartyName: 'Tech Equipamentos',
+        counterpartyDoc: '22333444000192',
+        total: 8500,
+        cfops: [{ cfop: '1551', amount: 8500 }],
+        installments: [],
+        importedAt: '',
+      },
+    ];
+    // n1 já consta pelo documentRef ('4521' vs '0004521'); n2 falta cadastrar.
+    const missing = unregisteredAssetInvoices(purchaseInvoices, [asset({ documentRef: '4521' })]);
+    expect(missing).toHaveLength(1);
+    expect(missing[0].invoice.id).toBe('n2');
+    expect(missing[0].suggestedAccountCode).toBe('1.2.3.03');
+
+    const saleInvoices = [
+      {
+        ...purchaseInvoices[0],
+        id: 's1',
+        number: '45',
+        direction: 'SALE' as const,
+        total: 70000,
+        cfops: [{ cfop: '5551', amount: 70000 }],
+      },
+    ];
+    expect(unlinkedAssetSaleInvoices(saleInvoices, [asset()])).toHaveLength(1);
+    expect(
+      unlinkedAssetSaleInvoices(saleInvoices, [
+        asset({ disposal: { date: '2026-04-30', reason: 'SALE', sale: { amount: 70000, invoiceRef: '0045' }, journalEntryId: 'j1' } }),
+      ])
+    ).toEqual([]);
   });
 });

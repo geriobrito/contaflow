@@ -27,7 +27,11 @@ export async function monthLedgerWithout(
   repo: DataRepository
 ): Promise<MonthLedger> {
   const end = lastDayOf(month);
-  const [banks, openings, journal] = await Promise.all([repo.listBankAccounts(clientId), repo.getOpeningBalances(clientId), repo.listJournalEntries(clientId)]);
+  const [banks, openings, journal] = await Promise.all([
+    repo.listBankAccounts(clientId),
+    repo.getOpeningBalances(clientId),
+    repo.listJournalEntries(clientId, { start: '0000-01-01', end }),
+  ]);
   const window = await loadLedgerWindow({ clientId, accounts, banks, from: `${month}-01`, until: end }, repo);
   const excluded = journal.find(exclude) ?? null;
   const postings = buildPostings(window.transactions, banks, accounts, end, openings, journal.filter((e) => e !== excluded), window.carry);

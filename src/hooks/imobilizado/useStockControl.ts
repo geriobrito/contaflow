@@ -16,7 +16,7 @@ const currentMonth = () => todayISO().slice(0, 7);
  */
 export function useStockControl(clientId: string | undefined, authorUid: string | undefined, month: string) {
   const [ctx, setCtx] = useState<(StockContext & { id: string }) | null>(null);
-  const [monthState, setMonthState] = useState<{ key: string; value: MonthStock | null } | null>(null);
+  const [monthState, setMonthState] = useState<{ key: string; value: MonthStock | null; error?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadCount, setReloadCount] = useState(0);
@@ -52,7 +52,7 @@ export function useStockControl(clientId: string | undefined, authorUid: string 
       .catch((e: unknown) => {
         if (!active) return;
         reportError(e, { area: 'estoque', op: 'situação do mês' });
-        setMonthState({ key, value: null });
+        setMonthState({ key, value: null, error: `Não foi possível conferir o CMV da competência (${describeError(e)}).` });
       });
     return () => {
       active = false;
@@ -90,6 +90,8 @@ export function useStockControl(clientId: string | undefined, authorUid: string 
     control: current?.control ?? null,
     missingMonths,
     month: monthState?.key === monthKey ? monthState.value : undefined,
+    monthError: monthState?.key === monthKey ? (monthState.error ?? null) : null,
+    reload,
     error,
     busy,
     save: (control: StockControl) => run('configurar', async () => saveStockControl(clientId!, control, requireCtx())),

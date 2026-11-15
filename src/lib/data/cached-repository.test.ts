@@ -17,13 +17,13 @@ const audit = { id: '', clientId: 'c1', action: 'PERIOD_CLOSE' as const, actorUi
 describe('cache de leitura do plano, bancos e fechamentos', () => {
   let inner: DataRepository;
   let repo: DataRepository;
-  let reads: Record<'accounts' | 'banks' | 'locks' | 'lockState', number>;
+  let reads: Record<'accounts' | 'banks' | 'locks' | 'lockState' | 'openings', number>;
   let scope: string;
   let clock: number;
 
   beforeEach(() => {
     const local = createLocalRepository(memoryStore());
-    reads = { accounts: 0, banks: 0, locks: 0, lockState: 0 };
+    reads = { accounts: 0, banks: 0, locks: 0, lockState: 0, openings: 0 };
     scope = 'org-1';
     clock = 0;
     const counted =
@@ -38,6 +38,7 @@ describe('cache de leitura do plano, bancos e fechamentos', () => {
       listBankAccounts: counted('banks', local.listBankAccounts),
       listPeriodLocks: counted('locks', local.listPeriodLocks),
       getLockState: counted('lockState', local.getLockState),
+      getOpeningBalances: counted('openings', local.getOpeningBalances),
     };
     repo = withReadCache(inner, () => scope, { ttlMs: 1000, now: () => clock });
   });
@@ -64,6 +65,9 @@ describe('cache de leitura do plano, bancos e fechamentos', () => {
     await repo.listBankAccounts('c1');
     await repo.listPeriodLocks('c1');
     await repo.getLockState('c1');
+    await repo.getOpeningBalances('c1');
+    await repo.getOpeningBalances('c1');
+    expect(reads.openings).toBe(1);
 
     await repo.insertAccounts([account('a1')]);
     expect((await repo.listAccounts('c1')).map((a) => a.id)).toEqual(['a1']);
@@ -71,14 +75,18 @@ describe('cache de leitura do plano, bancos e fechamentos', () => {
     expect((await repo.listAccounts('c1'))[0].name).toBe('novo nome');
     await repo.deleteAccount('a1');
     expect(await repo.listAccounts('c1')).toEqual([]);
-    expect(reads).toEqual({ accounts: 4, banks: 1, locks: 1, lockState: 1 });
+    expect(reads).toEqual({ accounts: 4, banks: 1, locks: 1, lockState: 1, openings: 1 });
 
     await repo.saveBankAccount(bank('k1'));
     expect(await repo.listBankAccounts('c1')).toHaveLength(1);
     await repo.saveChartSetup({ accounts: [account('a2')], bankAccounts: [bank('k2')] });
     expect(await repo.listAccounts('c1')).toHaveLength(1);
     expect(await repo.listBankAccounts('c1')).toHaveLength(2);
-    expect(reads).toEqual({ accounts: 5, banks: 3, locks: 1, lockState: 1 });
+    expect(reads).toEqual({ accounts: 5, banks: 3, locks: 1, lockState: 1, openings: 1 });
+
+    await repo.saveOpeningBalances({ id: 'c1', clientId: 'c1', date: '2025-01-01', entries: [], updatedAt: 'T' }, audit);
+    expect((await repo.getOpeningBalances('c1'))?.date).toBe('2025-01-01');
+    expect(reads).toEqual({ accounts: 5, banks: 3, locks: 1, lockState: 1, openings: 2 });
 
     await repo.closePeriod(lock('2025-01'), audit);
     expect((await repo.listPeriodLocks('c1')).map((l) => l.month)).toEqual(['2025-01']);
@@ -86,11 +94,12 @@ describe('cache de leitura do plano, bancos e fechamentos', () => {
     await repo.reopenPeriod(lock('2025-01'), { ...audit, action: 'PERIOD_REOPEN' });
     expect(await repo.listPeriodLocks('c1')).toEqual([]);
     expect(await repo.getLockState('c1')).toMatchObject({ count: 0, seq: 1 });
-    expect(reads).toEqual({ accounts: 5, banks: 3, locks: 3, lockState: 3 });
+    expect(reads).toEqual({ accounts: 5, banks: 3, locks: 3, lockState: 3, openings: 2 });
 
     await repo.deleteClient('c1', { uid: 'u' });
     expect(await repo.listAccounts('c1')).toEqual([]);
     expect(await repo.listBankAccounts('c1')).toEqual([]);
+    expect(await repo.getOpeningBalances('c1')).toBeNull();
   });
 
   it('leitura iniciada durante uma gravação não fica guardada', async () => {

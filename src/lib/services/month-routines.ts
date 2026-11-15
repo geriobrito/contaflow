@@ -1,3 +1,5 @@
+import type { DataRepository } from '@/lib/data/repository';
+import { getRepository } from '@/lib/services/data-service';
 import { manualDepreciationWarning } from '@/lib/fixed-assets';
 import { loadMonthDepreciation, postMonthDepreciation } from '@/lib/services/fixed-asset-service';
 import { loadMonthAppropriation, postMonthAppropriation } from '@/lib/services/prepaid-service';
@@ -39,15 +41,70 @@ const needsUpdate = (s: Status | undefined) => Boolean(s && ((s.kind === 'PENDIN
 /** O botão de lançar resolve: falta lançar, atualizar ou excluir. */
 const postable = (s: Status | undefined) => Boolean(s && (s.kind === 'PENDING' || s.kind === 'REMOVE' || s.kind === 'BLOCKED'));
 
+/**
+ * Encapsula o repositório durante uma verificação única de `loadMonthRoutines`, reaproveitando
+ * promessas idênticas de Diário, extrato e snapshots quando mais de uma rotina lê a competência.
+ */
+function sharedRoutineRepo(base: DataRepository): DataRepository {
+  const journalByRange = new Map<string, ReturnType<DataRepository['listJournalEntries']>>();
+  const txByRange = new Map<string, ReturnType<DataRepository['listTransactions']>>();
+  const snapshotsByClient = new Map<string, ReturnType<DataRepository['listPeriodSnapshots']>>();
+  const countsByKey = new Map<string, ReturnType<DataRepository['countTransactions']>>();
+
+  return {
+    ...base,
+    listJournalEntries(clientId, range) {
+      const fullKey = `${clientId}|0000-01-01|${range?.end ?? ''}`;
+      if (range && range.start !== '0000-01-01' && journalByRange.has(fullKey)) {
+        return journalByRange.get(fullKey)!.then((list) => list.filter((e) => e.date >= range.start && e.date <= range.end));
+      }
+      const key = `${clientId}|${range?.start ?? ''}|${range?.end ?? ''}`;
+      let p = journalByRange.get(key);
+      if (!p) {
+        p = base.listJournalEntries(clientId, range);
+        journalByRange.set(key, p);
+      }
+      return p;
+    },
+    listTransactions(clientId, range) {
+      const key = `${clientId}|${range?.start ?? ''}|${range?.end ?? ''}`;
+      let p = txByRange.get(key);
+      if (!p) {
+        p = base.listTransactions(clientId, range);
+        txByRange.set(key, p);
+      }
+      return p;
+    },
+    listPeriodSnapshots(clientId) {
+      let p = snapshotsByClient.get(clientId);
+      if (!p) {
+        p = base.listPeriodSnapshots(clientId);
+        snapshotsByClient.set(clientId, p);
+      }
+      return p;
+    },
+    countTransactions(clientId, untilDate) {
+      const key = `${clientId}|${untilDate ?? ''}`;
+      let p = countsByKey.get(key);
+      if (!p) {
+        p = base.countTransactions(clientId, untilDate);
+        countsByKey.set(key, p);
+      }
+      return p;
+    },
+  };
+}
+
 /** Situação das rotinas da competência, ou null quando a empresa não tem nada cadastrado. */
-export async function loadMonthRoutines(clientId: string, month: string): Promise<MonthRoutines | null> {
+export async function loadMonthRoutines(clientId: string, month: string, baseRepo: DataRepository = getRepository()): Promise<MonthRoutines | null> {
+  const repo = sharedRoutineRepo(baseRepo);
   const [dep, pre, fin, inv, stk, pay] = await Promise.all([
-    loadMonthDepreciation(clientId, month),
-    loadMonthAppropriation(clientId, month),
-    loadMonthFinancing(clientId, month),
-    loadMonthInvestment(clientId, month),
-    loadMonthStock(clientId, month),
-    loadMonthPayroll(clientId, month),
+    loadMonthDepreciation(clientId, month, repo),
+    loadMonthAppropriation(clientId, month, repo),
+    loadMonthFinancing(clientId, month, repo),
+    loadMonthInvestment(clientId, month, repo),
+    loadMonthStock(clientId, month, repo),
+    loadMonthPayroll(clientId, month, repo),
   ]);
   if (!dep && !pre && !fin && !inv && !stk && !pay) return null;
   const byKey: [RoutineKey, { closeProblem: string | null; status: Status } | null][] = [

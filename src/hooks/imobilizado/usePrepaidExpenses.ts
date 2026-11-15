@@ -10,7 +10,10 @@ import {
   savePrepaidExpense,
   type PrepaidContext,
 } from '@/lib/services/prepaid-service';
-import { pendingAppropriationMonths } from '@/lib/prepaid-expenses';
+import { lastDayOf, naturalAssetBalances, type ReconciliationRow } from '@/lib/fixed-assets';
+import { pendingAppropriationMonths, reconcilePrepaidWithLedger } from '@/lib/prepaid-expenses';
+import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 import { todayISO } from '@/lib/business-days';
@@ -31,8 +34,13 @@ export function usePrepaidExpenses(clientId: string | undefined, authorUid: stri
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    Promise.all([loadPrepaidContext(clientId), getRepository().listJournalEntries(clientId)])
-      .then(([context, entries]) => {
+    loadPrepaidContext(clientId)
+      .then(async (context) => {
+        const items = context.register?.items ?? [];
+        const start = context.implantationMonth ? `${context.implantationMonth}-01` : '0000-01-01';
+        const entries = items.length
+          ? await getRepository().listJournalEntries(clientId, { start, end: lastDayOf(currentMonth()) })
+          : [];
         if (!active) return;
         setCtx({ ...context, id: clientId, entries });
         setError(null);
@@ -105,4 +113,47 @@ export function usePrepaidExpenses(clientId: string | undefined, authorUid: stri
     });
 
   return { ctx: current, items, pendingMonths, error, busy, reload, save, remove, postPending };
+}
+
+/**
+ * Conferência das despesas antecipadas com o balancete sob demanda.
+ */
+export function usePrepaidReconciliation(clientId: string | undefined, ctx: PrepaidContext | null) {
+  const [result, setResult] = useState<{ key: string; month: string; rows: ReconciliationRow[] } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const check = async (month: string) => {
+    if (!clientId || !ctx?.register) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const repo = getRepository();
+      const date = lastDayOf(month);
+      const [banks, openings, journalEntries] = await Promise.all([
+        repo.listBankAccounts(clientId),
+        repo.getOpeningBalances(clientId),
+        repo.listJournalEntries(clientId, { start: '0000-01-01', end: date }),
+      ]);
+      const window = await loadLedgerWindow({ clientId, accounts: ctx.accounts, banks, from: `${month.slice(0, 4)}-01-01`, until: date });
+      const postings = buildPostings(window.transactions, banks, ctx.accounts, date, openings, journalEntries, window.carry);
+      const bs = buildBalanceSheet(postings, ctx.accounts, date);
+      const balances = naturalAssetBalances(bs.assets, ctx.accounts);
+      const rows = reconcilePrepaidWithLedger({
+        items: ctx.register.items,
+        month,
+        implantationMonth: ctx.implantationMonth,
+        accounts: ctx.accounts,
+        ledgerBalance: (id) => balances.get(id) ?? 0,
+      });
+      setResult({ key: clientId, month, rows });
+    } catch (e) {
+      reportError(e, { area: 'despesas-antecipadas', op: 'conferir com o balancete' });
+      setError(`Não foi possível conferir (${describeError(e)}).`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { result: result?.key === clientId ? result : null, loading, error, check, clear: () => setResult(null) };
 }

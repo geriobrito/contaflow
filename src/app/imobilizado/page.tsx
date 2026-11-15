@@ -1,21 +1,24 @@
 'use client';
 
-import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import { useState } from 'react';
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, FileText, Landmark, Scale } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { FileSpreadsheet, FileText, Landmark, Plus, ReceiptText } from 'lucide-react';
 import type { FixedAsset } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
-import { useFixedAssetReconciliation, useFixedAssets } from '@/hooks/imobilizado/useFixedAssets';
+import { useAssetInvoicesRadar, useFixedAssetReconciliation, useFixedAssets } from '@/hooks/imobilizado/useFixedAssets';
+import { useMonthQueryState } from '@/hooks/imobilizado/useMonthQueryState';
 import { FixedAssetsTable } from '@/components/imobilizado/FixedAssetsTable';
 import { FixedAssetSheet } from '@/components/imobilizado/FixedAssetSheet';
 import { DisposeAssetSheet } from '@/components/imobilizado/DisposeAssetSheet';
-import { ControlsTabs } from '@/components/imobilizado/ControlsTabs';
+import { ControlsErrorBanner, ControlsTabs } from '@/components/imobilizado/ControlsTabs';
+import { LedgerReconciliationCard } from '@/components/imobilizado/LedgerReconciliationCard';
+import { assetPositionAt, postedQuotaCents, type UnregisteredAssetInvoice } from '@/lib/fixed-assets';
+import { fromCents } from '@/lib/money';
 import { formatMonth } from '@/lib/periods';
-import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, PAGE, PageHeader, SURFACE, INPUT_COMPACT } from '@/components/ui/primitives';
+import { reportError } from '@/lib/monitoring';
+import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
+import { BUTTON, INPUT_COMPACT, PAGE, PageHeader, StatCard } from '@/components/ui/primitives';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { todayISO } from '@/lib/business-days';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 
@@ -29,11 +32,12 @@ export default function ImobilizadoPage() {
   const clientId = currentClient?.id;
   const data = useFixedAssets(clientId, user?.uid, currentClient?.porte);
   const reconciliation = useFixedAssetReconciliation(clientId, data.ctx);
-  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
+  const radar = useAssetInvoicesRadar(clientId, data.assets);
+  const [month, setMonth] = useMonthQueryState();
   const [editing, setEditing] = useState<FixedAsset | 'new' | null>(null);
+  const [prefill, setPrefill] = useState<Partial<FixedAsset> | null>(null);
   const [disposing, setDisposing] = useState<FixedAsset | null>(null);
   const [toast, setToast] = useToast();
-
 
   const done = (ok: boolean, message: string) => {
     if (ok) {
@@ -53,12 +57,60 @@ export default function ImobilizadoPage() {
       const file = kind === 'pdf' ? mod.generateFixedAssetsPdf(ctx) : await mod.generateFixedAssetsExcel(ctx);
       downloadBlob(file.blob, file.fileName);
     } catch (e) {
+      reportError(e, { area: 'imobilizado', op: `exportar ${kind}` });
       setToast(`Não foi possível gerar o relatório (${e instanceof Error ? e.message : 'erro'}).`);
     }
   };
 
+  const summary = useMemo(() => {
+    let costCents = 0;
+    let accumCents = 0;
+    let netCents = 0;
+    let monthCents = 0;
+    let activeCount = 0;
+    const imp = data.ctx?.implantationMonth ?? null;
+    for (const a of data.assets) {
+      const pos = assetPositionAt(a, month, imp);
+      monthCents += postedQuotaCents(a, month, imp);
+      if (pos.costCents > 0) {
+        activeCount++;
+        costCents += pos.costCents;
+        accumCents += pos.accumulatedCents;
+        netCents += pos.netCents;
+      }
+    }
+    return {
+      activeCount,
+      cost: fromCents(costCents),
+      accumulated: fromCents(accumCents),
+      bookValue: fromCents(netCents),
+      monthDepreciation: fromCents(monthCents),
+    };
+  }, [data.assets, month, data.ctx?.implantationMonth]);
+
+  const openFromInvoice = (item: UnregisteredAssetInvoice) => {
+    setPrefill({
+      description: item.invoice.counterpartyName ? `Bem adquirido de ${item.invoice.counterpartyName}` : `NF ${item.invoice.number}`,
+      accountCode: item.suggestedAccountCode,
+      acquisitionDate: item.invoice.issueDate,
+      inUseDate: item.invoice.issueDate,
+      invoiceValue: item.invoice.total,
+      documentRef: item.invoice.number,
+      invoiceKey: item.invoice.key,
+    });
+    setEditing('new');
+  };
+
+  const openDispose = (asset: FixedAsset) => {
+    const year = month.slice(0, 4);
+    if (radar.scannedYear !== year && !radar.loading) {
+      void radar.scanYear(year);
+    }
+    setDisposing(asset);
+  };
+
   const pending = data.pendingMonths;
-  const diverging = reconciliation.result?.rows.filter((r) => Math.abs(r.difference) >= 0.005) ?? [];
+  const unregisteredInvoices = reconciliation.result?.unregisteredInvoices ?? radar.unregistered ?? null;
 
   return (
     <main className={PAGE}>
@@ -72,6 +124,15 @@ export default function ImobilizadoPage() {
               Posição no fim de
               <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
             </label>
+            <button
+              type="button"
+              disabled={radar.loading}
+              onClick={() => void radar.scanYear(month.slice(0, 4))}
+              className={BUTTON.secondary}
+            >
+              <ReceiptText className="w-4 h-4" />
+              {radar.loading ? 'Buscando NF-e…' : 'Cruzar com NF-e'}
+            </button>
             {data.assets.length > 0 && (
               <>
                 <button type="button" onClick={() => void exportReport('pdf')} className={BUTTON.secondary}>
@@ -87,11 +148,21 @@ export default function ImobilizadoPage() {
           </>
         }
       />
-      <ControlsTabs />
-      {data.error && !editing && !disposing && (
-        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
-          {data.error}
-        </p>
+      <ControlsTabs month={month} />
+      {data.error && !editing && !disposing && <ControlsErrorBanner message={data.error} />}
+
+      {data.assets.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Custo ativo" value={formatCurrency(summary.cost)} caption={`${summary.activeCount} bem(ns) em uso`} />
+          <StatCard label="Depreciação acumulada" value={formatCurrency(summary.accumulated)} caption={`até ${competence(month)}`} />
+          <StatCard label="Valor líquido" value={formatCurrency(summary.bookValue)} caption="saldo residual contábil" />
+          <StatCard
+            label="Cota do mês"
+            value={formatCurrency(summary.monthDepreciation)}
+            caption={`competência ${competence(month)}`}
+            tone={summary.monthDepreciation > 0 ? 'accent' : 'neutral'}
+          />
+        </div>
       )}
 
       {pending.length > 0 && (
@@ -111,77 +182,82 @@ export default function ImobilizadoPage() {
         </section>
       )}
 
+      {unregisteredInvoices && unregisteredInvoices.length > 0 && (
+        <section
+          role="region"
+          aria-label="Notas fiscais de imobilizado sem cadastro"
+          className="rounded-2xl border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/80 dark:bg-amber-950/25 px-4 py-3.5 space-y-2.5 text-[13px]"
+        >
+          <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-medium">
+            <ReceiptText className="w-4 h-4 shrink-0" />
+            <span>
+              {unregisteredInvoices.length} nota(s) fiscal(is) com CFOP de imobilizado sem bem correspondente cadastrado:
+            </span>
+          </div>
+          <div className="divide-y divide-amber-200/60 dark:divide-amber-800/40">
+            {unregisteredInvoices.map((item) => (
+              <div key={item.invoice.id} className="flex flex-wrap items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                <div className="min-w-0">
+                  <p className="font-medium text-stone-900 dark:text-stone-100">
+                    NF {item.invoice.number} · {item.invoice.counterpartyName || item.invoice.counterpartyDoc}
+                  </p>
+                  <p className="text-[12px] text-stone-600 dark:text-stone-400">
+                    Emissão {formatDateBR(item.invoice.issueDate)} · CFOP {item.invoice.cfops.map((c) => c.cfop).join(', ')} ·{' '}
+                    <span className="font-mono tabular-nums font-medium">{formatCurrency(item.invoice.total)}</span>
+                  </p>
+                </div>
+                <button type="button" onClick={() => openFromInvoice(item)} className={`${BUTTON.secondary} h-8 text-[12px]`}>
+                  <Plus className="w-3.5 h-3.5" />
+                  Cadastrar bem
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <FixedAssetsTable
         ctx={data.ctx}
         assets={data.assets}
         month={month}
         busy={data.busy}
-        onCreate={() => setEditing('new')}
-        onEdit={setEditing}
-        onDispose={setDisposing}
+        onCreate={() => {
+          setPrefill(null);
+          setEditing('new');
+        }}
+        onEdit={(a) => {
+          setPrefill(null);
+          setEditing(a);
+        }}
+        onDispose={openDispose}
         onUndoDisposal={(a) => void data.undoDisposal(a).then((ok) => done(ok, 'Baixa desfeita'))}
         onDelete={(a) => void data.remove(a).then((ok) => done(ok, 'Bem excluído'))}
       />
 
-      {data.ctx && data.assets.length > 0 && (
-        <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
-          <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-black/4 dark:border-white/6">
-            <Scale className="w-4 h-4 text-stone-400" />
-            <div className="flex-1 min-w-0">
-              <h2 className="text-[15px] font-semibold tracking-tight">Conferência com o balancete</h2>
-              <p className="text-[12px] text-stone-500">Custo por conta de bem e acumulada na retificadora, cadastro × saldo contábil em {formatMonth(month)}.</p>
-            </div>
-            <button type="button" disabled={reconciliation.loading} onClick={() => void reconciliation.check(month)} className={`${BUTTON.secondary} h-8`}>
-              {reconciliation.loading ? 'Conferindo…' : reconciliation.result ? 'Conferir de novo' : 'Conferir'}
-            </button>
-          </div>
-          {reconciliation.error && <p className="px-5 py-3 text-[13px] text-rose-600 dark:text-rose-300">{reconciliation.error}</p>}
-          {reconciliation.result && (
-            <>
-              <p className={`flex items-center gap-2 px-5 py-3 text-[13px] ${diverging.length ? 'text-amber-800 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                {diverging.length ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                {diverging.length
-                  ? `${diverging.length} conta(s) com diferença em ${formatMonth(reconciliation.result.month)}: bem comprado e não cadastrado, cadastrado e não contabilizado, ou depreciação lançada fora da rotina.`
-                  : `Cadastro e balancete conferem em ${formatMonth(reconciliation.result.month)}.`}
-              </p>
-              <table className="w-full text-left">
-                <thead>
-                  <tr className={`${TABLE_HEAD} border-t`}>
-                    <Th edge="start">Conta</Th>
-                    <Th align="right">Cadastro</Th>
-                    <Th align="right">Balancete</Th>
-                    <Th align="right" edge="end">Diferença</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reconciliation.result.rows.map((r) => (
-                    <tr key={r.accountId} className="border-b border-black/4 dark:border-white/6 last:border-0 text-[13px]">
-                      <td className="pl-5 pr-3 py-2.5">
-                        <span className="font-mono text-[12px] text-stone-500 dark:text-stone-400">{r.accountCode}</span> {r.accountName}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.register)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono tabular-nums">{formatCurrency(r.ledger)}</td>
-                      <td className={`pl-3 pr-5 py-2.5 text-right font-mono tabular-nums ${Math.abs(r.difference) >= 0.005 ? 'text-rose-600 dark:text-rose-300' : 'text-stone-400'}`}>
-                        {formatCurrency(r.difference)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </section>
+      {data.ctx && (data.assets.length > 0 || unregisteredInvoices !== null) && (
+        <LedgerReconciliationCard
+          description={`Custo por conta de bem e acumulada na retificadora, cadastro × saldo contábil em ${formatMonth(month)}.`}
+          divergenceNote="bem comprado e não cadastrado, cadastrado e não contabilizado, ou depreciação lançada fora da rotina."
+          loading={reconciliation.loading}
+          error={reconciliation.error}
+          result={reconciliation.result}
+          onCheck={() => void reconciliation.check(month)}
+        />
       )}
 
       {editing && data.ctx && (
         <FixedAssetSheet
-          key={editing === 'new' ? 'new' : editing.id}
+          key={editing === 'new' ? `new-${prefill?.invoiceKey ?? ''}` : editing.id}
           asset={editing === 'new' ? null : editing}
+          prefill={editing === 'new' ? prefill : null}
           ctx={data.ctx}
           porte={currentClient?.porte}
           busy={data.busy}
           error={data.error}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setPrefill(null);
+          }}
           onSave={(asset) => data.save(asset).then((ok) => done(ok, editing === 'new' ? 'Bem cadastrado' : 'Bem atualizado'))}
         />
       )}
@@ -190,6 +266,7 @@ export default function ImobilizadoPage() {
           key={disposing.id}
           asset={disposing}
           ctx={data.ctx}
+          saleInvoices={radar.saleSuggestions}
           busy={data.busy}
           error={data.error}
           onClose={() => setDisposing(null)}

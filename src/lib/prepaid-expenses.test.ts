@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import type { JournalEntry, PrepaidExpense } from '@/types/firestore';
+import type { FixedAsset, JournalEntry, PrepaidExpense } from '@/types/firestore';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import {
   appropriationCloseProblem,
   appropriationDraft,
   appropriationStatus,
+  disposedInsuredAssetAlerts,
   prepaidBalanceAt,
   prepaidEndDate,
   prepaidLockProblem,
   prepaidProblem,
   prepaidSchedule,
   recognitionDraft,
+  reconcilePrepaidWithLedger,
 } from '@/lib/prepaid-expenses';
 
 const chart = buildITG1000Chart('c');
@@ -121,5 +123,43 @@ describe('despesas antecipadas: lançamentos', () => {
     expect(appropriationStatus({ ...base, items: [insurance()], entries: [entry] }).kind).toBe('POSTED');
     expect(appropriationStatus({ ...base, items: [insurance({ amount: 1200 })], entries: [entry] }).kind).toBe('PENDING');
     expect(appropriationStatus({ ...base, month: '2027-04', items: [insurance()], entries: [] }).kind).toBe('NONE');
+  });
+
+  it('conferência com o balancete e alerta de bem segurado já baixado', () => {
+    const ledger = new Map([
+      [acc('1.1.4.01').id, 1293.31],
+      [acc('1.1.4.02').id, 300],
+    ]);
+    const rows = reconcilePrepaidWithLedger({
+      items: [insurance()],
+      month: '2026-03',
+      implantationMonth: null,
+      accounts: chart,
+      ledgerBalance: (id) => ledger.get(id) ?? 0,
+    });
+    expect(rows.map((r) => [r.accountCode, r.register, r.ledger, r.difference])).toEqual([
+      ['1.1.4.01', 1293.31, 1293.31, 0],
+      ['1.1.4.02', 0, 300, 300],
+    ]);
+
+    const vehicleAsset: FixedAsset = {
+      id: 'fa1',
+      description: 'Fiat Strada',
+      accountId: acc('1.2.3.04').id,
+      accountCode: '1.2.3.04',
+      accountName: 'Veículos',
+      use: 'EXPENSE',
+      acquisitionDate: '2026-03-01',
+      inUseDate: '2026-03-01',
+      invoiceValue: 72280,
+      annualRate: 20,
+      disposal: { date: '2026-06-15', reason: 'SALE', journalEntryId: 'je_disp' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const alerts = disposedInsuredAssetAlerts([insurance({ insuredAssetId: 'fa1' })], [vehicleAsset], '2026-06', null);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ disposalDate: '2026-06-15', endDate: '2027-03-01', remainingCents: 94060 });
+    expect(disposedInsuredAssetAlerts([insurance({ insuredAssetId: 'fa1' })], [vehicleAsset], '2027-03', null)).toEqual([]);
   });
 });

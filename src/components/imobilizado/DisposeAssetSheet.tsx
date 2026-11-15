@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import type { FixedAsset, FixedAssetDisposalReason } from '@/types/firestore';
+import type { FixedAsset, FixedAssetDisposalReason, InvoiceSummary } from '@/types/firestore';
 import type { DisposalInput, FixedAssetContext } from '@/lib/services/fixed-asset-service';
 import { accumulatedAtDisposalCents, assetCostCents, DISPOSAL_REASON_LABEL, disposalLockProblem, isIntangibleCode } from '@/lib/fixed-assets';
 import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
-import { formatCurrency } from '@/lib/utils/formatters';
+import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primitives';
 
 /**
@@ -16,6 +16,8 @@ import { BUTTON, Field, INPUT, Sheet, INPUT_MONEY } from '@/components/ui/primit
 export interface DisposeAssetSheetProps {
   asset: FixedAsset;
   ctx: FixedAssetContext;
+  /** Notas fiscais de venda de imobilizado (CFOP 5551/6551) ainda não vinculadas a outra baixa. */
+  saleInvoices?: readonly InvoiceSummary[];
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -25,6 +27,7 @@ export interface DisposeAssetSheetProps {
 export function DisposeAssetSheet({
   asset,
   ctx,
+  saleInvoices = [],
   busy,
   error,
   onClose,
@@ -98,6 +101,29 @@ export function DisposeAssetSheet({
 
         {isSale && (
           <>
+            {saleInvoices.length > 0 && (
+              <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-amber-50/60 dark:bg-amber-950/20 px-3 py-2.5 space-y-1.5 text-[12px]">
+                <p className="font-medium text-amber-900 dark:text-amber-200">Notas de venda de imobilizado importadas (CFOP 5551/6551):</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {saleInvoices.slice(0, 4).map((inv) => (
+                    <button
+                      key={inv.id}
+                      type="button"
+                      onClick={() => {
+                        if (inv.issueDate >= asset.inUseDate) setDate(inv.issueDate);
+                        setSaleText(inv.total.toFixed(2).replace('.', ','));
+                        setInvoiceRef(inv.number);
+                        if (inv.counterpartyName) setBuyer(inv.counterpartyName);
+                      }}
+                      className="rounded-lg border border-amber-600/35 bg-white/80 dark:bg-stone-900/60 px-2.5 py-1 text-left text-[11.5px] text-amber-900 dark:text-amber-200 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
+                    >
+                      NF {inv.number} · {formatDateBR(inv.issueDate)} · <span className="font-mono">{formatCurrency(inv.total)}</span>
+                      {inv.counterpartyName ? ` · ${inv.counterpartyName}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor da venda" error={saleText && !saleValid ? 'Valor inválido.' : null}>
                 <input value={saleText} onChange={(e) => setSaleText(e.target.value)} placeholder="0,00" inputMode="decimal" className={INPUT_MONEY} />

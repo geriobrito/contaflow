@@ -10,7 +10,16 @@ import {
   saveFinancingContract,
   type FinancingContext,
 } from '@/lib/services/financing-service';
-import { pendingFinancingMonths } from '@/lib/financing';
+import { lastDayOf, naturalAssetBalances, type ReconciliationRow } from '@/lib/fixed-assets';
+import {
+  checkMonthInstallmentPayments,
+  pendingFinancingMonths,
+  reconcileFinancingWithLedger,
+  type MonthInstallmentCheck,
+} from '@/lib/financing';
+import { buildBalanceSheet, buildPostings } from '@/lib/ledger';
+import { toCents } from '@/lib/money';
+import { loadLedgerWindow } from '@/lib/services/ledger-loader';
 import { describeError, isRegisterConflictError } from '@/lib/utils/errors';
 import { reportError } from '@/lib/monitoring';
 import { todayISO } from '@/lib/business-days';
@@ -31,8 +40,13 @@ export function useFinancingContracts(clientId: string | undefined, authorUid: s
   useEffect(() => {
     if (!clientId) return;
     let active = true;
-    Promise.all([loadFinancingContext(clientId), getRepository().listJournalEntries(clientId)])
-      .then(([context, entries]) => {
+    loadFinancingContext(clientId)
+      .then(async (context) => {
+        const contracts = context.register?.contracts ?? [];
+        const start = context.implantationMonth ? `${context.implantationMonth}-01` : '0000-01-01';
+        const entries = contracts.length
+          ? await getRepository().listJournalEntries(clientId, { start, end: lastDayOf(currentMonth()) })
+          : [];
         if (!active) return;
         setCtx({ ...context, id: clientId, entries });
         setError(null);
@@ -105,4 +119,66 @@ export function useFinancingContracts(clientId: string | undefined, authorUid: s
     });
 
   return { ctx: current, contracts, pendingMonths, error, busy, reload, save, remove, postPending };
+}
+
+/**
+ * Conferência dos contratos com o balancete sob demanda, incluindo o confronto das parcelas que
+ * vencem na competência com os débitos (baixas de pagamento) lançados no passivo de curto prazo.
+ */
+export function useFinancingReconciliation(clientId: string | undefined, ctx: FinancingContext | null) {
+  const [result, setResult] = useState<{
+    key: string;
+    month: string;
+    rows: ReconciliationRow[];
+    installments: MonthInstallmentCheck[];
+  } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const check = async (month: string) => {
+    if (!clientId || !ctx?.register) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const repo = getRepository();
+      const date = lastDayOf(month);
+      const monthStart = `${month}-01`;
+      const [banks, openings, journalEntries] = await Promise.all([
+        repo.listBankAccounts(clientId),
+        repo.getOpeningBalances(clientId),
+        repo.listJournalEntries(clientId, { start: '0000-01-01', end: date }),
+      ]);
+      const window = await loadLedgerWindow({ clientId, accounts: ctx.accounts, banks, from: `${month.slice(0, 4)}-01-01`, until: date });
+      const postings = buildPostings(window.transactions, banks, ctx.accounts, date, openings, journalEntries, window.carry);
+      const bs = buildBalanceSheet(postings, ctx.accounts, date);
+      const balances = naturalAssetBalances(bs.liabilities, ctx.accounts);
+      const rows = reconcileFinancingWithLedger({
+        contracts: ctx.register.contracts,
+        month,
+        accounts: ctx.accounts,
+        ledgerBalance: (id) => balances.get(id) ?? 0,
+      });
+
+      const debitsByAccount = new Map<string, number>();
+      for (const p of postings) {
+        if (p.date >= monthStart && p.date <= date && p.value > 0) {
+          debitsByAccount.set(p.accountId, (debitsByAccount.get(p.accountId) ?? 0) + toCents(p.value));
+        }
+      }
+      const installments = checkMonthInstallmentPayments({
+        contracts: ctx.register.contracts,
+        month,
+        monthDebitsCents: (id) => debitsByAccount.get(id) ?? 0,
+      });
+
+      setResult({ key: clientId, month, rows, installments });
+    } catch (e) {
+      reportError(e, { area: 'financiamentos', op: 'conferir com o balancete' });
+      setError(`Não foi possível conferir (${describeError(e)}).`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { result: result?.key === clientId ? result : null, loading, error, check, clear: () => setResult(null) };
 }

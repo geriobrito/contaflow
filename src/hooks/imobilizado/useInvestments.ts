@@ -25,7 +25,7 @@ const currentMonth = () => todayISO().slice(0, 7);
  */
 export function useInvestments(clientId: string | undefined, authorUid: string | undefined, month: string) {
   const [ctx, setCtx] = useState<(InvestmentContext & { id: string }) | null>(null);
-  const [monthState, setMonthState] = useState<{ key: string; value: MonthInvestment | null } | null>(null);
+  const [monthState, setMonthState] = useState<{ key: string; value: MonthInvestment | null; error?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reloadCount, setReloadCount] = useState(0);
@@ -61,7 +61,7 @@ export function useInvestments(clientId: string | undefined, authorUid: string |
       .catch((e: unknown) => {
         if (!active) return;
         reportError(e, { area: 'aplicacoes', op: 'situação do mês' });
-        setMonthState({ key, value: null });
+        setMonthState({ key, value: null, error: `Não foi possível conferir o rendimento da competência (${describeError(e)}).` });
       });
     return () => {
       active = false;
@@ -100,6 +100,8 @@ export function useInvestments(clientId: string | undefined, authorUid: string |
     investments,
     missingMonths,
     month: monthState?.key === monthKey ? monthState.value : undefined,
+    monthError: monthState?.key === monthKey ? (monthState.error ?? null) : null,
+    reload,
     error,
     busy,
     save: (inv: InvestmentAccount) => run('salvar', async () => saveInvestment(clientId!, inv, requireCtx())),

@@ -27,6 +27,8 @@ const newAssetId = () => `fa_${Date.now().toString(36)}_${Math.random().toString
 
 export interface FixedAssetSheetProps {
   asset: FixedAsset | null;
+  /** Dados sugeridos para um cadastro novo (ex.: vindos de uma NF-e de compra de imobilizado). */
+  prefill?: Partial<FixedAsset> | null;
   ctx: FixedAssetContext;
   /** Porte da empresa: no intangível da microentidade, o prazo máximo é de 5 anos. */
   porte?: CompanyPorte;
@@ -39,6 +41,7 @@ export interface FixedAssetSheetProps {
 /** Cadastro ou edição de um bem: conta, uso, datas, composição do custo, taxa e, se preciso, a depreciação já lançada. */
 export function FixedAssetSheet({
   asset,
+  prefill,
   ctx,
   porte,
   busy,
@@ -48,19 +51,31 @@ export function FixedAssetSheet({
 }: FixedAssetSheetProps) {
   const accounts = useMemo(() => assetAccounts(ctx.accounts), [ctx.accounts]);
   const frozen = asset !== null && isAssetFrozen(asset, ctx.lockedMonths, ctx.implantationMonth);
+  const seed = asset ?? prefill ?? null;
+  const seedAccount = seed?.accountId
+    ? accounts.find((a) => a.id === seed.accountId)
+    : seed?.accountCode
+      ? accounts.find((a) => a.code === seed.accountCode)
+      : undefined;
+  const seedRate =
+    seed?.annualRate !== undefined
+      ? seed.annualRate
+      : seedAccount && SUGGESTED_RATES[seedAccount.code] !== undefined
+        ? SUGGESTED_RATES[seedAccount.code]
+        : undefined;
 
-  const [description, setDescription] = useState(asset?.description ?? '');
-  const [accountId, setAccountId] = useState(asset?.accountId ?? '');
-  const [use, setUse] = useState<FixedAssetUse | ''>(asset?.use ?? '');
-  const [acquisitionDate, setAcquisitionDate] = useState(asset?.acquisitionDate ?? '');
-  const [inUseDate, setInUseDate] = useState(asset?.inUseDate ?? '');
-  const [documentRef, setDocumentRef] = useState(asset?.documentRef ?? '');
-  const [invoiceValue, setInvoiceValue] = useState(moneyText(asset?.invoiceValue));
-  const [additionalCosts, setAdditionalCosts] = useState(moneyText(asset?.additionalCosts));
-  const [taxes, setTaxes] = useState(moneyText(asset?.nonRecoverableTaxes));
-  const [discounts, setDiscounts] = useState(moneyText(asset?.discounts));
-  const [residual, setResidual] = useState(moneyText(asset?.residualValue));
-  const [rate, setRate] = useState(asset ? String(asset.annualRate).replace('.', ',') : '');
+  const [description, setDescription] = useState(seed?.description ?? '');
+  const [accountId, setAccountId] = useState(seedAccount?.id ?? seed?.accountId ?? '');
+  const [use, setUse] = useState<FixedAssetUse | ''>(seed?.use ?? '');
+  const [acquisitionDate, setAcquisitionDate] = useState(seed?.acquisitionDate ?? '');
+  const [inUseDate, setInUseDate] = useState(seed?.inUseDate ?? seed?.acquisitionDate ?? '');
+  const [documentRef, setDocumentRef] = useState(seed?.documentRef ?? '');
+  const [invoiceValue, setInvoiceValue] = useState(moneyText(seed?.invoiceValue));
+  const [additionalCosts, setAdditionalCosts] = useState(moneyText(seed?.additionalCosts));
+  const [taxes, setTaxes] = useState(moneyText(seed?.nonRecoverableTaxes));
+  const [discounts, setDiscounts] = useState(moneyText(seed?.discounts));
+  const [residual, setResidual] = useState(moneyText(seed?.residualValue));
+  const [rate, setRate] = useState(seedRate !== undefined ? String(seedRate).replace('.', ',') : '');
   const [rateTouched, setRateTouched] = useState(Boolean(asset));
   const [priorOn, setPriorOn] = useState(Boolean(asset?.priorDepreciation));
   const [priorThrough, setPriorThrough] = useState(asset?.priorDepreciation?.through ?? '');
@@ -99,7 +114,7 @@ export function FixedAssetSheet({
       ...(values.residualValue ? { residualValue: values.residualValue } : {}),
       annualRate: Number.isFinite(rateValue) ? rateValue : 0,
       ...(documentRef.trim() ? { documentRef: documentRef.trim() } : {}),
-      ...(asset?.invoiceKey ? { invoiceKey: asset.invoiceKey } : {}),
+      ...((asset?.invoiceKey ?? prefill?.invoiceKey) ? { invoiceKey: asset?.invoiceKey ?? prefill?.invoiceKey } : {}),
       ...(asset?.disposal ? { disposal: asset.disposal } : {}),
       createdAt: asset?.createdAt ?? now,
       updatedAt: now,

@@ -1,20 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Boxes, CheckCircle2, ClipboardCopy, Landmark, Settings2 } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, Boxes, CheckCircle2, ClipboardCopy, FileSpreadsheet, FileText, Landmark, RotateCcw, Settings2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
 import { useStockControl } from '@/hooks/imobilizado/useStockControl';
-import { ControlsTabs } from '@/components/imobilizado/ControlsTabs';
+import { useMonthQueryState } from '@/hooks/imobilizado/useMonthQueryState';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+import { ControlsErrorBanner, ControlsTabs } from '@/components/imobilizado/ControlsTabs';
 import { StockSetupSheet } from '@/components/imobilizado/StockSetupSheet';
 import { countDue, STOCK_FREQUENCY_LABEL, stockCloseProblem, stockRequestText } from '@/lib/stock';
 import { fromCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
+import { reportError } from '@/lib/monitoring';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_COMPACT, INPUT_MONEY } from '@/components/ui/primitives';
+import {
+  BUTTON,
+  EmptyState,
+  Field,
+  INPUT,
+  INPUT_COMPACT,
+  INPUT_MONEY,
+  PAGE,
+  PageHeader,
+  SURFACE,
+} from '@/components/ui/primitives';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { Toast, useToast } from '@/components/ui/Toast';
-import { todayISO } from '@/lib/business-days';
 
 const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 const moneyText = (v: number | undefined) => (v === undefined ? '' : v.toFixed(2).replace('.', ','));
@@ -27,36 +40,58 @@ export default function EstoquePage() {
   const { user } = useAuth();
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const [month, setMonth] = useState(() => todayISO().slice(0, 7));
+  const [month, setMonth] = useMonthQueryState();
   const data = useStockControl(clientId, user?.uid, month);
   const [setup, setSetup] = useState(false);
   const [draft, setDraft] = useState<{ key: string; amount: string; source: string } | null>(null);
+  const [pendingMonth, setPendingMonth] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [toast, setToast] = useToast();
-
-  // Link da barra de fechamento: `?mes=AAAA-MM` abre a competência pedida.
-  useEffect(() => {
-    let active = true;
-    void Promise.resolve().then(() => {
-      const m = new URLSearchParams(window.location.search).get('mes');
-      if (active && m && /^\d{4}-\d{2}$/.test(m)) setMonth(m);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
 
   const control = data.control;
   const ctx = data.ctx;
   const locked = Boolean(ctx?.lockedMonths.has(month));
   const key = `${clientId}|${month}`;
   const editing = draft?.key === key ? draft : null;
-  const amountText = editing?.amount ?? moneyText(control?.counts[month]);
-  const sourceText = editing?.source ?? control?.notes?.[month] ?? '';
+  const savedAmountText = moneyText(control?.counts[month]);
+  const savedSourceText = control?.notes?.[month] ?? '';
+  const amountText = editing?.amount ?? savedAmountText;
+  const sourceText = editing?.source ?? savedSourceText;
+  const hasUnsavedDraft = Boolean(editing && (editing.amount !== savedAmountText || editing.source !== savedSourceText));
+  const guard = useUnsavedChangesGuard(hasUnsavedDraft);
+
   const status = data.month?.status;
   const figures = status && 'figures' in status ? status.figures : null;
   const problem = status ? stockCloseProblem(status, month) : null;
   const warnings = data.month?.warnings ?? [];
+
+  const changeMonth = (next: string) => {
+    if (!next || next === month) return;
+    if (hasUnsavedDraft) {
+      setPendingMonth(next);
+      return;
+    }
+    setMonth(next);
+  };
+
+  const exportReport = async (kind: 'pdf' | 'xlsx') => {
+    if (!currentClient || !control) return;
+    try {
+      const [{ downloadBlob }, mod] = await Promise.all([import('@/lib/export/dre-rows'), import('@/lib/export/controls-export')]);
+      const exportCtx = {
+        client: currentClient,
+        control,
+        month,
+        figures,
+        issuedAt: new Date(),
+      };
+      const file = kind === 'pdf' ? mod.generateStockPdf(exportCtx) : await mod.generateStockExcel(exportCtx);
+      downloadBlob(file.blob, file.fileName);
+    } catch (e) {
+      reportError(e, { area: 'estoque', op: `exportar ${kind}` });
+      setToast(`Não foi possível gerar o relatório (${e instanceof Error ? e.message : 'erro'}).`);
+    }
+  };
 
   const saveCount = (clear = false) => {
     const amount = clear ? null : amountText.trim() ? parseMoneyInput(amountText) : null;
@@ -85,19 +120,25 @@ export default function EstoquePage() {
         description="Informe o estoque final do relatório do cliente: o custo das mercadorias vendidas do mês (estoque inicial + compras − estoque final) é lançado no último dia da competência (NBC TG 1002 e 1001, seção 13)."
         actions={
           control ? (
-            <label className="flex items-center gap-2 text-[12px] text-stone-500">
-              Competência
-              <input type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
-            </label>
+            <>
+              <label className="flex items-center gap-2 text-[12px] text-stone-500">
+                Competência
+                <input type="month" value={month} onChange={(e) => e.target.value && changeMonth(e.target.value)} className={`${INPUT_COMPACT} w-40 font-mono tabular-nums`} />
+              </label>
+              <button type="button" onClick={() => void exportReport('pdf')} className={BUTTON.secondary}>
+                <FileText className="w-4 h-4" />
+                PDF
+              </button>
+              <button type="button" onClick={() => void exportReport('xlsx')} className={BUTTON.secondary}>
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </button>
+            </>
           ) : undefined
         }
       />
-      <ControlsTabs />
-      {data.error && !setup && (
-        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
-          {data.error}
-        </p>
-      )}
+      <ControlsTabs month={month} />
+      {data.error && !setup && <ControlsErrorBanner message={data.error} />}
 
       {!ctx ? (
         <TableSkeleton rows={3} label="Carregando o controle de estoque…" />
@@ -121,7 +162,7 @@ export default function EstoquePage() {
               <Landmark className="w-4 h-4 shrink-0" />
               <span>Estoque final a informar em:</span>
               {data.missingMonths.map((m) => (
-                <button key={m} type="button" onClick={() => setMonth(m)} className="rounded-lg border border-amber-600/40 px-2 py-0.5 font-mono tabular-nums text-[12px] hover:bg-amber-100 dark:hover:bg-amber-900/40">
+                <button key={m} type="button" onClick={() => changeMonth(m)} className="rounded-lg border border-amber-600/40 px-2 py-0.5 font-mono tabular-nums text-[12px] hover:bg-amber-100 dark:hover:bg-amber-900/40">
                   {competence(m)}
                 </button>
               ))}
@@ -177,15 +218,32 @@ export default function EstoquePage() {
                       Gravar
                     </button>
                     {control.counts[month] !== undefined && !locked && (
-                      <button type="button" disabled={data.busy} onClick={() => saveCount(true)} className={`${BUTTON.secondary} h-10`}>
+                      <button type="button" disabled={data.busy} onClick={() => setConfirmClear(true)} className={`${BUTTON.secondary} h-10`}>
                         Apagar
                       </button>
                     )}
                   </div>
                 </div>
 
+                {hasUnsavedDraft && (
+                  <p role="status" className="text-[12px] text-amber-800 dark:text-amber-300">
+                    Há alteração digitada e ainda não gravada. Clique em <strong>Gravar</strong> antes de lançar o CMV.
+                  </p>
+                )}
+
                 {data.month === undefined ? (
                   <TableSkeleton rows={2} dense label="Conferindo com o razão…" />
+                ) : data.monthError ? (
+                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200/70 dark:border-rose-900/50 px-4 py-3 text-[13px] text-rose-700 dark:text-rose-300 bg-rose-50/60 dark:bg-rose-950/20">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{data.monthError}</span>
+                    </div>
+                    <button type="button" onClick={data.reload} className={`${BUTTON.secondary} h-8 text-[12px]`}>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Tentar novamente
+                    </button>
+                  </div>
                 ) : (
                   <>
                     {figures && (
@@ -209,7 +267,13 @@ export default function EstoquePage() {
                             (status?.kind === 'POSTED' ? 'CMV lançado e conferido com o estoque informado.' : status?.kind === 'MATCHED' ? 'Estoque contábil igual ao informado: nada a lançar.' : 'Nada a lançar nesta competência.'))}
                       </p>
                       {!locked && status && (status.kind === 'PENDING' || status.kind === 'REMOVE') && (
-                        <button type="button" disabled={data.busy} onClick={() => void data.postMonth().then((ok) => ok && setToast(`CMV de ${competence(month)} lançado`))} className={`${BUTTON.accent} h-9`}>
+                        <button
+                          type="button"
+                          disabled={data.busy || hasUnsavedDraft}
+                          title={hasUnsavedDraft ? 'Grave o estoque final antes de lançar o CMV' : undefined}
+                          onClick={() => void data.postMonth().then((ok) => ok && setToast(`CMV de ${competence(month)} lançado`))}
+                          className={`${BUTTON.accent} h-9`}
+                        >
                           {data.busy ? 'Lançando…' : status.kind === 'REMOVE' || status.existing ? 'Atualizar o lançamento' : 'Lançar o CMV'}
                         </button>
                       )}
@@ -231,6 +295,47 @@ export default function EstoquePage() {
           error={data.error}
           onClose={() => setSetup(false)}
           onSave={(c) => data.save(c).then((ok) => (ok && setToast('Controle de estoque salvo'), ok))}
+        />
+      )}
+
+      {confirmClear && (
+        <ConfirmDialog
+          title={`Apagar o estoque final de ${competence(month)}?`}
+          description="O valor informado e a origem serão removidos desta competência."
+          confirmLabel="Apagar estoque"
+          cancelLabel="Cancelar"
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={() => {
+            setConfirmClear(false);
+            saveCount(true);
+          }}
+        />
+      )}
+
+      {pendingMonth && (
+        <ConfirmDialog
+          title="Descartar alterações não gravadas?"
+          description="O estoque final digitado ainda não foi gravado. Se mudar de competência agora, o que foi digitado será perdido."
+          confirmLabel="Descartar e mudar"
+          cancelLabel="Continuar editando"
+          onCancel={() => setPendingMonth(null)}
+          onConfirm={() => {
+            const next = pendingMonth;
+            setPendingMonth(null);
+            setDraft(null);
+            setMonth(next);
+          }}
+        />
+      )}
+
+      {guard.pending && (
+        <ConfirmDialog
+          title="Descartar alterações não gravadas?"
+          description="O estoque final digitado ainda não foi gravado. Se sair agora, o que foi digitado será perdido."
+          confirmLabel="Descartar e sair"
+          cancelLabel="Continuar editando"
+          onCancel={guard.cancel}
+          onConfirm={guard.confirm}
         />
       )}
 
