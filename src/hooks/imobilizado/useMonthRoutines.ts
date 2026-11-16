@@ -11,7 +11,7 @@ import { peekActor } from '@/lib/data/scope';
  * despesas antecipadas): o que falta lançar e o botão que lança tudo. Sem nada cadastrado,
  * `routines` é null e nada aparece.
  */
-export function useMonthRoutines(clientId: string | undefined, month: string | null, locked: boolean) {
+export function useMonthRoutines(clientId: string | undefined, month: string | null, locked: boolean, paused = false) {
   const [state, setState] = useState<{ key: string; value: MonthRoutines | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +19,8 @@ export function useMonthRoutines(clientId: string | undefined, month: string | n
   const key = `${clientId}|${month}`;
 
   useEffect(() => {
-    if (!clientId || !month || locked) return;
+    // `paused` (gravação em andamento na tela): ao terminar, o efeito roda de novo e relê a situação.
+    if (!clientId || !month || locked || paused) return;
     let active = true;
     loadMonthRoutines(clientId, month)
       .then((value) => active && setState({ key: `${clientId}|${month}`, value }))
@@ -31,7 +32,7 @@ export function useMonthRoutines(clientId: string | undefined, month: string | n
     return () => {
       active = false;
     };
-  }, [clientId, month, locked, reloadCount]);
+  }, [clientId, month, locked, paused, reloadCount]);
 
   const post = useCallback(async (): Promise<string | null> => {
     if (!clientId || !month) return null;

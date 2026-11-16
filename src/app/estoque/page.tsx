@@ -137,7 +137,7 @@ export default function EstoquePage() {
           ) : undefined
         }
       />
-      <ControlsTabs month={month} />
+      <ControlsTabs month={month} busy={data.busy} />
       {data.error && !setup && <ControlsErrorBanner message={data.error} />}
 
       {!ctx ? (

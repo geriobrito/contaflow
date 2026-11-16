@@ -148,7 +148,7 @@ export default function ImobilizadoPage() {
           </>
         }
       />
-      <ControlsTabs month={month} />
+      <ControlsTabs month={month} busy={data.busy} />
       {data.error && !editing && !disposing && <ControlsErrorBanner message={data.error} />}
 
       {data.assets.length > 0 && (

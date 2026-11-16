@@ -162,7 +162,7 @@ export default function FinanciamentosPage() {
           </>
         }
       />
-      <ControlsTabs month={month} />
+      <ControlsTabs month={month} busy={data.busy} />
       {data.error && !editing && <ControlsErrorBanner message={data.error} />}
 
       {data.contracts.length > 0 && (

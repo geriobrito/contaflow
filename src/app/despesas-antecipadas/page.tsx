@@ -166,7 +166,7 @@ export default function DespesasAntecipadasPage() {
           </>
         }
       />
-      <ControlsTabs month={month} />
+      <ControlsTabs month={month} busy={data.busy} />
       {data.error && !editing && <ControlsErrorBanner message={data.error} />}
 
       {data.items.length > 0 && (

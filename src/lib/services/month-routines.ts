@@ -26,6 +26,8 @@ export interface RoutineInput {
 export interface MonthRoutines {
   /** O que impede fechar (uma frase por rotina pendente). */
   problems: string[];
+  /** O mesmo impedimento, por rotina (para sinalizar a aba de cada cadastro). */
+  problemsByKey: Partial<Record<RoutineKey, string>>;
   /** Avisos que não impedem (ex.: depreciação lançada à mão além da gerada). */
   warnings: string[];
   /** Alguma rotina já lançada precisa ser atualizada (e não criada). */
@@ -119,6 +121,7 @@ export async function loadMonthRoutines(clientId: string, month: string, baseRep
   const warnings = [...(dep ? [manualDepreciationWarning(dep.status, month)].filter((w): w is string => Boolean(w)) : []), ...(stk?.warnings ?? [])];
   return {
     problems,
+    problemsByKey: Object.fromEntries(byKey.flatMap(([k, r]) => (r?.closeProblem ? [[k, r.closeProblem]] : []))),
     warnings,
     updates: byKey.some(([, r]) => needsUpdate(r?.status)),
     pending: byKey.filter(([, r]) => r?.closeProblem && postable(r.status)).map(([k]) => k),

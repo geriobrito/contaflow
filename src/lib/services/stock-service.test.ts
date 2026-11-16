@@ -55,6 +55,7 @@ describe('CMV pelo estoque final (repositório local)', () => {
   it('com o estoque final de 511.749,82, exige o CMV de 785.336,96, lança e fecha', async () => {
     await saveStockCount(CLIENT, '2026-07', 511749.82, 'Relatório Bling de 31/07', await loadStockContext(CLIENT));
     await expect(closeMonth(CLIENT, '2026-07')).rejects.toThrow(/Lance o CMV de 07\/2026/);
+    expect((await loadMonthRoutines(CLIENT, '2026-07'))?.problemsByKey).toEqual({ stock: expect.stringMatching(/Lance o CMV de 07\/2026/) });
     expect(await postMonthRoutines(CLIENT, '2026-07', 'u1')).toBe('CMV do mês lançado');
     const cmv = (await getRepository().listJournalEntries(CLIENT)).find((e) => e.stockMonth === '2026-07')!;
     expect(cmv.memo).toMatch(/Relatório Bling de 31\/07/);
