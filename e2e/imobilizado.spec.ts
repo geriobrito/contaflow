@@ -169,6 +169,19 @@ test('imobilizado: cadastro do bem, depreciação no fechamento e balanço', asy
     await expect(schedule.getByRole('row', { name: /1\/36.*07\/04\/2025.*2\.574,15.*837,98.*1\.736,17.*74\.443,77/ })).toBeVisible();
   });
 
+  await test.step('painel: rotina do mês aponta o passo que falta', async () => {
+    await page.goto('/painel');
+    const routine = page.getByRole('region', { name: 'Rotina do mês' });
+    await expect(routine.getByRole('heading', { name: 'Rotina de março de 2025' })).toBeVisible();
+    // Extrato conciliado; falta a depreciação (e a apropriação) em Bens e Contratos.
+    await expect(routine.getByRole('link', { name: /Conciliação.*1 lançamento conciliado/ })).toBeVisible();
+    const controls = routine.getByRole('link', { name: /Bens e Contratos.*Lance a depreciação de 03\/2025.*\+ 1 rotina/ });
+    await expect(controls).toHaveAttribute('href', '/imobilizado?mes=2025-03');
+    await expect(controls).toHaveAttribute('aria-current', 'step');
+    await expect(routine.getByRole('link', { name: /Fechar a competência.*Depois de 1 passo pendente/ })).toBeVisible();
+    await expect(routine.getByRole('link', { name: 'Continuar: Bens e Contratos' })).toBeVisible();
+  });
+
   await test.step('fechamento exige depreciação e apropriação do mês', async () => {
     await page.goto('/');
     await expect(page.getByText(/Lance a depreciação de 03\/2025 \(R\$\s1\.204,67\)/)).toBeVisible();

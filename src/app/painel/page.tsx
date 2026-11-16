@@ -24,6 +24,9 @@ import { loadResultWindow } from '@/lib/services/result-loader';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
 import { useOfficeAgenda } from '@/hooks/agenda/useOfficeAgenda';
 import { WeekAgenda } from '@/components/painel/WeekAgenda';
+import { MonthRoutineCard } from '@/components/painel/MonthRoutineCard';
+import { useMonthStepData } from '@/hooks/painel/useMonthStepData';
+import { monthRoutineSteps, workingMonths } from '@/lib/month-steps';
 import { todayISO } from '@/lib/business-days';
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
@@ -49,6 +52,8 @@ function readView(): PanelView | null {
     return null;
   }
 }
+/** Lista estável enquanto o plano de contas não chega (não refaz a leitura da rotina do mês). */
+const NO_ACCOUNTS: readonly ChartAccount[] = [];
 const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 interface Loaded {
@@ -121,6 +126,8 @@ export default function PainelPage() {
   const [data, setData] = useState<Loaded | null>(null);
   const [execData, setExecData] = useState<{ id: string; summary: ExecutiveSummary } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Competência escolhida na "Rotina do mês"; sem escolha (ou já fechada), a mais antiga em aberto. */
+  const [routineMonth, setRoutineMonth] = useState<string | null>(null);
 
   // Com uma empresa só, a carteira é ela mesma: vai direto ao detalhe operacional ou executivo.
   const [chosenView, setChosenView] = useState<PanelView | null>(readView);
@@ -227,6 +234,26 @@ export default function PainelPage() {
   const dash = useMemo(
     () => (ready && currentClient ? buildDashboard({ client: currentClient, ...ready }) : null),
     [ready, currentClient]
+  );
+
+  // Rotina do mês: os passos do menu na competência em que há trabalho.
+  const openMonths = useMemo(() => (dash && ready ? workingMonths(dash.months, ready.today) : []), [dash, ready]);
+  const stepMonth = routineMonth && openMonths.includes(routineMonth) ? routineMonth : (openMonths[0] ?? null);
+  const stepData = useMonthStepData(view === 'empresa' ? clientId : undefined, stepMonth, ready?.accounts ?? NO_ACCOUNTS);
+  const steps = useMemo(
+    () =>
+      dash && ready && stepMonth
+        ? monthRoutineSteps({
+            month: stepMonth,
+            counts: dash.months.find((m) => m.month === stepMonth) ?? null,
+            invoices: stepData?.invoices,
+            queries: dash.queries,
+            payrollMonths: ready.payrollMonths,
+            routines: stepData ? stepData.routines : undefined,
+            journal: stepData?.journal,
+          })
+        : null,
+    [dash, ready, stepMonth, stepData]
   );
 
   const years = useMemo(() => {
@@ -357,6 +384,8 @@ export default function PainelPage() {
               href="/contas"
             />
           </section>
+
+          {steps && stepMonth && <MonthRoutineCard months={openMonths} month={stepMonth} onMonthChange={setRoutineMonth} steps={steps} />}
 
           {/* Atenção */}
           <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
