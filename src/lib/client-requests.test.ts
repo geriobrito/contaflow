@@ -14,7 +14,9 @@ import {
   pendingQueryCounts,
   queryStage,
   requestLink,
+  restoreAnswerDrafts,
   sentAtByTransaction,
+  serializeAnswerDraft,
   tokenFromLocation,
   unreadSummaryByClient,
   unreadTransactionIds,
@@ -213,5 +215,34 @@ describe('respostas do cliente', () => {
 
     const reminderNone = buildReminderMessage(request({ clientName: 'Padaria Aurora', expiresAtMs: Date.UTC(2025, 3, 15, 12, 0, 0) }), 'https://app.exemplo/responder#t=abc');
     expect(reminderNone).toContain('Ainda aguardamos a resposta de 2 pergunta(s)');
+  });
+});
+
+describe('rascunho das respostas no aparelho do cliente', () => {
+  it('devolve o que foi digitado e não enviado', () => {
+    const saved = serializeAnswerDraft(['compra de embalagens', ''], undefined);
+    expect(restoreAnswerDrafts(['', ''], saved)).toEqual(['compra de embalagens', '']);
+  });
+
+  it('sobre o mesmo envio, o rascunho vale inclusive para apagar ou corrigir uma resposta', () => {
+    const saved = serializeAnswerDraft(['corrigida', ''], '2026-11-10T12:00:00.000Z');
+    expect(restoreAnswerDrafts(['antiga', 'outra'], saved, '2026-11-10T12:00:00.000Z')).toEqual(['corrigida', '']);
+  });
+
+  it('com envio posterior ao rascunho, o gravado prevalece e o rascunho só preenche o que falta', () => {
+    const saved = serializeAnswerDraft(['velha', 'pendente'], undefined);
+    expect(restoreAnswerDrafts(['enviada de outro aparelho', ''], saved, '2026-11-12T09:00:00.000Z')).toEqual(['enviada de outro aparelho', 'pendente']);
+  });
+
+  it('ignora rascunho ilegível, de outro formato ou de outra quantidade de perguntas', () => {
+    expect(restoreAnswerDrafts(['a'], null)).toEqual(['a']);
+    expect(restoreAnswerDrafts(['a'], '{nao é json')).toEqual(['a']);
+    expect(restoreAnswerDrafts(['a'], JSON.stringify({ base: null, texts: ['x', 'y'] }))).toEqual(['a']);
+    expect(restoreAnswerDrafts(['a'], JSON.stringify({ base: null, texts: [1] }))).toEqual(['a']);
+  });
+
+  it('corta o rascunho no tamanho máximo da resposta', () => {
+    const saved = serializeAnswerDraft(['x'.repeat(MAX_ANSWER_LENGTH + 50)]);
+    expect(restoreAnswerDrafts([''], saved)[0]).toHaveLength(MAX_ANSWER_LENGTH);
   });
 });

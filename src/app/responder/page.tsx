@@ -5,7 +5,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { BrandMark } from '@/components/ui/BrandMark';
 import type { ClientRequest, ClientRequestAnswer } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
-import { answerAt, MAX_ANSWER_LENGTH, tokenFromLocation } from '@/lib/client-requests';
+import { answerAt, answerDraftKey, MAX_ANSWER_LENGTH, restoreAnswerDrafts, serializeAnswerDraft, tokenFromLocation } from '@/lib/client-requests';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { TextSkeleton } from '@/components/ui/Skeleton';
 
@@ -13,6 +13,31 @@ const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 
 
 /** Texto de cada resposta, na ordem das perguntas. */
 const draftsOf = (req: ClientRequest): string[] => req.items.map((_, i) => answerAt(req, i)?.text ?? '');
+
+/**
+ * Rascunho no aparelho do cliente: o que foi digitado e ainda não enviado sobrevive a fechar a
+ * aba ou trocar de aplicativo. O armazenamento pode estar bloqueado (aba anônima): sem ele, a
+ * tela funciona como antes.
+ */
+const draftStore = {
+  read(id: string): string | null {
+    try {
+      return window.localStorage.getItem(answerDraftKey(id));
+    } catch {
+      return null;
+    }
+  },
+  write(id: string, value: string | null): void {
+    try {
+      if (value === null) window.localStorage.removeItem(answerDraftKey(id));
+      else window.localStorage.setItem(answerDraftKey(id), value);
+    } catch {
+      /* sem armazenamento: segue sem rascunho */
+    }
+  },
+};
+
+const sameTexts = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 
 /**
  * Página pública (sem login) em que o cliente justifica os lançamentos perguntados pelo
@@ -26,6 +51,8 @@ export default function ResponderPage() {
   const [drafts, setDrafts] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  /** O rascunho deste aparelho foi trazido de volta ao abrir o link. */
+  const [restored, setRestored] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -40,8 +67,12 @@ export default function ResponderPage() {
         if (!active) return;
         if (!req) return setState('invalid');
         setRequest(req);
-        setDrafts(draftsOf(req));
-        setState(req.status !== 'OPEN' || Date.now() >= req.expiresAtMs ? 'closed' : 'ready');
+        const open = req.status === 'OPEN' && Date.now() < req.expiresAtMs;
+        const sent = draftsOf(req);
+        const texts = open ? restoreAnswerDrafts(sent, draftStore.read(req.id), req.respondedAt) : sent;
+        setDrafts(texts);
+        setRestored(!sameTexts(texts, sent));
+        setState(open ? 'ready' : 'closed');
       })
       .catch(() => active && setState('invalid'));
     // Trocar só o fragmento não recarrega a página: outro link aberto na mesma aba recomeça do zero.
@@ -71,6 +102,8 @@ export default function ResponderPage() {
       const updated = { ...request, answers, respondedAt: now };
       setRequest(updated);
       setDrafts(draftsOf(updated));
+      draftStore.write(request.id, null);
+      setRestored(false);
       setState('sent');
     } catch (e) {
       setError(`Não foi possível enviar (${describe(e)}). Tente de novo.`);
@@ -79,7 +112,15 @@ export default function ResponderPage() {
     }
   };
 
+  const editDraft = (idx: number, value: string) => {
+    if (!request) return;
+    const next = drafts.map((text, i) => (i === idx ? value : text));
+    setDrafts(next);
+    draftStore.write(request.id, sameTexts(next, draftsOf(request)) ? null : serializeAnswerDraft(next, request.respondedAt));
+  };
+
   const answered = drafts.filter((d) => d.trim()).length;
+  const unsent = Boolean(request) && state !== 'closed' && !sameTexts(drafts, draftsOf(request!));
 
   return (
     <main className="min-h-screen bg-canvas px-4 py-10">
@@ -114,7 +155,12 @@ export default function ResponderPage() {
                   Este link não aceita mais respostas. Se precisar complementar algo, fale com o escritório.
                 </p>
               )}
-              {state === 'sent' && (
+              {restored && state === 'ready' && (
+                <p role="status" className="rounded-2xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200/60 dark:border-sky-500/25 px-4 py-3 text-[13px] text-sky-800 dark:text-sky-300">
+                  Recuperamos o que você já tinha escrito neste aparelho. Confira e toque em <b>Enviar respostas</b>: o escritório só recebe depois do envio.
+                </p>
+              )}
+              {state === 'sent' && !unsent && (
                 <p role="status" className="flex items-center gap-2 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/60 dark:border-emerald-500/25 px-4 py-3 text-[13px] text-emerald-800 dark:text-emerald-300">
                   <CheckCircle2 className="w-4 h-4" /> Respostas enviadas. Obrigado! Você pode complementar enquanto o link estiver aberto.
                 </p>
@@ -137,7 +183,7 @@ export default function ResponderPage() {
                   <textarea
                     value={drafts[idx] ?? ''}
                     disabled={state === 'closed'}
-                    onChange={(e) => setDrafts((d) => d.map((text, i) => (i === idx ? e.target.value : text)))}
+                    onChange={(e) => editDraft(idx, e.target.value)}
                     rows={3}
                     maxLength={MAX_ANSWER_LENGTH}
                     placeholder="Ex.: pagamento do fornecedor de embalagens, nota 1234"
@@ -160,6 +206,11 @@ export default function ResponderPage() {
                   {sending ? 'Enviando…' : `Enviar respostas (${answered} de ${request.items.length})`}
                 </button>
               </div>
+            )}
+            {unsent && (
+              <p className="text-center text-[12px] text-stone-500 dark:text-stone-400">
+                O que você escreve fica guardado neste aparelho até enviar: pode sair e continuar depois pelo mesmo link.
+              </p>
             )}
             <p className="text-center text-[12px] text-stone-500 dark:text-stone-400">
               Link válido até {new Date(request.expiresAtMs).toLocaleDateString('pt-BR')}. Somente estas perguntas ficam visíveis por ele.

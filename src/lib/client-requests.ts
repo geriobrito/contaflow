@@ -345,3 +345,35 @@ export function buildReminderMessage(
   }
   return `Olá! Ainda aguardamos a resposta de ${missing} pergunta(s) sobre lançamentos da ${request.clientName} para fecharmos a contabilidade. Responda por este link (válido até ${validUntil}): ${url}`;
 }
+
+/* =========================================================================
+   Rascunho das respostas no aparelho do cliente (link público)
+   ========================================================================= */
+
+/** Chave do rascunho de um link no armazenamento do navegador do cliente. */
+export const answerDraftKey = (requestId: string): string => `contaflow:responder-rascunho:${requestId}`;
+
+/** Rascunho guardado: os textos digitados e o envio (`respondedAt`) sobre o qual foram digitados. */
+export const serializeAnswerDraft = (texts: readonly string[], respondedAt?: string): string =>
+  JSON.stringify({ base: respondedAt ?? null, texts });
+
+/**
+ * Textos a mostrar ao reabrir o link: o que o cliente digitou e não enviou volta para a tela.
+ * Se houve um envio depois do rascunho (outro aparelho), o que já está gravado prevalece e o
+ * rascunho só preenche as perguntas ainda sem resposta. Rascunho ilegível ou de outro formato
+ * é ignorado.
+ */
+export function restoreAnswerDrafts(server: readonly string[], savedJson: string | null, respondedAt?: string): string[] {
+  if (!savedJson) return [...server];
+  let saved: unknown;
+  try {
+    saved = JSON.parse(savedJson);
+  } catch {
+    return [...server];
+  }
+  const { base, texts } = (saved ?? {}) as { base?: unknown; texts?: unknown };
+  if (!Array.isArray(texts) || texts.length !== server.length || texts.some((t) => typeof t !== 'string')) return [...server];
+  const drafts = (texts as string[]).map((t) => t.slice(0, MAX_ANSWER_LENGTH));
+  if (base === (respondedAt ?? null)) return drafts;
+  return server.map((text, i) => text || drafts[i]);
+}
