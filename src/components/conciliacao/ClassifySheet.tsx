@@ -244,6 +244,29 @@ export function ClassifySheet({
     !negative && Boolean(accountId) && (investmentAccountIds?.includes(accountId) || accounts.find((a) => a.id === accountId)?.code === INVESTMENT_DEFAULT_CODE);
   // Saída: despesas e custos primeiro; entrada: receitas primeiro.
   const pickerAccounts = useMemo(() => orderAccountsByDirection(accounts, directionOf(transaction.amount)), [accounts, transaction.amount]);
+  const chosen = accountId ? accountsById.get(accountId) : undefined;
+  // Larga na classificação (contas à esquerda, nota e regra à direita) e no rateio; estreita no texto.
+  const width = mode === 'single' ? 'max-w-[960px]' : mode === 'split' ? 'max-w-[860px]' : 'max-w-[640px]';
+
+  /** Desfazer a conciliação: pede um segundo clique. Fica ao lado do botão principal. */
+  const undoButton =
+    isEditing && !locked ? (
+      <button
+        type="button"
+        disabled={isSaving}
+        onClick={() => {
+          if (confirmUndo) void onUnreconcile();
+          else setConfirmUndo(true);
+        }}
+        className={`rounded-xl px-4 h-12 text-sm font-medium whitespace-nowrap transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
+          confirmUndo
+            ? 'bg-rose-600 text-white shadow-[0_2px_10px_rgba(225,29,72,0.3)] animate-pop-in'
+            : 'text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+        }`}
+      >
+        {confirmUndo ? 'Clique para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
+      </button>
+    ) : null;
 
   const dialog = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -253,15 +276,18 @@ export function ClassifySheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="classify-title"
-        className={`relative w-full ${mode === 'split' ? 'max-w-[640px]' : 'max-w-[440px]'} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-line shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
+        className={`relative w-full ${width} max-h-[calc(100vh-2rem)] my-auto flex flex-col overflow-hidden transition-[max-width] duration-200 rounded-[28px] bg-[#F9F9F8]/95 dark:bg-stone-900/95 backdrop-blur-2xl border border-line shadow-[0_24px_64px_rgba(0,0,0,0.18)] animate-sheet-in`}
       >
         {/* Cabeçalho (fixo) */}
-        <div className="shrink-0 flex items-start gap-3 px-6 pt-5 pb-4">
+        <div className="shrink-0 flex items-start gap-4 px-6 pt-5 pb-4 border-b border-line">
           <div className="flex-1 min-w-0">
-            <h2 id="classify-title" className="text-[17px] font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+            <h2 id="classify-title" className="text-[12px] font-medium uppercase tracking-[0.08em] text-stone-500 dark:text-stone-400">
               {isEditing ? 'Editar classificação' : 'Classificar lançamento'}
             </h2>
-            <p className="mt-1 text-[13px] text-stone-500 truncate">{transaction.memo}</p>
+            {/* O histórico inteiro (até 3 linhas): é por ele que se reconhece o lançamento. */}
+            <p className="mt-1 text-[16px] font-medium tracking-tight leading-snug text-stone-900 dark:text-stone-100 wrap-break-word line-clamp-3" title={transaction.memo}>
+              {transaction.memo}
+            </p>
             {isEditing && (
               <p className="mt-2 inline-flex items-center gap-1.5 max-w-full text-[12px] text-stone-500">
                 <StatusBadge status={transaction.status} />
@@ -275,6 +301,14 @@ export function ClassifySheet({
               </p>
             )}
           </div>
+          <div className="shrink-0 text-right">
+            <p className={`text-[22px] leading-tight font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
+              {formatCurrency(transaction.amount)}
+            </p>
+            <p className="mt-0.5 text-[12px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">
+              {formatDateBR(transaction.date)} · {negative ? 'saída' : 'entrada'}
+            </p>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -286,13 +320,7 @@ export function ClassifySheet({
         </div>
 
         {/* Corpo: rola por dentro quando a janela é baixa; cabeçalho e botão de confirmar ficam sempre visíveis */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-2">
-          <div className="px-6 pb-4 flex items-baseline justify-between">
-            <span className="text-[12px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">{formatDateBR(transaction.date)}</span>
-            <span className={`text-[22px] font-semibold tracking-tight font-mono tabular-nums ${negative ? 'text-stone-900 dark:text-stone-100' : 'text-emerald-600 dark:text-emerald-300'}`}>
-              {formatCurrency(transaction.amount)}
-            </span>
-          </div>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pt-4 pb-2">
 
           {locked && (
             <div role="status" className="mx-6 mb-4 flex items-start gap-2.5 px-3.5 py-3 rounded-2xl bg-stone-900/4 dark:bg-white/6 border border-black/6 dark:border-white/8 text-[12px] text-stone-600 dark:text-stone-300">
@@ -397,7 +425,30 @@ export function ClassifySheet({
               />
             </div>
           ) : (
-          <div className="px-6 space-y-5">
+          <div className="px-6 grid gap-x-6 gap-y-5 md:grid-cols-[minmax(0,1fr)_360px]">
+            {/* Coluna das contas: a lista alta, para escolher sem rolar tanto */}
+            <div className="min-w-0">
+            {/* Plano de contas */}
+            <section className="space-y-2">
+              <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
+              <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus tall />
+              <button
+                type="button"
+                onClick={() => {
+                  setGrossNetFirst(true);
+                  setRedemption(false);
+                  setMode('split');
+                }}
+                className="px-1 text-[12px] font-medium text-accent-ink hover:underline"
+              >
+                {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
+              </button>
+            </section>
+
+            </div>
+
+            {/* Coluna de apoio: a nota fiscal, os avisos da conta escolhida e a regra */}
+            <div className="min-w-0 space-y-4">
             {invoiceMatch && (
               <InvoiceMatchCard
                 match={invoiceMatch}
@@ -439,10 +490,6 @@ export function ClassifySheet({
                 onViewDetails={onViewInvoice ? () => onViewInvoice(linkedInvoice) : undefined}
               />
             )}
-            {/* Plano de contas */}
-            <section className="space-y-2">
-              <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-              <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus />
               {floatSplit && (
                 <div role="status" className="rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-3.5 py-3 text-[12px] text-amber-900 dark:text-amber-200 space-y-2">
                   <p>
@@ -481,19 +528,6 @@ export function ClassifySheet({
                   </button>
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  setGrossNetFirst(true);
-                  setRedemption(false);
-                  setMode('split');
-                }}
-                className="px-1 text-[12px] font-medium text-accent-ink hover:underline"
-              >
-                {negative ? 'Pagou o líquido, com imposto retido? Lançar bruto × líquido' : 'Recebeu o líquido, com retenção ou taxa? Lançar bruto × líquido'}
-              </button>
-            </section>
-
             {/* Aprendizado */}
             <RuleLearnPanel
               checked={learnRule}
@@ -517,6 +551,7 @@ export function ClassifySheet({
                 ) : null
               }
             />
+            </div>
           </div>
           )}
         </div>
@@ -566,34 +601,32 @@ export function ClassifySheet({
               </button>
             </>
           ) : (
-          <button
-            type="button"
-            disabled={!accountId || isSaving || ruleBlocked}
-            onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType, acceptedInvoiceId)}
-            className="w-full h-12 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
-          >
-            {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
-          </button>
-          )}
-          {isEditing && !locked && (mode === 'single' || mode === 'split') && (
-            <div className="mt-2 flex justify-center">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <p className="flex-1 min-w-[220px] text-[13px]" aria-live="polite">
+                {chosen ? (
+                  <>
+                    <span className="block text-[11px] font-medium uppercase tracking-[0.06em] text-stone-500 dark:text-stone-400">Conta escolhida</span>
+                    <span className="block truncate font-medium text-stone-900 dark:text-stone-100">
+                      <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 mr-2">{chosen.code}</span>
+                      {chosen.name}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-stone-500 dark:text-stone-400">Escolha a conta na lista: digite o código ou parte do nome e tecle Enter.</span>
+                )}
+              </p>
+              {undoButton}
               <button
                 type="button"
-                disabled={isSaving}
-                onClick={() => {
-                  if (confirmUndo) void onUnreconcile();
-                  else setConfirmUndo(true);
-                }}
-                className={`rounded-xl px-4 py-2 text-sm font-medium transition-all duration-150 active:scale-[0.97] disabled:opacity-40 ${
-                  confirmUndo
-                    ? 'bg-rose-600 text-white shadow-[0_2px_10px_rgba(225,29,72,0.3)] animate-pop-in'
-                    : 'text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                }`}
+                disabled={!accountId || isSaving || ruleBlocked}
+                onClick={() => void onConfirm(accountId, learnRule, customPattern, matchType, acceptedInvoiceId)}
+                className="w-full sm:w-auto sm:min-w-[240px] h-12 px-6 rounded-2xl bg-accent hover:bg-accent-hover text-white text-[15px] font-medium tracking-tight shadow-[0_4px_14px_rgba(181,85,47,0.25)] disabled:opacity-40 disabled:shadow-none active:scale-[0.98] transition-all duration-150"
               >
-                {confirmUndo ? 'Clique para confirmar: voltar para Pendente' : 'Desfazer conciliação'}
+                {isSaving ? 'Salvando…' : isEditing ? 'Salvar nova classificação' : 'Conciliar'}
               </button>
             </div>
           )}
+          {mode === 'split' && undoButton && <div className="mt-2 flex justify-center">{undoButton}</div>}
         </div>
       </div>
     </div>
