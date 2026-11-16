@@ -51,6 +51,7 @@
 - **Nomenclatura**: Componentes em PascalCase (`*.tsx`), utilitários/serviços em kebab-case (`*.ts`), hooks em camelCase (`use*.ts`).
 - **Tratamento de Erros**: Falha explícita na UI em operações negadas pelo backend/regras de validação.
 - **Datas**: "hoje" e "mês atual" sempre por `todayISO()` (`src/lib/business-days.ts`, data local); nunca `new Date().toISOString()`, que é UTC e vira o dia às 21h de Brasília.
+- **Campo de valor**: `MoneyInput` (`src/components/ui/MoneyInput.tsx`) em telas novas: digita-se o valor como ele é ("1500" ou "1.500,00") e ele aparece formatado ao sair do campo; nenhum campo trata os dígitos como centavos entrando pela direita.
 - **Avisos (toast)**: `useToast` + `<Toast />` de `src/components/ui/Toast.tsx`; sem marcação própria por tela.
 - **Tema escuro**: fio ou realce em preto translúcido (`border-black/N`, `hover:bg-black/N`) sempre com o par `dark:` (ou os tokens `border-line` / `border-line-strong`).
 

@@ -85,12 +85,12 @@ export function monthRoutineSteps(input: MonthStepsInput): RoutineStep[] {
   /* 2. Notas fiscais: informativo, não impede o fechamento */
   steps.push(
     !invoices
-      ? { key: 'invoices', label: 'Notas Fiscais', status: 'loading', detail: 'Conferindo…', href: '/nfe' }
+      ? { key: 'invoices', label: 'Notas Fiscais', status: 'loading', detail: 'Conferindo…', href: `/nfe${q}` }
       : invoices.total === 0
-        ? { key: 'invoices', label: 'Notas Fiscais', status: 'hint', detail: 'Nenhuma nota do mês importada', href: '/nfe' }
+        ? { key: 'invoices', label: 'Notas Fiscais', status: 'hint', detail: 'Nenhuma nota do mês importada', href: `/nfe${q}` }
         : invoices.unlinked > 0
-          ? { key: 'invoices', label: 'Notas Fiscais', status: 'hint', detail: `${plural(invoices.total, 'nota', 'notas')} · ${invoices.unlinked} sem lançamento vinculado`, href: '/nfe' }
-          : { key: 'invoices', label: 'Notas Fiscais', status: 'done', detail: `${plural(invoices.total, 'nota vinculada', 'notas vinculadas')} a lançamentos`, href: '/nfe' }
+          ? { key: 'invoices', label: 'Notas Fiscais', status: 'hint', detail: `${plural(invoices.total, 'nota', 'notas')} · ${invoices.unlinked} sem lançamento vinculado`, href: `/nfe${q}` }
+          : { key: 'invoices', label: 'Notas Fiscais', status: 'done', detail: `${plural(invoices.total, 'nota vinculada', 'notas vinculadas')} a lançamentos`, href: `/nfe${q}` }
   );
 
   /* 3. Pendências do cliente */
@@ -144,12 +144,12 @@ export function monthRoutineSteps(input: MonthStepsInput): RoutineStep[] {
   /* 6. Lançamentos manuais: o que se repete todo mês é sugerido, não exigido */
   steps.push(
     !journal
-      ? { key: 'journal', label: 'Lançamentos Manuais', status: 'loading', detail: 'Conferindo…', href: '/lancamentos' }
+      ? { key: 'journal', label: 'Lançamentos Manuais', status: 'loading', detail: 'Conferindo…', href: `/lancamentos${q}` }
       : journal.repeatable > 0
-        ? { key: 'journal', label: 'Lançamentos Manuais', status: 'hint', detail: `${plural(journal.repeatable, 'lançamento', 'lançamentos')} de ${shortMonth(previousMonthOf(month))} a repetir`, href: '/lancamentos' }
+        ? { key: 'journal', label: 'Lançamentos Manuais', status: 'hint', detail: `${plural(journal.repeatable, 'lançamento', 'lançamentos')} de ${shortMonth(previousMonthOf(month))} a repetir`, href: `/lancamentos${q}` }
         : journal.manual > 0
-          ? { key: 'journal', label: 'Lançamentos Manuais', status: 'done', detail: plural(journal.manual, 'lançamento manual no mês', 'lançamentos manuais no mês'), href: '/lancamentos' }
-          : { key: 'journal', label: 'Lançamentos Manuais', status: 'na', detail: 'Nenhum lançamento manual no mês', href: '/lancamentos' }
+          ? { key: 'journal', label: 'Lançamentos Manuais', status: 'done', detail: plural(journal.manual, 'lançamento manual no mês', 'lançamentos manuais no mês'), href: `/lancamentos${q}` }
+          : { key: 'journal', label: 'Lançamentos Manuais', status: 'na', detail: 'Nenhum lançamento manual no mês', href: `/lancamentos${q}` }
   );
 
   /* Fechamento: só depois do que falta */

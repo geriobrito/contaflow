@@ -257,6 +257,10 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(exec.getByRole('img', { name: /Ponte do resultado/ }).locator('svg').first()).toBeVisible();
     await expect(exec.getByRole('img', { name: /Maiores contas de custo e despesa/ }).locator('svg').first()).toBeVisible();
     await expect(exec.getByText(/Maior gasto: Aluguéis e Condomínios/)).toBeVisible();
+    // O relatório sai em PDF gerado pelo sistema, sem depender do "Imprimir" do navegador.
+    const pdf = page.waitForEvent('download');
+    await exec.getByRole('button', { name: 'Baixar PDF' }).click();
+    expect((await pdf).suggestedFilename()).toMatch(/^Relatorio_Executivo_.*\.pdf$/);
     await page.getByRole('radio', { name: 'Operacional' }).click();
   });
 

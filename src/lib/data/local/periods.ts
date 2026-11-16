@@ -57,7 +57,13 @@ export function periodMethods(ctx: LocalContext) {
     async listAudit(clientId, options = {}) {
       await ready();
       return read<AuditEntry>(LOCAL_KEYS.audit)
-        .filter((a) => a.clientId === clientId && (!options.transactionId || a.transactionId === options.transactionId))
+        .filter(
+          (a) =>
+            a.clientId === clientId &&
+            (!options.transactionId || a.transactionId === options.transactionId) &&
+            (!options.before || a.at < options.before) &&
+            (!options.since || a.at >= options.since)
+        )
         .sort((a, b) => b.at.localeCompare(a.at))
         .slice(0, options.limit ?? 200);
     },

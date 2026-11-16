@@ -149,6 +149,7 @@ export function BulkClassifyModal({
               value={accountId}
               onChange={setAccountId}
               suggestions={suggestions}
+              size="medium"
             />
           </div>
 

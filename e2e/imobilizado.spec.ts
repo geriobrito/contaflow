@@ -180,6 +180,12 @@ test('imobilizado: cadastro do bem, depreciação no fechamento e balanço', asy
     await expect(controls).toHaveAttribute('aria-current', 'step');
     await expect(routine.getByRole('link', { name: /Fechar a competência.*Depois de 1 passo pendente/ })).toBeVisible();
     await expect(routine.getByRole('link', { name: 'Continuar: Bens e Contratos' })).toBeVisible();
+    // Os atalhos levam a competência no endereço, e a tela abre nela (não no mês corrente).
+    await expect(routine.getByRole('link', { name: /Notas Fiscais/ })).toHaveAttribute('href', '/nfe?mes=2025-03');
+    await routine.getByRole('link', { name: /Lançamentos Manuais/ }).click();
+    await page.waitForURL('**/lancamentos?mes=2025-03');
+    await expect(page.getByText('Competência 2025-03 aberta')).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Mês' }).getByRole('radio', { name: 'Mar' })).toBeChecked();
   });
 
   await test.step('fechamento exige depreciação e apropriação do mês', async () => {

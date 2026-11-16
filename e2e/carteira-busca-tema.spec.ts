@@ -78,6 +78,12 @@ test('carteira no painel, busca rápida (Ctrl+K), tema e telas sem erro', async 
   await expect(carteira.getByRole('listitem').filter({ hasText: 'Mar Azul' })).toContainText('Extrato de Bradesco desatualizado');
   await expect(carteira.getByRole('listitem').filter({ hasText: 'Luz Serviços' })).toContainText('Em dia');
 
+  // Rotinas do mês: conferidas só a pedido (leem os lançamentos de cada empresa). Sem bens,
+  // contratos nem folha cadastrados, não há o que lançar e ninguém sai do "em dia".
+  await carteira.getByRole('button', { name: 'Conferir rotinas do mês' }).click();
+  await expect(carteira.getByText('Rotinas do mês em dia')).toBeVisible();
+  await expect(carteira.getByText('1 de 3 em dia')).toBeVisible();
+
   await first.getByRole('button', { name: '3 pendentes' }).click();
   await page.waitForURL(`**/?mes=${prev}&filtro=PENDING`);
   await expect(page.locator('aside').getByText('Padaria Aurora').first()).toBeVisible();

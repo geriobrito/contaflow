@@ -66,7 +66,7 @@ function stateOptions(direction: InvoiceDirectionFilter): readonly { value: Invo
  */
 export default function NotasFiscaisPage() {
   const { currentClient } = useClient();
-  const period = usePeriod('month');
+  const period = usePeriod('month', false, true);
   const {
     invoices,
     transactions,

@@ -1,4 +1,4 @@
-import { doc, limit, orderBy, setDoc, where, writeBatch, type QueryConstraint } from 'firebase/firestore';
+import { doc, limit, orderBy, setDoc, Timestamp, where, writeBatch, type QueryConstraint } from 'firebase/firestore';
 import type { PeriodSnapshot, ResultSummary } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 import { getDocs } from '@/lib/data/counted-reads';
@@ -67,6 +67,9 @@ export function periodMethods(ctx: FirestoreContext) {
       // Índices compostos: (orgId, clientId, at desc) e (orgId, clientId, transactionId, at desc).
       const constraints: QueryConstraint[] = [where('clientId', '==', clientId)];
       if (options.transactionId) constraints.push(where('transactionId', '==', options.transactionId));
+      // `at` é o carimbo do servidor: o intervalo usa os mesmos índices (igualdades + `at`).
+      if (options.before) constraints.push(where('at', '<', Timestamp.fromDate(new Date(options.before))));
+      if (options.since) constraints.push(where('at', '>=', Timestamp.fromDate(new Date(options.since))));
       constraints.push(orderBy('at', 'desc'), limit(options.limit ?? 200));
       const snap = await getDocs(scoped(COL.audit, ...constraints));
       return snap.docs.map(auditFrom);

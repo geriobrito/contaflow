@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import { AlertCircle, Check, ChevronRight, CircleDashed, Lock, LockOpen, RotateCw } from 'lucide-react';
+import { AlertCircle, Check, ChevronRight, CircleDashed, ListChecks, Lock, LockOpen, RotateCw } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
 import type { PortfolioEntry } from '@/hooks/painel/usePortfolio';
-import { shortMonth, sortPortfolio, type PortfolioRow, type TaskSeverity } from '@/lib/portfolio';
+import { shortMonth, sortPortfolio, withRoutineTasks, type PortfolioRow, type TaskSeverity } from '@/lib/portfolio';
+import { usePortfolioRoutines } from '@/hooks/painel/usePortfolioRoutines';
 import { SURFACE } from '@/components/ui/primitives';
 import { Skeleton } from '@/components/ui/Skeleton';
 
@@ -45,10 +46,11 @@ interface PortfolioViewProps {
 export function PortfolioView({ clients, entries, currentClientId, onOpenClient, onTask, onRefresh }: PortfolioViewProps) {
   const usable = useMemo(() => clients.filter((c) => !c.deletingAt), [clients]);
   const byId = useMemo(() => new Map(usable.map((c) => [c.id, c] as const)), [usable]);
-  const ready = useMemo(
-    () => sortPortfolio(usable.flatMap((c) => (entries[c.id]?.status === 'ready' ? [(entries[c.id] as { row: PortfolioRow }).row] : []))),
-    [usable, entries]
-  );
+  const routines = usePortfolioRoutines();
+  /** Linhas prontas, antes das rotinas: é delas que parte a conferência. */
+  const base = useMemo(() => usable.flatMap((c) => (entries[c.id]?.status === 'ready' ? [(entries[c.id] as { row: PortfolioRow }).row] : [])), [usable, entries]);
+  const ready = useMemo(() => sortPortfolio(base.map((row) => withRoutineTasks(row, routines.tasks[row.clientId] ?? []))), [base, routines.tasks]);
+  const routineCount = Object.values(routines.tasks).reduce((n, list) => n + list.length, 0);
   const waiting = usable.filter((c) => entries[c.id]?.status !== 'ready');
   const upToDate = ready.filter((r) => r.upToDate).length;
   const focus = ready[0]?.focusMonth;
@@ -62,10 +64,29 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
             ? `Carregando ${usable.length} empresa(s)…`
             : `${upToDate} de ${usable.length} em dia${focus ? ` · competência de ${shortMonth(focus)}` : ''}`}
         </p>
+        {routines.checked && (
+          <p role="status" className="text-[12px] text-stone-500">
+            {routineCount > 0 ? `${routineCount} rotina(s) do mês a lançar ou informar` : 'Rotinas do mês em dia'}
+            {routines.failed > 0 && ` · ${routines.failed} empresa(s) não conferida(s)`}
+          </p>
+        )}
         <button
           type="button"
-          onClick={onRefresh}
-          className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-colors"
+          disabled={base.length === 0 || routines.progress !== null}
+          onClick={() => void routines.check(base)}
+          title="Confere depreciação, apropriação, juros, rendimento, CMV e provisão da folha da competência de cada empresa. Lê os lançamentos manuais do mês de cada uma."
+          className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-colors disabled:opacity-60 disabled:pointer-events-none"
+        >
+          <ListChecks className="w-3.5 h-3.5" />
+          {routines.progress ? `Conferindo ${routines.progress.done}/${routines.progress.total}…` : 'Conferir rotinas do mês'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            routines.reset();
+            onRefresh();
+          }}
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[12px] text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 hover:bg-black/5 dark:hover:bg-white/8 transition-colors"
         >
           <RotateCw className="w-3.5 h-3.5" />
           Atualizar
@@ -105,6 +126,7 @@ export function PortfolioView({ clients, entries, currentClientId, onOpenClient,
                       key={t.id}
                       type="button"
                       onClick={() => onTask(client, t.href)}
+                      title={t.title}
                       className={`inline-flex items-center h-6 px-2.5 rounded-full border text-[12px] font-medium transition-colors active:scale-[0.97] ${CHIP[t.severity]}`}
                     >
                       {t.label}

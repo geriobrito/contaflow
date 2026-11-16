@@ -1,12 +1,15 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
+import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowDownRight, ArrowUpRight, Lightbulb, Printer, TrendingUp } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, FileText, Lightbulb, Printer, TrendingUp } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
 import type { ExecutiveSummary } from '@/lib/executive-metrics';
 import { executiveInsights } from '@/lib/executive-insights';
 import { formatCNPJ, formatCurrency } from '@/lib/utils/formatters';
+import { describeError } from '@/lib/utils/errors';
+import { reportError } from '@/lib/monitoring';
 import { BUTTON, EmptyState, SURFACE } from '@/components/ui/primitives';
 import {
   MarginTrendChart,
@@ -104,6 +107,24 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
   const months = summary.monthly;
   const insights = executiveInsights(summary);
   const versus = `Frente a ${summary.previous.periodLabel}`;
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  /** PDF gerado pelo sistema (carregado só ao pedir): sai igual em qualquer máquina, sem o "Imprimir" do navegador. */
+  const exportPdf = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const [{ generateExecutivePdf }, { downloadBlob }] = await Promise.all([import('@/lib/export/executive-pdf'), import('@/lib/export/dre-rows')]);
+      const { blob, fileName } = generateExecutivePdf({ client, summary, insights });
+      downloadBlob(blob, fileName);
+    } catch (e) {
+      reportError(e, { area: 'painel', op: 'exportar relatório executivo' });
+      setExportError(`Não foi possível gerar o PDF (${describeError(e)}).`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-5" role="region" aria-label="Visão Executiva">
@@ -143,12 +164,27 @@ export function ExecutiveDashboard({ client, summary }: ExecutiveDashboardProps)
           <Link href="/dre" className={`${BUTTON.secondary} h-9 px-3.5 text-[12px]`}>
             Ver DRE Completa
           </Link>
-          <button type="button" onClick={() => window.print()} className={`${BUTTON.secondary} h-9 px-3.5 text-[12px]`} title="Imprimir ou salvar PDF executivo para enviar ao cliente">
+          <button
+            type="button"
+            disabled={exporting || summary.monthsWithData === 0}
+            onClick={() => void exportPdf()}
+            className={`${BUTTON.secondary} h-9 px-3.5 text-[12px]`}
+            title="Gerar o relatório executivo em PDF para enviar ao cliente"
+          >
+            <FileText className="w-3.5 h-3.5" />
+            <span>{exporting ? 'Gerando…' : 'Baixar PDF'}</span>
+          </button>
+          <button type="button" onClick={() => window.print()} className={`${BUTTON.secondary} h-9 px-3.5 text-[12px]`} title="Imprimir esta tela pelo navegador">
             <Printer className="w-3.5 h-3.5" />
-            <span>Imprimir Relatório</span>
+            <span>Imprimir</span>
           </button>
         </div>
       </div>
+      {exportError && (
+        <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">
+          {exportError}
+        </p>
+      )}
 
       {summary.monthsWithData === 0 ? (
         <section className={`${SURFACE} rounded-[22px]`}>

@@ -9,6 +9,7 @@ import { JOURNAL_TEMPLATES, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl
 import { buildJournalEntry, emptyJournalLines, nextJournalLine, parseTemplateValues, type JournalEntryInput } from '@/lib/journal-form';
 import { BUTTON, INPUT, INPUT_COMPACT, FIELD_LABEL } from '@/components/ui/primitives';
 import { fromCents, toCents } from '@/lib/money';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { reportError } from '@/lib/monitoring';
@@ -37,11 +38,9 @@ const CATEGORY_LABELS: Record<JournalEntryCategory, string> = {
   OTHER: 'Outros Lançamentos',
 };
 
-const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 /**
- * Valor de uma partida, estilo calculadora (o mesmo do rateio): os dígitos entram pela direita,
- * como centavos, e o campo mostra sempre "1.234,56". Vazio quando a partida não é deste lado.
+ * Valor de uma partida, no campo de valor padrão do sistema: digita-se "1500" ou "1.500,00" e o
+ * campo mostra "1.500,00" ao sair. Vazio quando a partida não é deste lado.
  */
 function AmountCell({
   value,
@@ -60,24 +59,14 @@ function AmountCell({
 }) {
   const cents = toCents(value || 0);
   return (
-    <input
-      aria-label={label}
-      inputMode="numeric"
-      autoComplete="off"
+    <MoneyInput
+      cents={cents}
+      label={label}
       disabled={disabled}
-      value={cents === 0 ? '' : BRL.format(cents / 100)}
       placeholder="—"
-      onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
-        onChange(digits ? fromCents(Number(digits)) : 0);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          onEnter();
-        }
-      }}
-      className={`w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] font-mono tabular-nums text-right outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 focus:border-accent/60 disabled:opacity-55 ${
+      onChange={(next) => onChange(fromCents(next))}
+      onEnter={onEnter}
+      className={`h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] placeholder:text-stone-300 dark:placeholder:text-stone-600 focus:border-accent/60 disabled:opacity-55 ${
         cents === 0 ? '' : tone === 'debit' ? 'text-blue-700 dark:text-blue-300' : 'text-amber-700 dark:text-amber-300'
       }`}
     />

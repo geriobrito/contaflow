@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
+import { MoneyInput } from '@/components/ui/MoneyInput';
 import { grossNetDrafts, grossOriginsFor, newSplitId, retentionPresetsFor, summarizeSplits, toCents, type GrossOrigin, type RetentionOption, type RetentionPreset, type SplitDraft } from '@/lib/splits';
 
 /** Bruto × líquido com outras linhas que as de nota (ex.: resgate de aplicação, com IR e IOF). */
@@ -18,25 +19,16 @@ const formatCents = (cents: number): string => BRL.format(cents / 100);
 
 export const emptySplitDraft = (cents = 0): SplitDraft => ({ id: newSplitId(), accountId: '', memo: '', cents });
 
-/* =========================================================================
-   Campo monetário estilo calculadora: dígitos entram pela direita (centavos)
-   ========================================================================= */
-
-function MoneyInput({ cents, onChange, label }: { cents: number; onChange: (cents: number) => void; label: string }) {
+/** Campo de valor do rateio: o campo de valor padrão do sistema, com "R$" e a altura das linhas. */
+function SplitMoney({ cents, onChange, label }: { cents: number; onChange: (cents: number) => void; label: string }) {
   return (
-    <div className="relative">
-      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-stone-500 dark:text-stone-400 pointer-events-none">R$</span>
-      <input
-        aria-label={label}
-        value={cents === 0 ? '' : formatCents(cents)}
-        placeholder="0,00"
-        onChange={(e) => {
-          const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
-          onChange(digits ? Number(digits) : 0);
-        }}
-        className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-line-strong text-right font-mono tabular-nums text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 outline-none transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
-      />
-    </div>
+    <MoneyInput
+      cents={cents}
+      onChange={onChange}
+      label={label}
+      prefix
+      className="h-10 pr-3 rounded-xl bg-white dark:bg-stone-800/70 border border-line-strong text-[14px] text-stone-900 dark:text-stone-100 placeholder:text-stone-300 transition-all duration-150 focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+    />
   );
 }
 
@@ -127,7 +119,7 @@ function GrossNetPanel({
               <span className="block text-[11px] font-medium text-stone-600 dark:text-stone-300">{p.label}</span>
               {options.length > 0 ? (
                 <>
-                  <MoneyInput cents={values[p.key] ?? 0} onChange={(cents) => setValues((v) => ({ ...v, [p.key]: cents }))} label={p.label} />
+                  <SplitMoney cents={values[p.key] ?? 0} onChange={(cents) => setValues((v) => ({ ...v, [p.key]: cents }))} label={p.label} />
                   {options.length > 1 ? (
                     <select
                       aria-label={`Conta do ${p.label}`}
@@ -312,7 +304,7 @@ export function SplitEditor({ transactionAmount, accounts, drafts, onChange, def
                 {d.reduces ? '−' : '+'}
               </button>
               <div className="w-36 shrink-0">
-                <MoneyInput cents={d.cents} onChange={(cents) => update(d.id, { cents })} label={`Valor da linha ${i + 1}`} />
+                <SplitMoney cents={d.cents} onChange={(cents) => update(d.id, { cents })} label={`Valor da linha ${i + 1}`} />
               </div>
             </div>
             {!balanced && (d.reduces ? summary.remainingCents < 0 : summary.remainingCents > 0) && (

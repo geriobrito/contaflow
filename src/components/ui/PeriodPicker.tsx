@@ -40,14 +40,35 @@ const today = () => new Date();
  * Período de uma tela. Com `shared`, é o período das Demonstrações: a escolha feita numa tela é
  * guardada na sessão e vale nas outras (ver src/lib/shared-period.ts). Enquanto não houver
  * escolha, a tela aceita o período sugerido pelos dados (`suggest`); depois dela, não mais.
+ * Com `fromQuery`, a competência de `?mes=AAAA-MM` no endereço vale como escolha ao abrir.
  */
-export function usePeriod(initialMode: PeriodMode, shared = false): PeriodState {
+export function usePeriod(initialMode: PeriodMode, shared = false, fromQuery = false): PeriodState {
   const [mode, setModeState] = useState<PeriodMode>(initialMode);
   const [year, setYearState] = useState(() => today().getFullYear());
   const [month, setMonthState] = useState(() => today().getMonth() + 1);
   const [quarter, setQuarterState] = useState(() => Math.floor(today().getMonth() / 3) + 1);
   /** Já houve escolha (nesta tela ou guardada de outra): o período sugerido não a desfaz. */
   const chosen = useRef(false);
+
+  // `fromQuery`: a tela abre na competência do endereço (`?mes=AAAA-MM`), como os atalhos do Painel pedem.
+  useEffect(() => {
+    if (!fromQuery) return;
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      const month = new URLSearchParams(window.location.search).get('mes');
+      const at = month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? periodOfDate(`${month}-01`) : null;
+      if (!at) return;
+      chosen.current = true;
+      setModeState('month');
+      setYearState(at.year);
+      setMonthState(at.month);
+      setQuarterState(at.quarter);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fromQuery]);
 
   useEffect(() => {
     if (!shared) return;

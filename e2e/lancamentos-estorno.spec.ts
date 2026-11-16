@@ -42,8 +42,10 @@ test('lançamentos manuais: estorno anula o lançamento e fica ligado a ele', as
     await page.goto('/lancamentos');
     await page.getByRole('button', { name: 'Novo Lançamento' }).first().click();
     const dialog = page.getByRole('dialog');
-    // Grade de partidas: o valor entra em centavos na coluna do lado, e a diferença fecha com um clique.
-    await dialog.getByLabel('Débito da partida 1').pressSequentially('150000');
+    // Grade de partidas: digita-se o valor como ele é ("1500" são mil e quinhentos reais), na coluna
+    // do lado; ao sair do campo ele aparece formatado, e a diferença fecha com um clique.
+    await dialog.getByLabel('Débito da partida 1').pressSequentially('1500');
+    await dialog.getByLabel('Débito da partida 1').press('Tab');
     await expect(dialog.getByLabel('Débito da partida 1')).toHaveValue('1.500,00');
     await expect(dialog.getByText(/Diferença de R\$\s1\.500,00 a crédito/)).toBeVisible();
     await dialog.getByRole('button', { name: 'Lançar a diferença' }).click();

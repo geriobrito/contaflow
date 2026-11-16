@@ -42,7 +42,7 @@ export default function LancamentosPage() {
   const { currentClient } = useClient();
   const { user, isAdmin } = useAuth();
   const clientId = currentClient?.id;
-  const period = usePeriod('month');
+  const period = usePeriod('month', false, true);
   const { range } = period;
   const { accounts, entries, loading, error, lockedMonths, isMonthLocked, saveEntry, deleteEntry, repeatEntries } = useJournalEntries(clientId, user?.uid);
 

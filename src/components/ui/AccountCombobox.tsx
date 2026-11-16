@@ -47,6 +47,17 @@ function buildSections(accounts: readonly ChartAccount[], search: string, sugges
   ];
 }
 
+/**
+ * Altura da lista de contas. `tall` e `medium` têm altura fixa (a janela não pula enquanto se
+ * digita na busca) e acompanham a altura da tela; `short` cresce só até umas cinco contas.
+ */
+type ListSize = 'short' | 'medium' | 'tall';
+const LIST_HEIGHT: Record<ListSize, string> = {
+  short: 'max-h-56',
+  medium: 'h-[clamp(12rem,calc(100vh_-_36rem),24rem)]',
+  tall: 'h-[clamp(13rem,calc(100vh_-_27rem),34rem)]',
+};
+
 interface OptionListProps {
   accounts: readonly ChartAccount[];
   value: string;
@@ -58,11 +69,11 @@ interface OptionListProps {
   showNature: boolean;
   /** Rola a lista até a conta escolhida ao montar. */
   revealSelected: boolean;
-  /** Lista alta (quase toda a altura disponível), para a janela larga de classificação. */
-  tall?: boolean;
+  /** Altura da lista (ver `LIST_HEIGHT`). */
+  size: ListSize;
 }
 
-function OptionList({ accounts, value, onPick, suggestions, autoFocus, placeholder, compact, showNature, revealSelected, tall = false }: OptionListProps) {
+function OptionList({ accounts, value, onPick, suggestions, autoFocus, placeholder, compact, showNature, revealSelected, size }: OptionListProps) {
   const id = useId();
   const [search, setSearch] = useState('');
   const [active, setActive] = useState(-1);
@@ -125,7 +136,7 @@ function OptionList({ accounts, value, onPick, suggestions, autoFocus, placehold
           className={`w-full ${compact ? 'h-9 pl-8' : 'py-3 pl-10'} pr-3 bg-transparent ${text} tracking-tight placeholder:text-stone-400 outline-none`}
         />
       </div>
-      <ul id={`${id}-lista`} ref={listRef} role="listbox" className={`relative ${tall ? 'h-[clamp(13rem,calc(100vh_-_27rem),34rem)]' : 'max-h-56'} overflow-y-auto overscroll-contain`}>
+      <ul id={`${id}-lista`} ref={listRef} role="listbox" className={`relative ${LIST_HEIGHT[size]} overflow-y-auto overscroll-contain`}>
         {flat.length === 0 && <li className="px-4 py-6 text-center text-[13px] text-stone-400">Nenhuma conta encontrada</li>}
         {sections.map((section, si) =>
           section.rows.length === 0 ? null : (
@@ -179,14 +190,17 @@ interface AccountPickerProps {
   onChange: (accountId: string) => void;
   autoFocus?: boolean;
   suggestions?: readonly AccountSuggestion[];
-  /** Lista alta: mostra mais contas de uma vez (janela de classificação). */
-  tall?: boolean;
+  /**
+   * Altura da lista: `tall` na janela larga de classificação, `medium` nas janelas de classificação
+   * em lote e por favorecido (que têm outros blocos acima), `short` nos demais lugares.
+   */
+  size?: ListSize;
 }
 
 const NO_SUGGESTIONS: readonly AccountSuggestion[] = [];
 
 /** Lista aberta de contas analíticas (classificação única, em lote e por favorecido). */
-export function AccountPicker({ accounts, value, onChange, autoFocus = false, suggestions = NO_SUGGESTIONS, tall = false }: AccountPickerProps) {
+export function AccountPicker({ accounts, value, onChange, autoFocus = false, suggestions = NO_SUGGESTIONS, size = 'short' }: AccountPickerProps) {
   const options = useMemo(() => analyticOf(accounts, true), [accounts]);
   return (
     <div className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line overflow-hidden">
@@ -200,7 +214,7 @@ export function AccountPicker({ accounts, value, onChange, autoFocus = false, su
         compact={false}
         showNature={false}
         revealSelected
-        tall={tall}
+        size={size}
       />
     </div>
   );
@@ -348,6 +362,7 @@ export function AccountSelectField({
             compact
             showNature={!analyticOnly && options.some((a) => a.nature === 'ANALYTIC') && options.some((a) => a.nature === 'SYNTHETIC')}
             revealSelected
+            size="short"
           />
         </div>,
         document.body

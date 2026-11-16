@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BankAccount, BankTransaction, ClientCompany, ClientRequest, ImportBatch, PeriodLock } from '@/types/firestore';
-import { buildPortfolioRow, shortMonth, sortPortfolio, type PortfolioInput } from '@/lib/portfolio';
+import { buildPortfolioRow, routineTasks, shortMonth, sortPortfolio, withRoutineTasks, type PortfolioInput } from '@/lib/portfolio';
+import type { MonthRoutines } from '@/lib/services/month-routines';
 
 const client = { id: 'c1', name: 'Aurora Alimentos Ltda', tradeName: 'Padaria Aurora', cnpj: '11222333000181' } as ClientCompany;
 const bank = { id: 'b1', clientId: 'c1', accountKey: 'k1', nickname: 'Itaú' } as BankAccount;
@@ -86,5 +87,31 @@ describe('carteira no painel', () => {
     ];
     expect(sortPortfolio(rows).map((r) => r.name)).toEqual(['Beta', 'Alfa', 'Zeta']);
     expect(shortMonth('2026-03')).toBe('mar/2026');
+  });
+
+  it('rotinas do mês (conferência a pedido): viram tarefas na tela certa e tiram a empresa do "em dia"', () => {
+    const routines: MonthRoutines = {
+      problems: [],
+      problemsByKey: { depreciation: 'Lance a depreciação de 09/2026 (R$ 1.204,67).' },
+      warnings: [],
+      updates: false,
+      pending: ['depreciation'],
+      inputs: [{ key: 'stock', label: 'Informar o estoque final', href: '/estoque?mes=2026-09' }],
+    };
+    const tasks = routineTasks(routines, '2026-09');
+    expect(tasks.map((t) => [t.id, t.label, t.href])).toEqual([
+      ['routine-depreciation', 'Lançar depreciação', '/imobilizado?mes=2026-09'],
+      ['routine-stock', 'Informar estoque final', '/estoque?mes=2026-09'],
+    ]);
+    expect(tasks[0].title).toMatch(/1\.204,67/);
+    expect(routineTasks(null, '2026-09')).toEqual([]);
+
+    const row = buildPortfolioRow(base);
+    expect(row.upToDate).toBe(true);
+    const merged = withRoutineTasks(row, tasks);
+    expect(merged.upToDate).toBe(false);
+    expect(merged.tasks).toHaveLength(row.tasks.length + 2);
+    expect(merged.weight).toBeGreaterThan(row.weight);
+    expect(withRoutineTasks(row, [])).toBe(row);
   });
 });

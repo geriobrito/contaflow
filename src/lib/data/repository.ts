@@ -272,7 +272,12 @@ export interface DataRepository {
   saveObligationChecks(checks: ObligationChecks): Promise<void>;
 
   /* Auditoria */
-  listAudit(clientId: string, options?: { transactionId?: string; limit?: number }): Promise<AuditEntry[]>;
+  /**
+   * Trilha de auditoria, do registro mais recente para o mais antigo. `before` (instante ISO,
+   * exclusivo) traz a página seguinte de uma listagem; `since` (instante ISO, inclusivo) corta
+   * no início de um intervalo de datas.
+   */
+  listAudit(clientId: string, options?: { transactionId?: string; limit?: number; before?: string; since?: string }): Promise<AuditEntry[]>;
 
   /* Pendências com o cliente (escritório) */
   listClientRequests(clientId: string): Promise<ClientRequest[]>;

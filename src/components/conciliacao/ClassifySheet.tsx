@@ -431,7 +431,7 @@ export function ClassifySheet({
             {/* Plano de contas */}
             <section className="space-y-2">
               <p className="text-[12px] font-medium text-stone-500 px-1">Conta contábil</p>
-              <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus tall />
+              <AccountPicker accounts={pickerAccounts} value={accountId} onChange={setAccountId} suggestions={suggestions} autoFocus size="tall" />
               <button
                 type="button"
                 onClick={() => {

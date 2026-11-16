@@ -107,6 +107,22 @@ describe('repositório local (modo único, sem Firestore)', () => {
     expect((await repo.listTransactions('c1')).find((t) => t.id === 'a')?.status).toBe('PENDING');
   });
 
+  it('auditoria em páginas: `before` traz os registros anteriores e `since` corta o início do intervalo', async () => {
+    const at = (day: number) => `2025-03-${String(day).padStart(2, '0')}T12:00:00.000Z`;
+    for (const day of [1, 2, 3, 4, 5]) {
+      const month = `2024-${String(day).padStart(2, '0')}`;
+      await repo.closePeriod({ id: `c9_${month}`, clientId: 'c9', month, lockedAt: at(day), lockedByUid: 'u1' }, { id: `p${day}`, clientId: 'c9', action: 'PERIOD_CLOSE', actorUid: 'u1', at: at(day), month });
+    }
+    // O registro do fechamento recebe o id da competência: a conferência é pelo mês.
+    const months = (list: { month?: string }[]) => list.map((e) => e.month);
+    const first = await repo.listAudit('c9', { limit: 2 });
+    expect(months(first)).toEqual(['2024-05', '2024-04']);
+    const second = await repo.listAudit('c9', { limit: 2, before: first[1].at });
+    expect(months(second)).toEqual(['2024-03', '2024-02']);
+    expect(months(await repo.listAudit('c9', { since: at(4) }))).toEqual(['2024-05', '2024-04']);
+    expect(months(await repo.listAudit('c9', { since: at(2), before: at(4) }))).toEqual(['2024-03', '2024-02']);
+  });
+
   it('fechamento de competência é auditado e não duplica', async () => {
     const lock = { id: 'c1_2025-01', clientId: 'c1', month: '2025-01', lockedAt: 'T', lockedByUid: 'u1' };
     const audit = { id: 'au1', clientId: 'c1', action: 'PERIOD_CLOSE' as const, actorUid: 'u1', at: 'T', month: '2025-01' };

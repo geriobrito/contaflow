@@ -1,6 +1,7 @@
 import type { BankAccount, BankTransaction, ClientCompany, ClientRequest, ImportBatch, PeriodLock } from '@/types/firestore';
 import { accountStatuses, missingPayroll, plural, previousMonthOf, summarizeQueries } from '@/lib/dashboard';
 import { formatMonth, monthOf, monthsBetween } from '@/lib/periods';
+import type { MonthRoutines, RoutineKey } from '@/lib/services/month-routines';
 
 /**
  * Visão da carteira no Painel: para cada empresa, o que falta fazer, com dados baratos de ler
@@ -36,6 +37,8 @@ export interface PortfolioTask {
   severity: TaskSeverity;
   /** Tela onde se resolve, já com a empresa selecionada. */
   href: string;
+  /** Detalhe mostrado ao passar o mouse (ex.: o valor a lançar). */
+  title?: string;
 }
 
 export interface PortfolioRow {
@@ -134,6 +137,41 @@ export function buildPortfolioRow(input: PortfolioInput): PortfolioRow {
     upToDate: !tasks.some((t) => t.severity !== 'low'),
     weight: tasks.reduce((s, t) => s + WEIGHT[t.severity], 0),
   };
+}
+
+/** Como cada rotina do mês aparece na carteira: o que lançar, o que informar e onde. */
+const ROUTINE_TASK: Record<RoutineKey, { post: string; inform?: string; path: string }> = {
+  depreciation: { post: 'Lançar depreciação', path: '/imobilizado' },
+  prepaid: { post: 'Lançar apropriação', path: '/despesas-antecipadas' },
+  financing: { post: 'Lançar juros', path: '/financiamentos' },
+  investment: { post: 'Lançar rendimento', inform: 'Informar saldo da aplicação', path: '/aplicacoes' },
+  stock: { post: 'Lançar CMV', inform: 'Informar estoque final', path: '/estoque' },
+  payroll: { post: 'Lançar provisão da folha', inform: 'Informar a folha', path: '/folha' },
+};
+
+/**
+ * Tarefas das rotinas do mês (Bens e Contratos e provisão da folha) para a linha da empresa na
+ * carteira. Vêm de uma conferência feita a pedido, porque exige ler os lançamentos manuais da
+ * competência de cada empresa. Sem nada cadastrado (`null`), não há tarefa.
+ */
+export function routineTasks(routines: MonthRoutines | null, month: string): PortfolioTask[] {
+  if (!routines) return [];
+  return (Object.keys(ROUTINE_TASK) as RoutineKey[]).flatMap((key) => {
+    const info = ROUTINE_TASK[key];
+    const href = `${info.path}?mes=${month}`;
+    const title = routines.problemsByKey[key];
+    if (routines.inputs.some((i) => i.key === key)) return [{ id: `routine-${key}`, label: info.inform ?? info.post, severity: 'medium' as const, href, ...(title ? { title } : {}) }];
+    if (title) return [{ id: `routine-${key}`, label: info.post, severity: 'medium' as const, href, title }];
+    return [];
+  });
+}
+
+/** Linha da carteira com as tarefas das rotinas somadas: deixa de estar "em dia" se houver alguma. */
+export function withRoutineTasks(row: PortfolioRow, tasks: readonly PortfolioTask[]): PortfolioRow {
+  if (tasks.length === 0) return row;
+  const order: Record<TaskSeverity, number> = { high: 0, medium: 1, low: 2 };
+  const merged = [...row.tasks, ...tasks].sort((a, b) => order[a.severity] - order[b.severity]);
+  return { ...row, tasks: merged, upToDate: !merged.some((t) => t.severity !== 'low'), weight: merged.reduce((s, t) => s + WEIGHT[t.severity], 0) };
 }
 
 /** Linhas da carteira em ordem de trabalho: mais pendências primeiro; empate, pelo nome. */
