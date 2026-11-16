@@ -243,9 +243,20 @@ export type CNPJProviderOutcome =
   | { ok: false; status: 404 | 502; error: string };
 
 /**
+ * Cabeçalhos das consultas públicas feitas pelo servidor. O `User-Agent` é obrigatório: sem ele
+ * a BrasilAPI responde 403 ao `fetch` do Node, e a consulta dependia só do provedor reserva.
+ * Identificação genérica, sem dados do escritório.
+ */
+export const PROVIDER_HEADERS: Readonly<Record<string, string>> = { Accept: 'application/json', 'User-Agent': 'consulta-cadastro/1.0' };
+
+/** Tempo de cada provedor: três em sequência cabem com folga no limite da função (30 s na rota). */
+const PROVIDER_TIMEOUT_MS = 4000;
+
+/**
  * Consulta provedores públicos de CNPJ com timeout curto e fallback automático:
  * 1. BrasilAPI (`brasilapi.com.br`)
- * 2. Pública CNPJ.ws (`publica.cnpj.ws`)
+ * 2. Minha Receita (`minhareceita.org`), a base de onde a BrasilAPI lê: mesmo formato de resposta
+ * 3. Pública CNPJ.ws (`publica.cnpj.ws`), por último: aceita só 3 consultas por minuto por IP
  */
 export async function fetchCNPJFromProviders(
   rawCnpj: string,
@@ -263,6 +274,10 @@ export async function fetchCNPJFromProviders(
       mapper: mapBrasilApiResponse,
     },
     {
+      url: `https://minhareceita.org/${cnpj}`,
+      mapper: mapBrasilApiResponse,
+    },
+    {
       url: `https://publica.cnpj.ws/cnpj/${cnpj}`,
       mapper: mapCnpjWsResponse,
     },
@@ -271,8 +286,8 @@ export async function fetchCNPJFromProviders(
   for (const provider of providers) {
     try {
       const response = await fetchImpl(provider.url, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(5000),
+        headers: PROVIDER_HEADERS,
+        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
       });
 
       if (response.status === 404) {

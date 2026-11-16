@@ -105,7 +105,8 @@ export function useCnpjLookup({ cnpj, valid, savedCnpj, getForm, apply, applyCar
         });
         if (!response.ok) {
           const body = (await response.json().catch(() => null)) as { error?: string } | null;
-          setNotice({ kind: 'info', text: body?.error || 'Consulta automática indisponível — preencha os campos manualmente.' });
+          // Sem o motivo em JSON (erro da hospedagem, tempo esgotado): mostra o código, para dar pista do que houve.
+          setNotice({ kind: 'info', text: body?.error || `Consulta automática indisponível (erro ${response.status}) — preencha os campos manualmente.` });
           return;
         }
 

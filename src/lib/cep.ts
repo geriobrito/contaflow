@@ -1,4 +1,5 @@
 import type { CompanyAddress } from '@/types/firestore';
+import { PROVIDER_HEADERS } from '@/lib/cnpj';
 import { cleanDigits } from '@/lib/utils/formatters';
 
 /**
@@ -62,7 +63,7 @@ export async function fetchCEPFromProviders(rawCep: string, fetchImpl: typeof fe
   ];
   for (const p of providers) {
     try {
-      const res = await fetchImpl(p.url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(5000) });
+      const res = await fetchImpl(p.url, { headers: PROVIDER_HEADERS, signal: AbortSignal.timeout(5000) });
       if (res.status === 404) {
         sawNotFound = true;
         continue;

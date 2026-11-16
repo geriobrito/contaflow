@@ -114,7 +114,13 @@ export function createCnpjHandler(options: CnpjHandlerOptions) {
     if (!refresh && hit && hit.expiresAt > now()) return json(hit.data, 200, headers);
     cache.delete(cnpj);
 
-    const outcome = await options.lookup(cnpj);
+    // Falha inesperada na consulta também responde em JSON, com o motivo: a tela mostra o texto.
+    let outcome: CNPJProviderOutcome;
+    try {
+      outcome = await options.lookup(cnpj);
+    } catch {
+      return json({ error: 'Não foi possível consultar o CNPJ agora. Tente de novo em instantes ou preencha os campos manualmente.' }, 502);
+    }
     if (!outcome.ok) return json({ error: outcome.error }, outcome.status);
 
     // Map guarda a ordem de inclusão: ao encher, sai o mais antigo.

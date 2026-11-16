@@ -138,6 +138,19 @@ describe('consulta e mapeamento de CNPJ', () => {
       data: { name: 'FALLBACK LTDA', city: 'Recife/PE', source: 'cnpjws' },
     });
 
+    // BrasilAPI recusa (403) e a Minha Receita, no mesmo formato, responde: segundo provedor.
+    const calls: string[] = [];
+    const secondFetch: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calls.push(url);
+      // Sem User-Agent a BrasilAPI responde 403 ao fetch do servidor: todo provedor o recebe.
+      expect(new Headers(init?.headers).get('user-agent')).toBeTruthy();
+      if (url.includes('brasilapi')) return new Response('forbidden', { status: 403 });
+      return Response.json({ cnpj: '11222333000181', razao_social: 'SEGUNDA LTDA' });
+    };
+    expect(await fetchCNPJFromProviders('11222333000181', secondFetch)).toMatchObject({ ok: true, data: { name: 'SEGUNDA LTDA' } });
+    expect(calls).toEqual(['https://brasilapi.com.br/api/cnpj/v1/11222333000181', 'https://minhareceita.org/11222333000181']);
+
     const notFoundFetch: typeof fetch = async () => new Response('not found', { status: 404 });
     const miss = await fetchCNPJFromProviders('11222333000181', notFoundFetch);
     expect(miss).toEqual({
