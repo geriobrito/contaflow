@@ -5,7 +5,7 @@ import type { DataRepository, DateRange } from '@/lib/data/repository';
 import { createFirestoreRepository } from '@/lib/data/firestore-repository';
 import { createIndexedDbStore } from '@/lib/data/indexed-db';
 import { createLocalRepository, type KeyValueStore } from '@/lib/data/local-repository';
-import { withReadCache } from '@/lib/data/cached-repository';
+import { DATA_WRITTEN_EVENT, withReadCache } from '@/lib/data/cached-repository';
 import { getActor, getOrgId, peekOrgId } from '@/lib/data/scope';
 
 /**
@@ -31,7 +31,11 @@ export function getRepository(): DataRepository {
       ? createFirestoreRepository(db, getOrgId)
       : createLocalRepository(typeof window === 'undefined' ? memoryStore() : createIndexedDbStore());
     // Plano de contas, bancos e fechamentos ficam em memória por cliente (ver cached-repository.ts).
-    repository = withReadCache(base, () => peekOrgId() ?? '');
+    repository = withReadCache(base, () => peekOrgId() ?? '', {
+      onWrite: () => {
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event(DATA_WRITTEN_EVENT));
+      },
+    });
   }
   return repository;
 }

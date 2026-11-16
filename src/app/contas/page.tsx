@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { BankAccount, ImportBatch } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { useContasData } from '@/hooks/contas/useContasData';
 import { BankAccountSheet } from '@/components/contas/BankAccountSheet';
 import { BankAccountsTable } from '@/components/contas/BankAccountsTable';
@@ -43,6 +44,7 @@ export default function ContasPage() {
         title="Contas e extratos"
         description="Cada conta bancária ou cartão do cliente ligado à sua conta contábil, com saldo inicial para o balanço, e o histórico dos extratos importados."
       />
+      <SetupProgress />
       {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">{error}</p>}
 
       <BankAccountsTable

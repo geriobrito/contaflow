@@ -5,6 +5,7 @@ import { Plus, Wand2 } from 'lucide-react';
 import type { ChartAccount } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { useChartOfAccounts, type ChartActionResult } from '@/hooks/plano-de-contas/useChartOfAccounts';
 import { buildTree, filterTree } from '@/lib/chart/tree';
 import { AccountTreeRow } from '@/components/plano-de-contas/AccountTreeRow';
@@ -83,6 +84,7 @@ export default function PlanoDeContasPage() {
           </>
         }
       />
+      <SetupProgress />
 
       {notice && (
         <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-black/6 dark:border-white/8 text-[13px] text-stone-600 dark:text-stone-300 animate-fade-in">

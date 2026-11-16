@@ -25,8 +25,17 @@ test('lançamentos manuais: estorno anula o lançamento e fica ligado a ele', as
     await expect(page.getByText('Cliente cadastrado e definido como ativo')).toBeVisible();
 
     await page.goto('/plano-de-contas');
+    // Faixa de implantação: na tela do passo, diz o que falta nele.
+    const setup = page.getByRole('region', { name: 'Implantação da empresa' });
+    await expect(setup.getByText(/Nesta tela:.*Plano de contas vazio/)).toBeVisible();
     await page.getByRole('button', { name: 'Modelo de plano de contas (CFC)' }).first().click();
     await expect(page.getByText(/contas do modelo de plano de contas \(CFC\) adicionadas/)).toBeVisible();
+    // Gravado o plano, a faixa relê sozinha e aponta o passo seguinte.
+    await expect(setup.getByRole('link', { name: /Plano de Contas \(pronto\)/ })).toBeVisible();
+    await expect(setup.getByText('Próximo: Contas e Extratos.')).toBeVisible();
+    await setup.getByRole('link', { name: 'Abrir' }).click();
+    await page.waitForURL('**/contas');
+    await expect(page.getByRole('region', { name: 'Implantação da empresa' }).getByText(/Nesta tela:.*Nenhuma conta bancária/)).toBeVisible();
   });
 
   await test.step('provisão do DAS pelo modelo', async () => {

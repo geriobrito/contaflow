@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { Check, CheckCircle2, XCircle } from 'lucide-react';
 import type { OrgSettings } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
@@ -96,6 +97,7 @@ export default function EscritorioPage() {
         title="Escritório"
         description="Dados do escritório e do profissional da contabilidade responsável. Preenchem automaticamente as assinaturas do Balanço, Balancete, DRE, DLPA, Livro Diário e Notas explicativas (PDF e Excel)."
       />
+      <SetupProgress />
 
       {loadError && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar: {loadError}</p>}
 

@@ -1,6 +1,9 @@
 import type { BankAccount, ChartAccount, FinancingRegister, FixedAssetRegister, InvestmentRegister, LockState, OpeningBalances, PayrollRegister, PeriodLock, PrepaidRegister, StockControl } from '@/types/firestore';
 import type { DataRepository } from '@/lib/data/repository';
 
+/** Evento da janela disparado depois de cada gravação dos cadastros (quem mostra um resumo deles relê). */
+export const DATA_WRITTEN_EVENT = 'contaflow:data-written';
+
 /** Validade de uma leitura em memória: limita a defasagem em relação a outra aba ou aparelho. */
 export const READ_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -47,7 +50,7 @@ function listCache<T>(now: () => number, ttlMs: number) {
 export function withReadCache(
   repo: DataRepository,
   scope: () => string,
-  options: { ttlMs?: number; now?: () => number } = {}
+  options: { ttlMs?: number; now?: () => number; /** Chamado ao fim de cada gravação dos cadastros. */ onWrite?: () => void } = {}
 ): DataRepository {
   const now = options.now ?? Date.now;
   const ttlMs = options.ttlMs ?? READ_CACHE_TTL_MS;
@@ -73,6 +76,7 @@ export function withReadCache(
         return await write(...args);
       } finally {
         caches.forEach((c) => c.clear());
+        options.onWrite?.();
       }
     };
 
@@ -147,6 +151,11 @@ export function withReadCache(
       return found ? (structuredClone(found) as PayrollRegister) : null;
     },
     savePayrollRegister: writing(repo.savePayrollRegister, payroll),
+
+    // Sem cache próprio, mas mudam o resumo da implantação: só avisam a gravação.
+    saveOrgSettings: writing(repo.saveOrgSettings),
+    saveRule: writing(repo.saveRule),
+    deleteRule: writing(repo.deleteRule),
 
     // Contas globais valem para todos os clientes, e a exclusão não informa o cliente: limpa tudo.
     saveClient: writing(repo.saveClient, lockStates),

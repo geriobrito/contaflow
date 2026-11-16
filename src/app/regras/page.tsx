@@ -5,6 +5,7 @@ import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
 import { deleteRule, saveRule } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { useRulesData } from '@/hooks/regras/useRulesData';
 import { canDeleteRule } from '@/lib/lock-guard';
 import { describeError } from '@/lib/utils/errors';
@@ -94,6 +95,7 @@ export default function RegrasPage() {
           </>
         }
       />
+      <SetupProgress />
 
       <NewRuleForm clientId={clientId} analytic={analytic} memos={memos} isDuplicate={isDuplicate} onCreate={handleCreate} notice={notice} />
 

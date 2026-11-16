@@ -5,6 +5,7 @@ import { Check, Plus, Upload } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { filterClients } from '@/lib/client-record';
 import { getRepository } from '@/lib/services/data-service';
 import { useClientMaintenance, type MaintenanceResult } from '@/hooks/clientes/useClientMaintenance';
@@ -95,6 +96,7 @@ export default function ClientesPage() {
           </>
         }
       />
+      <SetupProgress />
 
       <SearchField value={search} onChange={setSearch} placeholder="Buscar por razão social, nome fantasia ou CNPJ" />
 

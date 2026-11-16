@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { CheckCircle2, ClipboardPaste, Lock, Plus } from 'lucide-react';
 import type { BankAccount, ChartAccount, OpeningMode } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
+import { SetupProgress } from '@/components/layout/SetupProgress';
 import { useOpeningBalances } from '@/hooks/abertura/useOpeningBalances';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { accountMatches } from '@/lib/account-search';
@@ -162,6 +163,7 @@ export default function AberturaPage() {
         title="Balanço de abertura"
         description="Saldo de cada conta no dia em que a contabilidade começa no sistema. Com ele, o balanço patrimonial sai completo, não só com os bancos."
       />
+      <SetupProgress />
 
       {ready && frozen && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/70 bg-amber-50/80 dark:bg-amber-950/25 dark:border-amber-800/40 px-4 py-3 text-[13px] text-amber-900 dark:text-amber-200">
