@@ -257,6 +257,18 @@ export function ResultBridgeChart({ steps }: { steps: readonly BridgeStep[] }) {
                       ],
               }))}
             />
+            {/* Ligação da cascata: o fim de cada barra segue, em linha fina, até o começo da próxima. */}
+            {data.slice(0, -1).map((s, i) => (
+              <ReferenceLine
+                key={`liga-${s.key}`}
+                segment={[
+                  { x: s.label, y: s.end },
+                  { x: data[i + 1].label, y: s.end },
+                ]}
+                stroke={C.axis}
+                strokeWidth={1}
+              />
+            ))}
             <Bar dataKey="range" radius={4} maxBarSize={56} isAnimationActive={false}>
               {data.map((s) => (
                 <Cell key={s.key} fill={bridgeColor(s)} />
