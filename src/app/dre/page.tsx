@@ -24,11 +24,11 @@ import { reportError } from '@/lib/monitoring';
 export default function DREPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const period = usePeriod('year');
-  const { range, label: periodLabel, jumpTo } = period;
+  const period = usePeriod('year', true);
+  const { range, label: periodLabel, suggest } = period;
   const [view, setView] = useState<DREView>('simple');
   const [withAccounts, setWithAccounts] = useState(false);
-  const { dre, months, prevDre, prevRange, loadPrevious, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, jumpTo, view);
+  const { dre, months, prevDre, prevRange, loadPrevious, consistency, opening, lockStatus, org, blockingError, failed, isLoading, hasData, profit, tone } = useDREData(clientId, range, suggest, view);
 
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);

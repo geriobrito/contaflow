@@ -60,10 +60,10 @@ function dropLegacyBook(clientId: string): void {
 export default function DiarioPage() {
   const { currentClient, replaceClient } = useClient();
   const clientId = currentClient?.id;
-  const period = usePeriod('month');
-  const { range, jumpTo } = period;
+  const period = usePeriod('month', true);
+  const { range, suggest } = period;
   // O número de ordem é contado desde 1º de janeiro: o exercício inteiro é lido um lançamento por vez.
-  const { data: static_, accounts, banks, transactions, from, loading, error, setError } = useLedgerData(clientId, range, jumpTo);
+  const { data: static_, accounts, banks, transactions, from, loading, error, setError } = useLedgerData(clientId, range, suggest);
   const [book, setBook] = useState<DaybookBookInfo>(EMPTY_BOOK);
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState(false);

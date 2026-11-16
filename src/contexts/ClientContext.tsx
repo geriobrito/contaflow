@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { clearSharedPeriod } from '@/lib/shared-period';
 import type { ClientCompany } from '@/types/firestore';
 import { deleteClient, getClients } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
@@ -96,6 +97,8 @@ export function ClientProvider({ children }: { children: React.ReactNode }) {
     setClients((prev) => (prev.some((c) => c.id === client.id) ? prev : [client, ...prev]));
     setCurrentId(client.id);
     try {
+      // A empresa nova abre as demonstrações no movimento mais recente dela, não no período da anterior.
+      if (localStorage.getItem(STORAGE_KEY) !== client.id) clearSharedPeriod();
       localStorage.setItem(STORAGE_KEY, client.id);
     } catch {
       /* armazenamento indisponível */

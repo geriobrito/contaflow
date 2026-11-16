@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FileSignature, FileText, Loader2, RotateCcw } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
+import { useSharedYear } from '@/components/ui/PeriodPicker';
 import { useExplanatoryNotes } from '@/hooks/notas/useExplanatoryNotes';
 import { accountingStandard, porteOf } from '@/lib/accounting-standard';
 import { noteIssue, placeholdersIn } from '@/lib/notes';
@@ -25,7 +26,7 @@ const SAVE_LABEL = { idle: null, saving: 'Salvando…', saved: 'Salvo', local: '
  */
 export default function NotasPage() {
   const { currentClient } = useClient();
-  const [year, setYear] = useState(String(thisYear - 1));
+  const [year, setYear] = useSharedYear(String(thisYear - 1), YEARS);
   const { list, figures, org, saveState, remote, error: saveError, update, restore } = useExplanatoryNotes(currentClient ?? null, year);
   const [exporting, setExporting] = useState(false);
   const [letterBusy, setLetterBusy] = useState(false);

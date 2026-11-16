@@ -219,6 +219,35 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByText(/3\.767,50/).first()).toBeVisible();
   });
 
+  await test.step('Demonstrações: o período escolhido vale entre as telas e a DRE abre o Razão da conta', async () => {
+    await page.goto('/dre');
+    await expect(page.getByText(/Resultado líquido do exercício/).first()).toBeVisible();
+    // A DRE abre no ano; escolher "Mês" fixa março/2025 (o mês do extrato) para as demais telas.
+    await page.getByRole('radiogroup', { name: 'Tipo de período' }).getByRole('radio', { name: 'Mês' }).click();
+    await expect(page.getByRole('radiogroup', { name: 'Mês' }).getByRole('radio', { name: 'Mar' })).toBeChecked();
+
+    await page.getByRole('link', { name: /Aluguéis e Condomínios/ }).click();
+    await page.waitForURL(/\/razao\?conta=/);
+    await expect(page.getByRole('heading', { name: 'Livro Razão Analítico' })).toBeVisible();
+    // A ficha é a da conta clicada, no mesmo mês: só o aluguel.
+    await expect(page.getByText(/1 partidas? no período/)).toBeVisible();
+    await expect(page.getByText(/1\.200,00/).first()).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Mês' }).getByRole('radio', { name: 'Mar' })).toBeChecked();
+
+    // Uma tela que abriria no mês corrente segue o período escolhido, inclusive após recarregar.
+    await page.goto('/balanco');
+    await expect(page.getByRole('radiogroup', { name: 'Mês' }).getByRole('radio', { name: 'Mar' })).toBeChecked();
+    await page.getByRole('button', { name: 'Ano anterior' }).click();
+    await page.goto('/diario');
+    await expect(page.getByText('2024', { exact: true })).toBeVisible();
+    await page.goto('/fechamento');
+    await expect(page.getByLabel('Exercício', { exact: true })).toHaveValue('2024');
+    // Volta a 2025 para os passos seguintes.
+    await page.getByLabel('Exercício', { exact: true }).selectOption('2025');
+    await page.goto('/balanco');
+    await expect(page.getByText('2025', { exact: true })).toBeVisible();
+  });
+
   await test.step('Contas e extratos', async () => {
     await page.goto('/contas');
     await expect(page.getByRole('heading', { name: 'Contas e extratos' })).toBeVisible();

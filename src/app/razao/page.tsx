@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileSpreadsheet, Loader2, Printer } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { useLedgerData } from '@/hooks/useLedgerData';
@@ -22,15 +22,27 @@ import { reportError } from '@/lib/monitoring';
  */
 export default function RazaoPage() {
   const { currentClient } = useClient();
-  const period = usePeriod('month');
-  const { range, jumpTo } = period;
-  const { data, accounts, banks, transactions, carry, loading, error, setError } = useLedgerData(currentClient?.id, range, jumpTo);
+  const period = usePeriod('month', true);
+  const { range, suggest } = period;
+  const { data, accounts, banks, transactions, carry, loading, error, setError } = useLedgerData(currentClient?.id, range, suggest);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
+
+  // Conta vinda de outra demonstração (`?conta=`): a DRE abre aqui a ficha da conta clicada.
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      const fromUrl = new URLSearchParams(window.location.search).get('conta');
+      if (active && fromUrl) setSelectedAccountId(fromUrl);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [exportingExcel, setExportingExcel] = useState(false);
 
   // Conta aberta: a escolhida, ou a do primeiro banco vinculado, ou a primeira analítica.
   const effectiveAccountId = useMemo(() => {
-    if (selectedAccountId) return selectedAccountId;
+    if (selectedAccountId && (accounts.length === 0 || accounts.some((a) => a.id === selectedAccountId))) return selectedAccountId;
     const bankLedgerId = banks.find((b) => b.ledgerAccountId)?.ledgerAccountId;
     if (bankLedgerId && accounts.some((a) => a.id === bankLedgerId)) return bankLedgerId;
     return accounts.find((a) => a.nature === 'ANALYTIC')?.id ?? null;

@@ -99,15 +99,15 @@ function Side({
 export default function BalancoPage() {
   const { currentClient } = useClient();
   const clientId = currentClient?.id;
-  const period = usePeriod('month');
-  const { range, jumpTo } = period;
+  const period = usePeriod('month', true);
+  const { range, jumpTo, suggest } = period;
   const [view, setView] = useState<View>('bs');
   const [showSynthetic, setShowSynthetic] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [drawerAccountId, setDrawerAccountId] = useState<string | null>(null);
 
-  const { static_, ready, accounts, banks, journalEntries, txs, loading, error, setError, reload } = useBalanceSheetData(clientId, range, jumpTo);
+  const { static_, ready, accounts, banks, journalEntries, txs, loading, error, setError, reload } = useBalanceSheetData(clientId, range, suggest);
   const postings = useMemo(
     () => (!txs ? [] : buildPostings(txs.list, banks, accounts, range.end, static_?.openings, journalEntries, txs.carry)),
     [txs, banks, accounts, range.end, static_?.openings, journalEntries]

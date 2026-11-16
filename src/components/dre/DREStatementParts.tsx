@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
+import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
 import type { DREAccountLine } from '@/lib/dre/build';
 import { AccountingAmount } from '@/components/ui/Amount';
@@ -35,15 +36,20 @@ function AccountRows({ lines, sign }: { lines: DREAccountLine[]; sign: 1 | -1 })
   return (
     <>
       {lines.map((l) => (
-        <div key={l.accountId} className="flex items-baseline gap-3 py-2 pl-8 pr-5 text-[13px] text-stone-600 dark:text-stone-400">
+        <Link
+          key={l.accountId}
+          href={`/razao?conta=${encodeURIComponent(l.accountId)}`}
+          title={`Abrir o Razão de ${l.name} neste período`}
+          className="group flex items-baseline gap-3 py-2 pl-8 pr-5 text-[13px] text-stone-600 dark:text-stone-400 hover:bg-black/2 dark:hover:bg-white/3 print:hover:bg-transparent"
+        >
           <span className="w-20 shrink-0 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400">{l.code}</span>
-          <span className="flex-1 min-w-0 truncate">{l.name}</span>
+          <span className="flex-1 min-w-0 truncate group-hover:text-accent-ink group-hover:underline underline-offset-2">{l.name}</span>
           <span className="inline font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400 w-10 text-right">{l.count}×</span>
           <Pct value={sign * l.value} />
           <span className="w-36 xl:w-44 text-right">
             <Amount value={sign * l.value} />
           </span>
-        </div>
+        </Link>
       ))}
     </>
   );

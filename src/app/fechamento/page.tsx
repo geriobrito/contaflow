@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import type { BookRegistrationMethod } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
+import { useSharedYear } from '@/components/ui/PeriodPicker';
 import { useClosingChecklist } from '@/hooks/fechamento/useClosingChecklist';
 import { BOOK_METHOD_LABEL } from '@/lib/closing-checklist';
 import type { CheckLevel, StatementCheck } from '@/lib/statement-checks';
@@ -29,7 +30,7 @@ const ORDER: Record<CheckLevel, number> = { block: 0, warn: 1, info: 2, ok: 3 };
  */
 export default function FechamentoPage() {
   const { currentClient } = useClient();
-  const [year, setYear] = useState(String(thisYear - 1));
+  const [year, setYear] = useSharedYear(String(thisYear - 1), YEARS);
   const data = useClosingChecklist(currentClient ?? null, year);
 
   const checks = [...data.checks].sort((a, b) => ORDER[a.level] - ORDER[b.level]);
