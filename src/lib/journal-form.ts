@@ -52,6 +52,8 @@ export interface JournalForm {
   lines: readonly JournalEntryLine[];
   /** Autor do lançamento em edição; vazio no novo (o repositório preenche). */
   createdByUid?: string;
+  /** Lançamento estornado por este (o formulário aberto por "Estornar"). */
+  reversalOfId?: string;
 }
 
 /**
@@ -94,6 +96,7 @@ export function buildJournalEntry(
       documentRef: form.documentRef.trim() || undefined,
       attachmentUrl: attachment && 'url' in attachment ? attachment.url : undefined,
       createdByUid: form.createdByUid ?? '',
+      ...(form.reversalOfId ? { reversalOfId: form.reversalOfId } : {}),
     },
   };
 }

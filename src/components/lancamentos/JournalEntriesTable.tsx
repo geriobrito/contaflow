@@ -2,9 +2,11 @@
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Copy, Edit2, ExternalLink, Loader2, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { AlertCircle, ChevronDown, ChevronRight, Copy, Edit2, ExternalLink, Loader2, Lock, Trash2, Undo2 } from 'lucide-react';
 import type { ChartAccount, JournalEntry } from '@/types/firestore';
 import { parseAttachmentUrl } from '@/lib/journal';
+import { journalOrigin } from '@/lib/journal-origin';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SURFACE } from '@/components/ui/primitives';
 import { CATEGORY_CONFIG } from '@/components/lancamentos/categories';
@@ -12,17 +14,40 @@ import { CATEGORY_CONFIG } from '@/components/lancamentos/categories';
 interface JournalEntriesTableProps {
   entries: readonly JournalEntry[];
   accountMap: ReadonlyMap<string, ChartAccount>;
-  /** Competência selecionada fechada: editar, duplicar e excluir ficam desabilitados. */
-  monthLocked: boolean;
+  /** Competência (AAAA-MM) fechada: o lançamento dela não é editado nem excluído, só estornado. */
+  isMonthLocked: (month: string) => boolean;
+  /** Estorno de cada lançamento já estornado, pelo id do original. */
+  reversedBy: ReadonlyMap<string, JournalEntry>;
+  /** Todos os lançamentos por id (para citar o número do lançamento estornado). */
+  entriesById: ReadonlyMap<string, JournalEntry>;
   /** Lançamento sendo excluído agora. */
   deletingId: string | null;
   onEdit: (entry: JournalEntry) => void;
   onDuplicate: (entry: JournalEntry) => void;
+  /** Abre o estorno do lançamento, para conferir a data e confirmar. */
+  onReverse: (entry: JournalEntry) => void;
   onDelete?: (entry: JournalEntry) => void;
 }
 
-/** Lançamentos manuais do período; cada linha expande para mostrar as partidas e o comprovante. */
-export function JournalEntriesTable({ entries, accountMap, monthLocked, deletingId, onEdit, onDuplicate, onDelete }: JournalEntriesTableProps) {
+const ACTION = 'w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 transition-colors disabled:opacity-30 disabled:pointer-events-none';
+
+/**
+ * Lançamentos do período; cada linha expande para mostrar as partidas e o comprovante. As ações
+ * seguem o lançamento, não o período: o de competência fechada só aceita estorno, e o gerado por
+ * uma rotina leva à tela que o gera.
+ */
+export function JournalEntriesTable({
+  entries,
+  accountMap,
+  isMonthLocked,
+  reversedBy,
+  entriesById,
+  deletingId,
+  onEdit,
+  onDuplicate,
+  onReverse,
+  onDelete,
+}: JournalEntriesTableProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   return (
     <div className={`${SURFACE} rounded-2xl overflow-hidden border border-line-strong`}>
@@ -36,13 +61,17 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
               <Th className="py-3 px-4">Histórico Contábil</Th>
               <Th className="py-3 px-4 w-36">Documento</Th>
               <Th align="right" className="py-3 px-4 w-36">Valor Total</Th>
-              <Th align="center" className="py-3 px-4 w-36">Ações</Th>
+              <Th align="center" className="py-3 px-4 w-44">Ações</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black/4 dark:divide-white/6">
             {entries.map((entry) => {
               const isExpanded = expandedId === entry.id;
               const catCfg = CATEGORY_CONFIG[entry.category] ?? CATEGORY_CONFIG.OTHER;
+              const origin = journalOrigin(entry);
+              const locked = isMonthLocked(entry.date.slice(0, 7));
+              const reversal = reversedBy.get(entry.id);
+              const reverses = entry.reversalOfId ? entriesById.get(entry.reversalOfId) : undefined;
               // Só links http/https viram link clicável (dados antigos podem ter qualquer texto).
               const attachment = entry.attachmentUrl ? parseAttachmentUrl(entry.attachmentUrl) : null;
               const entryTotal = entry.totalAmount || entry.lines
@@ -77,43 +106,39 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
                       >
                         {catCfg.label}
                       </span>
-                      {(entry.depreciationMonth || entry.fixedAssetId) && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelo cadastro do imobilizado; altere o bem na tela Imobilizado">
-                          {entry.fixedAssetId ? 'Baixa de bem · Imobilizado' : 'Gerado pelo Imobilizado'}
-                        </span>
-                      )}
-                      {(entry.financingMonth || entry.financingId) && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelos contratos; altere em Bens e Contratos">
-                          {entry.financingId ? 'Contrato · Financiamentos' : 'Juros · Financiamentos'}
-                        </span>
-                      )}
-                      {entry.stockMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelo estoque final informado; altere em Bens e Contratos">
-                          CMV · Estoque
-                        </span>
-                      )}
-                      {entry.investmentMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelos saldos das aplicações; altere em Bens e Contratos">
-                          Rendimento · Aplicações financeiras
-                        </span>
-                      )}
-                      {(entry.prepaidMonth || entry.prepaidId) && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pelas despesas antecipadas; altere em Bens e Contratos">
-                          {entry.prepaidId ? 'Apólice · Despesas antecipadas' : 'Apropriação · Despesas antecipadas'}
-                        </span>
-                      )}
-                      {entry.payrollMonth && (
-                        <span className="block mt-1 text-[10px] text-stone-500 dark:text-stone-400" title="Gerado pela folha de pagamento; altere na tela Folha de Pagamento">
-                          Provisão · Folha de pagamento
-                        </span>
+                      {origin && (
+                        <Link
+                          href={origin.href}
+                          title={`Abrir ${origin.screen}: é lá que este lançamento é alterado`}
+                          className="mt-1 flex items-center gap-1 text-[10px] text-stone-500 dark:text-stone-400 hover:text-accent-ink hover:underline"
+                        >
+                          {origin.label}
+                          <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                        </Link>
                       )}
                     </td>
 
                     <td className="py-3 px-4 font-medium text-stone-900 dark:text-stone-100">
-                      {entry.memo}
+                      <span className={reversal ? 'line-through decoration-stone-400/70 text-stone-500 dark:text-stone-400' : undefined}>{entry.memo}</span>
                       <span className="text-[11px] text-stone-500 dark:text-stone-400 font-normal ml-2">
-                        ({entry.lines.length} partidas)
+                        #{entry.entryNumber} · {entry.lines.length} partidas
                       </span>
+                      {(reversal || entry.reversalOfId) && (
+                        <span className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-normal">
+                          {reversal && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/70 dark:bg-amber-950/35 dark:text-amber-300 dark:border-amber-500/30">
+                              <Undo2 className="w-3 h-3" />
+                              Estornado pelo #{reversal.entryNumber}, em {formatDateBR(reversal.date)}
+                            </span>
+                          )}
+                          {entry.reversalOfId && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200/80 dark:bg-stone-800/80 dark:text-stone-300 dark:border-white/10">
+                              <Undo2 className="w-3 h-3" />
+                              {reverses ? `Estorno do #${reverses.entryNumber}, de ${formatDateBR(reverses.date)}` : 'Estorno de lançamento excluído'}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3 px-4 font-mono text-stone-500 text-[12px]">
@@ -126,39 +151,68 @@ export function JournalEntriesTable({ entries, accountMap, monthLocked, deleting
 
                     <td className="py-3 px-4 text-center">
                       <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => onEdit(entry)}
-                          disabled={monthLocked}
-                          title={monthLocked ? 'Mês bloqueado' : 'Editar lançamento'}
-                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14] transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
+                        {locked && (
+                          <span title="Competência fechada: o lançamento não é alterado nem excluído. Para corrigir, estorne." className="w-6 h-8 inline-flex items-center justify-center text-stone-400">
+                            <Lock className="w-3.5 h-3.5" />
+                            <span className="sr-only">Competência fechada</span>
+                          </span>
+                        )}
+                        {origin ? (
+                          <Link
+                            href={origin.href}
+                            aria-label={`Abrir ${origin.screen}`}
+                            title={`Alterado em ${origin.screen}`}
+                            className={`${ACTION} hover:text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14]`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
+                        ) : (
+                          !locked && (
+                            <button
+                              type="button"
+                              onClick={() => onEdit(entry)}
+                              aria-label={`Editar o lançamento #${entry.entryNumber}`}
+                              title="Editar lançamento"
+                              className={`${ACTION} hover:text-accent-ink hover:bg-accent/[0.07] dark:hover:bg-accent/[0.14]`}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )
+                        )}
 
                         <button
                           type="button"
                           onClick={() => onDuplicate(entry)}
-                          disabled={monthLocked}
-                          title={monthLocked ? 'Mês bloqueado' : 'Duplicar lançamento'}
-                          className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                          aria-label={`Duplicar o lançamento #${entry.entryNumber}`}
+                          title="Duplicar em um lançamento novo"
+                          className={`${ACTION} hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30`}
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </button>
 
-                        {onDelete && (
+                        {!origin && (
+                          <button
+                            type="button"
+                            onClick={() => onReverse(entry)}
+                            disabled={Boolean(reversal)}
+                            aria-label={`Estornar o lançamento #${entry.entryNumber}`}
+                            title={reversal ? `Já estornado pelo #${reversal.entryNumber}` : 'Estornar: lançamento inverso em competência aberta'}
+                            className={`${ACTION} hover:text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30`}
+                          >
+                            <Undo2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {onDelete && !origin && !locked && (
                           <button
                             type="button"
                             onClick={() => onDelete(entry)}
-                            disabled={monthLocked || deletingId === entry.id}
-                            title={monthLocked ? 'Mês bloqueado' : 'Excluir lançamento'}
-                            className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                            disabled={deletingId === entry.id}
+                            aria-label={`Excluir o lançamento #${entry.entryNumber}`}
+                            title="Excluir lançamento"
+                            className={`${ACTION} hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30`}
                           >
-                            {deletingId === entry.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
+                            {deletingId === entry.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                           </button>
                         )}
                       </div>

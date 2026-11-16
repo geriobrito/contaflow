@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertValidJournalEntry, JOURNAL_TEMPLATES, journalEntryProblem, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, previousMonth, repeatCandidates, repeatDraft, sameDayIn, shiftCompetence, templateDraft } from '@/lib/journal';
+import { journalOrigin, resultEffect, reversalDraft, reversalProblem, reversalsByOriginal } from '@/lib/journal-origin';
 import { buildITG1000Chart } from '@/lib/chart/itg1000';
 import type { JournalEntry, JournalEntryLine } from '@/types/firestore';
 
@@ -211,5 +212,78 @@ describe('modelos de provisão mensal', () => {
     const copy = repeatDraft(entry, '2026-04');
     expect(copy).toMatchObject({ date: '2026-04-30', memo: 'Provisão do Simples Nacional (DAS) - competência 04/2026', documentRef: 'DAS-2026-04' });
     expect(repeatCandidates([entry], '2026-04', chart)[0].suggested).toBe(true);
+  });
+});
+
+describe('origem, estorno e efeito no resultado', () => {
+  const full = (over: Partial<JournalEntry>): JournalEntry => ({
+    id: 'j1',
+    clientId: 'c1',
+    entryNumber: 7,
+    date: '2026-03-31',
+    memo: 'Provisão do DAS - competência 03/2026',
+    category: 'TAX',
+    lines: [
+      { id: 'a', accountId: 'das', accountCode: '3.1.2.01', type: 'DEBIT', amount: 812.4 },
+      { id: 'b', accountId: 'pagar', accountCode: '2.1.5.01', type: 'CREDIT', amount: 812.4 },
+    ],
+    totalAmount: 812.4,
+    documentRef: 'DAS-2026-03',
+    attachmentUrl: 'https://drive.example.com/das',
+    createdAt: '',
+    updatedAt: '',
+    createdByUid: 'u1',
+    ...over,
+  });
+
+  it('o manual não tem origem; o gerado aponta a tela dele, na competência do lançamento', () => {
+    expect(journalOrigin(full({}))).toBeNull();
+    expect(journalOrigin(full({ depreciationMonth: '2026-03' }))).toMatchObject({ label: 'Gerado pelo Imobilizado', href: '/imobilizado?mes=2026-03' });
+    expect(journalOrigin(full({ fixedAssetId: 'b1' }))?.label).toBe('Baixa de bem · Imobilizado');
+    expect(journalOrigin(full({ stockMonth: '2026-03' }))?.href).toBe('/estoque?mes=2026-03');
+    expect(journalOrigin(full({ payrollMonth: '2026-03' }))?.href).toBe('/folha?mes=2026-03');
+    expect(journalOrigin(full({ yearClosing: '2025' }))?.howToChange).toMatch(/encerramento do exercício de 2025/);
+  });
+
+  it('o estorno troca débito e crédito, cita o lançamento e não leva o comprovante', () => {
+    const draft = reversalDraft(full({}), '2026-05-31');
+    expect(draft).toMatchObject({ date: '2026-05-31', reversalOfId: 'j1', totalAmount: 812.4, category: 'TAX', documentRef: 'DAS-2026-03' });
+    expect(draft.memo).toBe('Estorno do lançamento #7 de 31/03/2026: Provisão do DAS - competência 03/2026');
+    expect(draft.lines.map((l) => [l.accountId, l.type, l.amount])).toEqual([
+      ['das', 'CREDIT', 812.4],
+      ['pagar', 'DEBIT', 812.4],
+    ]);
+    expect(journalEntryProblem(draft)).toBeNull();
+    expect('attachmentUrl' in draft).toBe(false);
+  });
+
+  it('não estorna duas vezes nem o que é gerado por uma rotina', () => {
+    const original = full({});
+    const estorno = full({ id: 'j2', entryNumber: 9, date: '2026-05-31', reversalOfId: 'j1' });
+    const reversedBy = reversalsByOriginal([original, estorno]);
+    expect(reversedBy.get('j1')?.id).toBe('j2');
+    expect(reversalProblem(original, reversedBy)).toMatch(/já foi estornado pelo #9, de 31\/05\/2026/);
+    expect(reversalProblem(estorno, reversedBy)).toBeNull();
+    expect(reversalProblem(full({ id: 'j3', investmentMonth: '2026-03' }), reversedBy)).toMatch(/Aplicações financeiras/);
+  });
+
+  it('efeito no resultado: créditos menos débitos nas contas de resultado, e o estorno anula', () => {
+    const accounts = [
+      { id: 'das', type: 'EXPENSE' as const },
+      { id: 'pagar', type: 'LIABILITY' as const },
+      { id: 'receita', type: 'REVENUE' as const },
+    ];
+    const original = full({});
+    expect(resultEffect([original], accounts)).toBe(-812.4);
+    expect(resultEffect([original, { ...original, ...reversalDraft(original, '2026-05-31'), id: 'j2' }], accounts)).toBe(0);
+    const venda = full({
+      id: 'j4',
+      lines: [
+        { id: 'a', accountId: 'pagar', type: 'DEBIT', amount: 100 },
+        { id: 'b', accountId: 'receita', type: 'CREDIT', amount: 100 },
+      ],
+    });
+    expect(resultEffect([venda], accounts)).toBe(100);
+    expect(resultEffect([{ ...venda, yearClosing: '2026' }], accounts)).toBe(0);
   });
 });

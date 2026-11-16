@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChartAccount, JournalEntry, PeriodLock } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { peekActor } from '@/lib/data/scope';
@@ -73,7 +73,8 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
 
   const reload = () => setReloadCount((c) => c + 1);
 
-  const isMonthLocked = useCallback((month: string) => locks.some((l) => l.month === month), [locks]);
+  const lockedMonths = useMemo(() => new Set(locks.map((l) => l.month)), [locks]);
+  const isMonthLocked = useCallback((month: string) => lockedMonths.has(month), [lockedMonths]);
 
   const actorOf = () => peekActor() ?? { uid: authorUid || 'local' };
 
@@ -99,6 +100,8 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
         createdByUid: existing.createdByUid,
         // A origem da repetição também: sem ela o lançamento seria oferecido de novo.
         ...(existing.repeatedFromId ? { repeatedFromId: existing.repeatedFromId } : {}),
+        // E o vínculo do estorno: sem ele o lançamento original voltaria a aparecer como não estornado.
+        ...(existing.reversalOfId ? { reversalOfId: existing.reversalOfId } : {}),
         updatedAt: now,
       };
       await repo.updateJournalEntry(updated, journalAudit('JOURNAL_UPDATE', actor, clientId, now, updated));
@@ -167,5 +170,5 @@ export function useJournalEntries(clientId: string | undefined, authorUid: strin
     }
   };
 
-  return { accounts, entries, implantation, loading, error, isMonthLocked, saveEntry, deleteEntry, repeatEntries };
+  return { accounts, entries, implantation, loading, error, lockedMonths, isMonthLocked, saveEntry, deleteEntry, repeatEntries };
 }

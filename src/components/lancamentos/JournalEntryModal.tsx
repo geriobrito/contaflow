@@ -31,6 +31,8 @@ interface JournalEntryModalProps {
   clientId: string;
   defaultDate?: string;
   isMonthLocked?: (month: string) => boolean;
+  /** Título de um lançamento novo que nasce de outro (ex.: "Estorno do lançamento #12"). */
+  heading?: string;
 }
 
 const CATEGORY_LABELS: Record<JournalEntryCategory, string> = {
@@ -52,6 +54,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   clientId,
   defaultDate = todayISO(),
   isMonthLocked,
+  heading,
 }) => {
   const [date, setDate] = useState<string>(initialEntry?.date ?? defaultDate);
   const [category, setCategory] = useState<JournalEntryCategory>(initialEntry?.category ?? 'CLOSING');
@@ -137,7 +140,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     e.preventDefault();
     // Mesma validação aplicada pelos repositórios e pelas regras do Firestore.
     const built = buildJournalEntry(
-      { clientId, date, category, memo, documentRef, attachmentUrl, lines, createdByUid: initialEntry?.createdByUid },
+      { clientId, date, category, memo, documentRef, attachmentUrl, lines, createdByUid: initialEntry?.createdByUid, reversalOfId: initialEntry?.reversalOfId },
       accounts,
       locked ? month : null
     );
@@ -177,7 +180,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </div>
             <div>
               <h2 id="journal-entry-modal-title" className="text-[17px] font-semibold text-stone-900 dark:text-stone-100">
-                {initialEntry?.id ? `Editar Lançamento #${initialEntry.entryNumber}` : 'Novo Lançamento Contábil Manual'}
+                {initialEntry?.id ? `Editar Lançamento #${initialEntry.entryNumber}` : (heading ?? 'Novo Lançamento Contábil Manual')}
               </h2>
               <p className="text-[13px] text-stone-500">
                 Partidas dobradas de fechamento, provisões ou ajustes patrimoniais
@@ -258,6 +261,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                 <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-300" />
                 <span>
                   <strong>Competência bloqueada:</strong> O mês {month} foi fechado e não aceita novos lançamentos ou edições.
+                  {!initialEntry?.id && ' Escolha uma data em competência aberta.'}
                 </span>
               </div>
             )}
@@ -280,7 +284,8 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    disabled={saving || locked}
+                    // Lançamento novo: a data segue editável para sair da competência fechada.
+                    disabled={saving || (locked && Boolean(initialEntry?.id))}
                     required
                     className={INPUT}
                   />
@@ -534,7 +539,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               disabled={saving || locked || !isBalanced || !memo.trim()}
               className={BUTTON.primary}
             >
-              {saving ? 'Gravando...' : initialEntry ? 'Salvar Alterações' : 'Confirmar Lançamento'}
+              {saving ? 'Gravando...' : initialEntry?.id ? 'Salvar Alterações' : initialEntry?.reversalOfId ? 'Confirmar Estorno' : 'Confirmar Lançamento'}
             </button>
           </div>
         </form>

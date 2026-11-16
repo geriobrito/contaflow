@@ -283,6 +283,7 @@ export function remapBackupForNewClient(
       id: newId,
       clientId,
       ...(j.repeatedFromId ? { repeatedFromId: mapJournal(j.repeatedFromId) } : {}),
+      ...(j.reversalOfId ? { reversalOfId: mapJournal(j.reversalOfId) } : {}),
       lines: j.lines.map((l) => stripUndefined({ ...l, accountId: mapAcc(l.accountId) })),
     });
     fullJournalEntries.push(remappedEntry);

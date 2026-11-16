@@ -70,6 +70,8 @@ export interface JournalEntry {
   attachmentUrl?: string;
   /** Lançamento do mês anterior do qual este foi repetido (recorrência mensal). */
   repeatedFromId?: string;
+  /** Lançamento que este estorna (mesmas contas e valores, com débito e crédito trocados). */
+  reversalOfId?: string;
   /**
    * Exercício (YYYY) encerrado por este lançamento: gerado pela rotina de encerramento
    * (src/lib/year-closing.ts), com `category: 'CLOSING'` e data em 31/12. Fica fora da DRE, que
