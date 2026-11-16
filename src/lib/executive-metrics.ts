@@ -2,6 +2,7 @@ import type { BankTransaction, ChartAccount, JournalEntry, ResultSummary } from 
 import { buildDRE, type DateRange } from '@/lib/dre/build';
 import { monthlyColumns, previousYearRange, variation } from '@/lib/dre/compare';
 import { todayISO } from '@/lib/business-days';
+import { round2 } from '@/lib/money';
 
 export interface ExecutiveMonthlyBreakdown {
   month: string; // YYYY-MM
@@ -14,6 +15,37 @@ export interface ExecutiveMonthlyBreakdown {
   taxes: number;
   netResult: number;
   netMargin: number;
+  /** Custos, despesas e tributos do mês (o que saiu contra a receita). */
+  outflows: number;
+  /** Resultado líquido acumulado desde o primeiro mês da janela. */
+  cumulativeResult: number;
+  /** Receita bruta do mesmo mês um ano antes (comparação), com o rótulo dele. */
+  previousGrossRevenue: number;
+  previousLabel: string;
+}
+
+/**
+ * Degrau da ponte do resultado (cascata): `total` é uma barra que parte do zero (receita bruta,
+ * resultado líquido); `delta` soma ou subtrai do acumulado anterior. `start` e `end` são as
+ * extremidades da barra no eixo de valores.
+ */
+export interface BridgeStep {
+  key: 'gross' | 'deductions' | 'costs' | 'opex' | 'other' | 'incomeTaxes' | 'net';
+  label: string;
+  kind: 'total' | 'delta';
+  /** Valor do degrau: positivo soma, negativo subtrai. Nos totais, o próprio total. */
+  value: number;
+  start: number;
+  end: number;
+}
+
+/** Conta de custo ou despesa entre as maiores do período. */
+export interface TopExpense {
+  code: string;
+  name: string;
+  value: number;
+  /** Participação (%) no total de custos e despesas. */
+  share: number;
 }
 
 export interface CostComposition {
@@ -41,6 +73,18 @@ export interface ExecutiveSummary {
   awaitingApprovalCount: number;
   monthly: ExecutiveMonthlyBreakdown[];
   costComposition: CostComposition;
+  /** Os 12 meses anteriores, para comparar. */
+  previous: { periodLabel: string; grossRevenue: number; netResult: number; netMargin: number };
+  /** Variação do resultado líquido frente aos 12 meses anteriores (%), ou null sem base. */
+  twelveMonthsNetResultVariation: number | null;
+  /** Margem EBITDA sobre a receita líquida (%). */
+  twelveMonthsEbitdaMargin: number;
+  /** Da receita bruta ao resultado líquido, degrau a degrau. */
+  bridge: BridgeStep[];
+  /** Maiores contas de custo e despesa; o que sobra vem somado em "Demais contas". */
+  topExpenses: TopExpense[];
+  /** Meses da janela com receita ou gasto lançado. */
+  monthsWithData: number;
 }
 
 const MONTH_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -60,6 +104,46 @@ function shiftMonths(ym: string, delta: number): string {
 function formatMonthShort(ym: string): string {
   const [y, m] = ym.split('-');
   return `${MONTH_SHORT[Number(m) - 1]}/${y.slice(2)}`;
+}
+
+/** Quantas contas aparecem pelo nome no ranking de gastos; as demais são somadas. */
+const TOP_EXPENSES = 7;
+
+/**
+ * Ponte do resultado: receita bruta, o que sai em cada grupo e o resultado líquido. "Financeiro
+ * e outros" é o que falta para fechar no resultado da DRE (resultado financeiro e outras receitas
+ * e despesas), então os degraus sempre somam o resultado líquido.
+ */
+export function buildBridge(s: Pick<DREStatementLike, 'grossRevenue' | 'deductions' | 'costs' | 'operatingExpenses' | 'incomeTaxes' | 'netResult'>): BridgeStep[] {
+  const other = round2(s.netResult - (s.grossRevenue - s.deductions - s.costs - s.operatingExpenses - s.incomeTaxes));
+  const steps: BridgeStep[] = [];
+  let running = 0;
+  const total = (key: BridgeStep['key'], label: string, value: number) => {
+    steps.push({ key, label, kind: 'total', value, start: 0, end: value });
+    running = value;
+  };
+  const delta = (key: BridgeStep['key'], label: string, value: number) => {
+    if (Math.abs(value) < 0.005) return;
+    steps.push({ key, label, kind: 'delta', value, start: running, end: round2(running + value) });
+    running = round2(running + value);
+  };
+  total('gross', 'Receita bruta', s.grossRevenue);
+  delta('deductions', 'Tributos e deduções', -s.deductions);
+  delta('costs', 'Custos', -s.costs);
+  delta('opex', 'Despesas operacionais', -s.operatingExpenses);
+  delta('other', 'Financeiro e outros', other);
+  delta('incomeTaxes', 'IRPJ e CSLL', -s.incomeTaxes);
+  total('net', 'Resultado líquido', s.netResult);
+  return steps;
+}
+
+interface DREStatementLike {
+  grossRevenue: number;
+  deductions: number;
+  costs: number;
+  operatingExpenses: number;
+  incomeTaxes: number;
+  netResult: number;
 }
 
 function isDepreciationOrAmortization(code: string, name: string): boolean {
@@ -113,10 +197,13 @@ export function buildExecutiveSummary(params: {
   const previousConsolidated = buildDRE(transactions, accounts, prevRange, journalEntries, summaries);
 
   const cols = monthlyColumns(transactions, accounts, range, journalEntries, summaries);
-  const monthly: ExecutiveMonthlyBreakdown[] = cols.map((col) => {
+  const prevCols = monthlyColumns(transactions, accounts, prevRange, journalEntries, summaries);
+  let cumulative = 0;
+  const monthly: ExecutiveMonthlyBreakdown[] = cols.map((col, i) => {
     const s = col.statement;
     const finExp = s.sections.FINANCIAL_EXPENSES.total;
     const taxes = s.deductions + s.incomeTaxes;
+    cumulative = round2(cumulative + s.netResult);
     return {
       month: col.key,
       label: col.label,
@@ -128,6 +215,10 @@ export function buildExecutiveSummary(params: {
       taxes,
       netResult: s.netResult,
       netMargin: s.netMargin ?? 0,
+      outflows: round2(s.costs + s.operatingExpenses + finExp + taxes),
+      cumulativeResult: cumulative,
+      previousGrossRevenue: prevCols[i]?.statement.grossRevenue ?? 0,
+      previousLabel: prevCols[i]?.label ?? '',
     };
   });
 
@@ -149,6 +240,21 @@ export function buildExecutiveSummary(params: {
   const totalOutflows = costs + operatingExpenses + financialExpenses + taxes;
 
   const pct = (v: number) => (totalOutflows > 0.005 ? (v / totalOutflows) * 100 : 0);
+
+  // Maiores contas de custo e despesa (tributos sobre vendas ficam na composição, não aqui).
+  const expenseLines = [...consolidated.sections.COSTS.lines, ...consolidated.sections.OPERATING_EXPENSES.lines, ...consolidated.sections.FINANCIAL_EXPENSES.lines]
+    .filter((l) => l.value > 0.005)
+    .sort((a, b) => b.value - a.value);
+  const expenseTotal = expenseLines.reduce((sum, l) => sum + l.value, 0);
+  const share = (v: number) => (expenseTotal > 0.005 ? (v / expenseTotal) * 100 : 0);
+  const named = expenseLines.slice(0, TOP_EXPENSES);
+  const rest = round2(expenseLines.slice(TOP_EXPENSES).reduce((sum, l) => sum + l.value, 0));
+  const topExpenses: TopExpense[] = [
+    ...named.map((l) => ({ code: l.code, name: l.name, value: l.value, share: share(l.value) })),
+    ...(rest > 0.005 ? [{ code: '', name: `Demais contas (${expenseLines.length - TOP_EXPENSES})`, value: rest, share: share(rest) }] : []),
+  ];
+  const prevStartMonth = prevRange.start.slice(0, 7);
+  const prevEndMonth = prevRange.end.slice(0, 7);
 
   return {
     range,
@@ -173,6 +279,17 @@ export function buildExecutiveSummary(params: {
       financialExpensesPct: pct(financialExpenses),
       taxesPct: pct(taxes),
     },
+    previous: {
+      periodLabel: `${formatMonthShort(prevStartMonth)} a ${formatMonthShort(prevEndMonth)}`,
+      grossRevenue: previousConsolidated.grossRevenue,
+      netResult: previousConsolidated.netResult,
+      netMargin: previousConsolidated.netMargin ?? 0,
+    },
+    twelveMonthsNetResultVariation: variation(consolidated.netResult, previousConsolidated.netResult),
+    twelveMonthsEbitdaMargin: Math.abs(consolidated.netRevenue) > 0.005 ? (ebitda / consolidated.netRevenue) * 100 : 0,
+    bridge: buildBridge(consolidated),
+    topExpenses,
+    monthsWithData: monthly.filter((m) => Math.abs(m.grossRevenue) > 0.005 || Math.abs(m.outflows) > 0.005).length,
   };
 }
 

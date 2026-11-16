@@ -248,6 +248,18 @@ test('fechamento mensal: do extrato à DRE', async ({ page }) => {
     await expect(page.getByText('2025', { exact: true })).toBeVisible();
   });
 
+  await test.step('Painel: Visão Executiva com os gráficos', async () => {
+    await page.goto('/painel');
+    await page.getByRole('radio', { name: 'Visão Executiva' }).click();
+    const exec = page.getByRole('region', { name: 'Visão Executiva' });
+    await expect(exec.getByRole('heading', { name: 'Da receita ao resultado (12 meses)' })).toBeVisible();
+    // Os gráficos são desenhados (SVG) e a leitura do período cita o maior gasto.
+    await expect(exec.getByRole('img', { name: /Ponte do resultado/ }).locator('svg').first()).toBeVisible();
+    await expect(exec.getByRole('img', { name: /Maiores contas de custo e despesa/ }).locator('svg').first()).toBeVisible();
+    await expect(exec.getByText(/Maior gasto: Aluguéis e Condomínios/)).toBeVisible();
+    await page.getByRole('radio', { name: 'Operacional' }).click();
+  });
+
   await test.step('Contas e extratos', async () => {
     await page.goto('/contas');
     await expect(page.getByRole('heading', { name: 'Contas e extratos' })).toBeVisible();

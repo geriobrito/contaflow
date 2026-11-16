@@ -95,6 +95,24 @@
   --foreground: #1d1d1f;
   /* Sombra que avisa que há mais conteúdo acima/abaixo numa área rolável (.scroll-shadows). */
   --scroll-shadow: rgba(28, 25, 23, 0.1);
+  /*
+   * Cores dos gráficos (Visão Executiva): uma por entidade, a mesma em todo gráfico. Conjuntos
+   * conferidos para daltonismo e contraste sobre a superfície de cada tema; não troque um tom
+   * isolado sem conferir o conjunto de novo.
+   */
+  --viz-revenue: #2a78d6;
+  --viz-outflows: #eb6834;
+  --viz-result: #1baf7a;
+  --viz-costs: #eda100;
+  --viz-opex: #e87ba4;
+  --viz-financial: #008300;
+  --viz-taxes: #6250d6;
+  --viz-negative: #d03b3b;
+  --viz-previous: #a8a29e;
+  --viz-grid: rgba(28, 25, 23, 0.08);
+  --viz-axis: #78716c;
+  --viz-ink: #292524;
+  --viz-cursor: rgba(28, 25, 23, 0.05);
   color-scheme: light;
 }
 
@@ -113,6 +131,19 @@
     --shadow-button: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
     --color-accent-ink: #E08A6B;
     --scroll-shadow: rgba(0, 0, 0, 0.5);
+    --viz-revenue: #3987e5;
+    --viz-outflows: #d95926;
+    --viz-result: #199e70;
+    --viz-costs: #c98500;
+    --viz-opex: #d55181;
+    --viz-financial: #0ca30c;
+    --viz-taxes: #9085e9;
+    --viz-negative: #e66767;
+    --viz-previous: #78716c;
+    --viz-grid: rgba(255, 255, 255, 0.08);
+    --viz-axis: #a8a29e;
+    --viz-ink: #e7e5e4;
+    --viz-cursor: rgba(255, 255, 255, 0.05);
     /* Barras de rolagem, datas e outros controles nativos no tom escuro. */
     color-scheme: dark;
   }

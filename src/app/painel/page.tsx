@@ -2,6 +2,7 @@
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import { useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, ArrowRight, CalendarCheck, CalendarRange, CheckCircle2, Landmark, ListChecks, Lock, MessageCircleQuestion, ShieldCheck } from 'lucide-react';
@@ -18,7 +19,6 @@ import { BUTTON, CardHeader, EmptyState, PAGE, PageHeader, SegmentedControl, Sta
 import { CardsSkeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { PortfolioView } from '@/components/painel/PortfolioView';
 import { ReadQuotaMeter } from '@/components/painel/ReadQuotaMeter';
-import { ExecutiveDashboard } from '@/components/painel/ExecutiveDashboard';
 import { buildExecutiveSummary, executiveLoadRange, type ExecutiveSummary } from '@/lib/executive-metrics';
 import { loadResultWindow } from '@/lib/services/result-loader';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
@@ -28,6 +28,12 @@ import { MonthRoutineCard } from '@/components/painel/MonthRoutineCard';
 import { useMonthStepData } from '@/hooks/painel/useMonthStepData';
 import { monthRoutineSteps, workingMonths } from '@/lib/month-steps';
 import { todayISO } from '@/lib/business-days';
+
+/** A Visão Executiva traz a biblioteca de gráficos: só é baixada quando a aba é aberta. */
+const ExecutiveDashboard = dynamic(() => import('@/components/painel/ExecutiveDashboard').then((m) => m.ExecutiveDashboard), {
+  ssr: false,
+  loading: () => <CardsSkeleton count={4} className="grid grid-cols-2 lg:grid-cols-4 gap-3" cardClassName="h-[120px] rounded-[18px]" label="Carregando gráficos…" />,
+});
 
 const describe = (e: unknown) => (e instanceof Error && e.message ? e.message : 'erro desconhecido');
 
@@ -315,7 +321,7 @@ export default function PainelPage() {
         <PageHeader
           eyebrow={currentClient?.tradeName || currentClient?.name}
           title="Painel Gerencial Executivo"
-          description="Análise gráfica de faturamento, rentabilidade, EBITDA e composição de gastos dos últimos 12 meses."
+          description="Faturamento, rentabilidade, EBITDA e gastos dos últimos 12 meses, comparados com os 12 anteriores."
           actions={viewSwitch}
         />
         {readMeter}

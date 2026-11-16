@@ -86,6 +86,37 @@ describe('buildExecutiveSummary', () => {
         summary.costComposition.financialExpensesPct +
         summary.costComposition.taxesPct
     ).toBeCloseTo(100, 4);
+
+    // Ponte do resultado: os degraus saem da receita bruta e chegam no resultado líquido.
+    expect(summary.bridge.map((b) => [b.key, b.value, b.start, b.end])).toEqual([
+      ['gross', 20000, 0, 20000],
+      ['deductions', -1000, 20000, 19000],
+      ['costs', -4000, 19000, 15000],
+      ['opex', -2300, 15000, 12700],
+      ['other', -500, 12700, 12200],
+      ['net', 12200, 0, 12200],
+    ]);
+
+    // Maiores gastos: custos, despesas operacionais e financeiras, do maior para o menor.
+    expect(summary.topExpenses.map((e) => [e.code, e.value])).toEqual([
+      ['3.2.1.01', 4000],
+      ['3.3.2.01', 2000],
+      ['3.4.1.01.002', 500],
+      ['3.3.2.15', 300],
+    ]);
+    expect(summary.topExpenses.reduce((sum, e) => sum + e.share, 0)).toBeCloseTo(100, 4);
+
+    // Mês a mês: gastos, resultado acumulado e a receita do mesmo mês um ano antes.
+    const jan = summary.monthly.find((m) => m.month === '2025-01')!;
+    expect(jan).toMatchObject({ outflows: 7800, cumulativeResult: 4200, previousGrossRevenue: 0, previousLabel: 'jan/24' });
+    expect(summary.monthly.find((m) => m.month === '2025-03')).toMatchObject({ previousGrossRevenue: 10000, previousLabel: 'mar/24' });
+    expect(summary.monthly.at(-1)?.cumulativeResult).toBe(12200);
+    expect(summary.monthsWithData).toBe(2);
+
+    // Comparação com os 12 meses anteriores.
+    expect(summary.previous).toMatchObject({ periodLabel: 'jul/23 a jun/24', grossRevenue: 10000, netResult: 10000 });
+    expect(summary.twelveMonthsNetResultVariation).toBeCloseTo(22, 2);
+    expect(summary.twelveMonthsEbitdaMargin).toBeCloseTo((13000 / 19000) * 100, 4);
   });
 
   it('lida com lista vazia de lançamentos sem divisão por zero', () => {
@@ -101,5 +132,9 @@ describe('buildExecutiveSummary', () => {
     expect(summary.twelveMonthsNetMargin).toBe(0);
     expect(summary.costComposition.total).toBe(0);
     expect(summary.costComposition.costsPct).toBe(0);
+    expect(summary.bridge.map((b) => b.key)).toEqual(['gross', 'net']);
+    expect(summary.topExpenses).toEqual([]);
+    expect(summary.monthsWithData).toBe(0);
+    expect(summary.twelveMonthsEbitdaMargin).toBe(0);
   });
 });

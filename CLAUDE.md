@@ -5,6 +5,7 @@
 - **Estilização**: Tailwind CSS v4 (`@tailwindcss/postcss` 4.x), CSS Variables (`globals.css`)
 - **Backend / BaaS**: Firebase 12.19.0 (Auth, Firestore), Firebase Admin 14.5.0
 - **Testes**: Vitest 5.0.2 (unit + firestore rules), `@firebase/rules-unit-testing` 5.0.2
+- **Gráficos**: Recharts 3.10 (Visão Executiva do Painel, `src/components/painel/ExecutiveCharts.tsx`); cores das séries nas variáveis `--viz-*` de `globals.css`, uma por entidade e conferidas como conjunto para daltonismo e contraste nos dois temas
 - **Exportação & Utilitários**: ExcelJS 4.4.0, jsPDF 4.2.1, jsPDF-AutoTable 5.0.8, Lucide React 1.48.0
 - **Monitoramento**: Sentry (`@sentry/nextjs` 11.10, `withSentryConfig` vem de `@sentry/nextjs/config`); erros sempre por `reportError` (`src/lib/monitoring`), nunca `console.error` direto
 - **Lint**: ESLint 9 (`eslint-config-next` 16.3.6)
