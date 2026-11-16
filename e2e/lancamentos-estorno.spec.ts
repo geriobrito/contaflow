@@ -42,6 +42,13 @@ test('lançamentos manuais: estorno anula o lançamento e fica ligado a ele', as
     await page.goto('/lancamentos');
     await page.getByRole('button', { name: 'Novo Lançamento' }).first().click();
     const dialog = page.getByRole('dialog');
+    // Grade de partidas: o valor entra em centavos na coluna do lado, e a diferença fecha com um clique.
+    await dialog.getByLabel('Débito da partida 1').pressSequentially('150000');
+    await expect(dialog.getByLabel('Débito da partida 1')).toHaveValue('1.500,00');
+    await expect(dialog.getByText(/Diferença de R\$\s1\.500,00 a crédito/)).toBeVisible();
+    await dialog.getByRole('button', { name: 'Lançar a diferença' }).click();
+    await expect(dialog.getByLabel('Crédito da partida 2')).toHaveValue('1.500,00');
+    await expect(dialog.getByText(/Partidas equilibradas/)).toBeVisible();
     await dialog.getByRole('group', { name: 'Modelos de lançamento' }).getByRole('button', { name: 'DAS do Simples Nacional' }).click();
     await dialog.getByLabel('Valor do DAS (PGDAS-D)').fill('812,40');
     await dialog.getByRole('button', { name: 'Preencher as partidas' }).click();

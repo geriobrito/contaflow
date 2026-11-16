@@ -2,21 +2,13 @@
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
 import React, { useState, useMemo } from 'react';
-import {
-  X,
-  Plus,
-  Trash2,
-  AlertCircle,
-  CheckCircle2,
-  Sparkles,
-  Calculator,
-  Lock,
-} from 'lucide-react';
+import { X, Plus, Trash2, AlertCircle, CheckCircle2, Sparkles, Calculator, Lock, Scale } from 'lucide-react';
 import type { ChartAccount, JournalEntry, JournalEntryCategory, JournalEntryLine } from '@/types/firestore';
 import { formatCurrency } from '@/lib/utils/formatters';
 import { JOURNAL_TEMPLATES, journalTotals, MAX_JOURNAL_LINES, parseAttachmentUrl, templateDraft, type JournalTemplateId } from '@/lib/journal';
 import { buildJournalEntry, emptyJournalLines, nextJournalLine, parseTemplateValues, type JournalEntryInput } from '@/lib/journal-form';
 import { BUTTON, INPUT, INPUT_COMPACT, FIELD_LABEL } from '@/components/ui/primitives';
+import { fromCents, toCents } from '@/lib/money';
 import { ModalPortal } from '@/components/ui/ModalPortal';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { reportError } from '@/lib/monitoring';
@@ -44,6 +36,53 @@ const CATEGORY_LABELS: Record<JournalEntryCategory, string> = {
   PROVISION: 'Provisão Geral',
   OTHER: 'Outros Lançamentos',
 };
+
+const BRL = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * Valor de uma partida, estilo calculadora (o mesmo do rateio): os dígitos entram pela direita,
+ * como centavos, e o campo mostra sempre "1.234,56". Vazio quando a partida não é deste lado.
+ */
+function AmountCell({
+  value,
+  label,
+  disabled,
+  tone,
+  onChange,
+  onEnter,
+}: {
+  value: number;
+  label: string;
+  disabled: boolean;
+  tone: 'debit' | 'credit';
+  onChange: (amount: number) => void;
+  onEnter: () => void;
+}) {
+  const cents = toCents(value || 0);
+  return (
+    <input
+      aria-label={label}
+      inputMode="numeric"
+      autoComplete="off"
+      disabled={disabled}
+      value={cents === 0 ? '' : BRL.format(cents / 100)}
+      placeholder="—"
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, '').slice(0, 13);
+        onChange(digits ? fromCents(Number(digits)) : 0);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          onEnter();
+        }
+      }}
+      className={`w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] font-mono tabular-nums text-right outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 focus:border-accent/60 disabled:opacity-55 ${
+        cents === 0 ? '' : tone === 'debit' ? 'text-blue-700 dark:text-blue-300' : 'text-amber-700 dark:text-amber-300'
+      }`}
+    />
+  );
+}
 
 export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   isOpen,
@@ -110,6 +149,37 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
     setError(null);
   };
 
+  /** Valor digitado na coluna de um lado: a partida passa a ser desse lado (o outro fica vazio). */
+  const setLineAmount = (id: string, type: JournalEntryLine['type'], amount: number) => {
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, type, amount } : l)));
+    setError(null);
+  };
+
+  /** Lado e valor que faltam para fechar o lançamento. */
+  const missing = totalDebit > totalCredit ? { type: 'CREDIT' as const, amount: difference } : { type: 'DEBIT' as const, amount: difference };
+
+  /** Joga a diferença na primeira partida ainda sem valor; sem nenhuma, numa partida nova. */
+  const fillDifference = () => {
+    if (difference <= 0) return;
+    const empty = lines.find((l) => !l.amount);
+    if (empty) return setLineAmount(empty.id, missing.type, missing.amount);
+    if (lines.length >= MAX_JOURNAL_LINES) return setError(`Um lançamento aceita no máximo ${MAX_JOURNAL_LINES} partidas. Divida-o em dois lançamentos.`);
+    setLines((prev) => [...prev, { id: `l_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`, accountId: '', type: missing.type, amount: missing.amount, memo: '' }]);
+  };
+
+  /** Por que o botão de confirmar está desligado (a primeira coisa que falta). */
+  const blocker = locked
+    ? `Competência ${month} fechada: escolha outra data.`
+    : !memo.trim()
+      ? 'Falta o histórico do lançamento.'
+      : totalDebit === 0 && totalCredit === 0
+        ? 'Informe o valor das partidas.'
+        : difference > 0
+          ? `Faltam ${formatCurrency(difference)} a ${missing.type === 'DEBIT' ? 'débito' : 'crédito'}.`
+          : lines.some((l) => l.amount > 0 && !l.accountId)
+            ? 'Há partida com valor e sem conta.'
+            : null;
+
   const handleLineChange = (id: string, field: keyof JournalEntryLine, value: unknown) => {
     setLines((prev) =>
       prev.map((l) => {
@@ -170,7 +240,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto bg-black/40 backdrop-blur-sm animate-fade-in"
     >
       <div
-        className="w-full max-w-4xl max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-surface rounded-2xl shadow-overlay border border-line-strong overflow-hidden"
+        className="w-full max-w-[1120px] max-h-[calc(100vh-2rem)] my-auto flex flex-col bg-surface rounded-2xl shadow-overlay border border-line-strong overflow-hidden"
       >
         {/* Header */}
         <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-line bg-stone-50/50 dark:bg-stone-800/40">
@@ -255,7 +325,7 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSave} className="flex-1 min-h-0 flex flex-col">
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-6">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-5 space-y-4">
             {locked && (
               <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200 text-[13px] flex items-center gap-2.5">
                 <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-300" />
@@ -273,35 +343,29 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               </div>
             )}
 
-            {/* Dados Gerais */}
-            <div className="grid grid-cols-3 gap-4">
+            {/* Dados gerais: data, categoria e documento numa linha; o histórico logo abaixo */}
+            <div className="grid gap-x-4 gap-y-3 grid-cols-1 md:grid-cols-[170px_minmax(0,1fr)_minmax(0,1fr)]">
               <div>
-                <label className={`${FIELD_LABEL} block mb-1.5`}>
+                <label htmlFor="journal-date" className={`${FIELD_LABEL} block mb-1.5`}>
                   Data do Lançamento
                 </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    // Lançamento novo: a data segue editável para sair da competência fechada.
-                    disabled={saving || (locked && Boolean(initialEntry?.id))}
-                    required
-                    className={INPUT}
-                  />
-                </div>
+                <input
+                  id="journal-date"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  // Lançamento novo: a data segue editável para sair da competência fechada.
+                  disabled={saving || (locked && Boolean(initialEntry?.id))}
+                  required
+                  className={INPUT}
+                />
               </div>
 
               <div>
-                <label className={`${FIELD_LABEL} block mb-1.5`}>
+                <label htmlFor="journal-category" className={`${FIELD_LABEL} block mb-1.5`}>
                   Categoria
                 </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as JournalEntryCategory)}
-                  disabled={saving || locked}
-                  className={INPUT}
-                >
+                <select id="journal-category" value={category} onChange={(e) => setCategory(e.target.value as JournalEntryCategory)} disabled={saving || locked} className={INPUT}>
                   {Object.entries(CATEGORY_LABELS).map(([k, label]) => (
                     <option key={k} value={k}>
                       {label}
@@ -311,10 +375,11 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               </div>
 
               <div>
-                <label className={`${FIELD_LABEL} block mb-1.5`}>
+                <label htmlFor="journal-document" className={`${FIELD_LABEL} block mb-1.5`}>
                   Documento / Ref. (Opcional)
                 </label>
                 <input
+                  id="journal-document"
                   type="text"
                   placeholder="Ex: FOLHA-05-2025"
                   value={documentRef}
@@ -323,170 +388,140 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                   className={INPUT}
                 />
               </div>
-            </div>
 
-            <div>
-              <label className={`${FIELD_LABEL} block mb-1.5`}>
-                Histórico Contábil Geral (Memo) *
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Provisão mensal de salários e ordenados referente a maio/2025"
-                value={memo}
-                onChange={(e) => setMemo(e.target.value)}
-                disabled={saving || locked}
-                required
-                className={INPUT}
-              />
-            </div>
-
-            {/* Partidas Contábeis (Tabela Dinâmica) */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100">
-                    Partidas Contábeis (Débito e Crédito)
-                  </h3>
-                  <p className="text-[12px] text-stone-500">
-                    Todo débito deve corresponder a um crédito de igual valor.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddLine}
+              <div className="md:col-span-3">
+                <label htmlFor="journal-memo" className={`${FIELD_LABEL} block mb-1.5`}>
+                  Histórico Contábil Geral (Memo) *
+                </label>
+                <input
+                  id="journal-memo"
+                  type="text"
+                  placeholder="Ex: Provisão mensal de salários e ordenados referente a maio/2025"
+                  value={memo}
+                  onChange={(e) => setMemo(e.target.value)}
                   disabled={saving || locked}
-                  className={`${BUTTON.secondary} h-8! text-[12px]!`}
-                >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar Partida
-                </button>
+                  required
+                  className={INPUT}
+                />
+              </div>
+            </div>
+
+            {/* Partidas: uma coluna para o débito e outra para o crédito, como no Diário */}
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h3 className="text-[14px] font-semibold text-stone-900 dark:text-stone-100">Partidas Contábeis (Débito e Crédito)</h3>
+                <p className="text-[12px] text-stone-500">Digite o valor na coluna do débito ou na do crédito. Enter na última partida abre a próxima.</p>
               </div>
 
               <div className="border border-line-strong rounded-xl overflow-hidden bg-stone-50/30 dark:bg-stone-900/30">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-[13px] border-collapse">
+                  <table className="w-full min-w-[820px] text-left text-[13px] border-collapse">
                     <thead>
                       <tr className={TABLE_HEAD}>
-                        <Th align="center" className="w-16">Tipo</Th>
+                        <Th align="center" className="w-10">#</Th>
                         <Th>Conta Contábil (Analítica)</Th>
-                        <Th align="right" className="w-40">Valor (R$)</Th>
-                        <Th>Complemento / Memo</Th>
+                        <Th align="right" className="w-[150px]">Débito (R$)</Th>
+                        <Th align="right" className="w-[150px]">Crédito (R$)</Th>
+                        <Th className="w-[26%]">Complemento / Memo</Th>
                         <Th align="center" className="w-12"></Th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-black/4 dark:divide-white/6">
-                      {lines.map((line, idx) => (
-                        <tr key={line.id} className="hover:bg-white dark:hover:bg-stone-800/40 transition-colors">
-                          <td className="py-2 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleLineChange(line.id, 'type', line.type === 'DEBIT' ? 'CREDIT' : 'DEBIT')
-                              }
-                              disabled={saving || locked}
-                              className={`w-9 h-7 rounded-md font-mono text-[11px] font-bold transition-all shadow-sm ${
-                                line.type === 'DEBIT'
-                                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                                  : 'bg-amber-600 text-white hover:bg-amber-700'
-                              }`}
-                              title={line.type === 'DEBIT' ? 'Débito (Clique para alternar para Crédito)' : 'Crédito (Clique para alternar para Débito)'}
-                            >
-                              {line.type === 'DEBIT' ? 'D' : 'C'}
-                            </button>
-                          </td>
+                      {lines.map((line, idx) => {
+                        const last = idx === lines.length - 1;
+                        const onEnter = () => last && handleAddLine();
+                        return (
+                          <tr key={line.id} className="hover:bg-white dark:hover:bg-stone-800/40 transition-colors">
+                            <td className="py-2 pl-3 pr-1 text-center font-mono tabular-nums text-[11px] text-stone-400">{idx + 1}</td>
 
-                          <td className="py-2 px-3">
-                            <AccountSelectField
-                              accounts={analyticAccounts}
-                              value={line.accountId}
-                              onChange={(accountId) => handleLineChange(line.id, 'accountId', accountId)}
-                              disabled={saving || locked}
-                              label={`Conta da partida ${idx + 1}`}
-                              placeholder="Selecione a conta analítica…"
-                              panelWidth={420}
-                              triggerClassName="h-9"
-                            />
-                          </td>
+                            <td className="py-2 px-2">
+                              <AccountSelectField
+                                accounts={analyticAccounts}
+                                value={line.accountId}
+                                onChange={(accountId) => handleLineChange(line.id, 'accountId', accountId)}
+                                disabled={saving || locked}
+                                label={`Conta da partida ${idx + 1}`}
+                                placeholder="Selecione a conta analítica…"
+                                panelWidth={460}
+                                triggerClassName="h-9"
+                              />
+                            </td>
 
-                          <td className="py-2 px-3">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              placeholder="0,00"
-                              value={line.amount || ''}
-                              onChange={(e) =>
-                                handleLineChange(line.id, 'amount', parseFloat(e.target.value) || 0)
-                              }
-                              disabled={saving || locked}
-                              required
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] font-mono text-right outline-none focus:border-accent/60"
-                            />
-                          </td>
+                            <td className="py-2 px-2">
+                              <AmountCell
+                                tone="debit"
+                                label={`Débito da partida ${idx + 1}`}
+                                value={line.type === 'DEBIT' ? line.amount : 0}
+                                disabled={saving || locked}
+                                onChange={(amount) => setLineAmount(line.id, 'DEBIT', amount)}
+                                onEnter={onEnter}
+                              />
+                            </td>
 
-                          <td className="py-2 px-3">
-                            <input
-                              type="text"
-                              placeholder="Memo opcional..."
-                              value={line.memo ?? ''}
-                              onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
-                              disabled={saving || locked}
-                              className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] outline-none focus:border-accent/60"
-                            />
-                          </td>
+                            <td className="py-2 px-2">
+                              <AmountCell
+                                tone="credit"
+                                label={`Crédito da partida ${idx + 1}`}
+                                value={line.type === 'CREDIT' ? line.amount : 0}
+                                disabled={saving || locked}
+                                onChange={(amount) => setLineAmount(line.id, 'CREDIT', amount)}
+                                onEnter={onEnter}
+                              />
+                            </td>
 
-                          <td className="py-2 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveLine(line.id)}
-                              disabled={saving || locked || lines.length <= 2}
-                              aria-label={`Remover partida #${idx + 1}`}
-                              className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            <td className="py-2 px-2">
+                              <input
+                                type="text"
+                                aria-label={`Complemento da partida ${idx + 1}`}
+                                placeholder="Opcional"
+                                value={line.memo ?? ''}
+                                onChange={(e) => handleLineChange(line.id, 'memo', e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    onEnter();
+                                  }
+                                }}
+                                disabled={saving || locked}
+                                className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-stone-800 border border-line-strong text-[13px] outline-none focus:border-accent/60"
+                              />
+                            </td>
+
+                            <td className="py-2 pr-3 pl-1 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveLine(line.id)}
+                                disabled={saving || locked || lines.length <= 2}
+                                aria-label={`Remover partida #${idx + 1}`}
+                                className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-stone-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t border-line bg-stone-100/70 dark:bg-stone-800/60 text-[13px] font-semibold font-mono tabular-nums">
+                        <td />
+                        <td className="py-2.5 px-2 font-sans">
+                          <button type="button" onClick={handleAddLine} disabled={saving || locked} className={`${BUTTON.secondary} h-8! text-[12px]! font-medium`}>
+                            <Plus className="w-3.5 h-3.5" /> Adicionar Partida
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-2 pr-[18px] text-right text-blue-700 dark:text-blue-300" aria-label="Total dos débitos">
+                          {formatCurrency(totalDebit)}
+                        </td>
+                        <td className="py-2.5 px-2 pr-[18px] text-right text-amber-700 dark:text-amber-300" aria-label="Total dos créditos">
+                          {formatCurrency(totalCredit)}
+                        </td>
+                        <td colSpan={2} className="py-2.5 px-2 font-sans font-normal text-[12px] text-stone-500 dark:text-stone-400">
+                          {lines.length} de {MAX_JOURNAL_LINES} partidas
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
-                </div>
-
-                {/* Barra de Balanço das Partidas */}
-                <div className="px-4 py-3 bg-stone-100/80 dark:bg-stone-800/80 border-t border-line flex flex-wrap items-center justify-between gap-4 text-[13px]">
-                  <div className="flex items-center gap-6 font-mono">
-                    <div>
-                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Débitos</span>
-                      <span className="font-semibold text-blue-600 dark:text-blue-400">
-                        {formatCurrency(totalDebit)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Total Créditos</span>
-                      <span className="font-semibold text-amber-600 dark:text-amber-400">
-                        {formatCurrency(totalCredit)}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[11px] uppercase font-sans text-stone-500 block">Diferença</span>
-                      <span className={`font-semibold ${difference > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                        {formatCurrency(difference)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    {isBalanced ? (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-[12px] font-medium">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
-                        Partidas Equilibradas (Σ D = Σ C)
-                      </div>
-                    ) : (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-[12px] font-medium">
-                        <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-300" />
-                        Diferença de {formatCurrency(difference)}
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -524,21 +559,34 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
             </div>
           </div>
 
-          {/* Rodapé / Ações (fixo) */}
-          <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-line">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className={BUTTON.ghost}
-            >
+          {/* Rodapé (fixo): a situação das partidas fica sempre à vista, ao lado de confirmar */}
+          <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-3 px-6 py-3.5 border-t border-line bg-stone-50/60 dark:bg-stone-800/30">
+            <div role="status" className="flex-1 min-w-[260px] flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
+              {isBalanced ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 text-[12px] font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
+                  Partidas equilibradas · {formatCurrency(totalDebit)}
+                </span>
+              ) : difference > 0 ? (
+                <>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-200 text-[12px] font-medium">
+                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-300" />
+                    Diferença de {formatCurrency(difference)} a {missing.type === 'DEBIT' ? 'débito' : 'crédito'}
+                  </span>
+                  <button type="button" onClick={fillDifference} disabled={saving || locked} className="inline-flex items-center gap-1 text-[12px] font-medium text-accent-ink hover:underline disabled:opacity-50">
+                    <Scale className="w-3.5 h-3.5" />
+                    Lançar a diferença
+                  </button>
+                </>
+              ) : (
+                <span className="text-[12px] text-stone-500 dark:text-stone-400">Débitos e créditos precisam somar o mesmo valor.</span>
+              )}
+              {blocker && !(difference > 0) && <span className="text-[12px] text-stone-500 dark:text-stone-400">{blocker}</span>}
+            </div>
+            <button type="button" onClick={onClose} disabled={saving} className={BUTTON.ghost}>
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={saving || locked || !isBalanced || !memo.trim()}
-              className={BUTTON.primary}
-            >
+            <button type="submit" disabled={saving || locked || !isBalanced || !memo.trim()} title={blocker ?? undefined} className={BUTTON.primary}>
               {saving ? 'Gravando...' : initialEntry?.id ? 'Salvar Alterações' : initialEntry?.reversalOfId ? 'Confirmar Estorno' : 'Confirmar Lançamento'}
             </button>
           </div>
