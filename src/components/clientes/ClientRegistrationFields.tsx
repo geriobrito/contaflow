@@ -6,7 +6,7 @@ import type { CodeDescription, CompanyRegistration } from '@/types/firestore';
 import { isoToBR, maskDateBR, parseDateBR } from '@/lib/utils/date-br';
 import { parseMoney } from '@/lib/csv/parser';
 import { formatCurrency } from '@/lib/utils/formatters';
-import { BUTTON, Field, INPUT, INPUT_COMPACT, INPUT_MONEY, IOSSwitch, OVERLINE } from '@/components/ui/primitives';
+import { BUTTON, Field, INPUT, INPUT_MONEY, IOSSwitch, OVERLINE } from '@/components/ui/primitives';
 
 /** Campo de data DD/MM/AAAA que guarda YYYY-MM-DD (vazio ou incompleto não grava). */
 export function DateBRInput({
@@ -72,17 +72,17 @@ export function ClientRegistrationFields({ value, onChange }: { value: CompanyRe
   const option = (key: 'simples' | 'mei', label: string) => {
     const o = value[key] ?? { optant: false };
     return (
-      <div className="space-y-2">
-        <label className="flex items-center gap-3 text-[13px]">
+      <div className="min-w-0 space-y-3">
+        <label className="flex items-center gap-3 h-8 text-[13px] font-medium text-stone-800 dark:text-stone-200">
           <IOSSwitch checked={o.optant} onChange={(optant) => set(key, { ...o, optant })} />
-          Optante pelo {label}
+          <span className="truncate">Optante pelo {label}</span>
         </label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Desde">
-            <DateBRInput value={o.since} onChange={(since) => set(key, { ...o, since })} className={INPUT_COMPACT} />
+            <DateBRInput value={o.since} onChange={(since) => set(key, { ...o, since })} />
           </Field>
           <Field label="Excluída em">
-            <DateBRInput value={o.until} onChange={(until) => set(key, { ...o, until })} className={INPUT_COMPACT} />
+            <DateBRInput value={o.until} onChange={(until) => set(key, { ...o, until })} />
           </Field>
         </div>
       </div>
@@ -181,12 +181,16 @@ export function ClientRegistrationFields({ value, onChange }: { value: CompanyRe
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {option('simples', 'Simples Nacional')}
-        {option('mei', 'SIMEI (MEI)')}
-        <Field label="Telefone 2">
-          <input value={value.phone2 ?? ''} onChange={(e) => set('phone2', e.target.value || undefined)} className={INPUT} />
-        </Field>
+      <div className="space-y-3">
+        <p className={OVERLINE}>Simples Nacional e SIMEI</p>
+        {/* Três colunas iguais às da situação cadastral; o telefone alinha pela base com as datas. */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-5 md:items-end">
+          {option('simples', 'Simples Nacional')}
+          {option('mei', 'SIMEI (MEI)')}
+          <Field label="Telefone 2">
+            <input type="tel" value={value.phone2 ?? ''} onChange={(e) => set('phone2', e.target.value || undefined)} className={INPUT} />
+          </Field>
+        </div>
       </div>
     </div>
   );
