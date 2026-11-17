@@ -1,5 +1,5 @@
 import type { CompanyAddress } from '@/types/firestore';
-import { PROVIDER_HEADERS } from '@/lib/cnpj';
+import { DIRECT_HEADERS, PROVIDER_HEADERS, type ProviderLookupOptions } from '@/lib/cnpj';
 import { cleanDigits } from '@/lib/utils/formatters';
 
 /**
@@ -54,7 +54,11 @@ export function mapViaCep(raw: unknown): CepLookupResult | null {
 }
 
 /** Provedores em ordem, com timeout curto; 404 só se nenhum achou e algum respondeu "não existe". */
-export async function fetchCEPFromProviders(rawCep: string, fetchImpl: typeof fetch = fetch): Promise<CepProviderOutcome> {
+export async function fetchCEPFromProviders(
+  rawCep: string,
+  fetchImpl: typeof fetch = fetch,
+  { direct = false, signal }: ProviderLookupOptions = {}
+): Promise<CepProviderOutcome> {
   const cep = cleanDigits(rawCep);
   let sawNotFound = false;
   const providers = [
@@ -62,8 +66,11 @@ export async function fetchCEPFromProviders(rawCep: string, fetchImpl: typeof fe
     { url: `https://viacep.com.br/ws/${cep}/json/`, map: mapViaCep },
   ];
   for (const p of providers) {
+    if (signal?.aborted) break;
     try {
-      const res = await fetchImpl(p.url, { headers: PROVIDER_HEADERS, signal: AbortSignal.timeout(5000) });
+      const timeout = AbortSignal.timeout(direct ? 8000 : 5000);
+      // `direct`: consulta pelo navegador (os dois provedores têm CORS aberto), só com `Accept`.
+      const res = await fetchImpl(p.url, { headers: direct ? DIRECT_HEADERS : PROVIDER_HEADERS, signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
       if (res.status === 404) {
         sawNotFound = true;
         continue;

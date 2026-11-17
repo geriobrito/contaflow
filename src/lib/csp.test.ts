@@ -18,6 +18,11 @@ describe('CSP com nonce', () => {
     expect(directive(buildCsp('n', false), 'connect-src')).not.toContain('ws:');
   });
 
+  it('libera a consulta direta de CNPJ e CEP aos provedores públicos', () => {
+    const connect = directive(buildCsp('n', false), 'connect-src');
+    for (const origin of ['https://brasilapi.com.br', 'https://minhareceita.org', 'https://viacep.com.br']) expect(connect).toContain(origin);
+  });
+
   it('mantém as demais proteções', () => {
     const csp = buildCsp('n', false);
     expect(csp).toContain("frame-ancestors 'none'");

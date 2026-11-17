@@ -249,18 +249,43 @@ export type CNPJProviderOutcome =
  */
 export const PROVIDER_HEADERS: Readonly<Record<string, string>> = { Accept: 'application/json', 'User-Agent': 'consulta-cadastro/1.0' };
 
+/**
+ * Cabeçalhos da consulta feita direto pelo navegador: só `Accept`, que não dispara a verificação
+ * prévia de CORS (o navegador não deixa trocar o `User-Agent`, e nem precisa).
+ */
+export const DIRECT_HEADERS: Readonly<Record<string, string>> = { Accept: 'application/json' };
+
+/**
+ * Endereços que o navegador pode consultar direto (CORS aberto), liberados no `connect-src` da
+ * CSP (src/lib/csp.ts). Mudou a lista de provedores diretos, mude aqui.
+ */
+export const DIRECT_LOOKUP_ORIGINS: readonly string[] = ['https://brasilapi.com.br', 'https://minhareceita.org', 'https://viacep.com.br'];
+
 /** Tempo de cada provedor: três em sequência cabem com folga no limite da função (30 s na rota). */
 const PROVIDER_TIMEOUT_MS = 4000;
+/** No navegador não há limite de função: mais folga para conexão lenta. */
+const DIRECT_TIMEOUT_MS = 8000;
+
+export interface ProviderLookupOptions {
+  /**
+   * Consulta feita pelo navegador, sem passar pelo servidor do app: só os provedores com CORS
+   * aberto (BrasilAPI e Minha Receita) e sem cabeçalho fora do padrão.
+   */
+  direct?: boolean;
+  /** Cancela a consulta (ex.: o CNPJ digitado mudou). */
+  signal?: AbortSignal;
+}
 
 /**
  * Consulta provedores públicos de CNPJ com timeout curto e fallback automático:
  * 1. BrasilAPI (`brasilapi.com.br`)
  * 2. Minha Receita (`minhareceita.org`), a base de onde a BrasilAPI lê: mesmo formato de resposta
- * 3. Pública CNPJ.ws (`publica.cnpj.ws`), por último: aceita só 3 consultas por minuto por IP
+ * 3. Pública CNPJ.ws (`publica.cnpj.ws`), por último e só no servidor: aceita só 3 consultas por minuto por IP
  */
 export async function fetchCNPJFromProviders(
   rawCnpj: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  { direct = false, signal }: ProviderLookupOptions = {}
 ): Promise<CNPJProviderOutcome> {
   const cnpj = cleanCNPJ(rawCnpj);
   let sawNotFound = false;
@@ -277,17 +302,23 @@ export async function fetchCNPJFromProviders(
       url: `https://minhareceita.org/${cnpj}`,
       mapper: mapBrasilApiResponse,
     },
-    {
-      url: `https://publica.cnpj.ws/cnpj/${cnpj}`,
-      mapper: mapCnpjWsResponse,
-    },
+    ...(direct
+      ? []
+      : [
+          {
+            url: `https://publica.cnpj.ws/cnpj/${cnpj}`,
+            mapper: mapCnpjWsResponse,
+          },
+        ]),
   ];
 
   for (const provider of providers) {
+    if (signal?.aborted) break;
     try {
+      const timeout = AbortSignal.timeout(direct ? DIRECT_TIMEOUT_MS : PROVIDER_TIMEOUT_MS);
       const response = await fetchImpl(provider.url, {
-        headers: PROVIDER_HEADERS,
-        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+        headers: direct ? DIRECT_HEADERS : PROVIDER_HEADERS,
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
 
       if (response.status === 404) {
@@ -313,4 +344,12 @@ export async function fetchCNPJFromProviders(
   }
   return { ok: false, status: 502, error: 'Serviço público de consulta de CNPJ temporariamente indisponível.' };
 }
+
+/**
+ * Respostas da rota `/api/cnpj` (ou `/api/cep`) que não adiantam repetir pelo navegador: o
+ * documento é inválido, a base respondeu que ele não existe, ou o limite de consultas estourou.
+ * Nas demais (servidor fora, provedores recusando o IP da hospedagem, sessão), o navegador tenta
+ * direto nos provedores públicos.
+ */
+export const isFinalLookupStatus = (status: number): boolean => status === 400 || status === 404 || status === 429;
 

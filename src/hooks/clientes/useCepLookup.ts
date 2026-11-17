@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CepLookupResult } from '@/lib/cep';
-import { isValidCEP } from '@/lib/cep';
+import { fetchCEPFromProviders, isValidCEP } from '@/lib/cep';
+import { isFinalLookupStatus } from '@/lib/cnpj';
 import { cleanDigits } from '@/lib/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -29,17 +30,39 @@ export function useCepLookup({ cep, savedCep, onFound }: { cep: string; savedCep
       setLoading(true);
       setMessage(null);
       try {
-        const token = isMockAuth ? null : await user?.getIdToken();
-        const res = await fetch(`/api/cep/${encodeURIComponent(target)}`, {
-          signal: controller.signal,
-          ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          setMessage({ kind: 'info', text: body?.error || 'Consulta de CEP indisponível — preencha o endereço manualmente.' });
+        // Como no CNPJ: 1º a rota do app; se ela falhar por motivo que não seja do próprio CEP,
+        // o navegador consulta direto os provedores públicos. O modo local fica só na rota.
+        let data: CepLookupResult | null = null;
+        let failure = 'Sem conexão com a consulta de CEP — preencha o endereço manualmente.';
+        let tryDirect = !isMockAuth;
+        try {
+          const token = isMockAuth ? null : await user?.getIdToken();
+          const res = await fetch(`/api/cep/${encodeURIComponent(target)}`, {
+            signal: controller.signal,
+            ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+          });
+          if (res.ok) {
+            data = (await res.json()) as CepLookupResult;
+          } else {
+            const body = (await res.json().catch(() => null)) as { error?: string } | null;
+            failure = body?.error || 'Consulta de CEP indisponível — preencha o endereço manualmente.';
+            if (isFinalLookupStatus(res.status)) tryDirect = false;
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          if (!tryDirect) throw err;
+        }
+        if (!data && tryDirect) {
+          const direct = await fetchCEPFromProviders(target, fetch, { direct: true, signal: controller.signal });
+          if (controller.signal.aborted) return;
+          if (direct.ok) data = direct.data;
+          else if (direct.status === 404) failure = direct.error;
+        }
+        if (!data) {
+          setMessage({ kind: 'info', text: failure });
           return;
         }
-        onFoundRef.current((await res.json()) as CepLookupResult);
+        onFoundRef.current(data);
         setMessage({ kind: 'ok', text: 'Endereço preenchido pelo CEP. Confira o número e o complemento.' });
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CNPJLookupResult } from '@/lib/cnpj';
+import { fetchCNPJFromProviders, isFinalLookupStatus, type CNPJLookupResult } from '@/lib/cnpj';
 import { reviewLookup, type ClientFormFields, type LookupReview } from '@/lib/cnpj-review';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -63,7 +63,8 @@ const withInactive = (text: string, inactive: string | null): LookupNotice =>
   inactive ? { kind: 'warn', text: `${text} · Atenção: situação cadastral "${inactive}" na Receita Federal.` } : { kind: 'ok', text };
 
 /**
- * Consulta do cadastro público do CNPJ pela rota `/api/cnpj`. Dispara sozinha quando um CNPJ
+ * Consulta do cadastro público do CNPJ pela rota `/api/cnpj`, com reserva direta do navegador
+ * aos provedores públicos quando a rota falha. Dispara sozinha quando um CNPJ
  * novo fica completo e válido; `lookup(cnpj, true)` é o "Atualizar pela Receita", que traz tudo:
  * endereço, cartão CNPJ e QSA são aplicados na hora, e só os campos digitados que mudam passam
  * por confirmação (`reviewLookup`). Se o CNPJ parece de outra empresa, nada muda até decidir.
@@ -95,22 +96,47 @@ export function useCnpjLookup({ cnpj, valid, savedCnpj, getForm, apply, applyCar
       setNotice(null);
       setPending(null);
       try {
-        // A rota só atende usuário logado (ID token do Firebase); o modo local não tem token.
-        const token = isMockAuth ? null : await user?.getIdToken();
-        // `cache: no-store`: nunca a resposta guardada pelo navegador; `atualizar=1`: nem a do servidor.
-        const response = await fetch(`/api/cnpj/${encodeURIComponent(targetCnpj)}${overwrite ? '?atualizar=1' : ''}`, {
-          signal: controller.signal,
-          cache: 'no-store',
-          ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-        });
-        if (!response.ok) {
-          const body = (await response.json().catch(() => null)) as { error?: string } | null;
-          // Sem o motivo em JSON (erro da hospedagem, tempo esgotado): mostra o código, para dar pista do que houve.
-          setNotice({ kind: 'info', text: body?.error || `Consulta automática indisponível (erro ${response.status}) — preencha os campos manualmente.` });
+        // 1º a rota do app (login, limite e cache). Se ela falhar por um motivo que não seja do
+        // próprio CNPJ, o navegador consulta direto os provedores públicos: a rede do usuário
+        // costuma ser aceita quando o IP da hospedagem é recusado. O modo local fica só na rota.
+        let data: CNPJLookupResult | null = null;
+        let failure = 'Sem conexão com a consulta pública — preencha os dados manualmente.';
+        let tryDirect = !isMockAuth;
+        try {
+          // A rota só atende usuário logado (ID token do Firebase); o modo local não tem token.
+          const token = isMockAuth ? null : await user?.getIdToken();
+          // `cache: no-store`: nunca a resposta guardada pelo navegador; `atualizar=1`: nem a do servidor.
+          const response = await fetch(`/api/cnpj/${encodeURIComponent(targetCnpj)}${overwrite ? '?atualizar=1' : ''}`, {
+            signal: controller.signal,
+            cache: 'no-store',
+            ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+          });
+          if (response.ok) {
+            data = (await response.json()) as CNPJLookupResult;
+          } else {
+            const body = (await response.json().catch(() => null)) as { error?: string } | null;
+            // Sem o motivo em JSON (erro da hospedagem, tempo esgotado): mostra o código, para dar pista do que houve.
+            failure = body?.error || `Consulta automática indisponível (erro ${response.status}) — preencha os campos manualmente.`;
+            if (isFinalLookupStatus(response.status)) tryDirect = false;
+          }
+        } catch (err) {
+          if (controller.signal.aborted) return;
+          // Falha de rede ou de sessão na rota do app: segue para a consulta direta.
+          if (!tryDirect) throw err;
+        }
+
+        if (!data && tryDirect) {
+          const direct = await fetchCNPJFromProviders(targetCnpj, fetch, { direct: true, signal: controller.signal });
+          if (controller.signal.aborted) return;
+          if (direct.ok) data = direct.data;
+          // "Não encontrado" dito pela base pública vale mais que o erro da rota.
+          else if (direct.status === 404) failure = direct.error;
+        }
+        if (!data) {
+          setNotice({ kind: 'info', text: failure });
           return;
         }
 
-        const data = (await response.json()) as CNPJLookupResult;
         const inactive = inactiveOf(data);
         const card = describeCard(data);
         const review = reviewLookup(getFormRef.current(), data, overwrite);

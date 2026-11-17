@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DIRECT_LOOKUP_ORIGINS,
   fetchCNPJFromProviders,
+  isFinalLookupStatus,
   formatActivity,
   formatBrazilianPhone,
   formatCityUF,
@@ -158,6 +160,35 @@ describe('consulta e mapeamento de CNPJ', () => {
       status: 404,
       error: 'CNPJ não encontrado na base pública da Receita Federal.',
     });
+  });
+
+  it('consulta direta do navegador: só provedores com CORS aberto, só o cabeçalho Accept, e cancelável', async () => {
+    const calls: string[] = [];
+    const down: typeof fetch = async (input, init) => {
+      calls.push(String(input));
+      // Cabeçalho fora do padrão dispararia a verificação prévia de CORS.
+      expect([...new Headers(init?.headers).keys()]).toEqual(['accept']);
+      return new Response('fora', { status: 503 });
+    };
+    expect(await fetchCNPJFromProviders('11222333000181', down, { direct: true })).toMatchObject({ ok: false, status: 502 });
+    expect(calls).toEqual(['https://brasilapi.com.br/api/cnpj/v1/11222333000181', 'https://minhareceita.org/11222333000181']);
+    // Todo provedor direto precisa estar liberado na CSP.
+    for (const url of calls) expect(DIRECT_LOOKUP_ORIGINS).toContain(new URL(url).origin);
+
+    const ok: typeof fetch = async () => Response.json({ cnpj: '11222333000181', razao_social: 'DIRETA LTDA', opcao_pelo_mei: true });
+    expect(await fetchCNPJFromProviders('11222333000181', ok, { direct: true })).toMatchObject({ ok: true, data: { name: 'DIRETA LTDA', regime: 'MEI' } });
+
+    const aborted = new AbortController();
+    aborted.abort();
+    const never: typeof fetch = async () => {
+      throw new Error('não deveria consultar');
+    };
+    expect(await fetchCNPJFromProviders('11222333000181', never, { direct: true, signal: aborted.signal })).toMatchObject({ ok: false });
+  });
+
+  it('respostas da rota que não adianta repetir pelo navegador', () => {
+    expect([400, 404, 429].every(isFinalLookupStatus)).toBe(true);
+    expect([401, 403, 500, 502, 503, 504].some(isFinalLookupStatus)).toBe(false);
   });
 });
 
