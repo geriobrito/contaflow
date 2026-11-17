@@ -7,6 +7,8 @@ import { clientInitials } from '@/lib/client-record';
 import { formatCNPJ } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { regimeLabel } from '@/components/clientes/options';
+import type { ClientIssue } from '@/lib/client-health';
+import { ClientIssueChips } from '@/components/clientes/ClientIssueChips';
 
 interface ClientCardProps {
   client: ClientCompany;
@@ -21,10 +23,14 @@ interface ClientCardProps {
   /** Retoma uma exclusão que parou no meio. */
   onDelete: () => void;
   deleting: boolean;
+  /** Pendências do cadastro (`clientIssues`). */
+  issues: readonly ClientIssue[];
+  /** Abre o cadastro na aba que resolve a pendência. */
+  onIssue: (issue: ClientIssue) => void;
 }
 
 /** Cartão de uma empresa da carteira. */
-export function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, onAskDelete, onDelete, deleting }: ClientCardProps) {
+export function ClientCard({ client, active, onActivate, onEdit, onBackup, backingUp, onAskDelete, onDelete, deleting, issues, onIssue }: ClientCardProps) {
   const regime = client.regime;
   const label = client.tradeName || client.name;
 
@@ -101,7 +107,11 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
         )}
       </dl>
 
-      <div className="mt-5 pt-4 border-t border-line flex items-center justify-between gap-3">
+      <div className="mt-4 flex-1 min-h-6">
+        <ClientIssueChips issues={issues} onIssue={onIssue} />
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-line flex items-center justify-between gap-3">
         {active ? (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-500/25">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

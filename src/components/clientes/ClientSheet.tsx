@@ -11,6 +11,7 @@ import { PORTE_HINT, PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { cleanCNPJ, cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF } from '@/lib/utils/formatters';
 import { newClientId } from '@/lib/utils/id';
 import { fieldsKeptOutsideForm } from '@/lib/client-record';
+import type { ClientFormTab } from '@/lib/client-health';
 import { useCnpjLookup, type CardMode } from '@/hooks/clientes/useCnpjLookup';
 import { useCepLookup } from '@/hooks/clientes/useCepLookup';
 import { ACTIVITY_MAX, formatCityUF } from '@/lib/cnpj';
@@ -27,9 +28,11 @@ interface ClientSheetProps {
   client: ClientCompany | null;
   onClose: () => void;
   onSaved: (client: ClientCompany) => void;
+  /** Aba aberta de início (ex.: a que resolve uma pendência do cadastro). */
+  initialTab?: Tab;
 }
 
-type Tab = 'cadastro' | 'endereco' | 'cartao' | 'socios';
+type Tab = ClientFormTab;
 
 /** Tira campos vazios de um objeto (o cadastro não guarda chaves sem valor). */
 function compact<T extends object>(o: T): T | undefined {
@@ -42,8 +45,8 @@ function compact<T extends object>(o: T): T | undefined {
  * e quadro de sócios (QSA). O CNPJ preenche tudo pela consulta pública da Receita, e cada campo
  * continua editável.
  */
-export function ClientSheet({ client, onClose, onSaved }: ClientSheetProps) {
-  const [tab, setTab] = useState<Tab>('cadastro');
+export function ClientSheet({ client, onClose, onSaved, initialTab = 'cadastro' }: ClientSheetProps) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [cnpj, setCnpj] = useState(client ? maskCNPJ(client.cnpj) : '');
   const [name, setName] = useState(client?.name ?? '');
   const [tradeName, setTradeName] = useState(client?.tradeName ?? '');
