@@ -11,7 +11,7 @@ const purchase = { direction: 'PURCHASE' as const, issueDate: '2027-02-10', tota
 
 describe('crédito de IBS/CBS na compra', () => {
   it('regime regular, a partir de 2027: crédito inteiro no pagamento do total', () => {
-    expect(ibsCbsCredit(purchase, -1000, 'LUCRO_PRESUMIDO')).toEqual({ status: 'CREDIT', invoiceIbs: 1, invoiceCbs: 88, ibs: 1, cbs: 88 });
+    expect(ibsCbsCredit(purchase, -1000, 'LUCRO_PRESUMIDO')).toEqual({ status: 'CREDIT', invoiceIbs: 1, invoiceCbs: 88, ibs: 1, cbs: 88, blockedIbs: 0, blockedCbs: 0, notes: [] });
     // Pagamento do total com os tributos (vNFTot): não passa do destaque.
     expect(ibsCbsCredit(purchase, -1089, 'LUCRO_REAL')).toMatchObject({ ibs: 1, cbs: 88 });
   });

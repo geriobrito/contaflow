@@ -1655,6 +1655,11 @@ describe('notas fiscais (resumos dos XML)', () => {
     // Retenções da NFS-e: mapa com até 8 tributos.
     await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, retentions: { irrf: 11.25, pis: 4.87, cofins: 22.5, csll: 7.5 } }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, retentions: 46.12 }));
+    // IBS/CBS por classificação tributária: lista com até 40 classificações.
+    const taxItem = { cClassTrib: '000001', cst: '000', ibs: 1.5, cbs: 13.5 };
+    await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ibsCbsItems: [taxItem] }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ibsCbsItems: taxItem }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ibsCbsItems: Array.from({ length: 41 }, () => taxItem) }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY.slice(0, 43)}A1234`), { ...data, key: `${KEY.slice(0, 43)}A1234` })); // 48: nem NF-e nem NFS-e
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { key: '35250311444777000161550010000000021123456780' }));
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { clientId: 'cB' }));

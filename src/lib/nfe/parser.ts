@@ -1,4 +1,4 @@
-import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions } from '@/types/firestore';
+import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions, InvoiceTaxItem } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 
 /**
@@ -43,6 +43,8 @@ export interface ParsedInvoice {
   /** IBS e CBS destacados (0 quando a nota não traz o grupo). */
   ibs: number;
   cbs: number;
+  /** IBS/CBS por classificação tributária (cClassTrib), quando os itens trazem o grupo. */
+  taxItems?: InvoiceTaxItem[];
   /** NFS-e: código de tributação nacional (cTribNac). */
   serviceCode?: string;
   /** NFS-e: tributos retidos (só quando o líquido é menor que o serviço). */
@@ -129,6 +131,36 @@ function ibsCbsOf(group: string | null): { ibs: number; cbs: number } {
   return { ibs, cbs: amount(text(group, 'vCBS')) };
 }
 
+/** Até onde vão as classificações gravadas por nota (o resto entra na última). */
+const MAX_TAX_ITEMS = 40;
+
+/**
+ * Soma o IBS/CBS por classificação tributária e CST. `groups`: o grupo `IBSCBS` de cada item
+ * (NF-e) ou o da nota (NFS-e); `amounts`: o valor de cada um, quando vem de fora do grupo.
+ */
+function taxItemsOf(groups: readonly { group: string; amounts?: { ibs: number; cbs: number } }[]): InvoiceTaxItem[] | undefined {
+  const byKey = new Map<string, { cClassTrib: string; cst: string; ibs: number; cbs: number }>();
+  for (const { group, amounts } of groups) {
+    const cClassTrib = text(group, 'cClassTrib').replace(/D/g, '');
+    if (cClassTrib.length !== 6) continue;
+    const cst = text(group, 'CST').replace(/D/g, '');
+    const { ibs, cbs } = amounts ?? ibsCbsOf(section(group, 'gIBSCBS') ?? group);
+    const key = `${cClassTrib}|${cst}`;
+    const cur = byKey.get(key) ?? { cClassTrib, cst, ibs: 0, cbs: 0 };
+    cur.ibs += toCents(ibs);
+    cur.cbs += toCents(cbs);
+    byKey.set(key, cur);
+  }
+  if (!byKey.size) return undefined;
+  const list = [...byKey.values()].sort((a, b) => b.ibs + b.cbs - (a.ibs + a.cbs));
+  const kept = list.slice(0, MAX_TAX_ITEMS);
+  for (const extra of list.slice(MAX_TAX_ITEMS)) {
+    kept[kept.length - 1].ibs += extra.ibs;
+    kept[kept.length - 1].cbs += extra.cbs;
+  }
+  return kept.map((i) => ({ cClassTrib: i.cClassTrib, ...(i.cst ? { cst: i.cst } : {}), ibs: fromCents(i.ibs), cbs: fromCents(i.cbs) }));
+}
+
 /* =========================================================================
    NFS-e do padrão nacional
    ========================================================================= */
@@ -208,6 +240,9 @@ function parseNFSe(xml: string): ParsedXml {
   const net = amount(text(section(own, 'valores'), 'vLiq')) || service;
   const retentions = nfseRetentions(own, dps, service, net);
   const tax = ibsCbsOf(section(own, 'IBSCBS') ?? section(dps, 'IBSCBS'));
+  // A classificação vem na DPS; o valor, nos totais da nota.
+  const dpsTax = section(dps, 'IBSCBS');
+  const taxItems = dpsTax ? taxItemsOf([{ group: dpsTax, amounts: tax }]) : undefined;
   const status = text(own, 'cStat');
   const recipientDoc = docOf(toma) || text(toma, 'NIF');
   const serviceCode = text(section(dps, 'cServ'), 'cTribNac');
@@ -227,6 +262,7 @@ function parseNFSe(xml: string): ParsedXml {
       total: net,
       ...(service > net ? { altTotal: service } : {}),
       ...tax,
+      ...(taxItems ? { taxItems } : {}),
       ...(serviceCode ? { serviceCode } : {}),
       ...(retentions ? { retentions } : {}),
       cfops: [],
@@ -304,7 +340,12 @@ export function parseNFeXml(raw: string): ParsedXml {
   const icmsTot = section(inf, 'ICMSTot');
 
   const cfopCents = new Map<string, number>();
-  for (const det of sections(inf, 'det')) {
+  const dets = sections(inf, 'det');
+  const taxItems = taxItemsOf(dets.flatMap((det) => {
+    const group = section(section(det, 'imposto') ?? det, 'IBSCBS');
+    return group ? [{ group }] : [];
+  }));
+  for (const det of dets) {
     const prod = section(det, 'prod');
     const cfop = text(prod, 'CFOP');
     if (!cfop) continue;
@@ -341,6 +382,7 @@ export function parseNFeXml(raw: string): ParsedXml {
       total,
       ...(withTaxes > total ? { altTotal: withTaxes } : {}),
       ...tax,
+      ...(taxItems ? { taxItems } : {}),
       cfops: [...cfopCents].map(([cfop, cents]) => ({ cfop, amount: fromCents(cents) })).sort((a, b) => b.amount - a.amount),
       installments,
       situation: situationOf(protStatus),

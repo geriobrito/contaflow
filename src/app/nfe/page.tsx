@@ -28,6 +28,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { Toast, useToast } from '@/components/ui/Toast';
 import { todayISO } from '@/lib/business-days';
 import { compareBillingWithRevenue, findNumberingGaps } from '@/lib/nfe/checks';
+import { taxItemIssues } from '@/lib/nfe/cclasstrib';
 import {
   filterByDirection,
   filterInvoices,
@@ -103,6 +104,15 @@ export default function NotasFiscaisPage() {
 
   const summary = useMemo(() => invoicePeriodSummary(list, today), [list, today]);
   const gaps = useMemo(() => findNumberingGaps(list, currentClient?.cnpj), [list, currentClient?.cnpj]);
+  // Notas autorizadas com a classificação tributária do IBS/CBS a conferir.
+  const taxIssues = useMemo(
+    () =>
+      list
+        .filter((inv) => inv.status !== 'CANCELLED')
+        .map((invoice) => ({ invoice, issues: taxItemIssues(invoice) }))
+        .filter((x) => x.issues.length > 0),
+    [list]
+  );
   const billingComparison = useMemo(
     () =>
       currentClient && invoices
@@ -236,6 +246,8 @@ export default function NotasFiscaisPage() {
           gaps={gaps}
           comparison={billingComparison}
           selectedMonth={selectedMonth}
+          taxIssues={taxIssues}
+          onOpenInvoice={(inv) => setSelectedId(inv.id)}
           onFilterOpenSales={() => {
             setDirection('SALE');
             setStateFilter('OPEN');

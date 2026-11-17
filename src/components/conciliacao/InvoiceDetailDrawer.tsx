@@ -9,6 +9,7 @@ import { invoiceKindLabel, paymentStateOf, type InvoicePaymentState } from '@/li
 import { invoiceDueInfo } from '@/lib/nfe/list';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
 import { retentionParts } from '@/lib/nfe/retentions';
+import { findCClassTrib, taxItemIssues } from '@/lib/nfe/cclasstrib';
 import { todayISO } from '@/lib/business-days';
 import { formatMonth } from '@/lib/periods';
 import { formatCNPJ, formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -394,6 +395,45 @@ export function InvoiceDetailDrawer({
                   </span>
                 </div>
               </div>
+              {invoice.ibsCbsItems && invoice.ibsCbsItems.length > 0 && (
+                <table aria-label="Classificação tributária do IBS/CBS" className="w-full text-[12px]">
+                  <thead>
+                    <tr className="text-[10.5px] uppercase tracking-[0.06em] text-stone-500">
+                      <th scope="col" className="text-left font-semibold py-1">cClassTrib</th>
+                      <th scope="col" className="text-right font-semibold py-1">IBS</th>
+                      <th scope="col" className="text-right font-semibold py-1">CBS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/4 dark:divide-white/6">
+                    {invoice.ibsCbsItems.map((item) => {
+                      const c = findCClassTrib(item.cClassTrib, invoice.issueDate) ?? findCClassTrib(item.cClassTrib);
+                      const noCredit = c && c.creditIbs === false && c.creditCbs === false;
+                      return (
+                        <tr key={item.cClassTrib + '-' + (item.cst ?? '')}>
+                          <td className="py-1.5 pr-2 align-top">
+                            <span className="font-mono tabular-nums text-stone-800 dark:text-stone-200">{item.cClassTrib}</span>
+                            {item.cst && <span className="ml-1.5 text-stone-500">CST {item.cst}</span>}
+                            <span className="block text-[11.5px] text-stone-500 dark:text-stone-400">{c?.description ?? 'Classificação fora da tabela oficial'}</span>
+                            {invoice.direction === 'PURCHASE' && c && (
+                              <span className={'block text-[11px] ' + (noCredit ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400')}>
+                                {noCredit ? 'Sem crédito para o adquirente' : 'Dá crédito ao adquirente'}
+                                {c.presumedCredit ? ' · crédito presumido' : ''}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1.5 text-right align-top font-mono tabular-nums">{formatCurrency(item.ibs)}</td>
+                          <td className="py-1.5 text-right align-top font-mono tabular-nums">{formatCurrency(item.cbs)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              {taxItemIssues(invoice).map((issue) => (
+                <p key={issue.kind + issue.cClassTrib} role="note" className="text-[12px] text-amber-800 dark:text-amber-300">
+                  {issue.message}
+                </p>
+              ))}
             </section>
           )}
 

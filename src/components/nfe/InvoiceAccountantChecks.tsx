@@ -2,7 +2,10 @@
 
 import Link from 'next/link';
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Scale } from 'lucide-react';
+import type { InvoiceSummary } from '@/types/firestore';
 import { formatGapRange, type BillingRevenueComparison, type NumberingGapGroup } from '@/lib/nfe/checks';
+import type { TaxItemIssue } from '@/lib/nfe/cclasstrib';
+import { invoiceKindLabel } from '@/lib/nfe/import';
 import { SURFACE } from '@/components/ui/primitives';
 import { formatCurrency } from '@/lib/utils/formatters';
 
@@ -13,6 +16,9 @@ interface InvoiceAccountantChecksProps {
   selectedMonth?: string | null;
   /** Filtra a tabela diretamente nas notas de venda sem lançamento. */
   onFilterOpenSales?: () => void;
+  /** Notas com a classificação tributária do IBS/CBS a conferir. */
+  taxIssues?: readonly { invoice: InvoiceSummary; issues: readonly TaxItemIssue[] }[];
+  onOpenInvoice?: (invoice: InvoiceSummary) => void;
 }
 
 /**
@@ -25,12 +31,44 @@ export function InvoiceAccountantChecks({
   comparison,
   selectedMonth,
   onFilterOpenSales,
+  taxIssues = [],
+  onOpenInvoice,
 }: InvoiceAccountantChecksProps) {
   const showBilling = Boolean(comparison && (comparison.salesCount > 0 || comparison.launchedGross > 0));
-  if (gaps.length === 0 && !showBilling) return null;
+  if (gaps.length === 0 && !showBilling && taxIssues.length === 0) return null;
 
   return (
     <div className="space-y-3">
+      {taxIssues.length > 0 && (
+        <section
+          aria-label="Classificação tributária do IBS/CBS"
+          className="rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-amber-50/70 dark:bg-amber-950/25 px-4 py-3.5 text-[13px] text-amber-900 dark:text-amber-200"
+        >
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="space-y-1 min-w-0 flex-1">
+              <p className="font-semibold text-amber-950 dark:text-amber-100">
+                Classificação tributária do IBS/CBS a conferir em {taxIssues.length} nota(s)
+              </p>
+              <ul className="space-y-1 text-[12.5px] text-amber-900/90 dark:text-amber-200/90">
+                {taxIssues.slice(0, 8).map(({ invoice, issues }) => (
+                  <li key={invoice.id}>
+                    <button type="button" onClick={() => onOpenInvoice?.(invoice)} className="font-semibold hover:underline underline-offset-2">
+                      {invoiceKindLabel(invoice)} {invoice.number} · {invoice.counterpartyName || 'parceiro não identificado'}
+                    </button>
+                    : {issues.map((i) => i.message).join(' ')}
+                  </li>
+                ))}
+              </ul>
+              {taxIssues.length > 8 && <p className="text-[11.5px]">e mais {taxIssues.length - 8} nota(s).</p>}
+              <p className="text-[11.5px] text-amber-800/80 dark:text-amber-300/80">
+                Conferido contra a tabela oficial de cClassTrib da Receita Federal. O destaque de classificação sem crédito fica fora do
+                crédito de IBS/CBS na conciliação; a com crédito presumido pede apuração à parte.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
       {gaps.length > 0 && (
         <section
           aria-label="Furos na numeração das notas emitidas"

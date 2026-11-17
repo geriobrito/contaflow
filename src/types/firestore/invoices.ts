@@ -18,6 +18,19 @@ export interface InvoiceCfop {
   amount: number;
 }
 
+/**
+ * IBS/CBS por classificação tributária (cClassTrib) dos itens da nota: soma dos itens de mesma
+ * classificação e CST. Decide o crédito do adquirente pela tabela oficial.
+ */
+export interface InvoiceTaxItem {
+  /** Classificação tributária do IBS/CBS (6 dígitos). */
+  cClassTrib: string;
+  /** CST do IBS/CBS (3 dígitos), como veio na nota. */
+  cst?: string;
+  ibs: number;
+  cbs: number;
+}
+
 /** Pagamento ou recebimento do extrato confirmado como quitação (de parte) da nota. */
 export interface InvoiceLink {
   transactionId: string;
@@ -75,6 +88,8 @@ export interface InvoiceSummary {
   /** IBS e CBS destacados na nota (reforma tributária, LC 214/2025); ausentes quando zero. */
   ibs?: number;
   cbs?: number;
+  /** IBS/CBS por classificação tributária (ausente nas notas sem o grupo IBSCBS nos itens). */
+  ibsCbsItems?: InvoiceTaxItem[];
   /** NFS-e: código de tributação nacional do serviço (cTribNac, 6 dígitos). */
   serviceCode?: string;
   /** NFS-e: tributos retidos pelo tomador (a diferença entre o serviço e o líquido). */

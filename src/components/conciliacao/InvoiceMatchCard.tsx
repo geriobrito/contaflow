@@ -17,6 +17,7 @@ export const describeInvoice = (inv: InvoiceSummary) =>
   `${invoiceKindLabel(inv)} ${inv.number}${inv.series && inv.series !== '0' ? `/${inv.series}` : ''} · ${inv.counterpartyName || 'parceiro não identificado'}`;
 
 const CREDIT_NOTE: Record<Exclude<IbsCbsCredit['status'], 'CREDIT'>, string> = {
+  NO_CREDIT: 'a classificação tributária da nota não dá crédito ao adquirente',
   TEST_YEAR: 'em 2026 (ano de teste) o destaque é informativo, sem crédito a lançar',
   SIMPLES: 'empresa do Simples Nacional não toma o crédito',
   SALE: 'destacados na venda',
@@ -109,7 +110,11 @@ export function InvoiceMatchCard({
               <span>
                 Crédito a recuperar: IBS <b className="font-mono tabular-nums font-medium">{formatCurrency(credit.ibs)}</b> e CBS{' '}
                 <b className="font-mono tabular-nums font-medium">{formatCurrency(credit.cbs)}</b>
-                {credit.ibs !== credit.invoiceIbs || credit.cbs !== credit.invoiceCbs ? ' (proporcional ao pago)' : ''}
+                {credit.blockedIbs + credit.blockedCbs > 0
+                  ? ` (sem crédito pela classificação: IBS ${formatCurrency(credit.blockedIbs)} e CBS ${formatCurrency(credit.blockedCbs)})`
+                  : credit.ibs !== credit.invoiceIbs || credit.cbs !== credit.invoiceCbs
+                    ? ' (proporcional ao pago)'
+                    : ''}
               </span>
               {onUseCredit && (
                 <button type="button" onClick={onUseCredit} className="font-medium text-accent-ink hover:underline">
@@ -123,6 +128,13 @@ export function InvoiceMatchCard({
             </span>
           )}
         </p>
+      )}
+      {!rejected && credit && credit.notes.length > 0 && (
+        <ul aria-label="Classificação tributária da nota" className="pl-5.5 space-y-0.5 text-[12px] text-amber-800 dark:text-amber-300">
+          {credit.notes.map((n) => (
+            <li key={n}>{n}</li>
+          ))}
+        </ul>
       )}
       <label className="pl-5.5 flex items-center gap-1.5 text-stone-500">
         <input type="checkbox" checked={rejected} onChange={(e) => onRejectedChange(e.target.checked)} className="rounded border-stone-300" />

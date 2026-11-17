@@ -1,6 +1,7 @@
 import type { ChartAccount, InvoiceSummary, TaxRegime } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 import { newSplitId, type SplitDraft } from '@/lib/splits';
+import { blockedCreditCents, taxItemIssues } from '@/lib/nfe/cclasstrib';
 
 /**
  * Crédito de IBS e CBS na compra (reforma tributária, LC 214/2025).
@@ -13,6 +14,9 @@ import { newSplitId, type SplitDraft } from '@/lib/splits';
  * - Empresas do Simples Nacional e MEI não tomam o crédito (salvo a opção pelo regime regular
  *   do IBS/CBS, que o cadastro não registra: nesse caso o contador lança pelo rateio).
  *
+ * - A classificação tributária de cada item (cClassTrib, tabela oficial da Receita) diz se o
+ *   adquirente apropria o crédito: o destaque das classificações sem crédito fica na despesa.
+ *
  * Como a contabilidade parte do extrato, o crédito entra no pagamento: proporcional ao que foi
  * pago quando o pagamento é de uma parcela.
  */
@@ -22,7 +26,7 @@ export const IBS_CBS_CREDIT_FROM = '2027-01-01';
 export const IBS_RECOVERABLE_CODE = '1.1.2.07';
 export const CBS_RECOVERABLE_CODE = '1.1.2.08';
 
-export type IbsCbsCreditStatus = 'CREDIT' | 'TEST_YEAR' | 'SIMPLES' | 'SALE';
+export type IbsCbsCreditStatus = 'CREDIT' | 'NO_CREDIT' | 'TEST_YEAR' | 'SIMPLES' | 'SALE';
 
 export interface IbsCbsCredit {
   status: IbsCbsCreditStatus;
@@ -32,6 +36,11 @@ export interface IbsCbsCredit {
   /** Crédito correspondente ao pagamento (só em CREDIT; zero nos demais). */
   ibs: number;
   cbs: number;
+  /** Destaque da nota sem direito a crédito pela classificação tributária dos itens. */
+  blockedIbs: number;
+  blockedCbs: number;
+  /** Avisos da conferência das classificações (cClassTrib) da nota. */
+  notes: string[];
 }
 
 /**
@@ -39,22 +48,32 @@ export interface IbsCbsCredit {
  * traz o destaque.
  */
 export function ibsCbsCredit(
-  invoice: Pick<InvoiceSummary, 'direction' | 'issueDate' | 'total' | 'ibs' | 'cbs'>,
+  invoice: Pick<InvoiceSummary, 'direction' | 'issueDate' | 'total' | 'ibs' | 'cbs' | 'ibsCbsItems'>,
   paidAmount: number,
   regime: TaxRegime | undefined
 ): IbsCbsCredit | null {
   const invoiceIbs = invoice.ibs ?? 0;
   const invoiceCbs = invoice.cbs ?? 0;
   if (invoiceIbs <= 0 && invoiceCbs <= 0) return null;
-  const base = { invoiceIbs, invoiceCbs, ibs: 0, cbs: 0 };
+  const base = { invoiceIbs, invoiceCbs, ibs: 0, cbs: 0, blockedIbs: 0, blockedCbs: 0, notes: [] as string[] };
   if (invoice.direction === 'SALE') return { ...base, status: 'SALE' };
   if (invoice.issueDate < IBS_CBS_CREDIT_FROM) return { ...base, status: 'TEST_YEAR' };
   if (regime === 'SIMPLES_NACIONAL' || regime === 'MEI') return { ...base, status: 'SIMPLES' };
 
+  // Classificações sem crédito saem do destaque; nunca mais do que a nota destacou.
+  const blocked = blockedCreditCents(invoice.ibsCbsItems ?? [], invoice.issueDate);
+  const blockedIbs = Math.min(blocked.ibs, toCents(invoiceIbs));
+  const blockedCbs = Math.min(blocked.cbs, toCents(invoiceCbs));
+  const creditIbs = toCents(invoiceIbs) - blockedIbs;
+  const creditCbs = toCents(invoiceCbs) - blockedCbs;
+  const notes = taxItemIssues({ ...invoice, direction: 'PURCHASE' }).map((i) => i.message);
+  const withBlocked = { ...base, blockedIbs: fromCents(blockedIbs), blockedCbs: fromCents(blockedCbs), notes };
+  if (creditIbs <= 0 && creditCbs <= 0) return { ...withBlocked, status: 'NO_CREDIT' };
+
   // Pagamento do total (ou de mais, quando inclui o próprio IBS/CBS): crédito inteiro.
   const share = invoice.total > 0 ? Math.min(1, Math.abs(paidAmount) / invoice.total) : 1;
-  const part = (v: number) => fromCents(Math.round(toCents(v) * share));
-  return { ...base, status: 'CREDIT', ibs: part(invoiceIbs), cbs: part(invoiceCbs) };
+  const part = (cents: number) => fromCents(Math.round(cents * share));
+  return { ...withBlocked, status: 'CREDIT', ibs: part(creditIbs), cbs: part(creditCbs) };
 }
 
 /**
