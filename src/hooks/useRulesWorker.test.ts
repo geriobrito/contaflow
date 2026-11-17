@@ -52,7 +52,7 @@ describe('Web Worker de regras e favorecidos (rules.worker & useRulesWorker)', (
     const memos = transactions.map((t) => t.memo);
 
     const batch = evaluateRulesBatch({ rules, transactions, openPending });
-    const expectedConflicts = detectRuleConflicts(memos, rules);
+    const expectedConflicts = detectRuleConflicts(transactions, rules);
 
     expect(new Map(batch.conflictEntries)).toEqual(expectedConflicts);
 

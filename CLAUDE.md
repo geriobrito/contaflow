@@ -38,7 +38,7 @@
   - `src/lib/ofx/`: Parser e decodificação UTF-8/Windows-1252 de arquivos OFX
   - `src/lib/chart/`: Modelo de plano de contas do CFC (NBC TG 1002, Anexo 11; arquivo `itg1000.ts` por legado)
   - `src/lib/dre/` & `src/lib/export/`: Cálculos contábeis de DRE e exportação PDF/Excel
-  - `src/lib/rules/`, `payee.ts`, `ledger.ts`: Regras de conciliação, favorecidos e partidas dobradas
+  - `src/lib/reconciliation.ts` (motor das regras: termo, condições e precedência), `rule-suggestions.ts`, `rule-copy.ts`, `payee.ts`, `ledger.ts`: Regras de conciliação, favorecidos e partidas dobradas
 - `src/types/`: Definições centrais de tipos TypeScript (`firestore.ts`)
 - `tests/rules/`: Testes unitários para regras de segurança `firestore.rules`
 

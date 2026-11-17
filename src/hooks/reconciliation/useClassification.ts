@@ -7,7 +7,7 @@ import { partnerResetChange } from '@/lib/services/accounting-service';
 import { getActor, peekActor } from '@/lib/data/scope';
 import type { AccountRef } from '@/lib/data/repository';
 import { draftsToSplits, summarizeSplits, type SplitDraft } from '@/lib/splits';
-import { normalizePattern } from '@/lib/reconciliation';
+import { conditionCount, normalizePattern, ruleConditions, sharedDirection } from '@/lib/reconciliation';
 import { classifyAction, transactionAudit } from '@/lib/audit';
 import { newRuleId } from '@/lib/utils/id';
 import { formatMonth, isMonthLocked, monthOf } from '@/lib/periods';
@@ -62,22 +62,40 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
     [lockedMonths]
   );
 
-  /** Regra a criar/atualizar: reaproveita a de origem ou outra com o mesmo termo e tipo, em vez de duplicar. */
+  /**
+   * Regra a criar/atualizar: reaproveita a de origem ou outra com o mesmo termo e tipo, em vez de
+   * duplicar. Regra nova vale só no sentido dos lançamentos classificados (`direction`): receber
+   * de alguém e pagar a esse alguém raramente vão para a mesma conta. A reaproveitada mantém as
+   * condições que já tinha. `corrected`: a classificação da regra de origem foi trocada à mão.
+   */
   const buildLearnedRule = useCallback(
-    (args: { pattern: string; matchType: RuleMatchType; ref: AccountRef; now: string; preferRuleId?: string }) => {
+    (args: { pattern: string; matchType: RuleMatchType; ref: AccountRef; now: string; preferRuleId?: string; direction?: 'IN' | 'OUT' | null; corrected?: boolean }) => {
       if (!clientId || !args.pattern) return { rule: null, existingRule: undefined };
+      const sameTerm = (r: ClassificationRule) =>
+        r.clientId === clientId && normalizePattern(r.pattern) === args.pattern && (r.matchType ?? 'CONTAINS') === args.matchType;
+      const origin = rules.find((r) => args.preferRuleId && r.id === args.preferRuleId && r.clientId === clientId);
       const existingRule =
-        rules.find((r) => args.preferRuleId && r.id === args.preferRuleId && r.clientId === clientId) ??
-        rules.find((r) => r.clientId === clientId && normalizePattern(r.pattern) === args.pattern && (r.matchType ?? 'CONTAINS') === args.matchType);
+        origin ??
+        // Mesmo termo e tipo: a do mesmo sentido (sem outras condições); senão, a que vale para os dois.
+        rules.find((r) => Boolean(args.direction) && sameTerm(r) && conditionCount(r) === 1 && ruleConditions(r).direction === args.direction) ??
+        rules.find((r) => sameTerm(r) && conditionCount(r) === 0);
       const actorUid = peekActor()?.uid;
       const rule: ClassificationRule = existingRule
-        ? { ...existingRule, pattern: args.pattern, matchType: args.matchType, ...args.ref, updatedAt: args.now }
+        ? {
+            ...existingRule,
+            pattern: args.pattern,
+            matchType: args.matchType,
+            ...args.ref,
+            ...(args.corrected && existingRule === origin ? { overrideCount: (existingRule.overrideCount ?? 0) + 1 } : {}),
+            updatedAt: args.now,
+          }
         : {
             id: newRuleId(),
             clientId,
             pattern: args.pattern,
             matchType: args.matchType,
             ...args.ref,
+            ...(args.direction ? { direction: args.direction } : {}),
             ...(actorUid ? { createdByUid: actorUid } : {}),
             createdAt: args.now,
             updatedAt: args.now,
@@ -85,6 +103,20 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
       return { rule, existingRule };
     },
     [clientId, rules]
+  );
+
+  /**
+   * A regra errou: o lançamento que ela classificou sozinha está sendo trocado à mão (outra conta
+   * ou rateio). Devolve a regra com o contador de correções somado, sem mexer em `updatedAt`
+   * (que desempata a precedência), ou null quando não se aplica.
+   */
+  const correctedRule = useCallback(
+    (target: BankTransaction, newAccountId: string | null): { rule: ClassificationRule; previous: ClassificationRule } | null => {
+      if (target.status !== 'AUTO_CLASSIFIED' || !target.matchedRuleId || target.accountId === newAccountId) return null;
+      const previous = rules.find((r) => r.id === target.matchedRuleId && r.clientId === clientId);
+      return previous ? { rule: { ...previous, overrideCount: (previous.overrideCount ?? 0) + 1 }, previous } : null;
+    },
+    [rules, clientId]
   );
 
   const findLoaded = useCallback(
@@ -125,13 +157,24 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         const matchType = options.matchType ?? 'CONTAINS';
 
         // Reclassificação: atualiza a regra de origem (ou uma com o mesmo termo e tipo) em vez de duplicar.
-        const { rule, existingRule } = buildLearnedRule({ pattern, matchType, ref, now, preferRuleId: target.matchedRuleId });
+        const correction = correctedRule(target, accountId);
+        const { rule, existingRule } = buildLearnedRule({
+          pattern,
+          matchType,
+          ref,
+          now,
+          preferRuleId: target.matchedRuleId,
+          direction: target.amount < 0 ? 'OUT' : 'IN',
+          corrected: Boolean(correction),
+        });
+        // Sem "lembrar" (ou lembrando em outra regra), a correção fica anotada na regra que errou.
+        const bump = correction && correction.rule.id !== rule?.id ? correction : null;
 
         const { patch, after } = classifyTransition(target, ref, rule?.id ?? null, now);
         const partner = await partnerChange(target, now);
         await getRepository().commitChanges({
           patches: [patch, ...(partner ? [partner.patch] : [])],
-          rules: rule ? [rule] : [],
+          rules: [...(rule ? [rule] : []), ...(bump ? [bump.rule] : [])],
           audits: [
             transactionAudit(classifyAction(target), actor, target, after, now, rule ? { ruleId: rule.id } : {}),
             ...(partner ? [partner.audit] : []),
@@ -139,9 +182,11 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         });
         replaceLoaded([after, ...(partner ? [partner.after] : [])]);
 
+        const bumped = bump ? rules.map((r) => (r.id === bump.rule.id ? bump.rule : r)) : rules;
+        if (bump && !rule) setRules(bumped);
         let propagated: BankTransaction[] = [];
         if (rule) {
-          const nextRules = existingRule ? rules.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...rules];
+          const nextRules = existingRule ? bumped.map((r) => (r.id === rule.id ? rule : r)) : [rule, ...bumped];
           setRules(nextRules);
           // Retroalimentação: pendentes de QUALQUER período no banco que a regra vence.
           propagated = await applyRuleToPending({
@@ -157,11 +202,12 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         }
         const undo: UndoPlan = {
           changes: [{ before: target, after }, ...(partner ? [{ before: partner.before, after: partner.after }] : []), ...propagatedChanges(propagated)],
-          rule: ruleUndo(rule, existingRule),
+          // Só o contador mudou: desfazer devolve a regra como estava.
+          rule: ruleUndo(rule, existingRule) ?? (bump ? { kind: 'updated', previous: bump.previous } : undefined),
         };
         return { rule, propagated: propagated.length, undo };
       }),
-    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange, buildLearnedRule, setRules]
+    [clientId, rules, accountsById, lockedMonths, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange, buildLearnedRule, correctedRule, setRules]
   );
 
   /* ------------------------------------------------------------------ */
@@ -186,7 +232,7 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         const now = new Date().toISOString();
         const pattern = options.learnRule ? normalizePattern(options.customPattern ?? '') : '';
         const matchType = options.matchType ?? 'CONTAINS';
-        const { rule, existingRule } = buildLearnedRule({ pattern, matchType, ref, now });
+        const { rule, existingRule } = buildLearnedRule({ pattern, matchType, ref, now, direction: sharedDirection(targets) });
 
         const moves = targets.map((tx) => ({ tx, ...classifyTransition(tx, ref, rule?.id ?? null, now) }));
         await getRepository().commitChanges({
@@ -255,14 +301,21 @@ export function useClassification(store: ReconciliationStore): ClassificationAct
         const now = new Date().toISOString();
         const { patch, after } = splitTransition(target, draftsToSplits(target, drafts, accountsById), now);
         const partner = await partnerChange(target, now);
+        // Ratear o que a regra pôs numa conta só também é correção dela.
+        const bump = correctedRule(target, null);
         await getRepository().commitChanges({
           patches: [patch, ...(partner ? [partner.patch] : [])],
+          rules: bump ? [bump.rule] : [],
           audits: [transactionAudit('SPLIT', getActor(), target, after, now), ...(partner ? [partner.audit] : [])],
         });
         replaceLoaded([after, ...(partner ? [partner.after] : [])]);
-        return { changes: [{ before: target, after }, ...(partner ? [{ before: partner.before, after: partner.after }] : [])] };
+        if (bump) setRules((prev) => prev.map((r) => (r.id === bump.rule.id ? bump.rule : r)));
+        return {
+          changes: [{ before: target, after }, ...(partner ? [{ before: partner.before, after: partner.after }] : [])],
+          ...(bump ? { rule: { kind: 'updated' as const, previous: bump.previous } } : {}),
+        };
       }),
-    [accountsById, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange]
+    [accountsById, mutate, findLoaded, assertOpen, replaceLoaded, partnerChange, correctedRule, setRules]
   );
 
   /* ------------------------------------------------------------------ */

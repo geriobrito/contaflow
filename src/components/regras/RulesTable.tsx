@@ -1,12 +1,12 @@
 'use client';
 
 import { TABLE_HEAD, Th } from '@/components/ui/Table';
-import type { ClassificationRule, RuleMatchType } from '@/types/firestore';
+import type { BankAccount, ChartAccount, ClassificationRule } from '@/types/firestore';
 import type { RuleConflict } from '@/lib/reconciliation';
 import type { RuleListRow } from '@/hooks/regras/useRulesData';
 import { RULE_SAMPLE_MONTHS } from '@/lib/services/reconciliation-service';
 import { EmptyState, SURFACE } from '@/components/ui/primitives';
-import { RuleRow } from '@/components/regras/RuleRow';
+import { RuleRow, type RuleEdit } from '@/components/regras/RuleRow';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 
 interface RulesTableProps {
@@ -23,14 +23,18 @@ interface RulesTableProps {
   /** Regra sendo aplicada aos pendentes agora. */
   applyingId: string | null;
   isDuplicate: (key: string, exceptId: string) => boolean;
+  analytic: readonly ChartAccount[];
+  bankAccounts: readonly BankAccount[];
+  /** Recorte ativo (além da busca), para a mensagem de lista vazia. */
+  filtered?: boolean;
   canDelete?: (rule: ClassificationRule) => boolean;
   onApply: (rule: ClassificationRule) => Promise<void>;
-  onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
+  onSave: (rule: ClassificationRule, edit: RuleEdit) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
 }
 
 /** Tabela de regras de aprendizado, com edição do termo, aplicação aos pendentes e exclusão. */
-export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, memos, conflicts, rulesById, applyingId, isDuplicate, canDelete, onApply, onSave, onDelete }: RulesTableProps) {
+export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, memos, conflicts, rulesById, applyingId, isDuplicate, analytic, bankAccounts, filtered = false, canDelete, onApply, onSave, onDelete }: RulesTableProps) {
   return (
     <section className={`${SURFACE} rounded-[22px] overflow-hidden`}>
       {loadFailure ? (
@@ -45,7 +49,9 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
           description={
             ruleCount === 0
               ? 'Adicione acima ou marque “Lembrar essa classificação” ao conciliar um lançamento.'
-              : `Nada corresponde a “${search}”.`
+              : search.trim()
+                ? `Nada corresponde a “${search}”${filtered ? ' neste filtro' : ''}.`
+                : 'Nenhuma regra neste filtro.'
           }
         />
       ) : (
@@ -83,6 +89,8 @@ export function RulesTable({ loadFailure, isLoading, rows, ruleCount, search, me
                   onApply={onApply}
                   applying={applyingId === rule.id}
                   isDuplicate={isDuplicate}
+                  analytic={analytic}
+                  bankAccounts={bankAccounts}
                   canDelete={canDelete ? canDelete(rule) : true}
                   onSave={onSave}
                   onDelete={onDelete}

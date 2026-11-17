@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
-import type { ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
-import { normalizePattern, ruleKey } from '@/lib/reconciliation';
+import { Plus, SlidersHorizontal } from 'lucide-react';
+import type { BankAccount, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
+import { activeConditionFields, normalizePattern, ruleKey, type RuleConditions } from '@/lib/reconciliation';
 import { assessRuleTerm } from '@/lib/payee';
 import { describeError } from '@/lib/utils/errors';
 import { newRuleId } from '@/lib/utils/id';
@@ -12,11 +12,14 @@ import { BUTTON, INPUT, SURFACE } from '@/components/ui/primitives';
 import { AccountSelectField } from '@/components/ui/AccountCombobox';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
 import { MatchTypeSelect } from '@/components/regras/RuleRow';
+import { RuleConditionFields, rangeProblem } from '@/components/regras/RuleConditionFields';
 
 interface NewRuleFormProps {
   clientId: string | undefined;
   /** Contas analíticas, que podem receber lançamentos. */
   analytic: readonly ChartAccount[];
+  /** Contas bancárias da empresa, para a condição por conta. */
+  bankAccounts: readonly BankAccount[];
   /** Descrições dos lançamentos do cliente, para avaliar o termo. */
   memos: readonly string[];
   isDuplicate: (key: string, exceptId: string) => boolean;
@@ -26,11 +29,13 @@ interface NewRuleFormProps {
   notice: string | null;
 }
 
-/** Adição rápida de regra: tipo de comparação, termo e conta de destino. */
-export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, notice }: NewRuleFormProps) {
+/** Adição rápida de regra: tipo de comparação, termo, conta de destino e condições. */
+export function NewRuleForm({ clientId, analytic, bankAccounts, memos, isDuplicate, onCreate, notice }: NewRuleFormProps) {
   const [newPattern, setNewPattern] = useState('');
   const [newAccountId, setNewAccountId] = useState('');
   const [newType, setNewType] = useState<RuleMatchType>('CONTAINS');
+  const [conditions, setConditions] = useState<RuleConditions>({});
+  const [expanded, setExpanded] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -57,8 +62,14 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
       setAddError('Termo genérico: marque “Criar mesmo assim” para salvar.');
       return;
     }
-    if (isDuplicate(ruleKey(pattern, newType), '')) {
-      setAddError('Já existe uma regra com esse termo e tipo.');
+    const range = rangeProblem(conditions);
+    if (range) {
+      setAddError(range);
+      return;
+    }
+    const fields = activeConditionFields(conditions);
+    if (isDuplicate(ruleKey(pattern, newType, fields), '')) {
+      setAddError('Já existe uma regra com esse termo, tipo e condições.');
       return;
     }
     setAdding(true);
@@ -74,6 +85,7 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
         accountCode: account.code,
         accountName: account.name,
         matchType: newType,
+        ...fields,
         ...(actorUid ? { createdByUid: actorUid } : {}),
         createdAt: now,
         updatedAt: now,
@@ -110,6 +122,16 @@ export function NewRuleForm({ clientId, analytic, memos, isDuplicate, onCreate, 
           <Plus className="w-4 h-4" strokeWidth={2} />
           {adding ? 'Adicionando…' : 'Adicionar'}
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[12px] text-stone-500 dark:text-stone-400">Vale para</span>
+        <RuleConditionFields value={conditions} onChange={setConditions} bankAccounts={bankAccounts} expanded={expanded} />
+        {!expanded && (
+          <button type="button" onClick={() => setExpanded(true)} className="inline-flex items-center gap-1.5 text-[12px] font-medium text-accent-ink hover:underline">
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            Mais condições (conta bancária, valor)
+          </button>
+        )}
       </div>
       {newAssessment && (
         <TermWarning

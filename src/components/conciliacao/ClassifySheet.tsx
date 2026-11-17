@@ -6,7 +6,7 @@ import type { AuditEntry, BankTransaction, ChartAccount, ClassificationRule, Fin
 import type { InvoiceMatch } from '@/lib/nfe/match';
 import { creditSplitDrafts, ibsCbsCredit } from '@/lib/nfe/credits';
 import { describeInvoice, InvoiceMatchCard, LinkedInvoiceNote } from '@/components/conciliacao/InvoiceMatchCard';
-import { normalizePattern } from '@/lib/reconciliation';
+import { normalizePattern, ruleConditions } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { SegmentedControl } from '@/components/ui/primitives';
 import { AccountPicker } from '@/components/ui/AccountCombobox';
@@ -543,6 +543,8 @@ export function ClassifySheet({
               onAcknowledged={setAcknowledged}
               suggestion={payeeTerm}
               memoSuggestion={suggestedTerm}
+              // Regra de origem segue com as condições dela; regra nova vale no sentido deste lançamento.
+              direction={sourceRule ? (ruleConditions(sourceRule).direction ?? null) : directionOf(transaction.amount)}
               note={
                 matchType === 'EXACT' && normalizePattern(customPattern) !== normalizePattern(transaction.memo) ? (
                   <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">

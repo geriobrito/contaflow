@@ -5,7 +5,6 @@ import { ArrowDownLeft, ArrowUpRight, ChevronRight } from 'lucide-react';
 import type { BankTransaction, ChartAccount, RuleMatchType } from '@/types/firestore';
 import type { ClassifyOptions } from '@/hooks/useReconciliation';
 import { assessRuleTerm, type PayeeGroup } from '@/lib/payee';
-import { matchesRule } from '@/lib/reconciliation';
 import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON, EmptyState, SearchField, Sheet } from '@/components/ui/primitives';
 import { AccountPicker } from '@/components/ui/AccountCombobox';
@@ -114,15 +113,6 @@ export function GroupClassifySheet({ group, accounts, pool, suggestions, isSavin
   const assessment = useMemo(() => assessRuleTerm({ pattern: term, matchType }, memos), [term, matchType, memos]);
   const ruleBlocked = learn && assessment.level === 'generic' && !acknowledged;
 
-  // A regra não distingue entrada de saída: avisa quando casaria também o sentido oposto.
-  const groupIds = useMemo(() => new Set(group.transactions.map((t) => t.id)), [group]);
-  const opposite = useMemo(() => {
-    if (!learn || !term.trim()) return 0;
-    return pool.filter(
-      (t) => !groupIds.has(t.id) && t.status === 'PENDING' && (t.amount < 0 ? 'OUT' : 'IN') !== group.direction && matchesRule(t.memo, { pattern: term, matchType })
-    ).length;
-  }, [pool, groupIds, learn, term, matchType, group.direction]);
-
   const selectedTotal = group.transactions.filter((t) => picked.has(t.id)).reduce((s, t) => s + t.amount, 0);
   const toggle = (id: string) =>
     setPicked((prev) => {
@@ -201,14 +191,7 @@ export function GroupClassifySheet({ group, accounts, pool, suggestions, isSavin
           acknowledged={acknowledged}
           onAcknowledged={setAcknowledged}
           suggestion={group.term}
-          note={
-            opposite > 0 ? (
-              <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
-                A regra também casa {opposite} lançamento(s) pendente(s) de {group.direction === 'IN' ? 'saída' : 'entrada'} deste mesmo favorecido; eles
-                irão para a mesma conta.
-              </p>
-            ) : null
-          }
+          direction={group.direction}
         />
       </div>
     </Sheet>

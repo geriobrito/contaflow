@@ -154,7 +154,7 @@ export function useStatementImport(store: ReconciliationStore): StatementImportA
         const fresh: BankTransaction[] = [];
         for (const [id, raw] of uniqueInFile) {
           if (existing.has(id)) continue;
-          const rule = findMatchingRule(raw.memo, classifiable);
+          const rule = findMatchingRule({ memo: raw.memo, amount: raw.amount, ...(accountKey ? { accountKey } : {}) }, classifiable);
           const account = rule ? accountsById.get(rule.accountId) : undefined;
           const tx: BankTransaction = {
             id,

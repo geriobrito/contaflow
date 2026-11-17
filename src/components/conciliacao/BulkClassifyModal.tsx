@@ -8,6 +8,7 @@ import { formatCurrency, formatDateBR } from '@/lib/utils/formatters';
 import { AccountPicker } from '@/components/ui/AccountCombobox';
 import { directionOf, orderAccountsByDirection, type AccountSuggestion } from '@/lib/account-suggestions';
 import { RuleLearnPanel } from '@/components/conciliacao/RuleLearnPanel';
+import { sharedDirection } from '@/lib/reconciliation';
 import { assessRuleTerm, suggestMemoTerm, suggestRuleTerm } from '@/lib/payee';
 import { BUTTON, FIELD_LABEL } from '@/components/ui/primitives';
 import { ModalPortal } from '@/components/ui/ModalPortal';
@@ -168,6 +169,7 @@ export function BulkClassifyModal({
               acknowledged={acknowledged}
               onAcknowledged={setAcknowledged}
               suggestion={initialSuggested}
+              direction={sharedDirection(transactions)}
             />
           </div>
         </div>

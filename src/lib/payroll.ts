@@ -12,7 +12,7 @@ import { addCalendarDays, dayOfMonth, nationalHolidays, shiftToBusinessDay } fro
 import { lastDayOf } from '@/lib/fixed-assets';
 import { fromCents, toCents } from '@/lib/money';
 import { parseMoneyInput } from '@/lib/opening';
-import { normalizeText } from '@/lib/rules/engine';
+import { normalizeText } from '@/lib/utils/text';
 
 /** Mapeamento padrão do modelo de plano de contas do CFC (NBC TG 1002 / ITG 1000). */
 export const DEFAULT_PAYROLL_MAPPING: PayrollAccountMapping = {

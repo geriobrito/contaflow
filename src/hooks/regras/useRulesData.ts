@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
+import type { BankAccount, BankTransaction, ChartAccount, ClassificationRule } from '@/types/firestore';
 import { getAccounts, getRepository, getRules } from '@/lib/services/data-service';
 import { applyRuleToPending, loadRuleSample } from '@/lib/services/reconciliation-service';
-import { normalizePattern, ruleKey } from '@/lib/reconciliation';
+import { keyOfRule } from '@/lib/reconciliation';
+import { suggestRules } from '@/lib/rule-suggestions';
 import type { TermAssessment } from '@/lib/payee';
 import { isMonthLocked } from '@/lib/periods';
 import { describeError } from '@/lib/utils/errors';
@@ -32,16 +33,18 @@ export function useRulesData(clientId: string | undefined, search: string) {
   const [rules, setRules] = useState<ClassificationRule[]>([]);
   const [accounts, setAccounts] = useState<ChartAccount[]>([]);
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [lockedMonths, setLockedMonths] = useState<ReadonlySet<string>>(new Set());
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<{ id: string; message: string } | null>(null);
 
   const apply = useCallback(
-    (id: string, [r, a, t, l]: [ClassificationRule[], ChartAccount[], BankTransaction[], { month: string }[]]) => {
+    (id: string, [r, a, t, l, b]: [ClassificationRule[], ChartAccount[], BankTransaction[], { month: string }[], BankAccount[]]) => {
       setRules(r);
       setAccounts(a);
       setTransactions(t);
       setLockedMonths(new Set(l.map((x) => x.month)));
+      setBankAccounts(b);
       setLoadedFor(id);
     },
     []
@@ -107,7 +110,7 @@ export function useRulesData(clientId: string | undefined, search: string) {
 
   const isDuplicate = useCallback(
     (key: string, exceptId: string) =>
-      rules.some((r) => r.id !== exceptId && ruleKey(r.matchType === 'REGEX' ? r.pattern.trim() : normalizePattern(r.pattern), r.matchType) === key),
+      rules.some((r) => r.id !== exceptId && keyOfRule(r) === key),
     [rules]
   );
 
@@ -121,8 +124,15 @@ export function useRulesData(clientId: string | undefined, search: string) {
   /** Tira da lista uma regra já excluída do banco (sem recarregar tudo). */
   const dropRule = (ruleId: string) => setRules((prev) => prev.filter((r) => r.id !== ruleId));
 
-  return { rules, analytic, rulesById, memos, conflicts, rows, isLoading, loadFailure, isDuplicate, applyToPending, dropRule, reload };
+  /** Favorecidos recorrentes, conciliados à mão sempre na mesma conta, que nenhuma regra cobre. */
+  const suggestions = useMemo(
+    () => suggestRules(transactions, rules).filter((s) => accountsById.get(s.accountId)?.nature === 'ANALYTIC'),
+    [transactions, rules, accountsById]
+  );
+
+  return { rules, accounts, analytic, accountsById, bankAccounts, rulesById, memos, conflicts, rows, suggestions, isLoading, loadFailure, isDuplicate, applyToPending, dropRule, reload };
 }
 
 // Os lançamentos são uma amostra (pendentes + últimos meses), não o histórico inteiro.
-const fetchAll = (id: string) => Promise.all([getRules(id), getAccounts(id), loadRuleSample(id), getRepository().listPeriodLocks(id)]);
+const fetchAll = (id: string) =>
+  Promise.all([getRules(id), getAccounts(id), loadRuleSample(id), getRepository().listPeriodLocks(id), getRepository().listBankAccounts(id)]);

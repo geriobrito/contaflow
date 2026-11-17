@@ -43,13 +43,13 @@ export function evaluateRulesBatch({
   openPending,
 }: EvaluateRulesPayload): EvaluateRulesResult {
   const memos = transactions.map((t) => t.memo);
-  const conflictsMap = detectRuleConflicts(memos, rules);
+  const conflictsMap = detectRuleConflicts(transactions, rules);
 
   // Pré-calcula a regra vencedora para cada lançamento pendente em aberto (O(P * R) em vez de O(R² * P))
   const pendingWinsByRule = new Map<string, number>();
   for (const tx of openPending) {
     if (tx.status !== 'PENDING') continue;
-    const winner = findMatchingRule(tx.memo, rules);
+    const winner = findMatchingRule(tx, rules);
     if (winner) {
       pendingWinsByRule.set(winner.id, (pendingWinsByRule.get(winner.id) ?? 0) + 1);
     }

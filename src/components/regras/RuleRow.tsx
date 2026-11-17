@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, Pencil, Trash2, Wand2, X } from 'lucide-react';
-import type { ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
-import { MATCH_TYPE_LABEL, normalizePattern, ruleKey, type RuleConflict } from '@/lib/reconciliation';
+import type { BankAccount, ChartAccount, ClassificationRule, RuleMatchType } from '@/types/firestore';
+import { MATCH_TYPE_LABEL, conditionFields, conditionLabels, normalizePattern, ruleConditions, ruleKey, type RuleConditions, type RuleConflict } from '@/lib/reconciliation';
 import { assessRuleTerm, type TermAssessment } from '@/lib/payee';
 import { formatDateBR } from '@/lib/utils/formatters';
 import { ConfirmButton, INPUT, INPUT_COMPACT } from '@/components/ui/primitives';
 import { TermWarning } from '@/components/conciliacao/RuleLearnPanel';
+import { AccountSelectField } from '@/components/ui/AccountCombobox';
+import { RuleConditionFields, rangeProblem } from '@/components/regras/RuleConditionFields';
 
 /** Tipos oferecidos na interface (REGEX existente continua funcionando e sendo exibido). */
 const MATCH_OPTIONS: readonly RuleMatchType[] = ['CONTAINS', 'STARTS_WITH', 'EXACT'];
@@ -37,6 +39,14 @@ export function MatchTypeSelect({ value, onChange, className = '' }: MatchTypeSe
 
 /* Linha editável da tabela de regras */
 
+/** O que a edição da linha pode mudar: termo, tipo, conta de destino e condições. */
+export interface RuleEdit {
+  pattern: string;
+  matchType: RuleMatchType;
+  account: ChartAccount | undefined;
+  conditions: RuleConditions;
+}
+
 export interface RuleRowProps {
   rule: ClassificationRule;
   account: ChartAccount | undefined;
@@ -50,17 +60,27 @@ export interface RuleRowProps {
   /** Descrições dos lançamentos do cliente, para avaliar o termo em edição. */
   memos: readonly string[];
   isDuplicate: (key: string, exceptId: string) => boolean;
+  /** Contas analíticas, para trocar a conta de destino. */
+  analytic: readonly ChartAccount[];
+  bankAccounts: readonly BankAccount[];
   canDelete?: boolean;
-  onSave: (rule: ClassificationRule, pattern: string, matchType: RuleMatchType) => Promise<void>;
+  onSave: (rule: ClassificationRule, edit: RuleEdit) => Promise<void>;
   onDelete: (rule: ClassificationRule) => Promise<void>;
   onApply: (rule: ClassificationRule) => Promise<void>;
   applying: boolean;
 }
 
-export function RuleRow({ rule, account, affected, pending, conflicts, rulesById, assessment, memos, isDuplicate, canDelete = true, onSave, onDelete, onApply, applying }: RuleRowProps) {
+export function RuleRow({ rule, account, affected, pending, conflicts, rulesById, assessment, memos, isDuplicate, analytic, bankAccounts, canDelete = true, onSave, onDelete, onApply, applying }: RuleRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(rule.pattern);
   const [draftType, setDraftType] = useState<RuleMatchType>(rule.matchType ?? 'CONTAINS');
+  const [draftAccountId, setDraftAccountId] = useState(rule.accountId);
+  const [draftConditions, setDraftConditions] = useState<RuleConditions>(() => ruleConditions(rule));
+  const labels = conditionLabels(rule, (key) => {
+    const b = bankAccounts.find((x) => x.accountKey === key);
+    return b ? b.nickname || b.bankName : undefined;
+  });
+  const corrections = rule.overrideCount ?? 0;
 
   const normalized = draftType === 'REGEX' ? draft.trim() : normalizePattern(draft);
   const draftAssessment = useMemo(
@@ -72,24 +92,30 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
   const acknowledged = ackKey === draftKey;
   // Editar para um termo genérico exige "Criar mesmo assim"; manter o termo atual não.
   const needsAck = draftAssessment.level === 'generic' && draftKey !== `${rule.matchType ?? 'CONTAINS'}|${rule.pattern}` && !acknowledged;
+  const draftAccount = analytic.find((a) => a.id === draftAccountId);
+  // A conta atual pode ter virado sintética ou saído do plano: manter a regra como está é permitido.
+  const accountChanged = draftAccountId !== rule.accountId;
   const error = !normalized
     ? 'Informe um termo.'
-    : isDuplicate(ruleKey(normalized, draftType), rule.id)
-      ? 'Já existe regra com esse termo e tipo.'
-      : needsAck
-        ? 'Termo genérico: marque “Criar mesmo assim” para salvar.'
-        : null;
+    : isDuplicate(ruleKey(normalized, draftType, conditionFields(draftConditions)), rule.id)
+      ? 'Já existe regra com esse termo, tipo e condições.'
+      : accountChanged && !draftAccount
+        ? 'Escolha a conta de destino.'
+        : (rangeProblem(draftConditions) ??
+          (needsAck ? 'Termo genérico: marque “Criar mesmo assim” para salvar.' : null));
 
   const cancel = () => {
     setDraft(rule.pattern);
     setDraftType(rule.matchType ?? 'CONTAINS');
+    setDraftAccountId(rule.accountId);
+    setDraftConditions(ruleConditions(rule));
     setEditing(false);
   };
 
   const commit = async () => {
     if (error) return;
     try {
-      await onSave(rule, normalized, draftType);
+      await onSave(rule, { pattern: normalized, matchType: draftType, account: accountChanged ? draftAccount : undefined, conditions: draftConditions });
       setEditing(false);
     } catch {
       /* mensagem exibida pela página; mantém a edição aberta para nova tentativa */
@@ -113,6 +139,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
               className={`${INPUT_COMPACT} w-full font-mono`}
             />
             <MatchTypeSelect value={draftType} onChange={setDraftType} className="h-9 text-[12px]" />
+            <RuleConditionFields value={draftConditions} onChange={setDraftConditions} bankAccounts={bankAccounts} expanded className="pt-1" />
             <TermWarning
               assessment={draftAssessment}
               acknowledged={acknowledged}
@@ -127,6 +154,24 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
             <span title={rule.pattern} className="inline-block max-w-full px-2.5 py-1 rounded-full bg-stone-900/5 dark:bg-white/8 border border-black/4 dark:border-white/6 font-mono text-[12px] text-stone-800 dark:text-stone-200 truncate">
               {rule.pattern}
             </span>
+            {labels.length > 0 && (
+              <p className="flex flex-wrap gap-1">
+                {labels.map((l) => (
+                  <span key={l} className="inline-flex items-center px-2 py-px rounded-full border border-line text-[11px] text-stone-600 dark:text-stone-300">
+                    {l}
+                  </span>
+                ))}
+              </p>
+            )}
+            {corrections > 0 && (
+              <p
+                title="Vezes em que um lançamento classificado por esta regra foi trocado à mão para outra conta ou rateado. Regra que erra pede um termo mais específico ou uma condição."
+                className="flex items-start gap-1 text-[11px] leading-snug text-amber-700 dark:text-amber-400"
+              >
+                <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
+                <span>Corrigida à mão {corrections} vez(es)</span>
+              </p>
+            )}
             {assessment.level !== 'ok' && (
               <p
                 title={assessment.reasons.join('\n')}
@@ -159,11 +204,15 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
           </div>
         )}
       </td>
-      <td className="px-3 py-3 max-w-0 w-full">
-        <p className="text-[13px] text-stone-800 dark:text-stone-200 truncate">
-          <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 mr-1.5">{account?.code ?? rule.accountCode ?? '—'}</span>
-          {account?.name ?? rule.accountName ?? 'Conta removida'}
-        </p>
+      <td className={`px-3 py-3 w-full ${editing ? 'align-top min-w-[240px]' : 'max-w-0'}`}>
+        {editing ? (
+          <AccountSelectField accounts={analytic} value={draftAccountId} onChange={setDraftAccountId} label="Conta de destino" placeholder="Conta de destino…" triggerClassName="h-9" />
+        ) : (
+          <p className="text-[13px] text-stone-800 dark:text-stone-200 truncate">
+            <span className="font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 mr-1.5">{account?.code ?? rule.accountCode ?? '—'}</span>
+            {account?.name ?? rule.accountName ?? 'Conta removida'}
+          </p>
+        )}
       </td>
       <td className="px-3 py-3 font-mono tabular-nums text-[12px] text-stone-500 dark:text-stone-400 whitespace-nowrap">
         {rule.createdAt ? formatDateBR(rule.createdAt.slice(0, 10)) : '—'}
@@ -191,7 +240,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
                 type="button"
                 onClick={() => void commit()}
                 disabled={Boolean(error)}
-                aria-label="Salvar termo"
+                aria-label="Salvar regra"
                 className="w-8 h-8 rounded-full flex items-center justify-center bg-accent text-white disabled:opacity-40 active:scale-[0.94] transition-all duration-150"
               >
                 <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
@@ -210,7 +259,7 @@ export function RuleRow({ rule, account, affected, pending, conflicts, rulesById
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                aria-label={`Editar termo ${rule.pattern}`}
+                aria-label={`Editar regra ${rule.pattern}`}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-800 hover:bg-black/5 dark:hover:bg-white/8 opacity-0 group-hover:opacity-100 focus:opacity-100 active:scale-[0.94] transition-all duration-150"
               >
                 <Pencil className="w-3.5 h-3.5" />

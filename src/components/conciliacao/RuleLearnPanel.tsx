@@ -35,6 +35,8 @@ interface RuleLearnPanelProps {
   suggestion?: string;
   /** Sugestão pela descrição do lançamento (como aparece na lista). */
   memoSuggestion?: string;
+  /** Sentido em que a regra vai valer (o dos lançamentos classificados); sem ele, vale para os dois. */
+  direction?: 'IN' | 'OUT' | null;
 }
 
 /** Bloco "Lembrar essa classificação": termo, tipo de comparação e avisos de termo genérico ou amplo. */
@@ -53,6 +55,7 @@ export function RuleLearnPanel({
   note,
   suggestion,
   memoSuggestion,
+  direction,
 }: RuleLearnPanelProps) {
   return (
     <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line overflow-hidden">
@@ -89,6 +92,12 @@ export function RuleLearnPanel({
           <div className="mt-2.5 overflow-x-auto">
             <SegmentedControl ariaLabel="Tipo de comparação" value={matchType} onChange={onMatchType} options={MATCH_OPTIONS} />
           </div>
+          {direction && (
+            <p className="mt-2 text-[11px] text-stone-500 dark:text-stone-400">
+              A regra vale só para {direction === 'IN' ? 'entradas' : 'saídas'}: {direction === 'IN' ? 'pagamentos a' : 'recebimentos d'}este mesmo favorecido não são
+              afetados.
+            </p>
+          )}
           {note}
           <TermWarning assessment={assessment} acknowledged={acknowledged} onAcknowledged={onAcknowledged} />
         </div>

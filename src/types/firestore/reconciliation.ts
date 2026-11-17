@@ -67,6 +67,8 @@ export interface ClientQuery {
 
 export type RuleMatchType = 'CONTAINS' | 'STARTS_WITH' | 'EXACT' | 'REGEX';
 
+export type RuleDirection = 'IN' | 'OUT' | 'ANY';
+
 export interface ClassificationRule {
   /** Escritório dono do documento (isolamento multi-tenant; obrigatório no Firestore). */
   orgId?: string;
@@ -79,6 +81,20 @@ export interface ClassificationRule {
   accountName?: string;
   confidence?: number;
   usageCount?: number;
+  /**
+   * Condições além do termo (src/lib/reconciliation.ts, `ruleConditions`). Todas opcionais; a
+   * regra só vale para o lançamento que atende a todas. Como a gravação mescla campos, condição
+   * retirada fica gravada com o valor neutro ('ANY', '' ou 0), que conta como "sem condição".
+   */
+  /** Sentido do lançamento: só entradas (IN), só saídas (OUT) ou qualquer um. */
+  direction?: RuleDirection;
+  /** Só lançamentos desta conta bancária (`accountKey` do extrato). */
+  bankAccountKey?: string;
+  /** Faixa do valor absoluto do lançamento, em reais (0 = sem limite). */
+  minAmount?: number;
+  maxAmount?: number;
+  /** Vezes em que o que a regra classificou foi trocado à mão (outra conta ou rateio). */
+  overrideCount?: number;
   /** Autor da regra (operador só exclui as regras que ele mesmo criou). */
   createdByUid?: string;
   createdAt: string;

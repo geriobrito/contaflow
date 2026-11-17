@@ -61,22 +61,22 @@ describe('resolução de conflito', () => {
   it('regra específica do cliente vence regra global mesmo com padrão mais curto', () => {
     const globalRule = rule('global-longa', 'pix recebido cliente tech corp', { clientId: 'global' });
     const clientRule = rule('cliente-curta', 'pix', { clientId: 'c1' });
-    expect(findMatchingRule(memo, [globalRule, clientRule])?.id).toBe('cliente-curta');
-    expect(findMatchingRule(memo, [clientRule, globalRule])?.id).toBe('cliente-curta');
+    expect(findMatchingRule({ memo }, [globalRule, clientRule])?.id).toBe('cliente-curta');
+    expect(findMatchingRule({ memo }, [clientRule, globalRule])?.id).toBe('cliente-curta');
   });
 
   it('tipo mais restritivo vence, mesmo com padrão mais curto', () => {
     const rules = [rule('contem-longo', 'pix recebido cliente tech'), typed('comeca', 'pix', 'STARTS_WITH')];
-    expect(findMatchingRule(memo, rules)?.id).toBe('comeca');
-    expect(findMatchingRule(memo, [...rules, typed('exato', memo, 'EXACT')])?.id).toBe('exato');
+    expect(findMatchingRule({ memo }, rules)?.id).toBe('comeca');
+    expect(findMatchingRule({ memo }, [...rules, typed('exato', memo, 'EXACT')])?.id).toBe('exato');
   });
 
   it('no mesmo tipo, o padrão mais longo vence; depois a mais recente; depois o id', () => {
-    expect(findMatchingRule(memo, [rule('a', 'pix'), rule('b', 'pix recebido')])?.id).toBe('b');
+    expect(findMatchingRule({ memo }, [rule('a', 'pix'), rule('b', 'pix recebido')])?.id).toBe('b');
     const older = rule('old', 'pix', { updatedAt: '2024-01-01' });
     const newer = rule('new', 'pix', { updatedAt: '2025-06-01' });
-    expect(findMatchingRule(memo, [older, newer])?.id).toBe('new');
-    expect(findRuleCandidates(memo, [rule('z', 'pix'), rule('a', 'pix')]).map((r) => r.id)).toEqual(['a', 'z']);
+    expect(findMatchingRule({ memo }, [older, newer])?.id).toBe('new');
+    expect(findRuleCandidates({ memo }, [rule('z', 'pix'), rule('a', 'pix')]).map((r) => r.id)).toEqual(['a', 'z']);
   });
 
   it('a ordem é total e estável (independe da ordem de entrada)', () => {
@@ -92,7 +92,7 @@ describe('resolução de conflito', () => {
       // Perde para 'uber-eats' nos pedidos, mas leva à mesma conta: não é conflito.
       rule('mesma-conta', 'eats', { accountId: 'acc-uber-eats', updatedAt: '2000-01-01' }),
     ];
-    const conflicts = detectRuleConflicts(['UBER EATS PEDIDO 1', 'UBER EATS PEDIDO 2', 'UBER TRIP'], rules);
+    const conflicts = detectRuleConflicts(['UBER EATS PEDIDO 1', 'UBER EATS PEDIDO 2', 'UBER TRIP'].map((memo) => ({ memo })), rules);
     expect(conflicts.get('uber')?.[0]).toMatchObject({ winnerId: 'uber-eats', count: 2 });
     expect(conflicts.has('mesma-conta')).toBe(false);
     expect(conflicts.has('uber-eats')).toBe(false);
