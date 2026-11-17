@@ -7,11 +7,12 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { MONTH_QUERY_EVENT, readMonthQuery } from '@/hooks/imobilizado/useMonthQueryState';
 import { useMonthRoutines } from '@/hooks/imobilizado/useMonthRoutines';
-import type { RoutineKey } from '@/lib/services/month-routines';
+import type { MonthRoutines, RoutineKey } from '@/lib/services/month-routines';
 import { segmentClass } from '@/components/ui/primitives';
 
 /** Abas de Bens e Contratos: os cadastros que geram lançamentos mensais, e a rotina de cada um. */
-const TABS: readonly { href: string; label: string; routine: RoutineKey }[] = [
+const TABS: readonly { href: string; label: string; routine?: RoutineKey }[] = [
+  { href: '/bens-e-contratos', label: 'Resumo' },
   { href: '/imobilizado', label: 'Imobilizado', routine: 'depreciation' },
   { href: '/despesas-antecipadas', label: 'Seguros e despesas antecipadas', routine: 'prepaid' },
   { href: '/financiamentos', label: 'Empréstimos e financiamentos', routine: 'financing' },
@@ -24,9 +25,10 @@ const competence = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
 /**
  * Abas das cinco telas, com a situação da competência em cada uma: o ponto âmbar marca a aba que
  * ainda tem algo a lançar ou informar no mês, sem precisar abrir uma por uma. `busy` é a gravação
- * em andamento na tela: ao terminar, a situação é relida.
+ * em andamento na tela: ao terminar, a situação é relida. O Resumo já carrega a situação e a
+ * entrega em `routines`: aí as abas não leem de novo.
  */
-export function ControlsTabs({ month, busy = false }: { month?: string; busy?: boolean } = {}) {
+export function ControlsTabs({ month, busy = false, routines: given }: { month?: string; busy?: boolean; routines?: MonthRoutines | null } = {}) {
   const pathname = usePathname();
   const { currentClient } = useClient();
   const [urlMonth, setUrlMonth] = useState<string | null>(null);
@@ -48,11 +50,12 @@ export function ControlsTabs({ month, busy = false }: { month?: string; busy?: b
   }, []);
 
   const queryMonth = month ?? urlMonth;
-  const { routines } = useMonthRoutines(currentClient?.id, queryMonth, false, busy);
+  const own = useMonthRoutines(currentClient?.id, given === undefined ? queryMonth : null, false, busy);
+  const routines = given === undefined ? own.routines : given;
 
   /** O que falta na aba, na competência: lançar (impede o fechamento) ou informar um dado. */
-  const pendingOf = (key: RoutineKey): string | null =>
-    routines?.problemsByKey[key] ?? routines?.inputs.find((i) => i.key === key)?.label ?? null;
+  const pendingOf = (key: RoutineKey | undefined): string | null =>
+    (key && (routines?.problemsByKey[key] ?? routines?.inputs.find((i) => i.key === key)?.label)) || null;
   const pendingCount = TABS.filter((t) => pendingOf(t.routine)).length;
 
   return (

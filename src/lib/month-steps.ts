@@ -121,7 +121,7 @@ export function monthRoutineSteps(input: MonthStepsInput): RoutineStep[] {
 
   /* 5. Bens e contratos */
   if (routines === undefined) {
-    steps.push({ key: 'controls', label: 'Bens e Contratos', status: 'loading', detail: 'Conferindo…', href: `/imobilizado${q}` });
+    steps.push({ key: 'controls', label: 'Bens e Contratos', status: 'loading', detail: 'Conferindo…', href: `/bens-e-contratos${q}` });
   } else {
     const pending = CONTROL_KEYS.filter((k) => routines?.problemsByKey[k] || routines?.inputs.some((i) => i.key === k));
     const hasControls = routines !== null;
@@ -135,8 +135,8 @@ export function monthRoutineSteps(input: MonthStepsInput): RoutineStep[] {
             href: `${CONTROL_HREF[pending[0]]}${q}`,
           }
         : hasControls
-          ? { key: 'controls', label: 'Bens e Contratos', status: 'done', detail: 'Rotinas do mês lançadas', href: `/imobilizado${q}` }
-          : { key: 'controls', label: 'Bens e Contratos', status: 'na', detail: 'Nenhum bem ou contrato cadastrado', href: `/imobilizado${q}` }
+          ? { key: 'controls', label: 'Bens e Contratos', status: 'done', detail: 'Rotinas do mês lançadas', href: `/bens-e-contratos${q}` }
+          : { key: 'controls', label: 'Bens e Contratos', status: 'na', detail: 'Nenhum bem ou contrato cadastrado', href: `/bens-e-contratos${q}` }
     );
     if (pending.length > 1) steps[steps.length - 1].detail += ` (+ ${pending.length - 1} rotina(s))`;
   }
