@@ -278,6 +278,11 @@ export interface OpeningEntry {
   accountName?: string;
   /** Valor positivo; contas retificadoras (isContra) reduzem o grupo. */
   amount: number;
+  /**
+   * Composição do saldo (ex.: clientes devedores e valores, notas em aberto, itens do estoque),
+   * em texto livre de até 1000 caracteres. Sai no relatório do balanço de abertura.
+   */
+  detail?: string;
 }
 
 /**

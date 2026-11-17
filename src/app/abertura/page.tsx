@@ -2,23 +2,30 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { CheckCircle2, ClipboardPaste, Lock, Plus } from 'lucide-react';
+import { CheckCircle2, ClipboardPaste, FileSpreadsheet, FileText, Lock, Plus } from 'lucide-react';
 import type { BankAccount, ChartAccount, OpeningMode } from '@/types/firestore';
 import { useClient } from '@/contexts/ClientContext';
 import { SetupProgress } from '@/components/layout/SetupProgress';
-import { useOpeningBalances } from '@/hooks/abertura/useOpeningBalances';
+import { DETAIL_MAX, useOpeningBalances } from '@/hooks/abertura/useOpeningBalances';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
 import { accountMatches } from '@/lib/account-search';
 import { normalizeText } from '@/lib/utils/search';
 import { frozenMessage } from '@/lib/lock-guard';
 import { openingAccounts } from '@/lib/opening';
 import { buildOpeningSheet } from '@/lib/opening-view';
+import { checkOpeningAgainstRegisters, registerExpectations } from '@/lib/opening-registers';
+import { statementSignatories } from '@/lib/balance-sheet-view';
+import { isISODate } from '@/lib/periods';
+import { reportError } from '@/lib/monitoring';
+import { describeError } from '@/lib/utils/errors';
 import { round2 } from '@/lib/money';
 import { BUTTON, EmptyState, Field, INPUT, PAGE, PageHeader, SearchField, SegmentedControl, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { OpeningColumn } from '@/components/abertura/OpeningColumn';
 import { OpeningFooter } from '@/components/abertura/OpeningFooter';
+import { RegisterCheckCard } from '@/components/abertura/RegisterCheckCard';
+import { Toast, useToast } from '@/components/ui/Toast';
 import { PasteTrialBalanceSheet } from '@/components/abertura/PasteTrialBalanceSheet';
 import type { ImportResult } from '@/lib/opening-import';
 
@@ -68,6 +75,7 @@ export default function AberturaPage() {
   /** Conta recém-adicionada: o campo dela recebe o foco quando aparecer. */
   const focusId = useRef<string | null>(null);
   const leave = useUnsavedChangesGuard(o.unsaved && !frozen);
+  const [toast, setToast] = useToast();
 
   const term = search.trim();
   const searching = Boolean(term);
@@ -92,6 +100,53 @@ export default function AberturaPage() {
   }, [accounts, bankDrafts.next, parsed.amounts, parsed.invalid, plug, term, searching, frozen, showAll, values]);
 
   const editable = useMemo(() => openingAccounts(accounts, banks), [accounts, banks]);
+  const editableIds = useMemo(() => new Set(editable.map((a) => a.id)), [editable]);
+  const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a] as const)), [accounts]);
+
+  /** Cadastros de Bens e Contratos × saldos informados, na data em edição. */
+  const registerChecks = useMemo(() => {
+    if (!ready || !isISODate(o.date)) return [];
+    const expectations = registerExpectations(ready.registers, o.date, accounts);
+    return checkOpeningAgainstRegisters({ expectations, amounts: parsed.amounts, accounts });
+  }, [ready, o.date, accounts, parsed.amounts]);
+
+  /** Valores dos cadastros aplicados: as seções abrem para conferir. */
+  const applyRegisterValues = (amounts: ReadonlyMap<string, number>) => {
+    o.applyAmounts(amounts);
+    setCollapsed(new Set());
+    setToast(`${amounts.size} conta(s) com o valor do cadastro. Confira e salve.`);
+  };
+
+  /** Relatório do balanço de abertura salvo (PDF ou Excel), com a composição e as assinaturas. */
+  const exportReport = async (kind: 'pdf' | 'xlsx') => {
+    if (!currentClient || !ready) return;
+    try {
+      const [{ downloadBlob }, mod] = await Promise.all([import('@/lib/export/dre-rows'), import('@/lib/export/opening-export')]);
+      const full = buildOpeningSheet({ accounts, banks: bankDrafts.next, amounts: parsed.amounts, plug });
+      const composition = parsed.entries
+        .map((e) => ({ e, account: accountsById.get(e.accountId), detail: (o.details[e.accountId] ?? '').trim() }))
+        .filter((x) => x.account && x.detail)
+        .map((x) => ({ code: x.account!.code, name: x.account!.name, amount: x.e.amount, detail: x.detail }))
+        .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+      const ctx = {
+        client: currentClient,
+        date: o.date,
+        mode: o.mode,
+        rows: mod.openingReportRows(full),
+        composition,
+        issuedAt: new Date(),
+        signatories: statementSignatories(currentClient, ready.org),
+      };
+      const file = kind === 'pdf' ? mod.generateOpeningPdf(ctx) : await mod.generateOpeningExcel(ctx);
+      downloadBlob(file.blob, file.fileName);
+    } catch (e) {
+      reportError(e, { area: 'abertura', op: `exportar ${kind}` });
+      setToast(`Não foi possível gerar o relatório (${describeError(e)}).`);
+    }
+  };
+  // O relatório sai do que está gravado: com alteração pendente, salve antes.
+  const exportBlocked = !ready?.saved || o.dirty;
+  const exportTitle = !ready?.saved ? 'Salve o balanço de abertura para exportar' : o.dirty ? 'Há alterações não salvas: salve antes de exportar' : undefined;
   const hasAccounts = editable.length > 0;
 
   // Primeira abertura do cliente: atalhos para as contas mais comuns que ainda não estão na lista.
@@ -144,6 +199,9 @@ export default function AberturaPage() {
     invalid: parsed.invalid,
     onValue: o.setValue,
     onValueBlur: o.normalizeValue,
+    details: o.details,
+    onDetail: o.setDetail,
+    detailMax: DETAIL_MAX,
     bankValues: o.bankValues,
     bankInvalid: bankDrafts.invalid,
     onBankValue: o.setBankValue,
@@ -162,6 +220,20 @@ export default function AberturaPage() {
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Balanço de abertura"
         description="Saldo de cada conta no dia em que a contabilidade começa no sistema. Com ele, o balanço patrimonial sai completo, não só com os bancos."
+        actions={
+          ready && hasAccounts ? (
+            <>
+              <button type="button" disabled={exportBlocked} title={exportTitle} onClick={() => void exportReport('pdf')} className={BUTTON.secondary}>
+                <FileText className="w-4 h-4" />
+                PDF
+              </button>
+              <button type="button" disabled={exportBlocked} title={exportTitle} onClick={() => void exportReport('xlsx')} className={BUTTON.secondary}>
+                <FileSpreadsheet className="w-4 h-4" />
+                Excel
+              </button>
+            </>
+          ) : undefined
+        }
       />
       <SetupProgress />
 
@@ -265,6 +337,10 @@ export default function AberturaPage() {
             <OpeningColumn title="Passivo e patrimônio líquido" total={round2(sheet.totals.liabilities + sheet.totals.equity)} sections={sheet.claims} {...column} />
           </div>
 
+          {registerChecks.length > 0 && (
+            <RegisterCheckCard checks={registerChecks} accountsById={accountsById} editable={editableIds} frozen={frozen} onUse={applyRegisterValues} />
+          )}
+
           <OpeningFooter
             totals={sheet.totals}
             mode={o.mode}
@@ -286,6 +362,8 @@ export default function AberturaPage() {
       )}
 
       {pasting && ready && <PasteTrialBalanceSheet accounts={accounts} banks={banks} onApply={applyImport} onClose={() => setPasting(false)} />}
+
+      <Toast toast={toast} />
 
       {leave.pending && (
         <ConfirmDialog

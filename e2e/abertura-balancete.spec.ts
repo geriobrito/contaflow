@@ -57,7 +57,7 @@ test('implantação de saldos colando o balancete anterior', async ({ page }) =>
 
   await expect(page.getByRole('status').filter({ hasText: /Balancete aplicado: 6 conta\(s\)/ })).toBeVisible();
   await expect(page.getByLabel(/^Veículos$/)).toHaveValue('7.000,00');
-  await expect(page.getByLabel(/Depreciação Acumulada/)).toHaveValue('1.000,00');
+  await expect(page.getByRole('textbox', { name: /Depreciação Acumulada/ })).toHaveValue('1.000,00');
   await expect(page.getByLabel(/^Empréstimos de Sócios$/)).toHaveValue('1.400,00');
   await expect(page.getByText('A abertura fecha: ativo = passivo + patrimônio líquido.')).toBeVisible();
 

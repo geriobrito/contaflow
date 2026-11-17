@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { BankAccount, ChartAccount, LockState, OpeningBalances, OpeningMode, PeriodLock } from '@/types/firestore';
+import type { BankAccount, ChartAccount, LockState, OpeningBalances, OpeningMode, OrgSettings, PeriodLock } from '@/types/firestore';
+import type { OpeningRegisters } from '@/lib/opening-registers';
 import { getRepository } from '@/lib/services/data-service';
 import { getActor } from '@/lib/data/scope';
 import { newAuditId } from '@/lib/audit';
@@ -30,7 +31,14 @@ interface Loaded {
   lockState: LockState | null;
   locks: PeriodLock[];
   firstStatement: string | null;
+  /** Cadastros de Bens e Contratos, para a conferência com os saldos. */
+  registers: OpeningRegisters;
+  /** Escritório (contador e CRC) para as assinaturas do relatório. */
+  org: OrgSettings | null;
 }
+
+/** Tamanho máximo da composição de um saldo. */
+export const DETAIL_MAX = 1000;
 
 /**
  * Tela de balanço de abertura: carga, rascunho (data, tipo, histórico, valores digitados por conta
@@ -43,6 +51,7 @@ export function useOpeningBalances(clientId: string | undefined) {
   const [mode, setMode] = useState<OpeningMode>('OPENING_BALANCE');
   const [memo, setMemo] = useState(DEFAULT_OPENING_MEMO);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [details, setDetails] = useState<Record<string, string>>({});
   const [bankValues, setBankValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +68,7 @@ export function useOpeningBalances(clientId: string | undefined) {
     setMode(saved ? openingModeOf(saved) : 'OPENING_BALANCE');
     setMemo(saved?.memo ?? DEFAULT_OPENING_MEMO);
     setValues(Object.fromEntries((saved?.entries ?? []).map((e) => [e.accountId, toMoneyInput(e.amount)])));
+    setDetails(Object.fromEntries((saved?.entries ?? []).filter((e) => e.detail).map((e) => [e.accountId, e.detail!])));
     setBankValues(Object.fromEntries(banks.map((b) => [b.id, toMoneyInput(b.openingBalance)])));
     setError(null);
     setSavedAt(null);
@@ -76,11 +86,24 @@ export function useOpeningBalances(clientId: string | undefined) {
       repo.listImportBatches(clientId),
       repo.getLockState(clientId),
       repo.listPeriodLocks(clientId),
+      repo.getFixedAssets(clientId),
+      repo.getPrepaidExpenses(clientId),
+      repo.getFinancingContracts(clientId),
+      repo.getInvestments(clientId),
+      repo.getStockControl(clientId),
+      repo.getOrgSettings(),
     ])
-      .then(([accounts, banks, saved, batches, lockState, locks]) => {
+      .then(([accounts, banks, saved, batches, lockState, locks, assets, prepaid, financing, investments, stock, org]) => {
         if (!active) return;
         const firstStatement = batches.map((b) => b.startDate).filter((d): d is string => Boolean(d)).sort()[0] ?? null;
-        hydrate({ id: clientId, accounts, banks, saved, lockState, locks, firstStatement });
+        const registers: OpeningRegisters = {
+          assets: assets?.assets ?? [],
+          prepaid: prepaid?.items ?? [],
+          contracts: financing?.contracts ?? [],
+          investments: investments?.accounts ?? [],
+          stock,
+        };
+        hydrate({ id: clientId, accounts, banks, saved, lockState, locks, firstStatement, registers, org });
       })
       .catch((e: unknown) => {
         if (!active) return;
@@ -127,6 +150,16 @@ export function useOpeningBalances(clientId: string | undefined) {
     return { next, changed, invalid };
   }, [banks, bankValues, date]);
 
+  /** Composição de cada conta com saldo: texto aparado, cortado no limite. */
+  const cleanDetails = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const e of parsed.entries) {
+      const text = (details[e.accountId] ?? '').trim().slice(0, DETAIL_MAX);
+      if (text) out.set(e.accountId, text);
+    }
+    return out;
+  }, [details, parsed.entries]);
+
   const summary = useMemo(() => summarizeOpening(parsed.entries, accounts, bankDrafts.next), [parsed.entries, accounts, bankDrafts.next]);
   const plug = mode === 'OPENING_BALANCE' ? openingPlug(summary) : null;
 
@@ -135,9 +168,12 @@ export function useOpeningBalances(clientId: string | undefined) {
     if (bankDrafts.changed.length > 0) return true;
     if (!saved) return parsed.entries.length > 0 || bankDrafts.next.some((b) => b.openingBalance !== undefined);
     if (saved.date !== date || openingModeOf(saved) !== mode || (saved.memo ?? DEFAULT_OPENING_MEMO) !== memo) return true;
-    const a = new Map(saved.entries.map((e) => [e.accountId, e.amount] as const));
-    return a.size !== parsed.entries.length || parsed.entries.some((e) => a.get(e.accountId) !== e.amount);
-  }, [ready, parsed.entries, bankDrafts, date, mode, memo]);
+    const a = new Map(saved.entries.map((e) => [e.accountId, e] as const));
+    return (
+      a.size !== parsed.entries.length ||
+      parsed.entries.some((e) => a.get(e.accountId)?.amount !== e.amount || (a.get(e.accountId)?.detail ?? '') !== (cleanDetails.get(e.accountId) ?? ''))
+    );
+  }, [ready, parsed.entries, bankDrafts, date, mode, memo, cleanDetails]);
 
   const setValue = useCallback((accountId: string, text: string) => {
     setTouched(true);
@@ -158,6 +194,21 @@ export function useOpeningBalances(clientId: string | undefined) {
   const editMemo = useCallback((next: string) => {
     setTouched(true);
     setMemo(next);
+  }, []);
+
+  const setDetail = useCallback((accountId: string, text: string) => {
+    setTouched(true);
+    setDetails((d) => ({ ...d, [accountId]: text.slice(0, DETAIL_MAX) }));
+  }, []);
+
+  /** Valores vindos de fora (cadastros de Bens e Contratos): substituem os das contas indicadas. */
+  const applyAmounts = useCallback((amounts: ReadonlyMap<string, number>) => {
+    setTouched(true);
+    setValues((v) => {
+      const next = { ...v };
+      for (const [id, n] of amounts) next[id] = toMoneyInput(n);
+      return next;
+    });
   }, []);
 
   /** Conta adicionada à lista ("+ adicionar conta"): fica à vista, mesmo vazia, até recarregar. */
@@ -242,7 +293,12 @@ export function useOpeningBalances(clientId: string | undefined) {
         date,
         mode,
         memo: memo.trim() || DEFAULT_OPENING_MEMO,
-        entries: parsed.entries.map((e) => ({ ...e, accountCode: byId.get(e.accountId)?.code, accountName: byId.get(e.accountId)?.name })),
+        entries: parsed.entries.map((e) => ({
+          ...e,
+          accountCode: byId.get(e.accountId)?.code,
+          accountName: byId.get(e.accountId)?.name,
+          ...(cleanDetails.has(e.accountId) ? { detail: cleanDetails.get(e.accountId) } : {}),
+        })),
         updatedAt: now,
         updatedByUid: actor.uid,
       };
@@ -300,6 +356,9 @@ export function useOpeningBalances(clientId: string | undefined) {
     setMemo: editMemo,
     values,
     setValue,
+    details,
+    setDetail,
+    applyAmounts,
     pinAccount,
     normalizeValue,
     bankValues,

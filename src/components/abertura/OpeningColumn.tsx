@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Landmark } from 'lucide-react';
+import { ChevronDown, Landmark, NotebookText } from 'lucide-react';
 import type { OpeningAccountRow, OpeningBankRow, OpeningPlugRow, OpeningRow, OpeningSection } from '@/lib/opening-view';
 import { OPENING_ACCOUNT_CODE } from '@/lib/ledger';
 import { isISODate } from '@/lib/periods';
@@ -28,6 +28,11 @@ export interface OpeningColumnProps {
   onValue: (accountId: string, text: string) => void;
   /** Saída do campo: formata o valor digitado. */
   onValueBlur: (accountId: string) => void;
+  /** Composição do saldo por conta (texto livre). */
+  details: Readonly<Record<string, string>>;
+  onDetail: (accountId: string, text: string) => void;
+  /** Tamanho máximo da composição. */
+  detailMax: number;
   bankValues: Readonly<Record<string, string>>;
   bankInvalid: ReadonlySet<string>;
   onBankValue: (bankId: string, text: string) => void;
@@ -129,17 +134,36 @@ const Code = ({ children }: { children: React.ReactNode }) => (
   <span className="w-20 shrink-0 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">{children}</span>
 );
 
-function AccountRowView({ row, frozen, values, invalid, onValue, onValueBlur }: RowProps & { row: OpeningAccountRow }) {
+function AccountRowView({ row, frozen, values, invalid, onValue, onValueBlur, details, onDetail, detailMax }: RowProps & { row: OpeningAccountRow }) {
   const { account, contra } = row;
   const bad = invalid.has(account.id);
+  const detail = details[account.id] ?? '';
+  const [open, setOpen] = useState(false);
+  // Composição só faz sentido com saldo; travada, só se houver o que ler.
+  const canDetail = frozen ? Boolean(detail.trim()) : row.amount > 0 || Boolean(detail.trim());
   // Retificadora: o nome do modelo já começa com "(-)"; nas criadas sem ele, o sinal entra na frente.
   const name = contra && !/^\(\s*[-−]\s*\)/.test(account.name) ? `(−) ${account.name}` : account.name;
   return (
+    <>
     <div className={`${ROW} pl-11`}>
       <Code>{account.code}</Code>
       <label htmlFor={`op-${account.id}`} title={account.name} className="flex-1 min-w-0 truncate text-[13px] text-stone-800 dark:text-stone-200">
         {name}
       </label>
+      {canDetail && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-label={`Composição de ${account.name}`}
+          title={detail.trim() ? detail : 'Composição do saldo (ex.: clientes e valores, notas em aberto)'}
+          className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/8 ${
+            detail.trim() ? 'text-accent-ink' : 'text-stone-300 hover:text-stone-600 dark:text-stone-600 dark:hover:text-stone-300'
+          }`}
+        >
+          <NotebookText className="w-3.5 h-3.5" />
+        </button>
+      )}
       <div className={VALUE_BOX}>
         {frozen ? (
           <AccountingAmount value={row.value} zero="—" className="text-stone-700 dark:text-stone-300" />
@@ -167,6 +191,29 @@ function AccountRowView({ row, frozen, values, invalid, onValue, onValueBlur }: 
         )}
       </div>
     </div>
+    {open && canDetail && (
+      <div className="px-5 pl-[8.5rem] pb-2">
+        {frozen ? (
+          <p className="whitespace-pre-line rounded-xl bg-surface-2 border border-line px-3 py-2 text-[12px] text-stone-700 dark:text-stone-300">{detail}</p>
+        ) : (
+          <>
+            <textarea
+              value={detail}
+              onChange={(e) => onDetail(account.id, e.target.value)}
+              maxLength={detailMax}
+              rows={3}
+              aria-label={`Composição do saldo de ${account.name}`}
+              placeholder="Composição do saldo, uma linha por item. Ex.: Mercado X — NF 123 — 1.200,00"
+              className="w-full px-3 py-2 rounded-xl bg-surface border border-line-strong text-[12.5px] leading-snug text-stone-900 dark:text-stone-100 placeholder:text-stone-400 outline-none resize-y focus:border-accent/60 focus:shadow-[0_0_0_4px_rgba(181,85,47,0.12)]"
+            />
+            <p className="mt-0.5 text-right text-[11px] text-stone-500 dark:text-stone-400">
+              Sai no relatório do balanço de abertura · {detail.length}/{detailMax}
+            </p>
+          </>
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
