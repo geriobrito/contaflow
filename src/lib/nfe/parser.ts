@@ -1,4 +1,4 @@
-import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions, InvoiceTaxItem } from '@/types/firestore';
+import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions, InvoiceSimplesTax, InvoiceTaxItem } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 
 /**
@@ -45,6 +45,8 @@ export interface ParsedInvoice {
   cbs: number;
   /** IBS/CBS por classificação tributária (cClassTrib), quando os itens trazem o grupo. */
   taxItems?: InvoiceTaxItem[];
+  /** IBS/CBS calculados no Simples Nacional (vRBSNitem, vIBSSN, vCBSSN), quando a nota traz. */
+  simplesTax?: InvoiceSimplesTax;
   /** NFS-e: código de tributação nacional (cTribNac). */
   serviceCode?: string;
   /** NFS-e: tributos retidos (só quando o líquido é menor que o serviço). */
@@ -139,16 +141,21 @@ const MAX_TAX_ITEMS = 40;
  * (NF-e) ou o da nota (NFS-e); `amounts`: o valor de cada um, quando vem de fora do grupo.
  */
 function taxItemsOf(groups: readonly { group: string; amounts?: { ibs: number; cbs: number } }[]): InvoiceTaxItem[] | undefined {
-  const byKey = new Map<string, { cClassTrib: string; cst: string; ibs: number; cbs: number }>();
+  const byKey = new Map<string, { cClassTrib: string; cst: string; base: number; hasBase: boolean; ibs: number; cbs: number }>();
   for (const { group, amounts } of groups) {
     const cClassTrib = text(group, 'cClassTrib').replace(/D/g, '');
     if (cClassTrib.length !== 6) continue;
     const cst = text(group, 'CST').replace(/D/g, '');
-    const { ibs, cbs } = amounts ?? ibsCbsOf(section(group, 'gIBSCBS') ?? group);
+    const g = section(group, 'gIBSCBS') ?? group;
+    const { ibs, cbs } = amounts ?? ibsCbsOf(g);
+    const rawBase = text(g, 'vBC');
     const key = `${cClassTrib}|${cst}`;
-    const cur = byKey.get(key) ?? { cClassTrib, cst, ibs: 0, cbs: 0 };
+    const cur = byKey.get(key) ?? { cClassTrib, cst, base: 0, hasBase: true, ibs: 0, cbs: 0 };
     cur.ibs += toCents(ibs);
     cur.cbs += toCents(cbs);
+    // Base só quando todos os itens da classificação a trazem: soma parcial mediria alíquota errada.
+    if (rawBase) cur.base += toCents(amount(rawBase));
+    else cur.hasBase = false;
     byKey.set(key, cur);
   }
   if (!byKey.size) return undefined;
@@ -157,8 +164,37 @@ function taxItemsOf(groups: readonly { group: string; amounts?: { ibs: number; c
   for (const extra of list.slice(MAX_TAX_ITEMS)) {
     kept[kept.length - 1].ibs += extra.ibs;
     kept[kept.length - 1].cbs += extra.cbs;
+    kept[kept.length - 1].hasBase = false;
   }
-  return kept.map((i) => ({ cClassTrib: i.cClassTrib, ...(i.cst ? { cst: i.cst } : {}), ibs: fromCents(i.ibs), cbs: fromCents(i.cbs) }));
+  return kept.map((i) => ({
+    cClassTrib: i.cClassTrib,
+    ...(i.cst ? { cst: i.cst } : {}),
+    ...(i.hasBase && i.base > 0 ? { base: fromCents(i.base) } : {}),
+    ibs: fromCents(i.ibs),
+    cbs: fromCents(i.cbs),
+  }));
+}
+
+/**
+ * IBS e CBS do Simples Nacional nos itens (campos da NT 2026.005, os mesmos da calculadora oficial
+ * do Simples): soma vRBSNitem, vIBSSN e vCBSSN. Lidos pelo nome, onde estiverem no item. Sem
+ * nenhum valor de IBS/CBS do Simples, nada.
+ */
+function simplesTaxOf(parts: readonly string[]): InvoiceSimplesTax | undefined {
+  let base = 0;
+  let ibs = 0;
+  let cbs = 0;
+  let found = false;
+  for (const part of parts) {
+    const vIbs = text(part, 'vIBSSN');
+    const vCbs = text(part, 'vCBSSN');
+    if (!vIbs && !vCbs) continue;
+    found = true;
+    ibs += toCents(amount(vIbs));
+    cbs += toCents(amount(vCbs));
+    base += toCents(amount(text(part, 'vRBSNitem') || text(part, 'vProd')));
+  }
+  return found && base > 0 ? { base: fromCents(base), ibs: fromCents(ibs), cbs: fromCents(cbs) } : undefined;
 }
 
 /* =========================================================================
@@ -243,6 +279,7 @@ function parseNFSe(xml: string): ParsedXml {
   // A classificação vem na DPS; o valor, nos totais da nota.
   const dpsTax = section(dps, 'IBSCBS');
   const taxItems = dpsTax ? taxItemsOf([{ group: dpsTax, amounts: tax }]) : undefined;
+  const simplesTax = simplesTaxOf([dps]);
   const status = text(own, 'cStat');
   const recipientDoc = docOf(toma) || text(toma, 'NIF');
   const serviceCode = text(section(dps, 'cServ'), 'cTribNac');
@@ -263,6 +300,7 @@ function parseNFSe(xml: string): ParsedXml {
       ...(service > net ? { altTotal: service } : {}),
       ...tax,
       ...(taxItems ? { taxItems } : {}),
+      ...(simplesTax ? { simplesTax } : {}),
       ...(serviceCode ? { serviceCode } : {}),
       ...(retentions ? { retentions } : {}),
       cfops: [],
@@ -345,6 +383,7 @@ export function parseNFeXml(raw: string): ParsedXml {
     const group = section(section(det, 'imposto') ?? det, 'IBSCBS');
     return group ? [{ group }] : [];
   }));
+  const simplesTax = simplesTaxOf(dets);
   for (const det of dets) {
     const prod = section(det, 'prod');
     const cfop = text(prod, 'CFOP');
@@ -383,6 +422,7 @@ export function parseNFeXml(raw: string): ParsedXml {
       ...(withTaxes > total ? { altTotal: withTaxes } : {}),
       ...tax,
       ...(taxItems ? { taxItems } : {}),
+      ...(simplesTax ? { simplesTax } : {}),
       cfops: [...cfopCents].map(([cfop, cents]) => ({ cfop, amount: fromCents(cents) })).sort((a, b) => b.amount - a.amount),
       installments,
       situation: situationOf(protStatus),

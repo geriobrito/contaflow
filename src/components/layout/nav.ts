@@ -3,6 +3,7 @@ import {
   BookMarked,
   BookOpen,
   BookText,
+  Calculator,
   Building2,
   CalendarClock,
   Car,
@@ -66,7 +67,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     ordered: true,
     items: [
       { href: '/', label: 'Conciliação', icon: ArrowLeftRight, keywords: 'extrato ofx csv importar classificar lancamentos bancarios fechar mes competencia' },
-      { href: '/nfe', label: 'Notas Fiscais', icon: ReceiptText, keywords: 'nfe nf-e xml compras vendas fornecedor cfop' },
+      { href: '/nfe', label: 'Notas Fiscais', icon: ReceiptText, keywords: 'nfe nf-e xml compras vendas fornecedor cfop', also: ['/simples-ibs-cbs'] },
       { href: '/pendencias', label: 'Pendências do Cliente', icon: MessageCircleQuestion, keywords: 'perguntas link respostas' },
       {
         href: '/folha',
@@ -111,6 +112,20 @@ export const NAV_SECTIONS: readonly NavSection[] = [
 
 export const NAV_ITEMS: readonly NavItem[] = NAV_SECTIONS.flatMap((s) => s.items);
 
+/**
+ * Telas fora do menu (o menu precisa caber na tela), abertas a partir de outra e encontradas pela
+ * busca rápida. `within`: o item do menu que fica marcado quando elas estão abertas.
+ */
+export const NAV_EXTRA_PAGES: readonly (NavItem & { within: string })[] = [
+  {
+    href: '/simples-ibs-cbs',
+    label: 'IBS/CBS no Simples',
+    icon: Calculator,
+    within: 'Notas Fiscais',
+    keywords: 'reforma tributaria simples nacional das por fora regime regular opcao credito cbs ibs simulacao assessoria',
+  },
+];
+
 const matches = (pathname: string, href: string): boolean =>
   href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
 
@@ -124,6 +139,7 @@ const BARE_TITLES: Readonly<Record<string, string>> = { '/login': 'Entrar', '/re
 /** Título da aba do navegador para a rota: "Tela · ContaFlow". */
 export function pageTitle(pathname: string): string {
   const active = activeNavHref(pathname);
-  const label = BARE_TITLES[pathname] ?? NAV_ITEMS.find(({ href }) => href === active)?.label;
+  const extra = NAV_EXTRA_PAGES.find(({ href }) => matches(pathname, href))?.label;
+  const label = BARE_TITLES[pathname] ?? extra ?? NAV_ITEMS.find(({ href }) => href === active)?.label;
   return label ? `${label} · ContaFlow` : 'ContaFlow';
 }

@@ -61,8 +61,8 @@ describe('IBS/CBS por classificação no XML', () => {
     );
     expect(r.kind === 'invoice' && r.invoice).toMatchObject({ ibs: 30, cbs: 270 });
     expect(r.kind === 'invoice' && r.invoice.taxItems).toEqual([
-      { cClassTrib: '000001', cst: '000', ibs: 25, cbs: 225 },
-      { cClassTrib: '200001', cst: '200', ibs: 5, cbs: 45 },
+      { cClassTrib: '000001', cst: '000', base: 1000, ibs: 25, cbs: 225 },
+      { cClassTrib: '200001', cst: '200', base: 500, ibs: 5, cbs: 45 },
     ]);
   });
 

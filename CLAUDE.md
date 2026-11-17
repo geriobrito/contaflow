@@ -28,7 +28,7 @@
 # Mapa de Arquitetura
 - `src/app/`: Entrypoints e rotas Next.js App Router (`layout.tsx`, `page.tsx`, `painel/`, `dre/`, `balanco/`, `regras/`, etc.)
 - `src/components/`: Componentes UI reutilizáveis por domínio (`conciliacao/`, `dre/`, `balanco/`, `lancamentos/`, `layout/`, `ui/`)
-  - `src/components/layout/nav.ts`: fonte única do menu (ordem, seções, busca rápida e título da aba). A ordem segue o trabalho: Início, Rotina do mês (passos numerados, na sequência em que são feitos), Demonstrações e Cadastros (ordem de implantação). Tela nova entra aqui, na posição do fluxo
+  - `src/components/layout/nav.ts`: fonte única do menu (ordem, seções, busca rápida e título da aba). A ordem segue o trabalho: Início, Rotina do mês (passos numerados, na sequência em que são feitos), Demonstrações e Cadastros (ordem de implantação). Tela nova entra aqui, na posição do fluxo. O menu precisa caber em 1440×900 (testado no E2E): tela de apoio que não é passo do fluxo entra em `NAV_EXTRA_PAGES` (busca rápida, item do menu de onde é aberta)
 - `src/contexts/`: Estado global de autenticação e seleção de cliente (`AuthContext.tsx`, `ClientContext.tsx`)
 - `src/hooks/`: Hooks de negócio e orquestração sem acoplamento direto de DB: carga e gravações de cada tela por domínio (`reconciliation/`, `contas/`, `regras/`, `lancamentos/`, `dre/`, `useLedgerData.ts`), `useReconciliation.ts`, `useTableKeyboard.ts`
 - `src/lib/`: Core de domínio e infraestrutura:

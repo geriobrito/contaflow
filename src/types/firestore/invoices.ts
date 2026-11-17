@@ -27,6 +27,19 @@ export interface InvoiceTaxItem {
   cClassTrib: string;
   /** CST do IBS/CBS (3 dígitos), como veio na nota. */
   cst?: string;
+  /** Base de cálculo do IBS/CBS (vBC do grupo gIBSCBS), quando a nota traz. */
+  base?: number;
+  ibs: number;
+  cbs: number;
+}
+
+/**
+ * IBS e CBS calculados no Simples Nacional (NT 2026.005): receita bruta dos itens (vRBSNitem) e o
+ * IBS e a CBS devidos no DAS sobre ela (vIBSSN, vCBSSN). Vem nas notas de venda de empresa do
+ * Simples; é o crédito que o comprador do regime regular aproveita.
+ */
+export interface InvoiceSimplesTax {
+  base: number;
   ibs: number;
   cbs: number;
 }
@@ -90,6 +103,8 @@ export interface InvoiceSummary {
   cbs?: number;
   /** IBS/CBS por classificação tributária (ausente nas notas sem o grupo IBSCBS nos itens). */
   ibsCbsItems?: InvoiceTaxItem[];
+  /** IBS/CBS do Simples Nacional destacados na nota (empresa do Simples que emite). */
+  simplesTax?: InvoiceSimplesTax;
   /** NFS-e: código de tributação nacional do serviço (cTribNac, 6 dígitos). */
   serviceCode?: string;
   /** NFS-e: tributos retidos pelo tomador (a diferença entre o serviço e o líquido). */

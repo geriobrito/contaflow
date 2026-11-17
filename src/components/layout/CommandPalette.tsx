@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Building2, Check, CornerDownLeft, LogOut, Monitor, Moon, Search, Sun, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
-import { NAV_SECTIONS } from '@/components/layout/nav';
+import { NAV_EXTRA_PAGES, NAV_SECTIONS } from '@/components/layout/nav';
 import { useTheme } from '@/components/ui/useTheme';
 import { searchCommands, type CommandEntry } from '@/lib/command-search';
 import { THEME_OPTIONS, type ThemePreference } from '@/lib/theme';
@@ -85,6 +85,16 @@ function PaletteDialog({ onClose }: { onClose: () => void }) {
         group: 'Telas' as const,
         label: item.label,
         hint: s.title,
+        keywords: item.keywords,
+        icon: item.icon,
+        run: () => router.push(item.href),
+      }))
+    ).concat(
+      NAV_EXTRA_PAGES.map((item) => ({
+        id: `page-${item.href}`,
+        group: 'Telas' as const,
+        label: item.label,
+        hint: item.within,
         keywords: item.keywords,
         icon: item.icon,
         run: () => router.push(item.href),

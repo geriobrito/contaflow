@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Clock, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Calculator, Clock, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useInvoices, type InvoiceImportOutcome } from '@/hooks/nfe/useInvoices';
@@ -12,6 +13,7 @@ import { InvoiceTable } from '@/components/nfe/InvoiceTable';
 import { InvoiceDetailDrawer } from '@/components/conciliacao/InvoiceDetailDrawer';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
+  BUTTON,
   EmptyState,
   PAGE,
   PageHeader,
@@ -190,6 +192,14 @@ export default function NotasFiscaisPage() {
         eyebrow={currentClient?.tradeName || currentClient?.name}
         title="Notas fiscais"
         description="Importe os XML ou pacotes .zip das notas de compra e de venda: na Conciliação, o pagamento ou recebimento de mesmo valor e parceiro já vem com a conta sugerida."
+        actions={
+          currentClient?.regime === 'SIMPLES_NACIONAL' ? (
+            <Link href="/simples-ibs-cbs" className={BUTTON.secondary}>
+              <Calculator className="w-4 h-4" />
+              IBS/CBS: dentro ou fora do DAS
+            </Link>
+          ) : undefined
+        }
       />
 
       <InvoiceDropzone busy={busy} disabled={!currentClient} onFiles={(files) => void handleFiles(files)} />
