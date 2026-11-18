@@ -93,28 +93,51 @@ export function usePeriod(initialMode: PeriodMode, shared = false, fromQuery = f
     };
   }, [shared]);
 
+  // Período atual para as trocas abaixo, que são estáveis (a mesma função a cada renderização):
+  // uma tela pode pô-las em dependências de efeito sem que o efeito rode a cada troca de período.
+  const current = useRef<SharedPeriod & { year: number }>({ mode, year, month, quarter });
+  useEffect(() => {
+    current.current = { mode, year, month, quarter };
+  });
+
   /** Escolha do usuário: vale aqui e, no período compartilhado, nas outras demonstrações. */
-  const choose = (patch: SharedPeriod) => {
-    chosen.current = true;
-    if (shared) writeSharedPeriod({ mode, year, month, quarter, ...patch });
-  };
-  const setMode = (next: PeriodMode) => {
-    setModeState(next);
-    choose({ mode: next });
-  };
-  const setYear = (updater: number | ((y: number) => number)) => {
-    const next = typeof updater === 'function' ? updater(year) : updater;
-    setYearState(next);
-    choose({ year: next });
-  };
-  const setMonth = (next: number) => {
-    setMonthState(next);
-    choose({ month: next });
-  };
-  const setQuarter = (next: number) => {
-    setQuarterState(next);
-    choose({ quarter: next });
-  };
+  const choose = useCallback(
+    (patch: SharedPeriod) => {
+      chosen.current = true;
+      current.current = { ...current.current, ...patch };
+      if (shared) writeSharedPeriod(current.current);
+    },
+    [shared]
+  );
+  const setMode = useCallback(
+    (next: PeriodMode) => {
+      setModeState(next);
+      choose({ mode: next });
+    },
+    [choose]
+  );
+  const setYear = useCallback(
+    (updater: number | ((y: number) => number)) => {
+      const next = typeof updater === 'function' ? updater(current.current.year) : updater;
+      setYearState(next);
+      choose({ year: next });
+    },
+    [choose]
+  );
+  const setMonth = useCallback(
+    (next: number) => {
+      setMonthState(next);
+      choose({ month: next });
+    },
+    [choose]
+  );
+  const setQuarter = useCallback(
+    (next: number) => {
+      setQuarterState(next);
+      choose({ quarter: next });
+    },
+    [choose]
+  );
 
   const apply = useCallback((date: string) => {
     const at = periodOfDate(date);

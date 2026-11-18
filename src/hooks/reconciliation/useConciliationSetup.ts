@@ -29,26 +29,33 @@ export function useConciliationSetup(
   // Período consultado no banco. Ao trocar de cliente, posiciona no mês do lançamento
   // mais recente; até lá o hook não carrega nada (evita buscar o histórico inteiro).
   const period = usePeriod('month');
-  const { jumpTo, setMode } = period;
   const [positionedFor, setPositionedFor] = useState<string | null>(null);
   // Lido só na chegada do cliente: trocar a função não refaz a busca.
   const applyLink = useEffectEvent(onLink);
+  /**
+   * Posiciona o período na chegada da empresa: o mês do link do Painel ou o do lançamento mais
+   * recente. Fica fora das dependências do efeito: se o posicionamento rodasse de novo a cada
+   * troca de período, a escolha do usuário voltaria sozinha para o mês do último lançamento.
+   */
+  const position = useEffectEvent((latest: string | null) => {
+    const link = parseConciliationLink(window.location.search);
+    if (link.month) {
+      // Links do painel abrem o mês e os filtros pedidos.
+      period.setMode('month');
+      period.jumpTo(`${link.month}-01`);
+      applyLink({ bank: link.bank, filter: link.filter });
+    } else {
+      if (link.bank) applyLink({ bank: link.bank });
+      if (latest) period.jumpTo(latest);
+    }
+  });
   useEffect(() => {
     if (!clientId) return;
     let active = true;
     getLatestTransactionDate(clientId)
       .then((latest) => {
         if (!active) return;
-        // Links do painel abrem o mês e os filtros pedidos.
-        const link = parseConciliationLink(window.location.search);
-        if (link.month) {
-          setMode('month');
-          jumpTo(`${link.month}-01`);
-          applyLink({ bank: link.bank, filter: link.filter });
-        } else {
-          if (link.bank) applyLink({ bank: link.bank });
-          if (latest) jumpTo(latest);
-        }
+        position(latest);
         setPositionedFor(clientId);
       })
       .catch((e) => {
@@ -58,7 +65,7 @@ export function useConciliationSetup(
     return () => {
       active = false;
     };
-  }, [clientId, jumpTo, setMode]);
+  }, [clientId]);
   const range = clientId && positionedFor === clientId ? period.range : null;
   const selectedMonth = period.mode === 'month' ? `${period.year}-${String(period.month).padStart(2, '0')}` : null;
 
