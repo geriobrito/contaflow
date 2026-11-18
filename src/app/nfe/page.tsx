@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Calculator, Clock, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Calculator, Clock, FileText, ReceiptText, ShoppingBag, TrendingUp } from 'lucide-react';
 import { useClient } from '@/contexts/ClientContext';
 import { PeriodPicker, usePeriod } from '@/components/ui/PeriodPicker';
 import { useInvoices, type InvoiceImportOutcome } from '@/hooks/nfe/useInvoices';
@@ -10,6 +10,7 @@ import { InvoiceDropzone } from '@/components/nfe/InvoiceDropzone';
 import { InvoiceImportResult } from '@/components/nfe/InvoiceImportResult';
 import { InvoiceAccountantChecks } from '@/components/nfe/InvoiceAccountantChecks';
 import { InvoiceTable } from '@/components/nfe/InvoiceTable';
+import { DanfseSheet } from '@/components/nfe/DanfseSheet';
 import { InvoiceDetailDrawer } from '@/components/conciliacao/InvoiceDetailDrawer';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
@@ -85,6 +86,7 @@ export default function NotasFiscaisPage() {
   } = useInvoices(currentClient, currentClient ? period.range : null);
 
   const [outcome, setOutcome] = useState<InvoiceImportOutcome | null>(null);
+  const [danfseOpen, setDanfseOpen] = useState(false);
   const [direction, setDirection] = useState<InvoiceDirectionFilter>('ALL');
   const [stateFilter, setStateFilter] = useState<InvoiceStateFilter>('ALL');
   const [search, setSearch] = useState('');
@@ -193,14 +195,22 @@ export default function NotasFiscaisPage() {
         title="Notas fiscais"
         description="Importe os XML ou pacotes .zip das notas de compra e de venda: na Conciliação, o pagamento ou recebimento de mesmo valor e parceiro já vem com a conta sugerida."
         actions={
-          currentClient?.regime === 'SIMPLES_NACIONAL' ? (
-            <Link href="/simples-ibs-cbs" className={BUTTON.secondary}>
-              <Calculator className="w-4 h-4" />
-              IBS/CBS: dentro ou fora do DAS
-            </Link>
-          ) : undefined
+          <>
+            <button type="button" onClick={() => setDanfseOpen(true)} className={BUTTON.secondary} title="Gerar o PDF (DANFSe) a partir do XML da NFS-e">
+              <FileText className="w-4 h-4" />
+              DANFSe
+            </button>
+            {currentClient?.regime === 'SIMPLES_NACIONAL' && (
+              <Link href="/simples-ibs-cbs" className={BUTTON.secondary}>
+                <Calculator className="w-4 h-4" />
+                IBS/CBS: dentro ou fora do DAS
+              </Link>
+            )}
+          </>
         }
       />
+
+      {danfseOpen && <DanfseSheet onClose={() => setDanfseOpen(false)} />}
 
       <InvoiceDropzone busy={busy} disabled={!currentClient} onFiles={(files) => void handleFiles(files)} />
 

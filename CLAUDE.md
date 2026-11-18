@@ -24,6 +24,7 @@
 - **Deploy Firestore**: `npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>`
 - **Limpar Firestore Emulador**: `npm run clean:firestore`
 - **Tabela cClassTrib do IBS/CBS**: `python -I scripts/update-cclasstrib.py <clone de github.com/ReceitaFederal/calculadora-rtc-regime-regular>` regenera `src/lib/nfe/cclasstrib-table.ts` e `src/lib/nfe/nomenclature-table.ts` (capítulos da NCM e grupos da NBS; só lê os `.sql` do repositório); confira o diff e rode os testes
+- **Gerador de DANFSe (WASM)**: `python -I scripts/build-danfse-wasm.py <clone de github.com/ReceitaFederal/calculadora-rtc-gerador-danfse> <go do go.mod do repositório>` recompila `public/danfse/` (danfse.wasm, wasm_exec.js da mesma versão do Go e VERSION.json); a CSP libera só `'wasm-unsafe-eval'` para ele
 
 # Mapa de Arquitetura
 - `src/app/`: Entrypoints e rotas Next.js App Router (`layout.tsx`, `page.tsx`, `painel/`, `dre/`, `balanco/`, `regras/`, etc.)

@@ -9,7 +9,9 @@ describe('CSP com nonce', () => {
     expect(scripts).toContain("'nonce-abc123'");
     expect(scripts).toContain("'strict-dynamic'");
     expect(scripts).not.toContain('unsafe-inline');
-    expect(scripts).not.toContain('unsafe-eval');
+    expect(scripts).not.toContain("'unsafe-eval'");
+    // Só a compilação de WebAssembly (DANFSe), não o eval de JavaScript.
+    expect(scripts).toContain("'wasm-unsafe-eval'");
   });
 
   it('desenvolvimento libera eval (React) e WebSocket (HMR); produção não', () => {

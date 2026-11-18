@@ -26,6 +26,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Carregador do Go para o WASM da DANFSe (gerado por scripts/build-danfse-wasm.py).
+    "public/danfse/**",
   ]),
 ]);
 
