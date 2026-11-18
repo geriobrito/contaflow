@@ -4,7 +4,7 @@ import { Download, Pencil, Trash2 } from 'lucide-react';
 import type { ClientCompany } from '@/types/firestore';
 import { PORTE_LABEL, porteOf } from '@/lib/accounting-standard';
 import { clientInitials } from '@/lib/client-record';
-import { formatCNPJ } from '@/lib/utils/formatters';
+import { formatCNPJ, formatDateBR } from '@/lib/utils/formatters';
 import { BUTTON } from '@/components/ui/primitives';
 import { regimeLabel } from '@/components/clientes/options';
 import type { ClientIssue } from '@/lib/client-health';
@@ -105,6 +105,12 @@ export function ClientCard({ client, active, onActivate, onEdit, onBackup, backi
             <dd className="mt-0.5 text-stone-800 dark:text-stone-200 truncate">{client.city}</dd>
           </div>
         )}
+        <div className="min-w-0">
+          <dt className="text-stone-400">Último backup</dt>
+          <dd className={`mt-0.5 truncate ${client.lastBackupAt ? 'font-mono tabular-nums text-stone-800 dark:text-stone-200' : 'text-amber-700 dark:text-amber-400'}`}>
+            {client.lastBackupAt ? formatDateBR(client.lastBackupAt.slice(0, 10)) : 'Nunca'}
+          </dd>
+        </div>
       </dl>
 
       <div className="mt-4 flex-1 min-h-6">

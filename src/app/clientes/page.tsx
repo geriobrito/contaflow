@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { LayoutGrid, List, Plus, Upload } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Archive, LayoutGrid, List, Plus, Upload } from 'lucide-react';
 import type { ClientCompany, TaxRegime } from '@/types/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/contexts/ClientContext';
@@ -17,6 +17,7 @@ import { ClientList } from '@/components/clientes/ClientList';
 import { ClientSheet } from '@/components/clientes/ClientSheet';
 import { DeleteClientSheet } from '@/components/clientes/DeleteClientSheet';
 import { RestoreClientSheet } from '@/components/clientes/RestoreClientSheet';
+import { PortfolioBackupSheet } from '@/components/clientes/PortfolioBackupSheet';
 import { REGIMES } from '@/components/clientes/options';
 import { BUTTON, EmptyState, INPUT_COMPACT, PAGE, PageHeader, SearchField, SegmentedControl } from '@/components/ui/primitives';
 import { CardsSkeleton } from '@/components/ui/Skeleton';
@@ -38,8 +39,17 @@ const NO_ISSUES: readonly ClientIssue[] = [];
 
 export default function ClientesPage() {
   const { user } = useAuth();
-  const { clients, currentClient, selectClient, refreshClients, removeClient, isLoading } = useClient();
-  const { backingUpId, deletingId, restoring, exportBackup, restoreBackup, deleteClient } = useClientMaintenance(removeClient);
+  const { clients, currentClient, selectClient, refreshClients, removeClient, replaceClient, isLoading } = useClient();
+  // O cadastro em memória acompanha a data do backup recém-baixado (o cartão e o Painel a mostram).
+  const { backingUpId, deletingId, restoring, exportBackup, exportPortfolioBackup, restoreBackup, deleteClient } = useClientMaintenance(removeClient, (ids, at) => {
+    for (const c of clients) if (ids.includes(c.id)) replaceClient({ ...c, lastBackupAt: at });
+  });
+  const [portfolioBackupOpen, setPortfolioBackupOpen] = useState(false);
+  // Atalho do lembrete do Painel: /clientes?backup=1 abre o backup da carteira.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('backup') !== '1') return;
+    void Promise.resolve().then(() => setPortfolioBackupOpen(true));
+  }, []);
   const [confirmDelete, setConfirmDelete] = useState<ClientCompany | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -155,6 +165,12 @@ export default function ClientesPage() {
               <Upload className="w-4 h-4" strokeWidth={2} />
               Restaurar backup
             </button>
+            {usable.length > 0 && (
+              <button type="button" onClick={() => setPortfolioBackupOpen(true)} className={BUTTON.secondary}>
+                <Archive className="w-4 h-4" strokeWidth={2} />
+                Backup da carteira
+              </button>
+            )}
             <button type="button" onClick={openNew} className={BUTTON.primary}>
               <Plus className="w-4 h-4" strokeWidth={2} />
               Novo cliente
@@ -296,6 +312,19 @@ export default function ClientesPage() {
           onBackup={() => backup(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => void handleDelete(confirmDelete)}
+        />
+      )}
+
+      {portfolioBackupOpen && (
+        <PortfolioBackupSheet
+          clients={usable}
+          repoMode={repoMode}
+          onRun={async (list, onProgress) => {
+            const result = await exportPortfolioBackup(list, onProgress);
+            flash(result.message);
+            return result;
+          }}
+          onClose={() => setPortfolioBackupOpen(false)}
         />
       )}
 

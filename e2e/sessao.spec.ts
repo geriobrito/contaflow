@@ -13,14 +13,14 @@ test('inatividade: aviso, continuar conectado e saída após 30 minutos; versão
   await login(page);
   await expect(page.getByText(/^Versão \w+/)).toBeVisible();
 
-  await page.clock.runFor(29.5 * 60_000);
+  await page.clock.fastForward(29.5 * 60_000);
   await expect(page.getByRole('alertdialog')).toContainText('Você ainda está aí?');
   await page.getByRole('button', { name: 'Continuar conectado' }).click();
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
 
-  await page.clock.runFor(25 * 60_000);
+  await page.clock.fastForward(25 * 60_000);
   await expect(page).toHaveURL(/painel/);
-  await page.clock.runFor(6 * 60_000);
+  await page.clock.fastForward(6 * 60_000);
   await expect(page).toHaveURL(/login/);
   await expect(page.getByText('Sua sessão foi encerrada após 30 minutos sem uso. Entre novamente para continuar.')).toBeVisible();
 });

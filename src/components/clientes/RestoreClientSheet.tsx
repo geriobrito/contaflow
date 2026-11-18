@@ -18,7 +18,16 @@ interface RestoreClientSheetProps {
   onRestored: (client: ClientCompany, message: string) => Promise<void> | void;
 }
 
-/** Modal de importação e restauração de backup JSON exportado pelo ContaFlow. */
+/** Empresas dentro de um .zip do backup da carteira, para escolher qual restaurar. */
+interface ZipChoice {
+  fileName: string;
+  entries: { file: string; name: string; text: string }[];
+}
+
+/**
+ * Modal de importação e restauração de backup exportado pelo ContaFlow: o JSON de uma empresa ou
+ * o .zip do backup da carteira (escolhe-se a empresa dentro dele).
+ */
 export function RestoreClientSheet({ repoMode, restoring, onRestore, onClose, onRestored }: RestoreClientSheetProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -29,26 +38,57 @@ export function RestoreClientSheet({ repoMode, restoring, onRestore, onClose, on
   const [parseError, setParseError] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<{ message: string; stage?: string; partialClientId?: string } | null>(null);
+  const [zip, setZip] = useState<ZipChoice | null>(null);
 
-  const loadFile = async (file: File) => {
-    setParseError(null);
-    setRestoreError(null);
-    setProgress(null);
+  /** Lê o JSON de backup de uma empresa (direto ou de dentro do .zip). */
+  const loadJson = async (text: string, name: string) => {
     try {
-      const text = await file.text();
       const { parseClientBackup, inspectClientBackup } = await import('@/lib/export/client-restore');
       const parsed = parseClientBackup(text);
       const meta = inspectClientBackup(parsed);
-      setFileName(file.name);
+      setFileName(name);
       setBackup(parsed);
       setSummary(meta);
       setMode('new-company');
       setTargetName(`${parsed.client.name} (Restaurada)`);
     } catch (e) {
-      setFileName(file.name);
+      setFileName(name);
       setBackup(null);
       setSummary(null);
       setParseError(e instanceof Error ? e.message : 'Arquivo inválido.');
+    }
+  };
+
+  const loadFile = async (file: File) => {
+    setParseError(null);
+    setRestoreError(null);
+    setProgress(null);
+    setZip(null);
+    if (!/\.zip$/i.test(file.name)) return loadJson(await file.text(), file.name);
+    try {
+      const [{ readZip }, { MANIFEST_FILE }] = await Promise.all([import('@/lib/archive/zip'), import('@/lib/portfolio-backup')]);
+      const files = await readZip(await file.arrayBuffer());
+      const decoder = new TextDecoder();
+      const manifestEntry = files.find((f) => f.name === MANIFEST_FILE);
+      const names = new Map<string, string>();
+      if (manifestEntry) {
+        const manifest = JSON.parse(decoder.decode(manifestEntry.data)) as { files?: { file: string; name: string }[] };
+        for (const f of manifest.files ?? []) names.set(f.file, f.name);
+      }
+      const entries = files
+        .filter((f) => f.name !== MANIFEST_FILE && /\.json$/i.test(f.name))
+        .map((f) => ({ file: f.name, name: names.get(f.name) ?? f.name, text: decoder.decode(f.data) }));
+      if (!entries.length) throw new Error('O .zip não tem backup de nenhuma empresa.');
+      setBackup(null);
+      setSummary(null);
+      setFileName(file.name);
+      if (entries.length === 1) return loadJson(entries[0].text, `${file.name} › ${entries[0].file}`);
+      setZip({ fileName: file.name, entries });
+    } catch (e) {
+      setFileName(file.name);
+      setBackup(null);
+      setSummary(null);
+      setParseError(e instanceof Error ? `Não foi possível ler o .zip (${e.message}).` : 'Arquivo .zip inválido.');
     }
   };
 
@@ -114,7 +154,7 @@ export function RestoreClientSheet({ repoMode, restoring, onRestore, onClose, on
         <input
           ref={inputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json,application/json,.zip,application/zip"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];
@@ -137,10 +177,36 @@ export function RestoreClientSheet({ repoMode, restoring, onRestore, onClose, on
         >
           <FileJson className="w-6 h-6 text-stone-400" />
           <span className="font-medium text-stone-800 dark:text-stone-100">
-            {fileName ? `Arquivo: ${fileName}` : 'Clique ou arraste o arquivo JSON de backup'}
+            {fileName ? `Arquivo: ${fileName}` : 'Clique ou arraste o JSON de backup da empresa ou o .zip do backup da carteira'}
           </span>
           <span className="text-[12px] text-stone-500 dark:text-stone-400">Compatível com backups v1 e v2 do ContaFlow</span>
         </button>
+
+        {zip && (
+          <label className="block space-y-1.5">
+            <span className="block text-[12px] font-medium text-stone-600 dark:text-stone-400">Empresa do backup da carteira</span>
+            <select
+              aria-label="Empresa do backup da carteira"
+              defaultValue=""
+              disabled={restoring}
+              onChange={(e) => {
+                const entry = zip.entries.find((x) => x.file === e.target.value);
+                setParseError(null);
+                if (entry) void loadJson(entry.text, `${zip.fileName} › ${entry.file}`);
+              }}
+              className={INPUT}
+            >
+              <option value="" disabled>
+                Escolha a empresa ({zip.entries.length} no arquivo)…
+              </option>
+              {zip.entries.map((x) => (
+                <option key={x.file} value={x.file}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {parseError && (
           <p className="flex gap-2 rounded-2xl px-4 py-3 bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-500/25">

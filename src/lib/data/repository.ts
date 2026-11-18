@@ -170,6 +170,8 @@ export interface DataRepository {
   saveClient(client: ClientCompany): Promise<void>;
   /** Grava só os dados dos termos do Livro Diário, sem tocar no resto do cadastro. */
   updateClientDaybook(clientId: string, daybook: ClientDaybookInfo): Promise<void>;
+  /** Grava só a data do último backup baixado da empresa, sem tocar no resto do cadastro. */
+  markClientBackup(clientId: string, at: string): Promise<void>;
   /**
    * Exclui a empresa e, em cascata, contas, regras, lançamentos (bancários e manuais), lotes e
    * fechamentos. A auditoria é preservada, e cada fechamento removido fica registrado nela em

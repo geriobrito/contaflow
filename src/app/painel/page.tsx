@@ -24,6 +24,7 @@ import { loadResultWindow } from '@/lib/services/result-loader';
 import { usePortfolio } from '@/hooks/painel/usePortfolio';
 import { useOfficeAgenda } from '@/hooks/agenda/useOfficeAgenda';
 import { WeekAgenda } from '@/components/painel/WeekAgenda';
+import { BackupReminder } from '@/components/painel/BackupReminder';
 import { MonthRoutineCard } from '@/components/painel/MonthRoutineCard';
 import { useMonthStepData } from '@/hooks/painel/useMonthStepData';
 import { monthRoutineSteps, workingMonths } from '@/lib/month-steps';
@@ -268,6 +269,13 @@ export default function PainelPage() {
     return [...map].sort(([a], [b]) => b.localeCompare(a));
   }, [dash]);
 
+  // Última mudança de cada empresa, do resumo da carteira: o lembrete de backup a compara com o último backup.
+  const lastActivity = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const [id, e] of Object.entries(portfolio.entries)) if (e.status === 'ready' && e.row.lastActivityAt) out.set(id, e.row.lastActivityAt);
+    return out;
+  }, [portfolio.entries]);
+
   if (!clientsLoading && !currentClient) {
     return (
       <main className={PAGE}>
@@ -295,6 +303,7 @@ export default function PainelPage() {
       <main className={PAGE}>
         <PageHeader title="Painel" description="Ponto de partida do dia: o que falta fazer em cada empresa da carteira." actions={viewSwitch} />
         {readMeter}
+        <BackupReminder clients={clients} today={todayISO()} lastActivity={lastActivity} />
         {office.data && <WeekAgenda clients={office.clients} data={office.data} today={todayISO()} />}
         <PortfolioView
           clients={clients}
@@ -351,6 +360,7 @@ export default function PainelPage() {
         actions={viewSwitch}
       />
       {readMeter}
+      {currentClient && <BackupReminder clients={[currentClient]} today={todayISO()} />}
       {error && <p role="alert" className="text-[13px] text-rose-600 dark:text-rose-300">Não foi possível carregar o painel: {error}</p>}
       {!dash ? (
         !error && (

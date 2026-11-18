@@ -400,6 +400,17 @@ describe('termos do Livro Diário no cadastro da empresa', () => {
     expect((await repo.listClients()).find((c) => c.id === 'cA')).toMatchObject({ name: 'Empresa cA Renomeada', daybook: { number: '2' } });
   });
 
+  it('último backup: gravado à parte, mantido pelo formulário, só texto curto', async () => {
+    const repo = createFirestoreRepository(asUser('alice'), () => ORG_A);
+    await repo.markClientBackup('cA', '2026-11-17T12:00:00.000Z');
+    const [stored] = (await repo.listClients()).filter((c) => c.id === 'cA');
+    expect(stored.lastBackupAt).toBe('2026-11-17T12:00:00.000Z');
+    await repo.saveClient({ ...stored, name: 'Empresa cA Outra', ...fieldsKeptOutsideForm(stored) });
+    expect((await repo.listClients()).find((c) => c.id === 'cA')?.lastBackupAt).toBe('2026-11-17T12:00:00.000Z');
+    await assertFails(updateDoc(doc(asUser('alice'), 'clients/cA'), { lastBackupAt: 20261117 }));
+    await assertFails(updateDoc(doc(asUser('alice'), 'clients/cA'), { lastBackupAt: 'x'.repeat(41) }));
+  });
+
   it('recusa formato diferente: campo extra, texto longo ou não texto', async () => {
     const ref = doc(asUser('alice'), 'clients/cA');
     await assertSucceeds(updateDoc(ref, { daybook: { number: '1', city: '', registry: '' } }));
@@ -974,6 +985,10 @@ describe('escritório e responsável técnico', () => {
     await assertFails(getDoc(doc(asUser('bob'), `orgs/${ORG_A}`)));
     await assertFails(setDoc(doc(asUser('bob'), `orgs/${ORG_A}`), settings(ORG_A)));
     await assertFails(setDoc(doc(asUser('alice'), `orgs/${ORG_A}`), settings(ORG_B)));
+    // Prazo do lembrete de backup: dias inteiros de 1 a 365.
+    await assertSucceeds(setDoc(doc(asUser('alice'), `orgs/${ORG_A}`), { ...settings(ORG_A), backupReminderDays: 30 }));
+    await assertFails(setDoc(doc(asUser('alice'), `orgs/${ORG_A}`), { ...settings(ORG_A), backupReminderDays: 0 }));
+    await assertFails(setDoc(doc(asUser('alice'), `orgs/${ORG_A}`), { ...settings(ORG_A), backupReminderDays: '30' }));
     await assertFails(deleteDoc(doc(asUser('alice'), `orgs/${ORG_A}`)));
   });
 

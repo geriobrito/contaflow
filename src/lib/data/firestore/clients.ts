@@ -63,6 +63,9 @@ export function clientMethods(ctx: FirestoreContext) {
       // Só este campo: o resto do cadastro fica como está (saveClient substituiria tudo).
       await updateDoc(doc(db, COL.clients, clientId), { daybook: { ...daybook } });
     },
+    async markClientBackup(clientId, at) {
+      await updateDoc(doc(db, COL.clients, clientId), { lastBackupAt: at });
+    },
     async deleteClient(clientId, actor) {
       if (!clientId || clientId === 'global') throw new Error('Cliente inválido para exclusão.');
       // Recusa antes de apagar qualquer coisa: as regras só barrariam o operador no meio da cascata.

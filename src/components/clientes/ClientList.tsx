@@ -39,6 +39,7 @@ export function ClientList({ clients, activeId, issuesOf, deletingId, backingUpI
             <th scope="col" className="text-left font-semibold px-3 py-2.5">Regime</th>
             <th scope="col" className="text-left font-semibold px-3 py-2.5">Porte</th>
             <th scope="col" className="text-left font-semibold px-3 py-2.5">Cliente desde</th>
+            <th scope="col" className="text-left font-semibold px-3 py-2.5">Último backup</th>
             <th scope="col" className="text-left font-semibold px-3 py-2.5">Cadastro</th>
             <th scope="col" className="px-5 py-2.5">
               <span className="sr-only">Ações</span>
@@ -56,7 +57,7 @@ export function ClientList({ clients, activeId, issuesOf, deletingId, backingUpI
                   <th scope="row" className="text-left font-medium px-5 py-3 text-stone-900 dark:text-stone-50">
                     {label}
                   </th>
-                  <td colSpan={5} className="px-3 py-3 text-[12px] text-amber-800 dark:text-amber-300">
+                  <td colSpan={6} className="px-3 py-3 text-[12px] text-amber-800 dark:text-amber-300">
                     Exclusão incompleta: parte dos dados já foi apagada. Retome para concluir.
                   </td>
                   <td className="px-5 py-3 text-right">
@@ -89,6 +90,9 @@ export function ClientList({ clients, activeId, issuesOf, deletingId, backingUpI
                 <td className="px-3 py-3 whitespace-nowrap text-stone-700 dark:text-stone-300">{regimeLabel(c.regime)}</td>
                 <td className="px-3 py-3 whitespace-nowrap text-stone-700 dark:text-stone-300">{PORTE_LABEL[porteOf(c)]}</td>
                 <td className="px-3 py-3 font-mono tabular-nums whitespace-nowrap text-stone-700 dark:text-stone-300">{c.clientSince ? formatDateBR(c.clientSince) : '—'}</td>
+                <td className={`px-3 py-3 whitespace-nowrap ${c.lastBackupAt ? 'font-mono tabular-nums text-stone-700 dark:text-stone-300' : 'text-amber-700 dark:text-amber-400'}`}>
+                  {c.lastBackupAt ? formatDateBR(c.lastBackupAt.slice(0, 10)) : 'Nunca'}
+                </td>
                 <td className="px-3 py-3">
                   <ClientIssueChips issues={issuesOf(c)} onIssue={(issue) => onIssue(c, issue)} max={2} />
                 </td>

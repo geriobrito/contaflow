@@ -55,6 +55,11 @@ export interface PortfolioRow {
   upToDate: boolean;
   /** Peso para ordenar a lista: mais trabalho primeiro. */
   weight: number;
+  /**
+   * Última mudança conhecida nos dados da empresa (ISO): extrato importado, competência fechada ou
+   * cadastro alterado. O lembrete de backup a compara com o último backup.
+   */
+  lastActivityAt?: string;
 }
 
 const WEIGHT: Record<TaskSeverity, number> = { high: 100, medium: 10, low: 1 };
@@ -136,7 +141,23 @@ export function buildPortfolioRow(input: PortfolioInput): PortfolioRow {
     tasks,
     upToDate: !tasks.some((t) => t.severity !== 'low'),
     weight: tasks.reduce((s, t) => s + WEIGHT[t.severity], 0),
+    ...lastActivity(client, locks, batches),
   };
+}
+
+/** Data da mudança mais recente entre extratos, fechamentos e o cadastro (só as que se sabem). */
+function lastActivity(
+  client: Pick<ClientCompany, 'updatedAt'>,
+  locks: readonly { lockedAt?: string }[],
+  batches: readonly { importedAt?: string; status?: string }[]
+): { lastActivityAt?: string } {
+  const dates = [
+    client.updatedAt,
+    ...locks.map((l) => l.lockedAt),
+    ...batches.filter((b) => !b.status || b.status === 'COMPLETED').map((b) => b.importedAt),
+  ].filter((d): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d));
+  const latest = dates.sort().at(-1);
+  return latest ? { lastActivityAt: latest } : {};
 }
 
 /** Como cada rotina do mês aparece na carteira: o que lançar, o que informar e onde. */

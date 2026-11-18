@@ -7,6 +7,7 @@ import type { OrgSettings } from '@/types/firestore';
 import { getRepository } from '@/lib/services/data-service';
 import { useAuth } from '@/contexts/AuthContext';
 import { cleanDigits, formatCNPJ, isValidCNPJ, isValidCPF, maskCNPJ, maskCPF, normalizeCRC } from '@/lib/utils/formatters';
+import { DEFAULT_BACKUP_REMINDER_DAYS } from '@/lib/portfolio-backup';
 import { BUTTON, Field, INPUT, PAGE, PageHeader, SURFACE, INPUT_MONEY } from '@/components/ui/primitives';
 import { TwoFactorSection } from '@/components/escritorio/TwoFactorSection';
 
@@ -33,6 +34,7 @@ export default function EscritorioPage() {
   const [accountantName, setAccountantName] = useState('');
   const [accountantCrc, setAccountantCrc] = useState('');
   const [accountantCpf, setAccountantCpf] = useState('');
+  const [reminderDays, setReminderDays] = useState(String(DEFAULT_BACKUP_REMINDER_DAYS));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -49,6 +51,7 @@ export default function EscritorioPage() {
           setAccountantName(s.accountantName ?? '');
           setAccountantCrc(s.accountantCrc ?? '');
           setAccountantCpf(s.accountantCpf ? maskCPF(s.accountantCpf) : '');
+          setReminderDays(String(s.backupReminderDays ?? DEFAULT_BACKUP_REMINDER_DAYS));
         }
         setLoaded(true);
       })
@@ -64,7 +67,9 @@ export default function EscritorioPage() {
   const cnpjOk = cnpjDigits ? cnpjDigits.length === 14 && isValidCNPJ(cnpjDigits) : null;
   const cpfOk = cpfDigits ? cpfDigits.length === 11 && isValidCPF(cpfDigits) : null;
   const crcOk = accountantCrc.trim() ? Boolean(crc) : null;
-  const valid = Boolean(officeName.trim() && accountantName.trim() && crc) && cnpjOk !== false && cpfOk !== false;
+  const days = /^\d{1,3}$/.test(reminderDays.trim()) ? Number(reminderDays.trim()) : NaN;
+  const daysOk = Number.isInteger(days) && days >= 1 && days <= 365;
+  const valid = Boolean(officeName.trim() && accountantName.trim() && crc) && cnpjOk !== false && cpfOk !== false && daysOk;
 
   const save = async () => {
     if (!orgId || !valid || !crc) return;
@@ -75,6 +80,7 @@ export default function EscritorioPage() {
       officeName: officeName.trim(),
       accountantName: accountantName.trim(),
       accountantCrc: crc,
+      backupReminderDays: days,
       updatedAt: new Date().toISOString(),
       ...(user?.uid ? { updatedByUid: user.uid } : {}),
       ...(cnpjDigits ? { officeCnpj: formatCNPJ(cnpjDigits) } : {}),
@@ -160,6 +166,19 @@ export default function EscritorioPage() {
                 />
                 <Valid ok={cpfDigits.length === 11 ? cpfOk : null} />
               </div>
+            </Field>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-4">
+          <legend className="text-[13px] font-semibold text-stone-800 dark:text-stone-200 mb-1">Backup</legend>
+          <div className="max-w-xs">
+            <Field
+              label="Lembrar o backup depois de (dias)"
+              hint="O Painel avisa as empresas sem backup há mais tempo que isso, e as que mudaram depois do último."
+              error={daysOk ? null : 'Informe de 1 a 365 dias.'}
+            >
+              <input inputMode="numeric" value={reminderDays} onChange={(e) => setReminderDays(e.target.value.replace(/\D/g, '').slice(0, 3))} className={`${INPUT_MONEY} w-28`} />
             </Field>
           </div>
         </fieldset>

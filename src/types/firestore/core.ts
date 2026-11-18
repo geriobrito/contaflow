@@ -121,6 +121,8 @@ export interface ClientCompany {
   partners?: CompanyPartner[];
   /** Dados dos termos do Livro Diário, gravados pela tela do Diário (não pelo formulário de Clientes). */
   daybook?: ClientDaybookInfo;
+  /** Último backup baixado da empresa (ISO), sozinho ou no backup da carteira. Gravado à parte do formulário. */
+  lastBackupAt?: string;
   /**
    * Exclusão em andamento (ISO). A cascata apaga os dados em vários lotes; se parar no
    * meio, a empresa continua marcada e a exclusão é retomada de onde parou.
@@ -201,6 +203,8 @@ export interface OrgSettings {
   accountantName: string;
   accountantCrc: string;
   accountantCpf?: string;
+  /** Dias sem backup a partir dos quais o Painel lembra (padrão: 30). */
+  backupReminderDays?: number;
   updatedAt: string;
   updatedByUid?: string;
 }

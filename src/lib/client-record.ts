@@ -30,12 +30,14 @@ export function clientInitials(name: string): string {
  * empresa quando ela é editada: `saveClient` substitui o documento inteiro, então o que o
  * formulário não remonta se perderia.
  * - `ignoredTemplateCodes`: tela do Plano de Contas;
- * - `daybook`: termos do Livro Diário.
+ * - `daybook`: termos do Livro Diário;
+ * - `lastBackupAt`: último backup baixado (tela de Clientes, backup da empresa ou da carteira).
  */
 export function fieldsKeptOutsideForm(existing: ClientCompany | null | undefined): Partial<ClientCompany> {
   if (!existing) return {};
   return {
     ...(existing.ignoredTemplateCodes?.length ? { ignoredTemplateCodes: existing.ignoredTemplateCodes } : {}),
     ...(existing.daybook ? { daybook: existing.daybook } : {}),
+    ...(existing.lastBackupAt ? { lastBackupAt: existing.lastBackupAt } : {}),
   };
 }

@@ -109,6 +109,13 @@ describe.each(IMPLEMENTATIONS)('contrato do repositório (%s)', (_mode, create) 
     expect(await repo.getLockState('c1')).toMatchObject({ clientId: 'c1', count: 0, seq: 0 });
   });
 
+  it('empresas: o último backup é gravado à parte e o cadastro o preserva', async () => {
+    await repo.saveClient(client('c1', { tradeName: 'Fantasia' }));
+    await repo.markClientBackup('c1', '2026-11-17T12:00:00.000Z');
+    const [c] = await repo.listClients();
+    expect(c).toMatchObject({ tradeName: 'Fantasia', lastBackupAt: '2026-11-17T12:00:00.000Z' });
+  });
+
   it('plano de contas: ordenado por código, sem contas de outra empresa', async () => {
     await repo.saveClient(client('c2'));
     await repo.insertAccounts(buildITG1000Chart('c2', '2025-01-01').slice(0, 3));

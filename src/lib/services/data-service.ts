@@ -51,6 +51,7 @@ export const saveClient = (client: ClientCompany): Promise<void> => getRepositor
 /** Grava os dados dos termos do Livro Diário no cadastro da empresa. */
 export const updateClientDaybook = (clientId: string, daybook: ClientDaybookInfo): Promise<void> =>
   getRepository().updateClientDaybook(clientId, daybook);
+export const markClientBackup = (clientId: string, at: string): Promise<void> => getRepository().markClientBackup(clientId, at);
 /** Exclui a empresa e, em cascata, contas, regras, lançamentos, lotes de importação e fechamentos. */
 export const deleteClient = (clientId: string): Promise<void> => getRepository().deleteClient(clientId, getActor());
 
