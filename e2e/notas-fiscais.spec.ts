@@ -181,7 +181,7 @@ test('NFS-e tomada com IBS/CBS: pagamento rateado com o crédito a recuperar', a
   const dialog = page.getByRole('dialog');
   const card = dialog.getByRole('region', { name: 'Nota fiscal correspondente' });
   await expect(card).toContainText('NFS-e 10 · ESCRITORIO DE ASSESSORIA LTDA');
-  await expect(card).toContainText(/Conta sugerida \(pelo CFOP\):\s*3\.3\.2\.17 Outras Despesas Gerais/);
+  await expect(card).toContainText(/Conta sugerida \(pelo tipo de nota\):\s*3\.3\.2\.17 Outras Despesas Gerais/);
   await expect(card).toContainText(/Crédito a recuperar: IBS R\$\s*1,00 e CBS R\$\s*88,00/);
   await card.getByRole('button', { name: 'Lançar com o crédito' }).click();
 

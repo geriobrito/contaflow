@@ -91,7 +91,15 @@ export function InvoiceMatchCard({
       {!rejected && suggested && (
         <p className="pl-5.5 flex flex-wrap items-center gap-x-2 text-stone-600 dark:text-stone-300">
           <span>
-            Conta sugerida{match.suggestionSource === 'history' ? ' (usada antes com este parceiro)' : ' (pelo CFOP)'}:{' '}
+            Conta sugerida
+            {match.suggestionSource === 'history'
+              ? ' (usada antes com este parceiro)'
+              : match.suggestionReason
+                ? ` (pelo ${match.suggestionSource === 'nbs' ? 'serviço' : 'NCM'}: ${match.suggestionReason})`
+                : match.invoice.model === 'NFSE'
+                  ? ' (pelo tipo de nota)'
+                  : ' (pelo CFOP)'}
+            :{' '}
             <b className="font-medium">
               <span className="font-mono tabular-nums">{suggested.code}</span> {suggested.name}
             </b>

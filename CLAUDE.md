@@ -23,7 +23,7 @@
 - **Testes Visuais**: `npm run test:visual` (compara capturas das telas principais, temas claro e escuro, com `e2e/visual.spec.ts-snapshots/`); após mudança visual desejada, `npm run test:visual:update`. Referências `*-win32.png` são locais; as `*-linux.png` são do job `visual` do CI (imagem `mcr.microsoft.com/playwright:v1.64.0-noble`), regravadas pela execução manual do workflow (artefato `visual-snapshots`)
 - **Deploy Firestore**: `npx firebase-tools@15.31.0 deploy --only firestore:indexes,firestore:rules --project <projeto>`
 - **Limpar Firestore Emulador**: `npm run clean:firestore`
-- **Tabela cClassTrib do IBS/CBS**: `python -I scripts/update-cclasstrib.py <clone de github.com/ReceitaFederal/calculadora-rtc-regime-regular>` regenera `src/lib/nfe/cclasstrib-table.ts` (só lê os `.sql` do repositório); confira o diff e rode os testes
+- **Tabela cClassTrib do IBS/CBS**: `python -I scripts/update-cclasstrib.py <clone de github.com/ReceitaFederal/calculadora-rtc-regime-regular>` regenera `src/lib/nfe/cclasstrib-table.ts` e `src/lib/nfe/nomenclature-table.ts` (capítulos da NCM e grupos da NBS; só lê os `.sql` do repositório); confira o diff e rode os testes
 
 # Mapa de Arquitetura
 - `src/app/`: Entrypoints e rotas Next.js App Router (`layout.tsx`, `page.tsx`, `painel/`, `dre/`, `balanco/`, `regras/`, etc.)

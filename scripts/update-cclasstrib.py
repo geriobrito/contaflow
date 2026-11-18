@@ -1,7 +1,10 @@
 """
-Gera src/lib/nfe/cclasstrib-table.ts com a tabela de classificação tributária (cClassTrib) e de
-situação tributária (CST) do IBS/CBS, a partir das migrações SQL do repositório público da
-Receita Federal "calculadora-rtc-regime-regular" (pasta flyway/sql).
+Gera, a partir das migrações SQL do repositório público da Receita Federal
+"calculadora-rtc-regime-regular" (pasta flyway/sql):
+- src/lib/nfe/cclasstrib-table.ts: classificação tributária (cClassTrib) e situação tributária
+  (CST) do IBS/CBS;
+- src/lib/nfe/nomenclature-table.ts: capítulos da NCM (2 dígitos) e grupos da NBS (3 e 5 dígitos),
+  com a descrição, para a sugestão de conta e o detalhe das notas.
 
 Uso (sem rodar nada do repositório: só os arquivos .sql são lidos e aplicados num SQLite em
 memória, com a biblioteca padrão do Python):
@@ -19,6 +22,7 @@ import subprocess
 import sys
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / 'src' / 'lib' / 'nfe' / 'cclasstrib-table.ts'
+NOMENCLATURE_OUT = OUT.parent / 'nomenclature-table.ts'
 # Tributos do IBS/CBS na tabela TRIBUTO: 2 CBS, 3 IBS (UF), 4 IBS (município). 1 é o Imposto Seletivo.
 IBS_CBS = (2, 3, 4)
 
@@ -106,6 +110,34 @@ def main() -> None:
     lines += ['];', '']
     OUT.write_text('\n'.join(lines), encoding='utf-8', newline='\n')
     print(f'{len(rows)} classificações e {len(cst)} CST gravadas em {OUT} (base {version[0]} de {version[1]})')
+
+    # Nomenclaturas vigentes: capítulos da NCM e grupos da NBS (os níveis que a sugestão usa).
+    def clean(d: str) -> str:
+        return ' '.join(d.replace('<i>', '').replace('</i>', '').split()).rstrip('.')
+
+    chapters = db.execute(
+        "select NCM_CD, NCM_DESCRICAO from NCM where length(NCM_CD) = 2 and (NCM_FIM_VIGENCIA is null or NCM_FIM_VIGENCIA >= date('now')) order by NCM_CD"
+    ).fetchall()
+    groups = db.execute(
+        "select NBS_CD, NBS_DESCRICAO from NBS where length(NBS_CD) in (3, 5) and (NBS_FIM_VIGENCIA is null or NBS_FIM_VIGENCIA >= date('now')) order by NBS_CD"
+    ).fetchall()
+    out = [
+        '/* Gerado por scripts/update-cclasstrib.py: não edite à mão. */',
+        '/* Fonte: github.com/ReceitaFederal/calculadora-rtc-regime-regular (flyway/sql), licença MIT. */',
+        '',
+        '/** Capítulos da NCM (2 dígitos) → descrição. */',
+        'export const NCM_CHAPTERS: Readonly<Record<string, string>> = {',
+        *[f'  {js(c)}: {js(clean(d))},' for c, d in chapters],
+        '};',
+        '',
+        '/** Grupos (3 dígitos) e subgrupos (5 dígitos) da NBS → descrição. */',
+        'export const NBS_GROUPS: Readonly<Record<string, string>> = {',
+        *[f'  {js(c)}: {js(clean(d))},' for c, d in groups],
+        '};',
+        '',
+    ]
+    NOMENCLATURE_OUT.write_text(chr(10).join(out), encoding='utf-8', newline=chr(10))
+    print(f'{len(chapters)} capítulos da NCM e {len(groups)} grupos da NBS gravados em {NOMENCLATURE_OUT}')
 
 
 if __name__ == '__main__':

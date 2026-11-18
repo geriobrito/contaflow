@@ -1,4 +1,4 @@
-import type { InvoiceCfop, InvoiceInstallment, InvoiceRetentions, InvoiceSimplesTax, InvoiceTaxItem } from '@/types/firestore';
+import type { InvoiceCfop, InvoiceInstallment, InvoiceNcm, InvoiceRetentions, InvoiceSimplesTax, InvoiceTaxItem } from '@/types/firestore';
 import { fromCents, toCents } from '@/lib/money';
 
 /**
@@ -49,6 +49,10 @@ export interface ParsedInvoice {
   simplesTax?: InvoiceSimplesTax;
   /** NFS-e: código de tributação nacional (cTribNac). */
   serviceCode?: string;
+  /** NFS-e: código NBS do serviço (cNBS). */
+  nbs?: string;
+  /** NF-e: valor dos produtos por NCM. */
+  ncms?: InvoiceNcm[];
   /** NFS-e: tributos retidos (só quando o líquido é menor que o serviço). */
   retentions?: InvoiceRetentions;
   cfops: InvoiceCfop[];
@@ -283,6 +287,7 @@ function parseNFSe(xml: string): ParsedXml {
   const status = text(own, 'cStat');
   const recipientDoc = docOf(toma) || text(toma, 'NIF');
   const serviceCode = text(section(dps, 'cServ'), 'cTribNac');
+  const nbs = (text(section(dps, 'cServ'), 'cNBS') || text(dps, 'cNBS')).replace(/\D/g, '');
 
   return {
     kind: 'invoice',
@@ -302,6 +307,7 @@ function parseNFSe(xml: string): ParsedXml {
       ...(taxItems ? { taxItems } : {}),
       ...(simplesTax ? { simplesTax } : {}),
       ...(serviceCode ? { serviceCode } : {}),
+      ...(nbs.length === 9 ? { nbs } : {}),
       ...(retentions ? { retentions } : {}),
       cfops: [],
       installments: [],
@@ -378,6 +384,7 @@ export function parseNFeXml(raw: string): ParsedXml {
   const icmsTot = section(inf, 'ICMSTot');
 
   const cfopCents = new Map<string, number>();
+  const ncmCents = new Map<string, number>();
   const dets = sections(inf, 'det');
   const taxItems = taxItemsOf(dets.flatMap((det) => {
     const group = section(section(det, 'imposto') ?? det, 'IBSCBS');
@@ -386,6 +393,9 @@ export function parseNFeXml(raw: string): ParsedXml {
   const simplesTax = simplesTaxOf(dets);
   for (const det of dets) {
     const prod = section(det, 'prod');
+    const ncm = text(prod, 'NCM').replace(/\D/g, '');
+    // 00000000: produto sem NCM (serviço na nota conjugada, por exemplo).
+    if (ncm.length === 8 && ncm !== '00000000') ncmCents.set(ncm, (ncmCents.get(ncm) ?? 0) + toCents(amount(text(prod, 'vProd'))));
     const cfop = text(prod, 'CFOP');
     if (!cfop) continue;
     cfopCents.set(cfop, (cfopCents.get(cfop) ?? 0) + toCents(amount(text(prod, 'vProd'))));
@@ -424,6 +434,14 @@ export function parseNFeXml(raw: string): ParsedXml {
       ...(taxItems ? { taxItems } : {}),
       ...(simplesTax ? { simplesTax } : {}),
       cfops: [...cfopCents].map(([cfop, cents]) => ({ cfop, amount: fromCents(cents) })).sort((a, b) => b.amount - a.amount),
+      ...(ncmCents.size
+        ? {
+            ncms: [...ncmCents]
+              .map(([ncm, cents]) => ({ ncm, amount: fromCents(cents) }))
+              .sort((a, b) => b.amount - a.amount || a.ncm.localeCompare(b.ncm))
+              .slice(0, 40),
+          }
+        : {}),
       installments,
       situation: situationOf(protStatus),
       summaryOnly: false,

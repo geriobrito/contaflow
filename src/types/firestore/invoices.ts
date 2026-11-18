@@ -12,6 +12,12 @@ export interface InvoiceInstallment {
   amount: number;
 }
 
+/** Valor dos produtos por NCM (8 dígitos). */
+export interface InvoiceNcm {
+  ncm: string;
+  amount: number;
+}
+
 /** Valor dos produtos por CFOP. */
 export interface InvoiceCfop {
   cfop: string;
@@ -110,6 +116,10 @@ export interface InvoiceSummary {
   /** NFS-e: tributos retidos pelo tomador (a diferença entre o serviço e o líquido). */
   retentions?: InvoiceRetentions;
   cfops: InvoiceCfop[];
+  /** NF-e: valor dos produtos por NCM, do maior para o menor (até 40). */
+  ncms?: InvoiceNcm[];
+  /** NFS-e: código NBS do serviço (cNBS, 9 dígitos). */
+  nbs?: string;
   installments: InvoiceInstallment[];
   status: InvoiceStatus;
   links?: InvoiceLink[];

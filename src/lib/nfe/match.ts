@@ -4,6 +4,7 @@ import { companyTokens, nameOverlap } from '@/lib/company-name';
 import { addDays } from '@/lib/statement';
 import { round2, toCents } from '@/lib/money';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
+import { productAccountSuggestion, serviceAccountSuggestion, soldHeadings, type NomenclatureSuggestion } from '@/lib/nfe/nomenclature';
 
 /**
  * Casamento de lançamentos do extrato com notas fiscais importadas, e a conta sugerida.
@@ -25,7 +26,7 @@ const DAYS_AFTER_DUE = 45;
 const DAYS_AFTER_ISSUE = 90;
 
 export type PartyEvidence = 'document' | 'name' | 'none';
-export type SuggestionSource = 'history' | 'cfop';
+export type SuggestionSource = 'history' | 'cfop' | 'ncm' | 'nbs';
 
 export interface InvoiceMatch {
   invoice: InvoiceSummary;
@@ -36,6 +37,8 @@ export interface InvoiceMatch {
   score: number;
   suggestedAccountId?: string;
   suggestionSource?: SuggestionSource;
+  /** Por que a conta (sugestão pelo NCM ou pelo NBS). */
+  suggestionReason?: string;
 }
 
 /* =========================================================================
@@ -132,15 +135,38 @@ export function partnerHistory(invoices: readonly InvoiceSummary[]): Map<string,
 const partnerKey = (inv: Pick<InvoiceSummary, 'direction' | 'counterpartyDoc' | 'counterpartyName'>) =>
   inv.counterpartyDoc ? `${inv.direction}|${inv.counterpartyDoc}` : inv.counterpartyName ? `${inv.direction}|n:${textKey(inv.counterpartyName)}` : '';
 
-/** Conta sugerida para o lançamento casado: a do histórico do parceiro ou a do CFOP (só contas analíticas do plano). */
+/** Conta que o CFOP do fornecedor dá a qualquer mercadoria: é ela que o NCM pode refinar. */
+const SUPPLIER_DEFAULT_CODE = '3.2.1.01';
+
+/**
+ * Sugestão pelo NCM (produto) ou pelo NBS (serviço) para a nota de compra, quando o CFOP não diz
+ * a finalidade: nota do fornecedor (5/6/7) com mercadoria, ou NFS-e.
+ */
+export function nomenclatureSuggestion(invoice: InvoiceSummary, sold: ReadonlySet<string>): NomenclatureSuggestion | null {
+  if (invoice.direction !== 'PURCHASE') return null;
+  if (invoice.model === NFSE_MODEL) return serviceAccountSuggestion(invoice);
+  const main = invoice.cfops[0]?.cfop;
+  const supplierSide = !main || '567'.includes(main[0]);
+  const code = cfopAccountCode(invoice);
+  return supplierSide && (code === null || code === SUPPLIER_DEFAULT_CODE) ? productAccountSuggestion(invoice, sold) : null;
+}
+
+/**
+ * Conta sugerida para o lançamento casado (só contas analíticas do plano): a do histórico do
+ * parceiro; senão a do NCM/NBS, quando o CFOP não diz a finalidade; senão a do CFOP.
+ */
 export function suggestAccount(
   invoice: InvoiceSummary,
   accounts: readonly ChartAccount[],
-  history: ReadonlyMap<string, string>
-): { accountId: string; source: SuggestionSource } | null {
+  history: ReadonlyMap<string, string>,
+  sold: ReadonlySet<string> = new Set()
+): { accountId: string; source: SuggestionSource; reason?: string } | null {
   const usable = (a: ChartAccount | undefined) => a && a.nature === 'ANALYTIC';
   const fromHistory = history.get(partnerKey(invoice));
   if (fromHistory && usable(accounts.find((a) => a.id === fromHistory))) return { accountId: fromHistory, source: 'history' };
+  const nomen = nomenclatureSuggestion(invoice, sold);
+  const byNomen = nomen ? accounts.find((a) => a.code === nomen.code) : undefined;
+  if (nomen && byNomen && usable(byNomen)) return { accountId: byNomen.id, source: nomen.basis, reason: nomen.reason };
   const code = cfopAccountCode(invoice);
   const byCfop = code ? accounts.find((a) => a.code === code) : undefined;
   return byCfop && usable(byCfop) ? { accountId: byCfop.id, source: 'cfop' } : null;
@@ -196,6 +222,7 @@ export function matchInvoices(
 ): Map<string, InvoiceMatch> {
   const active = invoices.filter((i) => i.status === 'AUTHORIZED');
   const history = partnerHistory(invoices);
+  const sold = soldHeadings(invoices);
   const candidates: { tx: BankTransaction; slot: Slot; party: PartyEvidence; score: number; slotKey: string }[] = [];
 
   for (const tx of transactions) {
@@ -230,7 +257,7 @@ export function matchInvoices(
   for (const c of candidates) {
     if (out.has(c.tx.id) || usedSlots.has(c.slotKey)) continue;
     usedSlots.add(c.slotKey);
-    const suggestion = suggestAccount(c.slot.invoice, accounts, history);
+    const suggestion = suggestAccount(c.slot.invoice, accounts, history, sold);
     out.set(c.tx.id, {
       invoice: c.slot.invoice,
       amount: c.slot.cents / 100,
@@ -238,6 +265,7 @@ export function matchInvoices(
       party: c.party,
       score: round2(c.score),
       ...(suggestion ? { suggestedAccountId: suggestion.accountId, suggestionSource: suggestion.source } : {}),
+      ...(suggestion?.reason ? { suggestionReason: suggestion.reason } : {}),
     });
   }
   return out;

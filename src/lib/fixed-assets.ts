@@ -12,7 +12,8 @@ import type {
 import { fromCents, toCents } from '@/lib/money';
 import { MONTH_NAMES, monthOf } from '@/lib/periods';
 import { journalEntryProblem, journalTotals, MAX_JOURNAL_LINES } from '@/lib/journal';
-import { cfopAccountCode } from '@/lib/nfe/match';
+import { cfopAccountCode, nomenclatureSuggestion } from '@/lib/nfe/match';
+import { soldHeadings } from '@/lib/nfe/nomenclature';
 
 /**
  * Imobilizado e intangível: cadastro dos bens, cotas mensais de depreciação (linha reta,
@@ -773,12 +774,16 @@ export function unregisteredAssetInvoices(
   assets: readonly FixedAsset[]
 ): UnregisteredAssetInvoice[] {
   const docRefs = new Set(assets.map((a) => normalizeDocNumber(a.documentRef)).filter(Boolean));
+  const sold = soldHeadings(invoices);
   const keys = new Set(assets.map((a) => a.invoiceKey).filter((k): k is string => Boolean(k)));
   const out: UnregisteredAssetInvoice[] = [];
 
   for (const inv of invoices) {
     if (inv.direction !== 'PURCHASE' || inv.status === 'CANCELLED') continue;
-    const code = cfopAccountCode(inv);
+    // Imobilizado pelo CFOP ou, na nota do fornecedor de mercadoria, pelo NCM (veículo, máquina…
+    // que a empresa não vende, acima do valor usual de despesa).
+    const byNcm = nomenclatureSuggestion(inv, sold)?.code ?? null;
+    const code = byNcm?.startsWith(TANGIBLE_PREFIX) ? byNcm : cfopAccountCode(inv);
     const hasAssetCfop =
       (code !== null && (code.startsWith(TANGIBLE_PREFIX) || code.startsWith(INTANGIBLE_PREFIX))) ||
       inv.cfops.some((c) => c.cfop.length === 4 && ASSET_PURCHASE_CFOP_TAILS.has(c.cfop.slice(1)));

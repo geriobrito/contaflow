@@ -109,6 +109,8 @@ export function planInvoiceImport(files: readonly InvoiceFile[], client: Pick<Cl
       ...(inv.taxItems?.length ? { ibsCbsItems: inv.taxItems } : {}),
       ...(inv.simplesTax ? { simplesTax: inv.simplesTax } : {}),
       ...(inv.serviceCode ? { serviceCode: inv.serviceCode } : {}),
+      ...(inv.nbs ? { nbs: inv.nbs } : {}),
+      ...(inv.ncms?.length ? { ncms: inv.ncms } : {}),
       ...(inv.retentions ? { retentions: inv.retentions } : {}),
       cfops: inv.cfops,
       installments: inv.installments,

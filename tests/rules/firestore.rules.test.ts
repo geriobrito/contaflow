@@ -1663,6 +1663,10 @@ describe('notas fiscais (resumos dos XML)', () => {
     // IBS/CBS do Simples Nacional destacados na nota de venda: mapa com base, IBS e CBS.
     await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, simplesTax: { base: 1000, ibs: 10, cbs: 25 } }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, simplesTax: 35 }));
+    // Valor por NCM (até 40) e o NBS do serviço.
+    await assertSucceeds(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, nbs: '115021000', ncms: [{ ncm: '84713012', amount: 10 }] }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, ncms: Array.from({ length: 41 }, () => ({ ncm: '84713012', amount: 1 })) }));
+    await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${NFSE_KEY}`), { ...nfse, nbs: 115021000 }));
     await assertFails(setDoc(doc(alice, `invoice_summaries/cA_${KEY.slice(0, 43)}A1234`), { ...data, key: `${KEY.slice(0, 43)}A1234` })); // 48: nem NF-e nem NFS-e
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { key: '35250311444777000161550010000000021123456780' }));
     await assertFails(updateDoc(doc(alice, `invoice_summaries/cA_${KEY}`), { clientId: 'cB' }));

@@ -764,6 +764,8 @@ service cloud.firestore {
         && d.get('altTotal', 0) is number && d.get('ibs', 0) is number && d.get('cbs', 0) is number
         && d.get('ibsCbsItems', []) is list && d.get('ibsCbsItems', []).size() <= 40
         && d.get('simplesTax', {}) is map && d.get('simplesTax', {}).size() <= 3
+        && d.get('ncms', []) is list && d.get('ncms', []).size() <= 40
+        && d.get('nbs', '') is string && d.get('nbs', '').size() <= 12
         && d.get('serviceCode', '') is string && d.get('serviceCode', '').size() <= 10
         && d.get('retentions', {}) is map && d.get('retentions', {}).size() <= 8
         && d.counterpartyDoc is string && d.counterpartyDoc.size() <= 20

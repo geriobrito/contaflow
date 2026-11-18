@@ -10,6 +10,7 @@ import { invoiceDueInfo } from '@/lib/nfe/list';
 import { NFSE_MODEL } from '@/lib/nfe/parser';
 import { retentionParts } from '@/lib/nfe/retentions';
 import { findCClassTrib, taxItemIssues } from '@/lib/nfe/cclasstrib';
+import { nbsLabel, ncmChapterLabel } from '@/lib/nfe/nomenclature';
 import { todayISO } from '@/lib/business-days';
 import { formatMonth } from '@/lib/periods';
 import { formatCNPJ, formatCurrency, formatDateBR } from '@/lib/utils/formatters';
@@ -327,17 +328,42 @@ export function InvoiceDetailDrawer({
           </section>
 
           {/* CFOPs e Código de Serviço */}
-          {(invoice.cfops.length > 0 || invoice.serviceCode) && (
+          {(invoice.cfops.length > 0 || invoice.serviceCode || invoice.nbs || invoice.ncms?.length) && (
             <section className="rounded-2xl bg-white dark:bg-stone-800/60 border border-line p-4 space-y-3">
               <h3 className="text-[12px] font-semibold uppercase tracking-[0.08em] text-stone-500 flex items-center gap-1.5">
                 <Tag className="w-3.5 h-3.5 text-stone-400" />
-                Classificação Fiscal (CFOP / Serviço)
+                Classificação Fiscal (CFOP / NCM / Serviço)
               </h3>
               {invoice.serviceCode && (
                 <div className="flex items-center justify-between text-[13px] py-1 border-b border-black/4 dark:border-white/5 last:border-0">
                   <span className="text-stone-600 dark:text-stone-300">Código de Tributação Nacional (cTribNac)</span>
                   <span className="font-mono tabular-nums font-medium text-stone-900 dark:text-stone-100">{invoice.serviceCode}</span>
                 </div>
+              )}
+              {invoice.nbs && (
+                <div className="text-[13px] py-1 border-b border-black/4 dark:border-white/5 last:border-0">
+                  <span className="flex items-center justify-between">
+                    <span className="text-stone-600 dark:text-stone-300">Serviço (NBS)</span>
+                    <span className="font-mono tabular-nums font-medium text-stone-900 dark:text-stone-100">{invoice.nbs}</span>
+                  </span>
+                  {nbsLabel(invoice.nbs) && <span className="block text-[11.5px] text-stone-500 dark:text-stone-400">{nbsLabel(invoice.nbs)}</span>}
+                </div>
+              )}
+              {invoice.ncms && invoice.ncms.length > 0 && (
+                <ul aria-label="Produtos por NCM" className="divide-y divide-black/4 dark:divide-white/5">
+                  {invoice.ncms.slice(0, 8).map((item) => (
+                    <li key={item.ncm} className="py-1.5 first:pt-0 text-[13px]">
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="font-mono font-medium text-stone-800 dark:text-stone-200">NCM {item.ncm}</span>
+                        <span className="font-mono tabular-nums text-stone-700 dark:text-stone-300">{formatCurrency(item.amount)}</span>
+                      </span>
+                      <span className="block truncate text-[11.5px] text-stone-500 dark:text-stone-400" title={ncmChapterLabel(item.ncm)}>
+                        {ncmChapterLabel(item.ncm)}
+                      </span>
+                    </li>
+                  ))}
+                  {invoice.ncms.length > 8 && <li className="pt-1.5 text-[11.5px] text-stone-500">e mais {invoice.ncms.length - 8} NCM(s).</li>}
+                </ul>
               )}
               {invoice.cfops.length > 0 && (
                 <div className="divide-y divide-black/4 dark:divide-white/5">
